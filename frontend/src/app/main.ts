@@ -6,6 +6,7 @@ import { router } from './router'
 import { queryClient } from './providers/query'
 import { initTheme } from '@/shared/utils/theme'
 import '@/shared/styles/index.css'
+import '@/shared/styles/transition.css'
 
 initTheme()
 

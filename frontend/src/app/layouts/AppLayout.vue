@@ -23,6 +23,7 @@ const navItems: NavItem[] = [
 
 const route = useRoute()
 const currentName = computed(() => String(route.name ?? ''))
+const currentPath = computed(() => route.path)
 </script>
 
 <template>
@@ -80,7 +81,8 @@ const currentName = computed(() => String(route.name ?? ''))
         </div>
       </header>
 
-      <main class="min-w-0 flex-1 pb-4">
+      <!-- 按路径换 key，让每次切换都重放一次浮起动画 -->
+      <main :key="currentPath" class="page-settle min-w-0 flex-1 pb-4">
         <RouterView />
       </main>
     </div>
