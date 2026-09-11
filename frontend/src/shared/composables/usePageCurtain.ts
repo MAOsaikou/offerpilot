@@ -3,7 +3,7 @@ import { readonly, ref } from 'vue'
 /**
  * 路由切换时的「舞台幕布」。
  *
- * 时序：落幕（条带自上而下遮住画面）→ 切换路由 → 拉幕（条带继续向下抽走，露出新页面）。
+ * 时序：柔雾淡入并虚化画面 → 轻纱条带滑过 → 切换路由 → 条带抽走、柔雾散去。
  * 路由守卫会 await 落幕完成再放行导航，所以内容交换一定发生在画面被遮住的时候。
  *
  * 注意：下面的时长常量必须与 index.css 中
@@ -12,18 +12,18 @@ import { readonly, ref } from 'vue'
 
 export type CurtainPhase = 'idle' | 'covering' | 'uncovering'
 
-/** 幕布条带数量，与 StageCurtain.vue 中的 PANEL_COUNT 对应 */
+/** 条带数量，与 StageCurtain.vue 中的 PANEL_COUNT 对应 */
 const PANEL_COUNT = 8
-const STAGGER_MS = 18
-const COVER_ANIM_MS = 300
-const REVEAL_ANIM_MS = 340
+const STAGGER_MS = 20
+const COVER_ANIM_MS = 340
+const REVEAL_ANIM_MS = 380
 
-/** 全部条带落到位所需时间 */
+/** 柔雾与条带全部到位所需时间 */
 export const CURTAIN_COVER_MS = COVER_ANIM_MS + STAGGER_MS * (PANEL_COUNT - 1) + 20
-/** 全部条带抽走所需时间 */
+/** 条带抽走、柔雾散尽所需时间 */
 export const CURTAIN_REVEAL_MS = REVEAL_ANIM_MS + STAGGER_MS * (PANEL_COUNT - 1) + 20
 
-/** 兜底：万一导航被中断导致没收到 afterEach，也不至于让幕布一直糊在屏幕上 */
+/** 兜底：万一导航被中断导致没收到 afterEach，也不至于让柔雾一直糊在屏幕上 */
 const WATCHDOG_MS = 8000
 
 const phase = ref<CurtainPhase>('idle')
