@@ -54,6 +54,11 @@
   --glass-sheen: oklch(1 0 0 / 0.75);
   --glass-blur: 18px;
 
+  /* 幕布（时长需与 usePageCurtain.ts 的常量一致） */
+  --curtain-stagger: 18ms;
+  --curtain-cover-duration: 300ms;
+  --curtain-reveal-duration: 340ms;
+
   --app-font-sans:
     'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --app-font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
@@ -245,6 +250,75 @@
 }
 
 /* ════════════════════════════════════════════
+   进场幕布：条带自上而下落下遮住画面，再继续向下抽走
+   ════════════════════════════════════════════ */
+
+.stage-curtain {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  overflow: hidden;
+  /* 永不拦截点击，避免任何情况下卡死交互 */
+  pointer-events: none;
+}
+
+.stage-curtain__panel {
+  position: relative;
+  flex: 1 1 0;
+  transform: translateY(-102%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--primary) 32%, var(--background)) 0%,
+    color-mix(in oklab, var(--primary) 8%, var(--background)) 55%,
+    color-mix(in oklab, var(--primary) 26%, var(--background)) 100%
+  );
+  box-shadow: 0 0 60px color-mix(in oklab, var(--primary) 28%, transparent);
+}
+
+/* 布褶：每条右侧压一道暗边，拉开时能看出是分片的 */
+.stage-curtain__panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 76%,
+    color-mix(in oklab, var(--primary) 24%, transparent) 100%
+  );
+}
+
+.stage-curtain--covering .stage-curtain__panel {
+  will-change: transform;
+  animation: curtain-cover var(--curtain-cover-duration) cubic-bezier(0.65, 0, 0.35, 1) both;
+  animation-delay: calc(var(--panel-index) * var(--curtain-stagger));
+}
+
+.stage-curtain--uncovering .stage-curtain__panel {
+  will-change: transform;
+  animation: curtain-reveal var(--curtain-reveal-duration) cubic-bezier(0.65, 0, 0.35, 1) both;
+  animation-delay: calc(var(--panel-index) * var(--curtain-stagger));
+}
+
+@keyframes curtain-cover {
+  from {
+    transform: translateY(-102%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes curtain-reveal {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(102%);
+  }
+}
+
+/* ════════════════════════════════════════════
    入场动效
    ════════════════════════════════════════════ */
 
@@ -303,6 +377,11 @@
   .rise-in,
   .pulse-dot {
     animation: none !important;
+  }
+
+  /* 幕布整块关掉，路由切换变成瞬时 */
+  .stage-curtain {
+    display: none;
   }
 
   .glass-card:hover {
