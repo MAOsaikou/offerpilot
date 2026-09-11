@@ -16,7 +16,7 @@ let counter = 0
 const activeRun = computed(() => store.activeRun)
 
 /**
- * 最后一条助手消息直接映射当前运行状态，所以流式文本、思考摘要都是实时的。
+ * 最后一条助手消息直接映射当前运行状态，所以流式文本、思考摘要、卡片都是实时的。
  * 历史消息的持久化要等会话接口 /conversations 接上。
  */
 const viewMessages = computed<ChatMessageView[]>(() => {
@@ -31,8 +31,8 @@ const viewMessages = computed<ChatMessageView[]>(() => {
       text: run?.text ?? message.text,
       streaming: streaming.value,
     }
-    const reasoning = run?.reasoning
-    if (reasoning) view.reasoning = reasoning
+    if (run?.reasoning) view.reasoning = run.reasoning
+    if (run && run.cards.length > 0) view.cards = run.cards
     return view
   })
 })
