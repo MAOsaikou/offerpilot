@@ -15,6 +15,9 @@ export default [
       '**/dist/**',
       '**/coverage/**',
       '**/node_modules/**',
+      // msw init 生成的 Service Worker，属于第三方产物
+      'public/mockServiceWorker.js',
+      // openapi-typescript 生成的类型，禁止手改
       'src/shared/api/schema.d.ts',
     ],
   },

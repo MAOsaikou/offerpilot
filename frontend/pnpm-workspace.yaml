@@ -2,3 +2,4 @@
 # 显式放行需要执行构建脚本的依赖，其余依赖默认拦截
 allowBuilds:
   vue-demi: true
+  msw: true
