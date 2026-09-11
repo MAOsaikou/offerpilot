@@ -1,0 +1,51 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+!**/.env.example
+frontend/.env.local
+frontend/.env.*.local
+
+# Java / Maven
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+*.war
+hs_err_pid*
+replay_pid*
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/playwright-report/
+frontend/test-results/
+frontend/coverage/
+mcp-servers/jobs-mcp/dist/
+mcp-servers/jobs-mcp/node_modules/
+*.tsbuildinfo
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs & local data
+*.log
+logs/
+backups/
+*.sql.gz
+
+# Media / large artifacts
+*.mp4
+*.pptx
+docs/pdf/*.pdf
+docs/eval-results/
+
+# Local tooling
+.cursor/
+.claude/
