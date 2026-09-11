@@ -54,12 +54,11 @@
   --glass-sheen: oklch(1 0 0 / 0.75);
   --glass-blur: 18px;
 
-  /* 幕布（时长需与 usePageCurtain.ts 的常量一致） */
-  --curtain-stagger: 20ms;
-  --curtain-cover-duration: 340ms;
-  --curtain-reveal-duration: 380ms;
-  --curtain-veil: color-mix(in oklab, var(--background) 78%, transparent);
-  --curtain-blur: 18px;
+  /* 柔雾幕布（时长需与 usePageCurtain.ts 的常量一致） */
+  --curtain-cover-duration: 400ms;
+  --curtain-reveal-duration: 440ms;
+  --curtain-veil: color-mix(in oklab, var(--background) 82%, transparent);
+  --curtain-blur: 22px;
 
   --app-font-sans:
     'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -92,7 +91,7 @@
   --glass-sheen: oklch(1 0 0 / 0.16);
 
   /* 深色下柔雾更浓一点，才盖得住内容交换 */
-  --curtain-veil: color-mix(in oklab, var(--background) 82%, transparent);
+  --curtain-veil: color-mix(in oklab, var(--background) 86%, transparent);
 }
 
 @layer base {
@@ -255,104 +254,33 @@
 }
 
 /* ════════════════════════════════════════════
-   进场幕布：先起一层柔雾把画面虚化，轻纱再缓缓抚过
+   进场柔雾：整屏一层磨砂，淡入把画面虚化，再淡出
    ════════════════════════════════════════════ */
 
 .stage-curtain {
   position: fixed;
   inset: 0;
   z-index: 60;
-  overflow: hidden;
   /* 永不拦截点击，避免任何情况下卡死交互 */
   pointer-events: none;
-}
-
-/* 柔雾：整屏只有这一层做 backdrop-filter，避免分片产生接缝。
-   只在切换期间挂载模糊，静止时不留常驻的合成开销。 */
-.stage-curtain__veil {
-  position: absolute;
-  inset: 0;
   opacity: 0;
   background: var(--curtain-veil);
   transition: opacity var(--curtain-cover-duration) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.stage-curtain--covering .stage-curtain__veil {
+/* 模糊只在切换期间挂上，静止时不保留常驻的合成开销 */
+.stage-curtain--covering {
   opacity: 1;
   backdrop-filter: blur(var(--curtain-blur)) saturate(120%);
   -webkit-backdrop-filter: blur(var(--curtain-blur)) saturate(120%);
 }
 
-.stage-curtain--uncovering .stage-curtain__veil {
+.stage-curtain--uncovering {
   opacity: 0;
   transition-duration: var(--curtain-reveal-duration);
   backdrop-filter: blur(var(--curtain-blur)) saturate(120%);
   -webkit-backdrop-filter: blur(var(--curtain-blur)) saturate(120%);
 }
-
-.stage-curtain__track {
-  position: absolute;
-  inset: 0;
-  display: flex;
-}
-
-/* 轻纱条带：低对比度的光带，两端羽化，滑过时不出现硬边 */
-.stage-curtain__panel {
-  position: relative;
-  flex: 1 1 0;
-  transform: translateY(-102%);
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--primary) 14%, transparent) 0%,
-    color-mix(in oklab, var(--primary) 5%, transparent) 55%,
-    color-mix(in oklab, var(--primary) 12%, transparent) 100%
-  );
-  mask-image: linear-gradient(180deg, transparent 0%, #000 11%, #000 89%, transparent 100%);
-  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 11%, #000 89%, transparent 100%);
-}
-
-/* 布褶：极淡的一道暗边，只为了让条带之间有层次 */
-.stage-curtain__panel::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 82%,
-    color-mix(in oklab, var(--primary) 8%, transparent) 100%
-  );
-}
-
-.stage-curtain--covering .stage-curtain__panel {
-  will-change: transform;
-  animation: curtain-cover var(--curtain-cover-duration) cubic-bezier(0.4, 0, 0.2, 1) both;
-  animation-delay: calc(var(--panel-index) * var(--curtain-stagger));
-}
-
-.stage-curtain--uncovering .stage-curtain__panel {
-  will-change: transform;
-  animation: curtain-reveal var(--curtain-reveal-duration) cubic-bezier(0.4, 0, 0.2, 1) both;
-  animation-delay: calc(var(--panel-index) * var(--curtain-stagger));
-}
-
-@keyframes curtain-cover {
-  from {
-    transform: translateY(-102%);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-
-@keyframes curtain-reveal {
-  from {
-    transform: translateY(0);
-  }
-  to {
-    transform: translateY(102%);
-  }
-}
-
 /* ════════════════════════════════════════════
    入场动效
    ════════════════════════════════════════════ */

@@ -1,27 +1,23 @@
 import { readonly, ref } from 'vue'
 
 /**
- * 路由切换时的「舞台幕布」。
+ * 路由切换时的「进场柔雾」。
  *
- * 时序：柔雾淡入并虚化画面 → 轻纱条带滑过 → 切换路由 → 条带抽走、柔雾散去。
- * 路由守卫会 await 落幕完成再放行导航，所以内容交换一定发生在画面被遮住的时候。
+ * 时序：柔雾淡入把画面虚化 → 切换路由 → 柔雾淡出，露出新页面。
+ * 路由守卫会 await 淡入完成再放行导航，所以内容交换一定发生在画面被虚化的时候。
  *
  * 注意：下面的时长常量必须与 index.css 中
- * `--curtain-cover-duration` / `--curtain-reveal-duration` / `--curtain-stagger` 保持一致。
+ * `--curtain-cover-duration` / `--curtain-reveal-duration` 保持一致。
  */
 
 export type CurtainPhase = 'idle' | 'covering' | 'uncovering'
 
-/** 条带数量，与 StageCurtain.vue 中的 PANEL_COUNT 对应 */
-const PANEL_COUNT = 8
-const STAGGER_MS = 20
-const COVER_ANIM_MS = 340
-const REVEAL_ANIM_MS = 380
+const COVER_MS = 400
+const REVEAL_MS = 440
 
-/** 柔雾与条带全部到位所需时间 */
-export const CURTAIN_COVER_MS = COVER_ANIM_MS + STAGGER_MS * (PANEL_COUNT - 1) + 20
-/** 条带抽走、柔雾散尽所需时间 */
-export const CURTAIN_REVEAL_MS = REVEAL_ANIM_MS + STAGGER_MS * (PANEL_COUNT - 1) + 20
+/** 实际等待时间，留一点余量避免抢在动画结束前放行 */
+export const CURTAIN_COVER_MS = COVER_MS + 20
+export const CURTAIN_REVEAL_MS = REVEAL_MS + 20
 
 /** 兜底：万一导航被中断导致没收到 afterEach，也不至于让柔雾一直糊在屏幕上 */
 const WATCHDOG_MS = 8000
@@ -46,7 +42,7 @@ function flushCover(): void {
   resolve?.()
 }
 
-/** 落幕；返回的 Promise 在画面被完全遮住后 resolve */
+/** 起雾；返回的 Promise 在画面被完全虚化后 resolve */
 export function coverCurtain(): Promise<void> {
   clearTimers()
   phase.value = 'covering'
@@ -57,7 +53,7 @@ export function coverCurtain(): Promise<void> {
 
   later(flushCover, CURTAIN_COVER_MS)
   later(() => {
-    // 兜底路径：一直没等到拉幕就自己收场
+    // 兜底路径：一直没等到散雾就自己收场
     if (phase.value === 'covering') {
       flushCover()
       startReveal()
@@ -74,7 +70,7 @@ function startReveal(): void {
   }, CURTAIN_REVEAL_MS)
 }
 
-/** 拉幕；只有在落幕之后调用才生效 */
+/** 散雾；只有在起雾之后调用才生效 */
 export function revealCurtain(): void {
   if (phase.value !== 'covering') return
   clearTimers()
