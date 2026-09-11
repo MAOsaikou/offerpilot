@@ -1,27 +1,50 @@
 {
-  "name": "frontend",
+  "name": "offerpilot-frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "vue-tsc -b",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.{ts,vue,css}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,vue,css}\"",
+    "test": "vitest",
+    "gen:api": "openapi-typescript http://localhost:8081/v3/api-docs -o src/shared/api/schema.d.ts"
   },
   "dependencies": {
     "@tanstack/vue-query": "^5.102.8",
+    "clsx": "^2.1.1",
     "pinia": "^4.0.3",
+    "tailwind-merge": "^3.6.0",
     "vue": "^3.5.42",
     "vue-router": "^5.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.3",
     "@vitejs/plugin-vue": "^6.0.8",
+    "@vue/eslint-config-prettier": "^10.2.0",
+    "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/tsconfig": "^0.9.1",
+    "eslint": "^10.10.0",
+    "eslint-plugin-vue": "^10.11.0",
+    "globals": "^17.12.0",
+    "jsdom": "^30.0.1",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
+    "vitest": "^5.0.0",
     "vue-tsc": "^3.3.11"
   }
 }

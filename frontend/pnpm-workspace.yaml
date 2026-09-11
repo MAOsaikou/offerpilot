@@ -1,0 +1,4 @@
+# pnpm 10+ 的配置入口：package.json 的 pnpm 字段与部分 .npmrc 设置已迁移到本文件
+# 显式放行需要执行构建脚本的依赖，其余依赖默认拦截
+allowBuilds:
+  vue-demi: true
