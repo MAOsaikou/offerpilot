@@ -7,6 +7,7 @@ import { queryClient } from './providers/query'
 import { initTheme } from '@/shared/utils/theme'
 import '@/shared/styles/index.css'
 import '@/shared/styles/transition.css'
+import '@/shared/styles/markdown.css'
 
 /**
  * 后端就绪前用 MSW 顶替接口。
