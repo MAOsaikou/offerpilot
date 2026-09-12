@@ -1,0 +1,141 @@
+server:
+  port: 8081
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: offerpilot
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:5432/${POSTGRES_DB:offerpilot}
+    username: ${POSTGRES_USER:offerpilot}
+    password: ${POSTGRES_PASSWORD:change-me-postgres}
+    hikari:
+      maximum-pool-size: 10
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
+  mvc:
+    async:
+      request-timeout: 600000
+  ai:
+    openai:
+      base-url: ${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
+      api-key: ${BAILIAN_API_KEY:sk-not-configured}
+      chat:
+        options:
+          model: ${LLM_MODEL_FLASH:qwen3.8-flash}
+          temperature: 0.3
+      embedding:
+        options:
+          model: ${LLM_MODEL_EMBEDDING:text-embedding-v4}
+          dimensions: ${LLM_EMBEDDING_DIMENSIONS:1024}
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY:sk-not-configured}
+      chat:
+        options:
+          model: ${LLM_MODEL_CHEAP:deepseek-v4-flash}
+    vectorstore:
+      pgvector:
+        dimensions: 1024
+        distance-type: COSINE_DISTANCE
+        index-type: HNSW
+        initialize-schema: false
+    mcp:
+      client:
+        enabled: false
+      server:
+        enabled: ${MCP_SERVER_ENABLED:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+offerpilot:
+  security:
+    jwt-secret: ${JWT_SECRET:change-me-generate-with-openssl-rand-base64-64}
+    access-ttl: 15m
+    refresh-ttl: 7d
+    cors-origins: ${CORS_ORIGINS:}
+  demo:
+    enabled: ${DEMO_ACCOUNT_ENABLED:true}
+    email: ${DEMO_ACCOUNT_EMAIL:demo@offerpilot.local}
+    password: ${DEMO_ACCOUNT_PASSWORD:change-me-demo}
+    reset-cron: ${DEMO_RESET_CRON:0 0 4 * * *}
+  storage:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ROOT_USER:offerpilot}
+    secret-key: ${MINIO_ROOT_PASSWORD:change-me-minio-at-least-8-chars}
+    bucket: ${MINIO_BUCKET:offerpilot}
+  encryption:
+    key: ${DATA_ENCRYPTION_KEY:change-me-generate-with-openssl-rand-base64-32}
+  rate-limit:
+    per-user-per-minute: 60
+    concurrent-runs-per-user: 2
+  llm:
+    default-tier: ${LLM_DEFAULT_TIER:FLASH}
+    tiers:
+      FLASH:
+        provider: bailian
+        model: ${LLM_MODEL_FLASH:qwen3.8-flash}
+        timeout: 60s
+      CHEAP:
+        provider: deepseek
+        model: ${LLM_MODEL_CHEAP:deepseek-v4-flash}
+        timeout: 90s
+      VISION_ALT:
+        provider: bailian
+        model: ${LLM_MODEL_VISION_ALT:glm-5.3-flash}
+        timeout: 90s
+      PRO:
+        provider: bailian
+        model: ${LLM_MODEL_PRO:qwen3.8-max}
+        timeout: 120s
+    fallback:
+      FLASH:
+        - CHEAP
+      CHEAP:
+        - FLASH
+      VISION:
+        - VISION_ALT
+  mcp:
+    jobs-url: ${JOBS_MCP_URL:http://localhost:7001}
+    search-url: ${SEARCH_MCP_URL:}
+    search-api-key: ${SEARCH_MCP_API_KEY:}
+    github-url: ${GITHUB_MCP_URL:https://api.githubcopilot.com/mcp/}
+    server-enabled: ${MCP_SERVER_ENABLED:false}
+
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+    com.offerpilot: DEBUG
