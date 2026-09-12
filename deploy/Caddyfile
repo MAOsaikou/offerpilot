@@ -1,0 +1,47 @@
+{$DOMAIN} {
+    encode zstd gzip
+
+    @sse path /api/v1/agent/chat /api/v1/agent/runs/* /api/v1/*/analyze /api/v1/*/optimize /api/v1/interviews/* /api/v1/discovery/recommendations /api/v1/career/*
+    handle @sse {
+        reverse_proxy backend:8081 {
+            flush_interval -1
+            transport http {
+                read_timeout 600s
+                write_timeout 600s
+            }
+        }
+    }
+
+    handle /api/* {
+        reverse_proxy backend:8081
+    }
+    handle /mcp* {
+        reverse_proxy backend:8081 { flush_interval -1 }
+    }
+    handle /actuator/health {
+        reverse_proxy backend:8081
+    }
+    handle /swagger-ui* {
+        reverse_proxy backend:8081
+    }
+    handle /v3/api-docs* {
+        reverse_proxy backend:8081
+    }
+
+    handle {
+        root * /srv/frontend
+        try_files {path} /index.html
+        file_server
+        @assets path /assets/*
+        header @assets Cache-Control "public, max-age=31536000, immutable"
+        header /index.html Cache-Control "no-cache"
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+        Permissions-Policy "camera=(self), microphone=(self)"
+    }
+}
