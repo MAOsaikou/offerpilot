@@ -1,0 +1,39 @@
+import { defineAsyncComponent, type Component } from 'vue'
+import CardFallback from './CardFallback.vue'
+import CardSkeleton from './CardSkeleton.vue'
+import type { CardType } from '@/shared/types/cards'
+
+/**
+ * cardType → 组件（docs/07 §9）。
+ *
+ * 当前只实现了对话链路里用到的三张；其余类型走 CardFallback 显示原始 JSON，
+ * 等对应 feature 完成后逐个补上，届时 registry 完整性测试（docs/07 §14）才成立。
+ */
+export type CardLoader = () => Promise<Component>
+
+export const cardRegistry: Partial<Record<CardType, CardLoader>> = {
+  job_match: () => import('@/features/job/components/MatchReport.vue'),
+  resume_diff: () => import('@/features/resume/components/PatchDiffViewer.vue'),
+  board_update: () => import('@/features/board/components/BoardUpdateCard.vue'),
+}
+
+/** 缓存异步组件，避免每次渲染都重新创建导致重复挂载 */
+const asyncCache = new Map<string, Component>()
+
+export function resolveCardComponent(cardType: string): Component | null {
+  const cached = asyncCache.get(cardType)
+  if (cached) return cached
+
+  const loader = cardRegistry[cardType as CardType]
+  if (!loader) return null
+
+  const component = defineAsyncComponent({
+    loader,
+    loadingComponent: CardSkeleton,
+    errorComponent: CardFallback,
+    delay: 140,
+    timeout: 10_000,
+  })
+  asyncCache.set(cardType, component)
+  return component
+}
