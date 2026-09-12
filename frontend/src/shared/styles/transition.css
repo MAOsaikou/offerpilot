@@ -1,0 +1,57 @@
+/**
+ * 进场过渡：柔雾的斜向漂移 + 新页面轻微浮起。
+ * 配合 index.css 里的幕布规则使用；时长常量见 shared/composables/usePageCurtain.ts。
+ */
+
+/* 漂移层：只移动背景，不产生溢出，静止时也没有常驻的合成开销 */
+.stage-curtain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(
+      48% 52% at 26% 24%,
+      color-mix(in oklab, var(--primary) 18%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      46% 50% at 78% 76%,
+      color-mix(in oklab, var(--aurora-2) 15%, transparent),
+      transparent 74%
+    );
+  background-repeat: no-repeat;
+  background-size: 150% 150%;
+  background-position: 72% 72%;
+  transition: background-position var(--curtain-cover-duration) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stage-curtain--covering::before {
+  background-position: 28% 28%;
+}
+
+.stage-curtain--uncovering::before {
+  background-position: 0% 0%;
+  transition-duration: var(--curtain-reveal-duration);
+}
+
+/* 新页面：从很轻微的缩放与位移里浮上来，等柔雾散去时刚好落定 */
+.page-settle {
+  animation: settle-in 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.994);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-settle {
+    animation: none;
+  }
+}

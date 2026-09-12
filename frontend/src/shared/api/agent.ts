@@ -1,0 +1,82 @@
+import { apiUrl, authHeaders, toApiError } from './client'
+import { parseSse } from './sse'
+import type { AgentEvent, ChatRequest } from '@/shared/types/agent-events'
+
+export interface AgentStreamOptions {
+  signal?: AbortSignal
+  onEvent?: (event: AgentEvent) => void
+}
+
+function decodeEvent(data: string): AgentEvent | null {
+  try {
+    return JSON.parse(data) as AgentEvent
+  } catch {
+    return null
+  }
+}
+
+function isTerminal(event: AgentEvent): boolean {
+  if (event.type === 'run.completed') return true
+  return event.type === 'error' && !event.recoverable
+}
+
+/**
+ * POST /agent/chat，消费 SSE 事件流，返回 runId（docs/05 §4.1）。
+ * 用 fetch 而非 EventSource：需要 POST 与自定义请求头。
+ */
+export async function streamAgentChat(
+  body: ChatRequest,
+  options: AgentStreamOptions = {},
+): Promise<string> {
+  const response = await fetch(apiUrl('/agent/chat'), {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'text/event-stream' }),
+    body: JSON.stringify(body),
+    signal: options.signal ?? null,
+  })
+
+  if (!response.ok || !response.body) throw await toApiError(response)
+
+  let runId = ''
+  for await (const frame of parseSse(response.body)) {
+    const event = decodeEvent(frame.data)
+    if (!event) continue
+    runId ||= event.runId
+    options.onEvent?.(event)
+    if (isTerminal(event)) break
+  }
+  return runId
+}
+
+/** 断线续传：GET /agent/runs/{runId}/events?after=&follow=true（docs/05 §1.6） */
+export async function resumeAgentRun(
+  runId: string,
+  afterId: number,
+  options: AgentStreamOptions = {},
+): Promise<void> {
+  const response = await fetch(
+    apiUrl(`/agent/runs/${encodeURIComponent(runId)}/events?after=${afterId}&follow=true`),
+    {
+      headers: authHeaders({ Accept: 'text/event-stream' }),
+      signal: options.signal ?? null,
+    },
+  )
+
+  if (!response.ok || !response.body) throw await toApiError(response)
+
+  for await (const frame of parseSse(response.body)) {
+    const event = decodeEvent(frame.data)
+    if (!event) continue
+    options.onEvent?.(event)
+    if (isTerminal(event)) break
+  }
+}
+
+/** 中断运行：POST /agent/runs/{runId}/cancel */
+export async function cancelAgentRun(runId: string): Promise<void> {
+  const response = await fetch(apiUrl(`/agent/runs/${encodeURIComponent(runId)}/cancel`), {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw await toApiError(response)
+}
