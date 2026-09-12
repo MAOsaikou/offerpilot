@@ -8,6 +8,7 @@ frontend/.env.*.local
 
 # Java / Maven
 backend/target/
+backend/**/target/
 backend/.mvn/wrapper/maven-wrapper.jar
 *.class
 *.jar

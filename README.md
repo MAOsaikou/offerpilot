@@ -127,10 +127,11 @@ flowchart LR
 ├── README.md
 ├── .env.example                 # Docker Compose 与后端环境变量模板
 ├── docs/                        # 计划书与设计文档（见第 8 节索引）
-├── backend/                     # Spring Boot 4 + Spring AI 2 后端
-│   ├── src/main/java/com/offerpilot/...
-│   ├── src/main/resources/prompts/   # 版本化 Prompt 模板
-│   └── src/main/resources/db/migration/  # Flyway
+├── backend/                     # Maven 多模块后端（单一 Spring Boot 运行入口）
+│   ├── offerpilot-bootstrap/    # 唯一启动类、配置、Flyway、Prompt
+│   ├── offerpilot-platform/     # 通用能力、配置、模型/MCP 适配器
+│   ├── offerpilot-agent/        # 编排、事件、会话、审批
+│   └── offerpilot-{identity,resume,job,career,interview}/ # 业务域模块
 ├── frontend/                    # Vue 3 + Vite + TypeScript 前端
 │   ├── .env.example
 │   └── src/{app,shared,features,widgets}
@@ -163,7 +164,7 @@ docker compose -f deploy/docker-compose.yml exec backend java -jar app.jar --see
 docker compose -f deploy/docker-compose.yml up -d postgres redis minio jobs-mcp
 
 # 后端
-cd backend && ./mvnw spring-boot:run
+cd backend && ./mvnw -pl offerpilot-bootstrap -am spring-boot:run
 
 # 前端
 cd frontend && pnpm install && pnpm dev

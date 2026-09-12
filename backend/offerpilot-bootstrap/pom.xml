@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent><groupId>com.offerpilot</groupId><artifactId>offerpilot-backend</artifactId><version>0.1.0-SNAPSHOT</version></parent>
+    <artifactId>offerpilot-bootstrap</artifactId>
+    <name>OfferPilot Bootstrap</name>
+    <dependencies>
+        <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-platform</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-agent</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-identity</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-resume</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-job</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-career</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-interview</artifactId><version>${project.version}</version></dependency>
+    </dependencies>
+    <build>
+        <plugins>
+            <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
+        </plugins>
+    </build>
+</project>
