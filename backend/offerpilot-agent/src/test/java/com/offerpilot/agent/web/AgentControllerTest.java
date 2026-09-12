@@ -4,6 +4,7 @@ import com.offerpilot.config.JacksonConfig;
 import com.offerpilot.llm.ModelGateway;
 import com.offerpilot.llm.ModelTier;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -20,9 +21,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(controllers = AgentController.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(JacksonConfig.class)
+@Import({JacksonConfig.class, AgentController.class})
 @ActiveProfiles("test")
 class AgentControllerTest {
+
+    @SpringBootConfiguration
+    static class TestApplication {
+    }
 
     @Autowired
     private MockMvc mockMvc;
