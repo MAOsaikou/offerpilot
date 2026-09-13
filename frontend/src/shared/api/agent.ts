@@ -38,13 +38,18 @@ export async function streamAgentChat(
   if (!response.ok || !response.body) throw await toApiError(response)
 
   let runId = ''
+  let completed = false
   for await (const frame of parseSse(response.body)) {
     const event = decodeEvent(frame.data)
     if (!event) continue
     runId ||= event.runId
     options.onEvent?.(event)
-    if (isTerminal(event)) break
+    if (isTerminal(event)) {
+      completed = true
+      break
+    }
   }
+  if (!completed) throw new Error('连接在回复完成前中断，请检查后端后重试。')
   return runId
 }
 

@@ -8,15 +8,16 @@ import { initTheme } from '@/shared/utils/theme'
 import '@/shared/styles/index.css'
 import '@/shared/styles/transition.css'
 import '@/shared/styles/markdown.css'
+import '@/shared/styles/workspace.css'
 
 /**
  * 后端就绪前用 MSW 顶替接口。
- * 开发环境默认开启，`VITE_ENABLE_MOCK=false` 可关掉。
+ * 开发环境需显式设置 `VITE_ENABLE_MOCK=true` 才会开启。
  * 整段被 import.meta.env.DEV 包住，生产构建会被摇掉，msw 不会进产物。
  */
 async function enableMocking(): Promise<void> {
   if (!import.meta.env.DEV) return
-  if (import.meta.env.VITE_ENABLE_MOCK === 'false') return
+  if (import.meta.env.VITE_ENABLE_MOCK !== 'true') return
   const { worker } = await import('@/shared/mocks/browser')
   await worker.start({ onUnhandledRequest: 'bypass' })
 }

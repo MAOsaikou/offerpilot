@@ -48,5 +48,6 @@ docs/pdf/*.pdf
 docs/eval-results/
 
 # Local tooling
+deploy/windows/runtime/
 .cursor/
 .claude/

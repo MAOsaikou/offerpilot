@@ -21,16 +21,31 @@ export function useAgentStream() {
 
   async function start(body: ChatRequest): Promise<string> {
     controller?.abort()
+    currentRunId = null
     controller = new AbortController()
     streaming.value = true
 
     try {
       const runId = await streamAgentChat(body, {
-        signal: controller.signal,
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(600_000)]),
         onEvent: handleEvent,
       })
       currentRunId = runId || currentRunId
       return runId
+    } catch (error) {
+      const run = currentRunId ? store.getRun(currentRunId) : undefined
+      if (run?.status === 'RUNNING') {
+        store.apply({
+          id: run.lastEventId + 1,
+          runId: run.runId,
+          ts: new Date().toISOString(),
+          type: 'error',
+          code: 0,
+          recoverable: false,
+          message: error instanceof Error ? error.message : '连接中断',
+        })
+      }
+      throw error
     } finally {
       streaming.value = false
       controller = null
@@ -60,7 +75,10 @@ export function useAgentStream() {
       })
     }
 
-    await cancelAgentRun(runId).catch(() => undefined)
+    // M0 后端尚未实现取消端点；仅在显式 Mock 模式使用该能力。
+    if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK === 'true') {
+      await cancelAgentRun(runId).catch(() => undefined)
+    }
   }
 
   /** 断线续传，事件 id 从 store 里取 */
