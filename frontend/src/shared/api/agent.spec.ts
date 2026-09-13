@@ -28,6 +28,19 @@ afterAll(() => {
 })
 
 describe('streamAgentChat', () => {
+  it('将没有终止事件的截断流报告为错误，而非成功回复', async () => {
+    server.use(
+      http.post(
+        '*/api/v1/agent/chat',
+        () =>
+          new HttpResponse(
+            'data: {"type":"text.delta","id":1,"runId":"cut","ts":"2026-09-13","text":"部分回复"}\n\n',
+            { headers: { 'Content-Type': 'text/event-stream' } },
+          ),
+      ),
+    )
+    await expect(streamAgentChat({ content: '测试中断' })).rejects.toThrow('连接在回复完成前中断')
+  })
   beforeEach(() => {
     setActivePinia(createPinia())
   })

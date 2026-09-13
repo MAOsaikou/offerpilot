@@ -17,6 +17,9 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       proxy: {
+        '/actuator/health': { target: proxyTarget, changeOrigin: true },
+        '/v3/api-docs': { target: proxyTarget, changeOrigin: true },
+        '/swagger-ui': { target: proxyTarget, changeOrigin: true },
         // 本地开发把 /api 转发到后端，避免 CORS
         '/api': {
           target: proxyTarget,

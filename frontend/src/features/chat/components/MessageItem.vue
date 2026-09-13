@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import MarkdownView from '@/shared/components/MarkdownView.vue'
-import CardRenderer from '@/widgets/CardRenderer/CardRenderer.vue'
 import type { ChatMessageView } from '../types'
 
 defineProps<{ message: ChatMessageView }>()
@@ -35,12 +34,7 @@ defineProps<{ message: ChatMessageView }>()
         <p v-else class="text-sm text-muted-foreground">正在处理…</p>
       </div>
 
-      <CardRenderer
-        v-for="card in message.cards ?? []"
-        :key="card.cardId"
-        :card-type="card.cardType"
-        :payload="card.payload"
-      />
+      <slot name="cards" :cards="message.cards ?? []" />
     </div>
   </div>
 </template>

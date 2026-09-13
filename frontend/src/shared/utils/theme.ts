@@ -8,8 +8,12 @@ export function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
 }
 
 export function getStoredTheme(): ThemeMode {
-  const raw = localStorage.getItem(STORAGE_KEY)
-  return raw === 'light' || raw === 'dark' || raw === 'system' ? raw : 'system'
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw === 'light' || raw === 'dark' || raw === 'system' ? raw : 'system'
+  } catch {
+    return 'system'
+  }
 }
 
 export function applyTheme(mode: ThemeMode): void {
@@ -17,8 +21,12 @@ export function applyTheme(mode: ThemeMode): void {
 }
 
 export function setTheme(mode: ThemeMode): void {
-  if (mode === 'system') localStorage.removeItem(STORAGE_KEY)
-  else localStorage.setItem(STORAGE_KEY, mode)
+  try {
+    if (mode === 'system') localStorage.removeItem(STORAGE_KEY)
+    else localStorage.setItem(STORAGE_KEY, mode)
+  } catch {
+    /* 隐私模式仍允许本次页面切换主题。 */
+  }
   applyTheme(mode)
 }
 

@@ -1,51 +1,30 @@
-# OfferPilot Agent Guide
+# OfferPilot Agent 开发指南
 
-## First steps
+## 工作契约
 
-1. Inspect the relevant code and preserve unrelated working-tree changes.
-2. Update the source-of-truth document before changing an interface, database migration, or prompt contract:
-   - HTTP, SSE, card schema: `docs/05-接口文档.md`
-   - Schema or migration: `docs/06-数据库设计.md`
-   - Agent, model, MCP, RAG, or safety behavior: `docs/04-AI技术方案.md`
-   - Frontend structure or UX behavior: `docs/07-前端设计规范.md`
-   - Deployment or environment behavior: `docs/09-部署与运维.md`
+只检查当前任务需要的代码和文档，保留工作区中的无关改动。实现任务应持续到相关验证和最终差异检查完成；只有缺少的决定会实质改变结果、授权范围或导致不可逆操作时，才询问用户。
 
-## Backend: modular monolith
+完成标准：所需行为已经实现；受影响的契约已经同步；相关检查通过，或已准确报告阻塞原因；差异中没有无关修改。
 
-`backend/` is a Maven reactor. It builds one deployable Spring Boot application and several domain modules:
+## 任务路由
 
-- `offerpilot-bootstrap`: the only `@SpringBootApplication`; owns runtime configuration, Flyway migrations, and prompt resources.
-- `offerpilot-platform`: technical adapters and cross-cutting concerns such as common errors, IDs, web configuration, model gateway, and MCP integration.
-- `offerpilot-agent`: orchestration, events, approvals, and conversations.
-- `offerpilot-identity`, `offerpilot-resume`, `offerpilot-job`, `offerpilot-career`, `offerpilot-interview`: business-domain modules.
+修改契约前，先阅读对应的事实来源：
 
-Keep business rules inside their owning domain module. Expose a small application-level interface for cross-module use; callers must not depend directly on another module's controller, repository, or persistence entity. Keep `offerpilot-platform` free of business rules. Do not add another Spring Boot startup class unless a documented deployment decision requires a genuinely independent process.
+- 服务边界或依赖方向：`docs/03-系统架构设计.md`
+- Agent、模型、提示词、MCP、RAG、记忆、安全或 AI 评测：`docs/04-AI技术方案.md`
+- HTTP、SSE、Agent 事件或卡片结构：`docs/05-接口文档.md`
+- 表结构、持久化、索引、数据生命周期或迁移：`docs/06-数据库设计.md`
+- 前端结构、用户体验、状态或视觉行为：`docs/07-前端设计规范.md`
+- 部署、环境、发布或运维：`docs/09-部署与运维.md`
+- 测试范围、质量门禁、性能或评测：`docs/10-测试与评估方案.md`
+- 领域术语：`CONTEXT.md`
 
-Use these commands from `backend/`:
+后端任务使用 `backend/AGENTS.md`，前端任务使用 `frontend/AGENTS.md`。任务只涉及一侧时，仅加载对应指南。
 
-```powershell
-mvn -q -B test
-mvn -q -B -pl offerpilot-bootstrap -am package
-mvn -pl offerpilot-bootstrap -am spring-boot:run
-```
+## 跨域护栏
 
-## Frontend
-
-Respect the dependency direction `app → widgets → features → shared`. A feature must not import another feature. Keep server contracts in `shared/api` and `shared/types`; render server-driven cards through `widgets/CardRenderer`.
-
-Use these commands from `frontend/` when relevant:
-
-```powershell
-pnpm lint
-pnpm typecheck
-pnpm test -- --run
-pnpm build
-```
-
-## Change discipline
-
-- Keep API, database, and prompt changes synchronized with their documentation in the same change.
-- Add a new Flyway migration; never rewrite an already shared migration.
-- Preserve structured Agent events and card contracts as backward-compatible unless both producer and consumer change together.
-- Keep secrets in environment variables and out of tracked files.
-- Prefer focused changes and tests for the affected module. Do not reset, clean, or delete unrelated work to obtain a clean tree.
+- 修改生产方或消费方时，在同一次变更中更新受影响的契约文档。
+- 密钥只放在环境变量中，版本库内的示例不得包含真实凭据。
+- 持久化数据、HTTP/SSE 事件和卡片默认保持向后兼容；破坏性变更必须同时修改所有受影响的生产方与消费方。
+- 每次只删除一个路径明确的文件。任务需要批量删除时，停止操作并询问用户。
+- 保留用户的无关工作，不通过重置、清理或覆盖来制造干净工作区。

@@ -30,7 +30,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'chat/:conversationId?',
         name: 'chat',
-        component: () => import('@/features/chat/views/ChatView.vue'),
+        component: () => import('@/app/views/ChatPage.vue'),
         meta: { title: '对话' },
       },
       {

@@ -1,64 +1,52 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-
-const props = defineProps<{
-  disabled?: boolean
-  streaming?: boolean
-}>()
-
-const emit = defineEmits<{
-  send: [content: string]
-  stop: []
-}>()
-
-const draft = ref('')
-
-function submit(): void {
+import { ref, watch } from 'vue'
+const props = defineProps<{ disabled?: boolean; streaming?: boolean; initialDraft?: string }>()
+const emit = defineEmits<{ send: [content: string]; stop: [] }>()
+const draft = ref(props.initialDraft || '')
+watch(
+  () => props.initialDraft,
+  (value) => {
+    draft.value = value || ''
+  },
+)
+function submit() {
   const content = draft.value.trim()
-  if (!content || props.disabled || props.streaming) return
+  if (!content || content.length > 4000 || props.disabled || props.streaming) return
   emit('send', content)
   draft.value = ''
 }
-
-function onKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Enter' || event.shiftKey) return
+function keydown(event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229 || event.key !== 'Enter' || event.shiftKey) return
   event.preventDefault()
   submit()
 }
 </script>
-
 <template>
-  <div class="glass-panel rounded-2xl p-3">
+  <div class="glass-panel rounded-2xl p-4">
     <textarea
       v-model="draft"
       rows="3"
-      placeholder="说一句话，比如「帮我找字节和美团的后端校招岗，再按字节的 JD 改我的简历」"
-      class="w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
+      maxlength="4000"
+      aria-label="对话内容"
+      placeholder="说说你的目标，或写下现在遇到的问题…"
+      class="w-full resize-none bg-transparent text-base leading-relaxed outline-none placeholder:text-muted-foreground"
       :disabled="disabled"
-      @keydown="onKeydown"
+      @keydown="keydown"
     />
-
-    <div class="mt-2 flex items-center justify-between">
+    <div class="mt-2 flex items-center justify-between gap-3">
       <p class="text-xs text-muted-foreground">
-        <kbd class="font-mono">Enter</kbd> 发送 · <kbd class="font-mono">Shift+Enter</kbd> 换行
+        Enter 发送 · Shift+Enter 换行
+        <span v-if="draft.length > 3500">{{ draft.length }}/4000</span>
       </p>
-
-      <button
-        v-if="streaming"
-        type="button"
-        class="rounded-xl border border-border px-4 py-1.5 text-sm transition-colors hover:bg-foreground/5"
-        @click="emit('stop')"
-      >
-        停止
-      </button>
-      <button
+      <button v-if="streaming" type="button" class="btn" @click="emit('stop')">停止接收</button
+      ><button
         v-else
         type="button"
-        class="rounded-xl bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-        :disabled="disabled || draft.trim().length === 0"
+        class="btn primary"
+        :disabled="disabled || !draft.trim()"
         @click="submit"
       >
-        发送
+        发送 ↑
       </button>
     </div>
   </div>
