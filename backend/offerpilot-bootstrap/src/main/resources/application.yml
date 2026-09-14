@@ -3,6 +3,8 @@ server:
   forward-headers-strategy: framework
 
 spring:
+  profiles:
+    default: dev
   application:
     name: offerpilot
   threads:
@@ -49,6 +51,7 @@ spring:
           model: ${LLM_MODEL_EMBEDDING:text-embedding-v4}
           dimensions: ${LLM_EMBEDDING_DIMENSIONS:1024}
     deepseek:
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
       api-key: ${DEEPSEEK_API_KEY:sk-not-configured}
       chat:
         options:

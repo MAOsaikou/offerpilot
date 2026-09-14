@@ -150,7 +150,7 @@ onBeforeUnmount(() => {
               {{ text }} ↗
             </button>
           </div>
-          <p class="subtle">当前后端为联调回显；发送内容可验证实时事件链路。</p>
+          <p class="subtle">连接后端模型获取流式回复；当前仅使用本轮文字，不读取历史或附件。</p>
         </div>
       </div>
       <div v-if="error" class="error-banner" role="alert">

@@ -32,7 +32,8 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    # MinIO's Docker Hub repository is archived; official images are published on Quay.
+    image: quay.io/minio/minio:latest
     restart: always
     command: server /data --console-address ":9001"
     environment:
