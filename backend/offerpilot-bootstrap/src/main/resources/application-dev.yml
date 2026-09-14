@@ -1,8 +1,38 @@
 spring:
+  config:
+    import:
+      - optional:file:./backend/.env.local[.properties]
+      - optional:file:./.env.local[.properties]
+  ai:
+    vectorstore:
+      type: none # RAG 尚未接入；PostgreSQL 与 Flyway 仍正常启动。
+    model:
+      chat: deepseek
+      embedding: none
+    retry:
+      max-attempts: 1
   jpa:
     hibernate:
       ddl-auto: validate
     show-sql: false
+
+# 开发期所有文字档位走 DeepSeek，前端默认 FLASH 也能只配置一把 Key 即使用。
+offerpilot:
+  llm:
+    default-tier: CHEAP
+    tiers:
+      FLASH:
+        provider: deepseek
+        model: ${LLM_MODEL_CHEAP:deepseek-v4-flash}
+      CHEAP:
+        provider: deepseek
+        model: ${LLM_MODEL_CHEAP:deepseek-v4-flash}
+      PRO:
+        provider: deepseek
+        model: ${DEEPSEEK_MODEL_PRO:deepseek-v4-pro}
+      VISION_ALT:
+        provider: deepseek
+        model: ${LLM_MODEL_CHEAP:deepseek-v4-flash}
 
 logging:
   level:

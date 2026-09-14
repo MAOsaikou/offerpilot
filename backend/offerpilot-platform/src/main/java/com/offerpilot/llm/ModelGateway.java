@@ -4,13 +4,25 @@ import com.offerpilot.config.OfferPilotProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.deepseek.DeepSeekChatModel;
+import org.springframework.ai.deepseek.DeepSeekChatOptions;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
+import com.offerpilot.common.error.BusinessException;
+import com.offerpilot.common.error.ErrorCode;
 
 import java.util.List;
 
 /**
- * 模型网关雏形：按档位选择 ChatModel，后续补齐回退链、超时与用量日志。
+ * 按档位选择供应商和模型，并约束流式无响应超时；回退与持久化用量日志待接入。
  */
 @Component
 public class ModelGateway {
@@ -18,11 +30,16 @@ public class ModelGateway {
     private static final Logger log = LoggerFactory.getLogger(ModelGateway.class);
 
     private final OfferPilotProperties properties;
-    private final ObjectProvider<ChatModel> chatModels;
+    private final ObjectProvider<DeepSeekChatModel> deepseek;
+    private final ObjectProvider<OpenAiChatModel> openai;
+    private final Environment environment;
 
-    public ModelGateway(OfferPilotProperties properties, ObjectProvider<ChatModel> chatModels) {
+    public ModelGateway(OfferPilotProperties properties, ObjectProvider<DeepSeekChatModel> deepseek,
+                        ObjectProvider<OpenAiChatModel> openai, Environment environment) {
         this.properties = properties;
-        this.chatModels = chatModels;
+        this.deepseek = deepseek;
+        this.openai = openai;
+        this.environment = environment;
     }
 
     public ModelTier defaultTier() {
@@ -30,12 +47,36 @@ public class ModelGateway {
     }
 
     public ChatModel chatModel(ModelTier tier) {
-        ChatModel model = chatModels.getIfAvailable();
+        boolean useDeepseek = "deepseek".equalsIgnoreCase(configuration(tier).provider());
+        String prefix = useDeepseek ? "spring.ai.deepseek" : "spring.ai.openai";
+        String key = environment.getProperty(prefix + ".chat.api-key",
+                environment.getProperty(prefix + ".api-key", ""));
+        if (key.isBlank() || key.contains("not-configured") || key.contains("xxxxxxxx")) {
+            throw new BusinessException(ErrorCode.MODEL_NOT_CONFIGURED,
+                    "请在 backend/.env.local 配置 " + (useDeepseek ? "DEEPSEEK_API_KEY" : "BAILIAN_API_KEY") + "，然后重启后端。");
+        }
+        ChatModel model = useDeepseek ? deepseek.getIfAvailable() : openai.getIfAvailable();
         if (model == null) {
-            throw new IllegalStateException("没有可用的 ChatModel，请检查 BAILIAN_API_KEY / DEEPSEEK_API_KEY");
+            throw new BusinessException(ErrorCode.MODEL_NOT_CONFIGURED);
         }
         log.debug("Resolved ChatModel for tier={} model={}", tier, modelName(tier));
         return model;
+    }
+
+    public Flux<ChatResponse> stream(ModelTier tier, List<Message> messages) {
+        return Flux.defer(() -> {
+            ChatOptions options = "deepseek".equalsIgnoreCase(configuration(tier).provider())
+                    ? DeepSeekChatOptions.builder().model(modelName(tier)).temperature(0.3).build()
+                    : OpenAiChatOptions.builder().model(modelName(tier)).temperature(0.3).build();
+            return chatModel(tier).stream(new Prompt(messages, options));
+        })
+                .timeout(configuration(tier).timeout());
+    }
+
+    private OfferPilotProperties.Llm.Tier configuration(ModelTier tier) {
+        var configured = properties.llm().tiers().get(tier.name());
+        if (configured == null) throw new BusinessException(ErrorCode.MODEL_NOT_CONFIGURED);
+        return configured;
     }
 
     public String modelName(ModelTier tier) {

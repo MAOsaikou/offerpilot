@@ -32,17 +32,8 @@ if (-not (Test-Path -LiteralPath $jarPath)) {
     throw 'Backend JAR missing. Run mvn -q -B -pl offerpilot-bootstrap -am package from backend first.'
 }
 $javaExecutable = (Get-Command java -ErrorAction Stop).Source
-$excluded = @(
-    'org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration'
-    'org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration'
-    'org.springframework.boot.data.jpa.autoconfigure.DataJpaRepositoriesAutoConfiguration'
-    'org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration'
-    'org.springframework.boot.data.redis.autoconfigure.DataRedisReactiveAutoConfiguration'
-    'org.springframework.boot.data.redis.autoconfigure.DataRedisRepositoriesAutoConfiguration'
-    'org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration'
-) -join ','
 New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
-$arguments = @('-jar', ('"' + $jarPath + '"'), '--spring.profiles.active=test', '--server.address=127.0.0.1', ('--spring.autoconfigure.exclude=' + $excluded))
+$arguments = @('-jar', ('"' + $jarPath + '"'), '--spring.profiles.active=dev', '--server.address=127.0.0.1')
 $backendProcess = Start-Process -FilePath $javaExecutable -ArgumentList $arguments -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $runtimeRoot 'backend-preview.log') -RedirectStandardError (Join-Path $runtimeRoot 'backend-preview-error.log') -PassThru
 @{ processId = $backendProcess.Id; startedAt = $backendProcess.StartTime.ToUniversalTime().ToString('o'); executable = $javaExecutable } | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding utf8
 for ($attempt = 0; $attempt -lt 45; $attempt++) {
@@ -50,7 +41,7 @@ for ($attempt = 0; $attempt -lt 45; $attempt++) {
     try {
         $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8081/actuator/health' -TimeoutSec 1
         if ($health.status -eq 'UP') {
-            Write-Host 'Preview backend is ready. Open http://localhost:8080/chat (SSE echo; no database or model calls).'
+            Write-Host 'Backend is ready. Open http://localhost:8080/chat. Configure DEEPSEEK_API_KEY in backend/.env.local and restart to enable real model replies.'
             exit 0
         }
     } catch { }

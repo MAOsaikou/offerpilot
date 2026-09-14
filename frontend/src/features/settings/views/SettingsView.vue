@@ -89,8 +89,8 @@ function exportWorkspace() {
           入口：http://localhost:8080<br />默认后端：http://127.0.0.1:8081
         </p>
         <p class="helper-note">
-          当前后端提供 SSE 回显接口，AI
-          编排尚未实现。健康检查通过只表示服务与依赖健康，模型效果需单独验证。
+          当前后端支持 DeepSeek 单轮流式聊天，AI
+          编排尚未实现。健康检查通过只表示服务健康，模型连接需发送消息验证。
         </p>
         <button class="btn primary" :disabled="checking" @click="check">
           {{ checking ? '正在检查…' : '检查后端连接' }}

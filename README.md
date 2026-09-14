@@ -159,12 +159,16 @@ docker compose -f deploy/docker-compose.yml exec backend java -jar app.jar --see
 
 ### 6.2 本地开发
 
+Windows 统一入口是根目录 [OfferPilot.cmd](OfferPilot.cmd)：双击打开菜单，先选「8 配置 DeepSeek」，再选「1 启动全部」。菜单包含启停、状态检查、更新、打包与日志。需要先安装并打开 Docker Desktop。详细步骤见 [backend/README.md](backend/README.md)。以下工程级命令中，后端应先打包再运行 bootstrap JAR。
+
 ```bash
 # 依赖：JDK 21、Node.js 22+、pnpm 9+、Docker（用于 Postgres/Redis/MinIO）
 docker compose -f deploy/docker-compose.yml up -d postgres redis minio jobs-mcp
 
 # 后端
-cd backend && ./mvnw -pl offerpilot-bootstrap -am spring-boot:run
+cd backend
+mvn -q -B -pl offerpilot-bootstrap -am package
+java -jar offerpilot-bootstrap/target/offerpilot-bootstrap-0.1.0-SNAPSHOT.jar --spring.profiles.active=dev
 
 # 前端
 cd frontend && pnpm install && pnpm dev
