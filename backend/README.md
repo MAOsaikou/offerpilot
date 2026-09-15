@@ -4,7 +4,7 @@
 
 ## 1. 准备环境
 
-需要 Java 21+、Maven 3.9+、Docker Desktop。Windows 安装并打开 [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)，选择 Linux 容器 / WSL 2，等待引擎运行，再开 PowerShell 验证。MinIO 使用官方 Quay 镜像（Docker Hub 上的旧仓库已归档）：
+需要 JDK 17、Maven 3.9+、Docker Desktop。Windows 安装并打开 [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)，选择 Linux 容器 / WSL 2，等待引擎运行，再开 PowerShell 验证。MinIO 使用官方 Quay 镜像（Docker Hub 上的旧仓库已归档）：
 
 ```powershell
 java -version
@@ -29,6 +29,7 @@ POSTGRES_DB=offerpilot
 POSTGRES_USER=offerpilot
 POSTGRES_PASSWORD=change-me-postgres
 REDIS_HOST=localhost
+REDIS_PASSWORD=你的Redis密码
 ```
 
 Key 来自 [DeepSeek 控制台](https://platform.deepseek.com/api_keys)。文件已被 Git 忽略；不加引号，不加 `export`。也可以设置同名进程环境变量，它的优先级更高。模型名可按 [DeepSeek 官方 API](https://api-docs.deepseek.com/) 的账户可用模型修改。
@@ -46,7 +47,7 @@ docker compose --env-file backend/.env.local -f deploy/docker-compose.yml up -d 
 docker compose --env-file backend/.env.local -f deploy/docker-compose.yml ps
 ```
 
-等待 postgres、redis 显示 `healthy`。首次需要下载镜像。端口为 PostgreSQL `5432`、Redis `6379`、MinIO `9000`（控制台 `9001`）。聊天不调用 jobs-mcp，暂时不需要启动它。
+等待 postgres、redis 显示 `healthy`。首次需要下载镜像。端口为 PostgreSQL `5432`、Redis `6379`、MinIO `9000`（控制台 `9001`）。Redis 要求使用 `REDIS_PASSWORD` 认证，且宿主机端口仅绑定 `127.0.0.1`。聊天不调用 jobs-mcp，暂时不需要启动它。
 
 PostgreSQL 镜像已包含 pgvector。Java 首次启动自动执行 Flyway V1–V4，创建用户、会话、Agent 事件、文件元数据等表；无需手工运行 SQL。当前没有写入这些表的聊天持久化实现。
 
@@ -84,6 +85,7 @@ curl.exe -N http://localhost:8081/api/v1/agent/chat -H 'Content-Type: applicatio
 
 - `docker` 不存在：安装 Docker Desktop 并重开终端；连接 Docker 引擎失败则先打开 Docker Desktop。
 - PostgreSQL 连接失败：确认容器 healthy、5432 无冲突、`.env.local` 密码与现有库一致。本机 Java 的 host 是 `localhost`，不是容器内部服务名 `postgres`。
+- Redis 连接失败：确认容器 healthy，并确保容器、后端和数据库客户端使用同一个 `REDIS_PASSWORD`；修改密码后需重新创建 Redis 容器。
 - 健康检查不是 UP：检查 PostgreSQL 和 Redis，再看 Java 日志。
 - Key 配好仍报 40009：从仓库根目录或 `backend` 启动，确认没有更高优先级环境变量覆盖，并重启后端。
 - 40010：检查 Key、账户余额、网络和账户可用模型名。不会把供应商原始错误正文或凭据回传浏览器。
