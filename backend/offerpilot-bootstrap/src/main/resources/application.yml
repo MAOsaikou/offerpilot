@@ -9,7 +9,7 @@ spring:
     name: offerpilot
   threads:
     virtual:
-      enabled: true
+      enabled: false
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:localhost}:5432/${POSTGRES_DB:offerpilot}
     username: ${POSTGRES_USER:offerpilot}
