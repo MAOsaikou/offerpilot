@@ -31,7 +31,34 @@ $jarPath = Join-Path $projectRoot 'backend/offerpilot-bootstrap/target/offerpilo
 if (-not (Test-Path -LiteralPath $jarPath)) {
     throw 'Backend JAR missing. Run mvn -q -B -pl offerpilot-bootstrap -am package from backend first.'
 }
-$javaExecutable = (Get-Command java -ErrorAction Stop).Source
+# The project requires JDK 17+. JAVA_HOME and PATH may point at different versions
+# (on Windows the machine-level PATH is searched before the user-level one), so try
+# both candidates and use the first one whose version satisfies the requirement.
+$javaCandidates = @()
+if ($env:JAVA_HOME) { $javaCandidates += (Join-Path $env:JAVA_HOME 'bin\java.exe') }
+$javaOnPath = Get-Command java -ErrorAction SilentlyContinue
+if ($javaOnPath) { $javaCandidates += $javaOnPath.Source }
+$javaExecutable = $null
+foreach ($candidate in $javaCandidates) {
+    if (-not (Test-Path -LiteralPath $candidate)) { continue }
+    # java -version writes to stderr; with ErrorActionPreference=Stop the 2>&1
+    # redirect would throw, so relax the preference just for this probe.
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $versionLine = (& $candidate -version 2>&1 | Select-Object -First 1 | Out-String)
+    } finally {
+        $ErrorActionPreference = $previousErrorAction
+    }
+    if ($versionLine -match 'version "(?<major>\d+)' -and [int]$Matches['major'] -ge 17) {
+        $javaExecutable = $candidate
+        Write-Host ("Using Java: " + $candidate + " (" + $versionLine.Trim() + ")")
+        break
+    }
+}
+if (-not $javaExecutable) {
+    throw 'Java 17+ not found. Install JDK 17, or point JAVA_HOME at it, then retry.'
+}
 New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
 $arguments = @('-jar', ('"' + $jarPath + '"'), '--spring.profiles.active=dev', '--server.address=127.0.0.1')
 $backendProcess = Start-Process -FilePath $javaExecutable -ArgumentList $arguments -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $runtimeRoot 'backend-preview.log') -RedirectStandardError (Join-Path $runtimeRoot 'backend-preview-error.log') -PassThru
