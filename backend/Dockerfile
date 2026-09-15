@@ -1,4 +1,4 @@
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /app
 COPY pom.xml ./
 COPY offerpilot-platform/pom.xml offerpilot-platform/pom.xml
@@ -20,7 +20,7 @@ COPY offerpilot-interview offerpilot-interview
 COPY offerpilot-bootstrap offerpilot-bootstrap
 RUN mvn -q -B -pl offerpilot-bootstrap -am -DskipTests package
 
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app
 COPY --from=build /app/offerpilot-bootstrap/target/*.jar app.jar

@@ -82,9 +82,9 @@ class ChatServiceTest {
     @Test
     void timeoutAndEmptyResponseAreFailures() {
         when(gateway.stream(any(), anyList())).thenReturn(Flux.error(new TimeoutException()));
-        assertThat(((AgentEvent.ErrorEvent) events().getLast()).code()).isEqualTo(40001);
+        assertThat(((AgentEvent.ErrorEvent) events().get(events().size() - 1)).code()).isEqualTo(40001);
         when(gateway.stream(any(), anyList())).thenReturn(Flux.empty());
-        assertThat(((AgentEvent.ErrorEvent) events().getLast()).code()).isEqualTo(40010);
+        assertThat(((AgentEvent.ErrorEvent) events().get(events().size() - 1)).code()).isEqualTo(40010);
     }
 
     @Test

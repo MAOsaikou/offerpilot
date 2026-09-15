@@ -43,7 +43,7 @@ flowchart LR
     Edge[端侧 AI：Web Speech API · MediaPipe]
   end
 
-  subgraph backend [Java 21 · Spring Boot 4 · Spring AI 2.0]
+  subgraph backend [Java 17 · Spring Boot 3.3.5 · Spring AI 1.0]
     GW[REST + SSE 网关 · JWT · 限流]
     Guard[安全护栏]
     Orch[Orchestrator]
@@ -101,11 +101,11 @@ flowchart LR
 
 | 类别 | 选型 |
 | --- | --- |
-| 运行时与框架 | Java 21 LTS、Spring Boot 4.0.x、Spring Web MVC（虚拟线程） |
-| AI | Spring AI 2.0.0（OpenAI 兼容 / DeepSeek starter、pgvector store、MCP client & server、Advisors） |
+| 运行时与框架 | Java 17 LTS、Spring Boot 3.3.5、Spring Web MVC |
+| AI | Spring AI 1.0.0（OpenAI 兼容 / DeepSeek starter、pgvector store、MCP client & server、Advisors） |
 | 数据 | PostgreSQL 17 + pgvector、Redis 7、MinIO（S3 兼容） |
 | 持久层 | Spring Data JPA、Flyway |
-| 安全 | Spring Security 7 + JWT、Bucket4j、Resilience4j |
+| 安全 | Spring Security 6 + JWT、Bucket4j、Resilience4j |
 | 文件解析 | Apache Tika、PDFBox |
 | 文档与可观测 | SpringDoc OpenAPI、Actuator、Micrometer、Spring AI Observability |
 | 测试 | JUnit 5、Testcontainers、Spring AI Evaluators |
@@ -162,7 +162,7 @@ docker compose -f deploy/docker-compose.yml exec backend java -jar app.jar --see
 Windows 统一入口是根目录 [OfferPilot.cmd](OfferPilot.cmd)：双击打开菜单，先选「8 配置 DeepSeek」，再选「1 启动全部」。菜单包含启停、状态检查、更新、打包与日志。需要先安装并打开 Docker Desktop。详细步骤见 [backend/README.md](backend/README.md)。以下工程级命令中，后端应先打包再运行 bootstrap JAR。
 
 ```bash
-# 依赖：JDK 21、Node.js 22+、pnpm 9+、Docker（用于 Postgres/Redis/MinIO）
+# 依赖：JDK 17、Node.js 22+、pnpm 9+、Docker（用于 Postgres/Redis/MinIO）
 docker compose -f deploy/docker-compose.yml up -d postgres redis minio jobs-mcp
 
 # 后端

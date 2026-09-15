@@ -31,7 +31,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ChatHttpIntegrationTest {
     private static final AtomicReference<String> requestBody = new AtomicReference<>();
     private static final HttpServer provider = provider();
-    @LocalServerPort private int port;
+    @LocalServerPort
+    private int port;
 
     private static HttpServer provider() {
         try {
@@ -67,17 +68,16 @@ class ChatHttpIntegrationTest {
 
     @Test
     void realHttpStreamsChineseAndUsageThroughActualDeepSeekClient() throws Exception {
-        try (var client = HttpClient.newHttpClient()) {
-            var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/chat"))
-                    .timeout(Duration.ofSeconds(15)).header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString("{\"content\":\"我是大三学生\",\"options\":{}}"))
-                    .build();
-            var response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            assertThat(response.statusCode()).isEqualTo(200);
-            assertThat(response.body()).contains("event:run.started", "event:text.delta", "你好", "，同学。",
-                    "event:usage", "\"promptTokens\":12", "\"completionTokens\":6", "event:run.completed", "COMPLETED");
-            assertThat(requestBody.get()).contains("我是大三学生", "deepseek-v4-flash", "\"stream\":true", "仅提供文字建议");
-            assertThat(response.body().indexOf("event:usage")).isLessThan(response.body().indexOf("event:run.completed"));
-        }
+        var client = HttpClient.newHttpClient();
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/chat"))
+                .timeout(Duration.ofSeconds(15)).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"content\":\"我是大三学生\",\"options\":{}}"))
+                .build();
+        var response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("event:run.started", "event:text.delta", "你好", "，同学。",
+                "event:usage", "\"promptTokens\":12", "\"completionTokens\":6", "event:run.completed", "COMPLETED");
+        assertThat(requestBody.get()).contains("我是大三学生", "deepseek-v4-flash", "\"stream\":true", "仅提供文字建议");
+        assertThat(response.body().indexOf("event:usage")).isLessThan(response.body().indexOf("event:run.completed"));
     }
 }
