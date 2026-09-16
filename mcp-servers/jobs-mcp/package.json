@@ -9,5 +9,11 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "express": "^5.2.1",
+    "jobhunt-cli": "^0.2.6",
+    "zod": "^4.6.5"
   }
 }
