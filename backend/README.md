@@ -73,24 +73,28 @@ RAG 尚未实现，dev 只关闭 Embedding 与 Spring AI VectorStore 自动装�
 
 发送“我是软件工程大三学生，帮我安排今天的求职准备”。正文应逐步出现，执行面板显示 DeepSeek 模型与运行结束，供应商返回用量时显示 token 数。
 
-也可以从仓库根目录使用 curl（后端运行时）。
+也可以从仓库根目录使用 curl（后端运行时）。**`/agent/chat` 需要访客身份**，先领一个 token（30 天有效）：
 
-> **Windows 注意**：PowerShell 会破坏 `--data-raw` 参数里的双引号，导致后端返回 `10004 JSON 解析失败`。
-> 原命令在 `cmd.exe` 里可以直接用；在 PowerShell 里请改用下面的文件写法。
-
-`cmd.exe` 中（单行）：
-
-```bat
-curl.exe -N http://localhost:8081/api/v1/agent/chat -H "Content-Type: application/json" --data-raw "{\"content\":\"Hello OfferPilot\",\"options\":{\"modelTier\":\"CHEAP\"}}"
+```powershell
+$guest = Invoke-RestMethod -Method Post http://localhost:8081/api/v1/auth/guest
+$token = $guest.data.accessToken
 ```
 
-PowerShell 中（把 JSON 写进文件再发送；中文也能正确处理）：
+然后发消息。PowerShell 会破坏 `--data-raw` 里的双引号（后端返回 `10004 JSON 解析失败`），
+中文参数也需按 UTF-8 写入文件，所以这里用「写文件 + `--data-binary`」：
 
 ```powershell
 $body = '{"content":"我是软件工程大三学生，帮我安排今天的求职准备","options":{"modelTier":"CHEAP"}}'
 $file = Join-Path $env:TEMP 'offerpilot-chat.json'
 [IO.File]::WriteAllText($file, $body, (New-Object System.Text.UTF8Encoding($false)))
-curl.exe -N http://localhost:8081/api/v1/agent/chat -H "Content-Type: application/json" --data-binary "@$file"
+curl.exe -N http://localhost:8081/api/v1/agent/chat -H "Content-Type: application/json" -H "Authorization: Bearer $token" --data-binary "@$file"
+```
+
+在 `cmd.exe` 里可以把 token 存进环境变量后直接用原命令：
+
+```bat
+set TOKEN=上一步返回的 accessToken
+curl.exe -N http://localhost:8081/api/v1/agent/chat -H "Content-Type: application/json" -H "Authorization: Bearer %TOKEN%" --data-raw "{\"content\":\"Hello OfferPilot\",\"options\":{\"modelTier\":\"CHEAP\"}}"
 ```
 
 成功流：`run.started → text.delta* → usage（若上游提供）→ run.completed`。失败流以 `error(recoverable=false)` 结束，不伪造成功或回复。未填 Key 返回 `40009`；超时为 `40001`；其他模型错误为 `40010`。用量来自模型，费用 `0` 暂表示未估算，不代表免费。
@@ -105,6 +109,8 @@ curl.exe -N http://localhost:8081/api/v1/agent/chat -H "Content-Type: applicatio
 - 40010：检查 Key、账户余额、网络和账户可用模型名。不会把供应商原始错误正文或凭据回传浏览器。
 - 10004 JSON 解析失败：多为 Windows PowerShell 破坏了 `--data-raw` 里的双引号，
   改用第 5 节的「写文件 + `--data-binary`」写法，或在 `cmd.exe` 中执行原命令。
+- 聊天接口返回空：`/agent/chat` 需要 `Authorization: Bearer <accessToken>`，
+  先调 `POST /api/v1/auth/guest` 领访客身份；缺少或过期的 token 会被拒绝。
 - 页面仍说“回显”：正在使用旧前端构建；Java 仍回显则运行了旧 JAR。更新构建并只重启对应进程。
 - 8081 已占用：先检查已有 Java 进程。本入口管理的进程在 `OfferPilot.cmd` 选择「2 停止前后端」；IDE 或手动启动的进程应在原窗口停止。
 
