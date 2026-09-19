@@ -1,6 +1,6 @@
 # 后端本地启动（DeepSeek + PostgreSQL）
 
-当前实现为持久化多轮文字聊天：浏览器访客身份 → 会话 CRUD → `/api/v1/agent/chat` → Spring AI DeepSeek → SSE。历史、部分回复与运行状态存入 PostgreSQL；上下文取当前会话最近 10 个成功完整轮次，最多 24,000 字符。支持停止、刷新恢复、分页和用户隔离；专家编排、附件解析、RAG、长期记忆和工具调用尚未接入。启动时自动执行新增 V5 迁移。后端集成测试需要 Docker，使用独立的临时 PostgreSQL 容器。
+当前实现包括持久化多轮文字聊天和简历上传解析。聊天链路：浏览器访客身份 → 会话 CRUD → `/api/v1/agent/chat` → Spring AI DeepSeek → SSE；支持停止、刷新恢复、分页与用户隔离。简历链路：`/api/v1/resumes` → MinIO 原件存储 → 后台解析 → PostgreSQL 结构化版本，可查询状态、失败重试与手动编辑。启动时自动执行 V1–V6 迁移。专家编排、聊天附件、RAG、长期记忆与工具调用仍未接入。集成测试需要 Docker，使用隔离 PostgreSQL/MinIO 和本地模型协议桩。
 
 ## 1. 准备环境
 
@@ -36,7 +36,9 @@ Key 来自 [DeepSeek 控制台](https://platform.deepseek.com/api_keys)。文件
 
 默认 `dev` profile 从仓库根目录或 `backend` 工作目录读取此文件。Key 只在后端使用，不要放进前端 `.env` / `VITE_*`。修改后重启 Java 进程。根目录 `.env` 是完整 Docker 部署的配置，和本机 Java 使用的 `backend/.env.local` 区分。
 
-开发环境 FLASH 和 CHEAP 都映射到 DeepSeek Flash，PRO 映射到 DeepSeek Pro，因此聊天页默认档位也可以只凭 DeepSeek Key 使用。模式下拉框目前不代表已接入不同专家。当前没有视觉能力。
+开发环境 FLASH 和 CHEAP 都映射到 DeepSeek Flash，PRO 映射到 DeepSeek Pro；文字聊天和文本简历解析可只配置 DeepSeek。图片/扫描 PDF 解析使用独立 VISION_ALT 档位，需要配置 BAILIAN_API_KEY 与支持图片的 LLM_MODEL_VISION_ALT。可配置 BAILIAN_BASE_URL 指向对应的 OpenAI 兼容端点。模式下拉框目前不代表已接入不同专家。
+
+简历上传还需要 MinIO：backend/.env.local 中的 MINIO_ENDPOINT / MINIO_ROOT_USER / MINIO_ROOT_PASSWORD / MINIO_BUCKET 必须与容器一致（见 .env.example）。上传支持 PDF、DOCX、PNG、JPG、UTF-8 TXT/Markdown，单文件≤10MB、PDF≤10页；图片型 DOCX 请先导出 PDF 或图片。原有前端本地草稿仍保留，不会自动上传。
 
 ## 3. 启动依赖
 
@@ -49,7 +51,7 @@ docker compose --env-file backend/.env.local -f deploy/docker-compose.yml ps
 
 等待 postgres、redis 显示 `healthy`。首次需要下载镜像。端口为 PostgreSQL `5432`、Redis `6379`、MinIO `9000`（控制台 `9001`）。Redis 要求使用 `REDIS_PASSWORD` 认证，且宿主机端口仅绑定 `127.0.0.1`。聊天不调用 jobs-mcp，暂时不需要启动它。
 
-PostgreSQL 镜像已包含 pgvector。Java 首次启动自动执行 Flyway V1–V4，创建用户、会话、Agent 事件、文件元数据等表；无需手工运行 SQL。当前没有写入这些表的聊天持久化实现。
+PostgreSQL 镜像已包含 pgvector。Java 启动自动执行 Flyway V1–V6，创建用户、会话、消息、文件元数据、简历与版本等表；无需手工运行 SQL。既有数据库只执行尚未应用的迁移，聊天和简历数据均按访客身份隔离。
 
 如果之前已经建立数据库卷，修改 `POSTGRES_PASSWORD` 不会重置库内密码，应填写现有密码；不要删除数据库卷来解决连接问题。
 

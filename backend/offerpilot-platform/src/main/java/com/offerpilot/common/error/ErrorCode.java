@@ -23,6 +23,10 @@ public enum ErrorCode {
     RUN_ALREADY_FINISHED(30202, HttpStatus.CONFLICT, "运行已结束"),
     APPROVAL_EXPIRED(30203, HttpStatus.CONFLICT, "审批不存在或已过期"),
     CONCURRENT_RUN_LIMIT(30204, HttpStatus.TOO_MANY_REQUESTS, "并发运行超限"),
+    RESUME_BUSY(30401, HttpStatus.CONFLICT, "简历正在解析，请稍后再试"),
+    RESUME_NOT_FOUND(30402, HttpStatus.NOT_FOUND, "简历不存在或无权访问"),
+    RESUME_VERSION_CONFLICT(30403, HttpStatus.CONFLICT, "简历已更新，请重新加载后保存"),
+    RESUME_INVALID(30404, HttpStatus.BAD_REQUEST, "简历文件无效或无法读取"),
 
     MODEL_TIMEOUT(40001, HttpStatus.GATEWAY_TIMEOUT, "模型调用超时"),
     MODEL_RATE_LIMITED(40002, HttpStatus.BAD_GATEWAY, "模型限流"),
