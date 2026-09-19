@@ -7,6 +7,7 @@ import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -24,6 +25,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException ex, HttpServletRequest request) {
         ErrorCode error = ex.errorCode();
         return ResponseEntity.status(error.status())
+                .contentType(MediaType.APPLICATION_JSON)
                 .body(ApiResponse.fail(error.code(), ex.getMessage(), TraceIdFilter.current(request)));
     }
 
@@ -35,7 +37,7 @@ public class GlobalExceptionHandler {
         List<ApiResponse.FieldError> errors = ex.getBindingResult().getFieldErrors().stream()
                 .map(GlobalExceptionHandler::toFieldError)
                 .toList();
-        return ResponseEntity.badRequest().body(ApiResponse.fail(
+        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(ApiResponse.fail(
                 ErrorCode.VALIDATION_FAILED.code(),
                 ErrorCode.VALIDATION_FAILED.message(),
                 TraceIdFilter.current(request),
@@ -51,7 +53,7 @@ public class GlobalExceptionHandler {
         List<ApiResponse.FieldError> errors = ex.getConstraintViolations().stream()
                 .map(v -> new ApiResponse.FieldError(v.getPropertyPath().toString(), v.getMessage()))
                 .toList();
-        return ResponseEntity.badRequest().body(ApiResponse.fail(
+        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(ApiResponse.fail(
                 ErrorCode.VALIDATION_FAILED.code(),
                 ErrorCode.VALIDATION_FAILED.message(),
                 TraceIdFilter.current(request),
@@ -64,7 +66,7 @@ public class GlobalExceptionHandler {
             HttpMessageNotReadableException ex,
             HttpServletRequest request
     ) {
-        return ResponseEntity.badRequest().body(ApiResponse.fail(
+        return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(ApiResponse.fail(
                 ErrorCode.JSON_PARSE_FAILED.code(),
                 ErrorCode.JSON_PARSE_FAILED.message(),
                 TraceIdFilter.current(request)
@@ -74,7 +76,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnknown(Exception ex, HttpServletRequest request) {
         log.error("Unhandled exception traceId={}", TraceIdFilter.current(request), ex);
-        return ResponseEntity.internalServerError().body(ApiResponse.fail(
+        return ResponseEntity.internalServerError().contentType(MediaType.APPLICATION_JSON).body(ApiResponse.fail(
                 ErrorCode.UNKNOWN.code(),
                 ErrorCode.UNKNOWN.message(),
                 TraceIdFilter.current(request)

@@ -7,7 +7,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 
 @SpringBootApplication
 @EnableConfigurationProperties(OfferPilotProperties.class)
-public class OfferPilotApplication {
+public class
+OfferPilotApplication {
 
     public static void main(String[] args) {
         SpringApplication.run(OfferPilotApplication.class, args);

@@ -27,11 +27,17 @@ import static org.mockito.Mockito.*;
 
 class ChatServiceTest {
     private final ModelGateway gateway = mock(ModelGateway.class);
+    private final com.offerpilot.conversation.application.ConversationService conversations = mock(com.offerpilot.conversation.application.ConversationService.class);
     private ChatService service;
 
     @BeforeEach
     void setup() throws Exception {
-        service = new ChatService(gateway, new ByteArrayResource("test system prompt".getBytes()));
+        service = new ChatService(gateway, conversations, new ByteArrayResource("test system prompt".getBytes()));
+        when(conversations.begin(anyString(), any(), anyString(), any(), anyString())).thenReturn(
+                new com.offerpilot.conversation.application.ConversationService.Turn("owner", "conv", "run", "msg",
+                        com.offerpilot.agent.domain.AgentMode.AUTO, java.time.Instant.now(), List.of()));
+        when(conversations.checkpoint(any(), anyString())).thenReturn(true);
+        when(conversations.finish(any(), anyString(), anyString(), any(), any())).thenAnswer(invocation -> invocation.getArgument(2));
         when(gateway.defaultTier()).thenReturn(ModelTier.CHEAP);
         when(gateway.modelName(any())).thenReturn("deepseek-v4-flash");
     }
@@ -41,7 +47,7 @@ class ChatServiceTest {
     }
 
     private List<AgentEvent> events() {
-        return service.chat(request()).collectList().block(Duration.ofSeconds(5));
+        return service.chat("owner", request()).collectList().block(Duration.ofSeconds(5));
     }
 
     @Test
@@ -91,7 +97,7 @@ class ChatServiceTest {
     void cancellingDownstreamCancelsProvider() {
         AtomicBoolean cancelled = new AtomicBoolean();
         when(gateway.stream(any(), anyList())).thenReturn(Flux.<ChatResponse>never().doOnCancel(() -> cancelled.set(true)));
-        var subscription = service.chat(request()).subscribe();
+        var subscription = service.chat("owner", request()).subscribe();
         subscription.dispose();
         assertThat(cancelled).isTrue();
     }

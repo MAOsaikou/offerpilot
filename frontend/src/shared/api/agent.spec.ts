@@ -42,6 +42,7 @@ describe('streamAgentChat', () => {
     await expect(streamAgentChat({ content: '测试中断' })).rejects.toThrow('连接在回复完成前中断')
   })
   beforeEach(() => {
+    localStorage.setItem('offerpilot-guest-v1', 'test-guest-token')
     setActivePinia(createPinia())
   })
 

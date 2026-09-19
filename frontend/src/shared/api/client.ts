@@ -29,8 +29,57 @@ function createTraceId(): string {
 }
 
 export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  // TODO(auth): 接入 useAuthStore 后注入 Authorization，并处理 401 刷新重放
   return { 'X-Trace-Id': createTraceId(), ...extra }
+}
+
+const IDENTITY_KEY = 'offerpilot-guest-v1'
+let pendingIdentity: Promise<string> | undefined
+
+async function guestToken(): Promise<string> {
+  // Never silently replace an expired credential: that would hide the user's history.
+  const saved = localStorage.getItem(IDENTITY_KEY)
+  if (saved) return saved
+  if (!pendingIdentity) {
+    pendingIdentity = (async () => {
+      // Confirm browser storage is available before creating a server-side identity.
+      localStorage.setItem('offerpilot-storage-check', '1')
+      localStorage.removeItem('offerpilot-storage-check')
+      const response = await fetch(apiUrl('/auth/guest'), {
+        method: 'POST',
+        headers: authHeaders(),
+      })
+      if (!response.ok) throw await toApiError(response)
+      const body = (await response.json()) as { data: { accessToken: string } }
+      const token = body.data.accessToken
+      if (!token) throw new Error('无法建立访客身份，请重试')
+      localStorage.setItem(IDENTITY_KEY, token)
+      return token
+    })().finally(() => {
+      pendingIdentity = undefined
+    })
+  }
+  return pendingIdentity
+}
+
+export async function authenticatedHeaders(
+  extra: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK === 'true') return authHeaders(extra)
+  // Web Locks also serialize the first visit across tabs where supported.
+  const token =
+    typeof navigator !== 'undefined' && navigator.locks
+      ? await navigator.locks.request('offerpilot-guest', guestToken)
+      : await guestToken()
+  return authHeaders({ ...extra, Authorization: `Bearer ${token}` })
+}
+
+export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(apiUrl(path), {
+    ...init,
+    headers: await authenticatedHeaders({ 'Content-Type': 'application/json' }),
+  })
+  if (!response.ok) throw await toApiError(response)
+  return ((await response.json()) as { data: T }).data
 }
 
 /** 把非 2xx 响应映射成 ApiError，尽量读出服务端的 code / message / traceId */

@@ -1,6 +1,6 @@
 # 后端本地启动（DeepSeek + PostgreSQL）
 
-当前实现为单轮文字聊天：浏览器 → `/api/v1/agent/chat` → Spring AI DeepSeek → SSE。保留 PostgreSQL、Flyway、JPA 和 Redis；业务模块中的占位包不影响应用启动。会话保存、历史上下文、专家编排、附件解析、RAG 和工具调用尚未接入。
+当前实现为持久化多轮文字聊天：浏览器访客身份 → 会话 CRUD → `/api/v1/agent/chat` → Spring AI DeepSeek → SSE。历史、部分回复与运行状态存入 PostgreSQL；上下文取当前会话最近 10 个成功完整轮次，最多 24,000 字符。支持停止、刷新恢复、分页和用户隔离；专家编排、附件解析、RAG、长期记忆和工具调用尚未接入。启动时自动执行新增 V5 迁移。后端集成测试需要 Docker，使用独立的临时 PostgreSQL 容器。
 
 ## 1. 准备环境
 

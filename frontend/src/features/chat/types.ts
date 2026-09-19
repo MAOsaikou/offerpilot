@@ -9,4 +9,6 @@ export interface ChatMessageView {
   /** 本轮运行产出的生成式 UI 卡片 */
   cards?: CardView[]
   streaming?: boolean
+  status?: import('@/shared/types/conversation').MessageStatus
+  runId?: string
 }

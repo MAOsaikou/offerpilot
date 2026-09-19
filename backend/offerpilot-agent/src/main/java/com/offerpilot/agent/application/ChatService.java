@@ -5,9 +5,10 @@ import com.offerpilot.agent.event.AgentEvent;
 import com.offerpilot.agent.web.ChatRequest;
 import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
-import com.offerpilot.common.id.IdGenerator;
+import com.offerpilot.conversation.application.ConversationService;
 import com.offerpilot.llm.ModelGateway;
 import com.offerpilot.llm.ModelTier;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.Usage;
@@ -15,86 +16,117 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
+import reactor.core.scheduler.Schedulers;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-/** 单轮文字聊天应用服务；持久化和专家编排在后续阶段接入。 */
+/** Persistent multi-turn chat. Blocking database work stays off provider event loops. */
 @Service
 public class ChatService {
     private final ModelGateway gateway;
+    private final ConversationService conversations;
     private final String systemPrompt;
+    private record Active(ConversationService.Turn turn, StringBuffer answer, Sinks.Empty<Void> signal) {}
+    private final Map<String, Active> cancellations = new ConcurrentHashMap<>();
 
-    public ChatService(ModelGateway gateway, @Value("classpath:prompts/chat/system.st") Resource prompt) throws IOException {
+    public ChatService(ModelGateway gateway, ConversationService conversations,
+                       @Value("classpath:prompts/chat/system.st") Resource prompt) throws IOException {
         this.gateway = gateway;
+        this.conversations = conversations;
         this.systemPrompt = prompt.getContentAsString(StandardCharsets.UTF_8);
     }
 
-    public Flux<AgentEvent> chat(ChatRequest request) {
+    public Flux<AgentEvent> chat(String owner, ChatRequest request) {
         String rawTier = request.options() == null ? null : request.options().modelTier();
         ModelTier tier;
-        try {
-            tier = rawTier == null || rawTier.isBlank() ? gateway.defaultTier() : ModelTier.from(rawTier);
-        } catch (IllegalArgumentException ex) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "未知模型档位");
-        }
-        if (request.attachments() != null && !request.attachments().isEmpty()) {
+        try { tier = rawTier == null || rawTier.isBlank() ? gateway.defaultTier() : ModelTier.from(rawTier); }
+        catch (IllegalArgumentException ex) { throw new BusinessException(ErrorCode.VALIDATION_FAILED, "未知模型档位"); }
+        if (request.attachments() != null && !request.attachments().isEmpty())
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "当前仅支持文字聊天，附件解析尚未接入");
-        }
-        return Flux.defer(() -> {
-            String conversationId = request.conversationId() == null || request.conversationId().isBlank()
-                    ? IdGenerator.next("conv") : request.conversationId();
-            String runId = IdGenerator.next("run");
-            String messageId = IdGenerator.next("msg");
-            String model = gateway.modelName(tier);
-            Instant started = Instant.now();
-            AtomicInteger seq = new AtomicInteger();
-            AtomicReference<Usage> usage = new AtomicReference<>();
-            StringBuilder answer = new StringBuilder();
-            AgentEvent first = new AgentEvent.RunStarted("run.started", seq.incrementAndGet(), runId, started,
-                    conversationId, messageId, model, request.mode() == null ? AgentMode.AUTO : request.mode());
-            Flux<AgentEvent> response = Flux.defer(() -> gateway.stream(tier,
-                            List.of(new SystemMessage(systemPrompt), new UserMessage(request.content()))))
-                    .handle((chunk, sink) -> {
-                        Usage current = chunk.getMetadata().getUsage();
-                        if (current != null && current.getTotalTokens() != null && current.getTotalTokens() > 0) {
-                            usage.set(current);
-                        }
-                        if (chunk.getResult() != null && chunk.getResult().getOutput() != null) {
-                            String text = chunk.getResult().getOutput().getText();
-                            if (text != null && !text.isEmpty()) {
-                                answer.append(text);
-                                sink.next(new AgentEvent.TextDelta("text.delta", seq.incrementAndGet(), runId,
-                                        Instant.now(), null, text));
+        // Ownership and concurrency errors remain ordinary HTTP errors before SSE starts.
+        String model = gateway.modelName(tier);
+        var turn = conversations.begin(owner, request.conversationId(), request.content(), request.mode(), model);
+        var cancel = Sinks.<Void>empty();
+        AtomicInteger seq = new AtomicInteger();
+        AtomicReference<Usage> usage = new AtomicReference<>();
+        StringBuffer answer = new StringBuffer();
+        cancellations.put(turn.runId(), new Active(turn, answer, cancel));
+        long[] lastSaved = {0};
+        ArrayList<Message> prompt = new ArrayList<>();
+        prompt.add(new SystemMessage(systemPrompt));
+        prompt.addAll(turn.history());
+        prompt.add(new UserMessage(request.content()));
+        AgentEvent first = new AgentEvent.RunStarted("run.started", seq.incrementAndGet(), turn.runId(), turn.startedAt(),
+                turn.conversationId(), turn.messageId(), model, turn.mode());
+        Flux<AgentEvent> response = Flux.defer(() -> gateway.stream(tier, prompt))
+                .publishOn(Schedulers.boundedElastic())
+                .<AgentEvent>handle((chunk, sink) -> {
+                    Usage current = chunk.getMetadata().getUsage();
+                    if (current != null && current.getTotalTokens() != null && current.getTotalTokens() > 0) usage.set(current);
+                    if (chunk.getResult() != null && chunk.getResult().getOutput() != null) {
+                        String text = chunk.getResult().getOutput().getText();
+                        if (text != null && !text.isEmpty()) {
+                            if (answer.length() + text.length() > 64000) {
+                                sink.error(new BusinessException(ErrorCode.MODEL_UNAVAILABLE, "回复超过长度限制，请缩小问题范围"));
+                                return;
                             }
+                            answer.append(text);
+                            if (System.currentTimeMillis() - lastSaved[0] >= 1000) {
+                                if (!conversations.checkpoint(turn, answer.toString())) { sink.complete(); return; }
+                                lastSaved[0] = System.currentTimeMillis();
+                            }
+                            sink.next(new AgentEvent.TextDelta("text.delta", seq.incrementAndGet(), turn.runId(), Instant.now(), null, text));
                         }
-                    });
-            Flux<AgentEvent> end = Flux.defer(() -> {
-                if (answer.toString().isBlank()) return Flux.error(new BusinessException(ErrorCode.MODEL_UNAVAILABLE));
-                Usage u = usage.get();
-                Flux<AgentEvent> tokens = u == null ? Flux.empty() : Flux.just(new AgentEvent.Usage("usage",
-                        seq.incrementAndGet(), runId, Instant.now(), model, u.getPromptTokens(),
-                        u.getCompletionTokens(), 0, false));
-                return tokens.concatWith(Flux.defer(() -> Flux.just(new AgentEvent.RunCompleted("run.completed",
-                        seq.incrementAndGet(), runId, Instant.now(), messageId, "COMPLETED",
-                        (int) (Instant.now().toEpochMilli() - started.toEpochMilli())))));
-            });
-            return Flux.just(first).concatWith(response).concatWith(end).onErrorResume(ex -> {
-                ErrorCode code = ex instanceof TimeoutException ? ErrorCode.MODEL_TIMEOUT : ErrorCode.MODEL_UNAVAILABLE;
-                String message = code.message();
-                if (ex instanceof BusinessException business) {
-                    code = business.errorCode();
-                    message = business.getMessage();
-                }
-                // 供应商原始异常可能包含请求、凭据或响应正文，不透传。
-                return Flux.just(new AgentEvent.ErrorEvent("error", seq.incrementAndGet(), runId,
-                        Instant.now(), code.code(), message, false));
-            });
+                    }
+                }).takeUntilOther(cancel.asMono());
+        Flux<AgentEvent> end = Flux.defer(() -> {
+            if (answer.toString().isBlank() && !cancel.scan(reactor.core.Scannable.Attr.TERMINATED))
+                return Flux.error(new BusinessException(ErrorCode.MODEL_UNAVAILABLE));
+            Usage u = usage.get();
+            Map<String, Object> savedUsage = u == null ? null : Map.of("promptTokens", u.getPromptTokens(), "completionTokens", u.getCompletionTokens());
+            String status = conversations.finish(turn, answer.toString(), "COMPLETED", savedUsage, null);
+            Flux<AgentEvent> tokens = u == null ? Flux.empty() : Flux.just(new AgentEvent.Usage("usage", seq.incrementAndGet(),
+                    turn.runId(), Instant.now(), model, u.getPromptTokens(), u.getCompletionTokens(), 0, false));
+            return tokens.concatWith(Flux.defer(() -> Flux.just(new AgentEvent.RunCompleted("run.completed", seq.incrementAndGet(),
+                    turn.runId(), Instant.now(), turn.messageId(), status, (int) Duration.between(turn.startedAt(), Instant.now()).toMillis()))));
         });
+        return Flux.just(first).concatWith(response).concatWith(end)
+                .takeUntilOther(reactor.core.publisher.Mono.delay(Duration.ofMinutes(10)).flatMap(ignored ->
+                        reactor.core.publisher.Mono.error(new TimeoutException())))
+                .onErrorResume(ex -> {
+                    ErrorCode code = ex instanceof TimeoutException ? ErrorCode.MODEL_TIMEOUT : ErrorCode.MODEL_UNAVAILABLE;
+                    String message = ex instanceof BusinessException business ? business.getMessage() : code.message();
+                    if (ex instanceof BusinessException business) code = business.errorCode();
+                    try { conversations.finish(turn, answer.toString(), "FAILED", null, message); }
+                    catch (RuntimeException persistenceFailure) { code = ErrorCode.DATABASE_UNAVAILABLE; message = code.message(); }
+                    return Flux.just(new AgentEvent.ErrorEvent("error", seq.incrementAndGet(), turn.runId(), Instant.now(), code.code(), message, false));
+                })
+                .doFinally(signal -> {
+                    cancellations.remove(turn.runId());
+                    if (signal == reactor.core.publisher.SignalType.CANCEL) {
+                        try { conversations.finish(turn, answer.toString(), "CANCELLED", null, null); }
+                        catch (RuntimeException ex) {
+                            org.slf4j.LoggerFactory.getLogger(ChatService.class).warn("Unable to save interrupted run {}", turn.runId());
+                        }
+                    }
+                });
+    }
+
+    public void cancel(String owner, String runId) {
+        var active = cancellations.get(runId);
+        conversations.cancel(owner, runId, active == null ? null : active.answer().toString());
+        if (active != null) {
+            active.signal().tryEmitEmpty();
+        }
     }
 }

@@ -1,4 +1,4 @@
-import { apiUrl, authHeaders, toApiError } from './client'
+import { apiUrl, authenticatedHeaders, toApiError } from './client'
 import { parseSse } from './sse'
 import type { AgentEvent, ChatRequest } from '@/shared/types/agent-events'
 
@@ -30,7 +30,10 @@ export async function streamAgentChat(
 ): Promise<string> {
   const response = await fetch(apiUrl('/agent/chat'), {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'text/event-stream' }),
+    headers: await authenticatedHeaders({
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    }),
     body: JSON.stringify(body),
     signal: options.signal ?? null,
   })
@@ -62,7 +65,7 @@ export async function resumeAgentRun(
   const response = await fetch(
     apiUrl(`/agent/runs/${encodeURIComponent(runId)}/events?after=${afterId}&follow=true`),
     {
-      headers: authHeaders({ Accept: 'text/event-stream' }),
+      headers: await authenticatedHeaders({ Accept: 'text/event-stream' }),
       signal: options.signal ?? null,
     },
   )
@@ -81,7 +84,7 @@ export async function resumeAgentRun(
 export async function cancelAgentRun(runId: string): Promise<void> {
   const response = await fetch(apiUrl(`/agent/runs/${encodeURIComponent(runId)}/cancel`), {
     method: 'POST',
-    headers: authHeaders(),
+    headers: await authenticatedHeaders(),
   })
   if (!response.ok) throw await toApiError(response)
 }

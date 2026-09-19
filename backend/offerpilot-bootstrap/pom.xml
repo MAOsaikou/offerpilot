@@ -5,6 +5,8 @@
     <artifactId>offerpilot-bootstrap</artifactId>
     <name>OfferPilot Bootstrap</name>
     <dependencies>
+        <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
         <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-platform</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-agent</artifactId><version>${project.version}</version></dependency>

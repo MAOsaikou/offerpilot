@@ -31,7 +31,26 @@ defineProps<{ message: ChatMessageView }>()
           :text="message.text"
           :streaming="message.streaming === true"
         />
-        <p v-else class="text-sm text-muted-foreground">正在处理…</p>
+        <p v-else class="text-sm text-muted-foreground">
+          {{
+            message.status === 'FAILED'
+              ? '本轮未收到有效回复'
+              : message.status === 'CANCELLED'
+                ? '本轮已停止'
+                : '正在处理…'
+          }}
+        </p>
+        <p
+          v-if="message.status === 'FAILED' || message.status === 'CANCELLED'"
+          class="mt-2 text-xs text-muted-foreground"
+        >
+          {{
+            message.status === 'FAILED'
+              ? '回复未完成，可重新发送问题。'
+              : '已停止生成，保留已收到的内容。'
+          }}
+          此轮不计入后续上下文。
+        </p>
       </div>
 
       <slot name="cards" :cards="message.cards ?? []" />

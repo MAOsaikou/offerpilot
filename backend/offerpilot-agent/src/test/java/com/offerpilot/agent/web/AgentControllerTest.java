@@ -40,10 +40,13 @@ class AgentControllerTest {
 
     @MockBean
     private ChatService chatService;
+    @MockBean
+    private com.offerpilot.auth.application.CurrentUser users;
 
     @Test
     void chatStartsSseStream() throws Exception {
-        when(chatService.chat(any())).thenReturn(Flux.just(
+        when(users.require(any())).thenReturn("owner");
+        when(chatService.chat(any(), any())).thenReturn(Flux.just(
                 new AgentEvent.RunStarted("run.started", 1, "run_test", Instant.now(), "conv_test", "msg_test", "deepseek-v4-flash", AgentMode.AUTO),
                 new AgentEvent.TextDelta("text.delta", 2, "run_test", Instant.now(), null, "你好，职航"),
                 new AgentEvent.RunCompleted("run.completed", 3, "run_test", Instant.now(), "msg_test", "COMPLETED", 10)));

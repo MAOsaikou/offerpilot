@@ -13,6 +13,7 @@ export function useAgentStream() {
 
   let controller: AbortController | null = null
   let currentRunId: string | null = null
+  let generation = 0
 
   function handleEvent(event: AgentEvent): void {
     currentRunId ||= event.runId
@@ -23,18 +24,21 @@ export function useAgentStream() {
     controller?.abort()
     currentRunId = null
     controller = new AbortController()
+    const version = ++generation
     streaming.value = true
 
     try {
       const runId = await streamAgentChat(body, {
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(600_000)]),
-        onEvent: handleEvent,
+        onEvent: (event) => {
+          if (version === generation) handleEvent(event)
+        },
       })
-      currentRunId = runId || currentRunId
+      if (version === generation) currentRunId = runId || currentRunId
       return runId
     } catch (error) {
       const run = currentRunId ? store.getRun(currentRunId) : undefined
-      if (run?.status === 'RUNNING') {
+      if (version === generation && run?.status === 'RUNNING') {
         store.apply({
           id: run.lastEventId + 1,
           runId: run.runId,
@@ -47,14 +51,18 @@ export function useAgentStream() {
       }
       throw error
     } finally {
-      streaming.value = false
-      controller = null
+      if (version === generation) {
+        streaming.value = false
+        controller = null
+      }
     }
   }
 
   /** 中断当前运行：先断流，本地标记取消，再通知后端 */
   async function stop(): Promise<void> {
     const runId = currentRunId ?? store.activeRunId
+    const running = runId ? store.getRun(runId)?.status === 'RUNNING' : false
+    ++generation
     controller?.abort()
     controller = null
     streaming.value = false
@@ -75,10 +83,8 @@ export function useAgentStream() {
       })
     }
 
-    // M0 后端尚未实现取消端点；仅在显式 Mock 模式使用该能力。
-    if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK === 'true') {
-      await cancelAgentRun(runId).catch(() => undefined)
-    }
+    // Always release the browser stream, even when the cancellation request fails.
+    if (running) await cancelAgentRun(runId)
   }
 
   /** 断线续传，事件 id 从 store 里取 */

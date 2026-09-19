@@ -88,7 +88,7 @@ function active(path: string) {
         </div>
       </header>
       <div class="workspace-notice">
-        业务数据仅保存在此浏览器 · 岗位为示例 · AI 对话连接真实后端
+        求职工作区保存在此浏览器 · 岗位为示例 · AI 对话历史保存在后端
       </div>
       <p v-if="workspace.storageError" class="error-banner" role="alert">
         {{ workspace.storageError }}
