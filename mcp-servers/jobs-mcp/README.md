@@ -70,6 +70,22 @@ curl -X POST http://localhost:7001/search_jobs \
   -d '{"query":"后端","nature":"campus","limit":3}'
 ```
 
+### 单元测试
+
+用 Node 内置的 `node:test`，不引入任何额外依赖：
+
+```bash
+npm test
+```
+
+覆盖范围：缓存（命中 / 过期 / 淘汰）、招聘类型归一化（含中文别名）、站点清单与默认站点有效性、
+字段映射（含 `detail_id` 兜底与可选字段）、空结果判定、跨站点并发下的失败隔离。
+
+其中一条测试专门锁住一个**容易踩的坑**：`jobhunt-cli` 的 `wrapNatureError` 只原样保留
+`ApiError` / `ArgumentError`，`EmptyResultError` 会被包装成 `ApiError`，导致
+`instanceof EmptyResultError` 判断失效——降级逻辑实际依赖的是消息里的 `returned no data`。
+改动这段代码前请先看懂那条测试。
+
 ## 三、架构
 
 ```
@@ -196,6 +212,6 @@ Agent 拿到的是「部分结果 + 明确的缺失说明」，比整次失败�
 ## 八、已知边界
 
 - 腾讯 / 美团 / 网易 / 华为的校招关键词匹配为**本地过滤**（见设计决定 2）。
-- 目前**没有单元测试**，只有冒烟验证（健康检查、真实查询、MCP 握手）。
+- 单元测试覆盖纯逻辑与错误判定；**真实站点查询未纳入自动化**（依赖外部接口，不适合放进测试套件）。
 - dev profile 下 `spring.ai.mcp.client.enabled: false`，后端尚未接入本服务（计划在 M1）。
 - 上游 `jobhunt-cli` 或企业接口变更可能导致部分站点失效，此时会在 `_meta.skipped` 里体现。

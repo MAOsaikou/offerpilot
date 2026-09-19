@@ -67,6 +67,20 @@ class ChatServiceTest {
     }
 
     @Test
+    void systemPromptCarriesCurrentDate() throws Exception {
+        var dated = new ChatService(gateway, conversations, new ByteArrayResource(
+                "今天是 {current_date}".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        when(gateway.stream(eq(ModelTier.CHEAP), anyList())).thenReturn(Flux.just(
+                new ChatResponse(List.of(new Generation(new AssistantMessage("好"))))));
+
+        dated.chat("owner", request()).collectList().block(Duration.ofSeconds(5));
+
+        String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString();
+        verify(gateway).stream(eq(ModelTier.CHEAP),
+                argThat(messages -> messages.get(0).getText().equals("今天是 " + today)));
+    }
+
+    @Test
     void missingKeyProducesActionableTerminalError() {
         when(gateway.stream(any(), anyList())).thenThrow(new BusinessException(ErrorCode.MODEL_NOT_CONFIGURED));
         assertThat(events()).last().isInstanceOfSatisfying(AgentEvent.ErrorEvent.class, e -> {

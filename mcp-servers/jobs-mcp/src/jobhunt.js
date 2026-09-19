@@ -64,8 +64,8 @@ function siteDisplayName(siteId) {
   return listSites().find((site) => site.id === siteId)?.name ?? siteId;
 }
 
-/** 把 jobhunt-cli 的字段映射成项目约定的岗位卡片结构（见 docs/04 §5.1）。 */
-function toJobCard(siteId, job) {
+/** 把 jobhunt-cli 的字段映射成项目约定的岗位卡片结构（见 docs/04 §5.1）。导出以便单测。 */
+export function toJobCard(siteId, job) {
   return {
     id: String(job.id ?? job.detail_id ?? ''),
     site: siteId,
@@ -82,7 +82,8 @@ function toJobCard(siteId, job) {
   };
 }
 
-function isEmptyResult(error) {
+/** 判断异常是否为「上游明确返回空结果」。导出以便单测。 */
+export function isEmptyResult(error) {
   return error instanceof EmptyResultError
     || error?.name === 'EmptyResultError'
     || /EMPTY_RESULT|returned no data/i.test(error?.message ?? '');

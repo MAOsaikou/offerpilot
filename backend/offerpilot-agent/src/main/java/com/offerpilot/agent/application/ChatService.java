@@ -23,6 +23,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,6 +38,7 @@ public class ChatService {
     private final ModelGateway gateway;
     private final ConversationService conversations;
     private final String systemPrompt;
+    private static final ZoneId PROMPT_ZONE = ZoneId.of("Asia/Shanghai");
     private record Active(ConversationService.Turn turn, StringBuffer answer, Sinks.Empty<Void> signal) {}
     private final Map<String, Active> cancellations = new ConcurrentHashMap<>();
 
@@ -63,7 +66,7 @@ public class ChatService {
         cancellations.put(turn.runId(), new Active(turn, answer, cancel));
         long[] lastSaved = {0};
         ArrayList<Message> prompt = new ArrayList<>();
-        prompt.add(new SystemMessage(systemPrompt));
+        prompt.add(new SystemMessage(systemPromptToday()));
         prompt.addAll(turn.history());
         prompt.add(new UserMessage(request.content()));
         AgentEvent first = new AgentEvent.RunStarted("run.started", seq.incrementAndGet(), turn.runId(), turn.startedAt(),
@@ -128,5 +131,15 @@ public class ChatService {
         if (active != null) {
             active.signal().tryEmitEmpty();
         }
+    }
+
+    /**
+     * 解析模板里的 {current_date}。
+     *
+     * 必须每次请求重新解析而不是在构造时算一次：服务可能连续运行多天，
+     * 那样第二天仍会告诉模型昨天的日期。
+     */
+    private String systemPromptToday() {
+        return systemPrompt.replace("{current_date}", LocalDate.now(PROMPT_ZONE).toString());
     }
 }
