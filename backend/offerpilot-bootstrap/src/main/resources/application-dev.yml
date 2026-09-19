@@ -31,8 +31,8 @@ offerpilot:
         provider: deepseek
         model: ${DEEPSEEK_MODEL_PRO:deepseek-v4-pro}
       VISION_ALT:
-        provider: deepseek
-        model: ${LLM_MODEL_CHEAP:deepseek-v4-flash}
+        provider: bailian
+        model: ${LLM_MODEL_VISION_ALT:glm-5.3-flash}
 
 logging:
   level:

@@ -3,14 +3,22 @@ import { computed, ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
+import { useQuery } from '@tanstack/vue-query'
+import { listResumes } from '@/shared/api/resumes'
 import { useWorkspace, jobs, learningTasks } from '@/shared/stores/workspace'
 const workspace = useWorkspace()
 const router = useRouter()
 const prompt = ref('')
+const resumes = useQuery({
+  queryKey: ['resumes', 1],
+  queryFn: ({ signal }) => listResumes(1, signal),
+})
 const stats = computed(() => [
   {
     label: '我的简历',
-    value: workspace.state.resumes.length,
+    value: resumes.isError.value
+      ? '—'
+      : workspace.state.resumes.length + (resumes.data.value?.total ?? 0),
     icon: 'resumes',
     to: '/resumes',
     detail: '为下一次机会做好准备',

@@ -21,6 +21,18 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUploadSize(HttpServletRequest request) {
+        return ResponseEntity.status(413).body(ApiResponse.fail(ErrorCode.FILE_TOO_LARGE.code(),
+                "简历文件不能超过 10MB", TraceIdFilter.current(request)));
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.support.MissingServletRequestPartException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingFile(HttpServletRequest request) {
+        return ResponseEntity.badRequest().body(ApiResponse.fail(ErrorCode.VALIDATION_FAILED.code(),
+                "请选择需要上传的文件", TraceIdFilter.current(request)));
+    }
+
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException ex, HttpServletRequest request) {
         ErrorCode error = ex.errorCode();

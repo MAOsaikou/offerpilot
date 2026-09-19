@@ -56,6 +56,12 @@ public class ModelGateway {
                     "请在 backend/.env.local 配置 " + (useDeepseek ? "DEEPSEEK_API_KEY" : "BAILIAN_API_KEY") + "，然后重启后端。");
         }
         ChatModel model = useDeepseek ? deepseek.getIfAvailable() : openai.getIfAvailable();
+        // The default chat provider may be DeepSeek while resume OCR needs an OpenAI-compatible vision provider.
+        if (model == null && !useDeepseek) {
+            model = OpenAiChatModel.builder().openAiApi(org.springframework.ai.openai.api.OpenAiApi.builder()
+                    .baseUrl(environment.getProperty("spring.ai.openai.base-url", "https://dashscope.aliyuncs.com/compatible-mode"))
+                    .apiKey(key).build()).build();
+        }
         if (model == null) {
             throw new BusinessException(ErrorCode.MODEL_NOT_CONFIGURED);
         }
@@ -64,10 +70,14 @@ public class ModelGateway {
     }
 
     public Flux<ChatResponse> stream(ModelTier tier, List<Message> messages) {
+        return stream(tier, messages, 0.3);
+    }
+
+    public Flux<ChatResponse> stream(ModelTier tier, List<Message> messages, double temperature) {
         return Flux.defer(() -> {
             ChatOptions options = "deepseek".equalsIgnoreCase(configuration(tier).provider())
-                    ? DeepSeekChatOptions.builder().model(modelName(tier)).temperature(0.3).build()
-                    : OpenAiChatOptions.builder().model(modelName(tier)).temperature(0.3).build();
+                    ? DeepSeekChatOptions.builder().model(modelName(tier)).temperature(temperature).build()
+                    : OpenAiChatOptions.builder().model(modelName(tier)).temperature(temperature).build();
             return chatModel(tier).stream(new Prompt(messages, options));
         })
                 .timeout(configuration(tier).timeout());
