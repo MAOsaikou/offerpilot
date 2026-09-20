@@ -22,17 +22,21 @@ offerpilot:
     default-tier: CHEAP
     tiers:
       FLASH:
-        provider: deepseek
-        model: ${LLM_MODEL_CHEAP:deepseek-v4-flash}
+        provider: ${LLM_PROVIDER_FLASH:deepseek}
+        model: ${LLM_MODEL_FLASH:${LLM_MODEL_CHEAP:deepseek-flash}}
+        supports-vision: ${LLM_VISION_FLASH:true}
       CHEAP:
-        provider: deepseek
-        model: ${LLM_MODEL_CHEAP:deepseek-v4-flash}
+        provider: ${LLM_PROVIDER_CHEAP:deepseek}
+        model: ${LLM_MODEL_CHEAP:deepseek-flash}
+        supports-vision: ${LLM_VISION_CHEAP:true}
       PRO:
-        provider: deepseek
-        model: ${DEEPSEEK_MODEL_PRO:deepseek-v4-pro}
+        provider: ${LLM_PROVIDER_PRO:deepseek}
+        model: ${LLM_MODEL_PRO:${DEEPSEEK_MODEL_PRO:deepseek-v4-pro}}
+        supports-vision: ${LLM_VISION_PRO:false}
       VISION_ALT:
-        provider: bailian
-        model: ${LLM_MODEL_VISION_ALT:glm-5.3-flash}
+        provider: ${LLM_VISION_PROVIDER:deepseek}
+        model: ${LLM_MODEL_VISION_ALT:deepseek-flash}
+        supports-vision: ${LLM_VISION_VISION_ALT:true}
 
 logging:
   level:

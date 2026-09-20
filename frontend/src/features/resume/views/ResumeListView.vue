@@ -80,6 +80,7 @@ async function importFile(event: Event) {
     <div class="helper-note">
       支持 PDF、DOCX、PNG、JPG、TXT / Markdown，单文件不超过 10MB，PDF 最多 10 页。
       点击上传后，原文件保存到服务端，内容将发送给配置的模型用于解析。请核对解析结果后保存。
+      <RouterLink to="/settings/models">切换解析模型 →</RouterLink>
     </div>
     <p v-if="server.isPending.value" role="status">正在加载服务端简历…</p>
     <div v-else-if="server.isError.value" class="error-banner" role="alert">

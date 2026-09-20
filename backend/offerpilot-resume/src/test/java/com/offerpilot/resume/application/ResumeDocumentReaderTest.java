@@ -19,7 +19,7 @@ class ResumeDocumentReaderTest {
         assertThatThrownBy(() -> reader.mime("resume.txt", new byte[0])).hasMessageContaining("为空");
         assertThatThrownBy(() -> reader.mime("resume.txt", new byte[ResumeDocumentReader.MAX_BYTES + 1])).hasMessageContaining("10MB");
         assertThatThrownBy(() -> reader.mime("resume.md", new byte[]{(byte)0xff})).hasMessageContaining("UTF-8");
-        assertThatThrownBy(() -> reader.read(" ".getBytes(), "text/plain")).hasMessageContaining("没有提取到文本");
+        assertThatThrownBy(() -> reader.read(" ".getBytes(), "text/plain")).hasMessageContaining("没有提取到简历内容");
     }
     @Test void readsDocxParagraphsAndRefusesXmlEntities() throws Exception {
         String xml = "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>张同学</w:t></w:r></w:p><w:p><w:r><w:t>软件工程</w:t></w:r></w:p></w:body></w:document>";
@@ -36,10 +36,10 @@ class ResumeDocumentReaderTest {
             }
             var out = new ByteArrayOutputStream(); pdf.save(out);
             var text = reader.read(out.toByteArray(), "application/pdf");
-            assertThat(text.text()).contains("Jane Doe"); assertThat(text.images()).isEmpty();
+            assertThat(text.text()).contains("Jane Doe"); assertThat(text.images()).hasSize(1);
             pdf.addPage(new PDPage()); out.reset(); pdf.save(out);
             var mixed = reader.read(out.toByteArray(), "application/pdf");
-            assertThat(mixed.text()).contains("Jane Doe"); assertThat(mixed.images()).hasSize(1);
+            assertThat(mixed.text()).contains("Jane Doe"); assertThat(mixed.images()).hasSize(2);
             for (int i = 0; i < 9; i++) pdf.addPage(new PDPage());
             out.reset(); pdf.save(out);
             assertThatThrownBy(() -> reader.read(out.toByteArray(), "application/pdf")).hasMessageContaining("1–10 页");
@@ -49,6 +49,41 @@ class ResumeDocumentReaderTest {
         assertThatThrownBy(() -> reader.read("x".repeat(50_001).getBytes(), "text/plain")).hasMessageContaining("5 万字");
         byte[] bomb = docx("x".repeat(5 * 1024 * 1024 + 1));
         assertThatThrownBy(() -> reader.read(bomb, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")).hasMessageContaining("解压内容过大");
+    }
+    @Test void readsDocxHeadersFootersAndEmbeddedImages() throws Exception {
+        var picture = new java.awt.image.BufferedImage(100, 100, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var png = new ByteArrayOutputStream(); javax.imageio.ImageIO.write(picture, "png", png);
+        var out = new ByteArrayOutputStream();
+        try (var zip = new ZipOutputStream(out)) {
+            for (var part : java.util.Map.of("word/document.xml", "项目经历", "word/header1.xml", "contact@example.com", "word/footer1.xml", "证书").entrySet()) {
+                zip.putNextEntry(new ZipEntry(part.getKey()));
+                String drawing = part.getKey().equals("word/document.xml") ? "<a:blip xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" r:embed=\"image1\"/>" : "";
+                zip.write(("<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:p><w:r><w:t>" + part.getValue() + "</w:t>" + drawing + "</w:r></w:p></w:document>").getBytes(StandardCharsets.UTF_8));
+                zip.closeEntry();
+            }
+            zip.putNextEntry(new ZipEntry("word/media/image1.png")); zip.write(png.toByteArray()); zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("word/media/unused-old-image.png")); zip.write(png.toByteArray()); zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("word/_rels/document.xml.rels"));
+            zip.write("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"image1\" Target=\"media/image1.png\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\"/></Relationships>".getBytes(StandardCharsets.UTF_8)); zip.closeEntry();
+        }
+        var result = reader.read(out.toByteArray(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        assertThat(result.text()).contains("项目经历", "contact@example.com", "证书");
+        assertThat(result.images()).hasSize(1); assertThat(result.channel()).isEqualTo("docx-vision");
+    }
+    @Test void preservesPictureOnPdfPageWithLongTextLayer() throws Exception {
+        try (var pdf = new PDDocument()) {
+            var page = new PDPage(); pdf.addPage(page);
+            var picture = new java.awt.image.BufferedImage(100, 100, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            try (var stream = new PDPageContentStream(pdf, page)) {
+                stream.beginText(); stream.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                stream.newLineAtOffset(40, 700); stream.showText("This text layer exceeds thirty characters but the resume is an image."); stream.endText();
+                stream.drawImage(org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory.createFromImage(pdf, picture), 40, 200, 300, 300);
+            }
+            var out = new ByteArrayOutputStream(); pdf.save(out);
+            var result = reader.read(out.toByteArray(), "application/pdf");
+            assertThat(result.text()).contains("thirty"); assertThat(result.images()).hasSize(1);
+            assertThat(result.images().get(0).bytes().length).isPositive();
+        }
     }
     private byte[] docx(String xml) throws Exception {
         var out = new ByteArrayOutputStream();

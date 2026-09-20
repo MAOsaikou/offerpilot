@@ -48,14 +48,21 @@ function Show-Status {
         try {
             $response = Invoke-WebRequest -UseBasicParsing -Uri $endpoint.Url -TimeoutSec 3
             $healthy = $response.StatusCode -eq 200
-            if ($endpoint.Name -eq '后端健康检查') { $healthy = $healthy -and (($response.Content | ConvertFrom-Json).status -eq 'UP') }
+            if ($endpoint.Name -eq '后端健康检查') {
+                # Windows PowerShell 5.1 may expose actuator's vendor JSON as bytes.
+                $content = $response.Content
+                if ($content -is [byte[]]) { $content = [Text.Encoding]::UTF8.GetString($content) }
+                $healthy = $healthy -and (($content | ConvertFrom-Json).status -eq 'UP')
+            }
             if (-not $healthy) { throw 'Not healthy' }
             Write-Host ('  [在线] ' + $endpoint.Name + '  ' + $endpoint.Url) -ForegroundColor Green
         } catch { Write-Host ('  [未就绪] ' + $endpoint.Name + '  ' + $endpoint.Url) -ForegroundColor Yellow }
     }
     if (Get-Command docker -ErrorAction SilentlyContinue) {
-        & docker compose -f (Join-Path $projectRoot 'deploy/docker-compose.yml') ps
-        if ($LASTEXITCODE -ne 0) { Write-Host '  Docker 状态读取失败，请检查引擎。' -ForegroundColor Yellow }
+        if (Test-Path -LiteralPath $keyFile) {
+            & docker compose --env-file $keyFile -f (Join-Path $projectRoot 'deploy/docker-compose.yml') ps
+            if ($LASTEXITCODE -ne 0) { Write-Host '  Docker 状态读取失败，请根据上方错误检查环境配置或 Docker Desktop。' -ForegroundColor Yellow }
+        } else { Write-Host '  缺少 backend/.env.local，请先选择「配置 DeepSeek」。' -ForegroundColor Yellow }
     } else { Write-Host '  Docker：未找到命令' -ForegroundColor Yellow }
     Write-Host '  健康检查不验证模型 Key；请在聊天页发送消息验证。' -ForegroundColor DarkGray
 }

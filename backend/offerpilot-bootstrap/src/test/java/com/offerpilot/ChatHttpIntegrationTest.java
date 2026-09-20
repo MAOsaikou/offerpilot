@@ -63,11 +63,11 @@ class ChatHttpIntegrationTest {
                 exchange.sendResponseHeaders(200, 0);
                 try (var out = exchange.getResponseBody()) {
                     for (String text : new String[]{"你好", "，同学。"}) {
-                        String frame = "data: {\"id\":\"chat-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"deepseek-v4-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"" + text + "\"},\"finish_reason\":null}]}\n\n";
+                        String frame = "data: {\"id\":\"chat-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"" + text + "\"},\"finish_reason\":null}]}\n\n";
                         out.write(frame.getBytes(StandardCharsets.UTF_8));
                         out.flush();
                     }
-                    out.write(("data: {\"id\":\"chat-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"deepseek-v4-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":6,\"total_tokens\":18}}\n\ndata: [DONE]\n\n").getBytes(StandardCharsets.UTF_8));
+                    out.write(("data: {\"id\":\"chat-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":6,\"total_tokens\":18}}\n\ndata: [DONE]\n\n").getBytes(StandardCharsets.UTF_8));
                 }
             });
             server.start();
@@ -249,7 +249,7 @@ class ChatHttpIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("event:run.started", "event:text.delta", "你好", "，同学。",
                 "event:usage", "\"promptTokens\":12", "\"completionTokens\":6", "event:run.completed", "COMPLETED");
-        assertThat(requestBody.get()).contains("我是大三学生", "deepseek-v4-flash", "\"stream\":true", "仅提供文字建议");
+        assertThat(requestBody.get()).contains("我是大三学生", "deepseek-flash", "\"stream\":true", "仅提供文字建议");
         assertThat(response.body().indexOf("event:usage")).isLessThan(response.body().indexOf("event:run.completed"));
     }
 }

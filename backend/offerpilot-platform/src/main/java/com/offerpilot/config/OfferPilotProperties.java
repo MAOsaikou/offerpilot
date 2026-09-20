@@ -84,7 +84,8 @@ public record OfferPilotProperties(
         public record Tier(
                 String provider,
                 String model,
-                @DefaultValue("60s") Duration timeout
+                @DefaultValue("60s") Duration timeout,
+                @DefaultValue("false") boolean supportsVision
         ) {
         }
     }

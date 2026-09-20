@@ -45,6 +45,9 @@ class ResumeHttpIntegrationTest {
     static final ObjectMapper JSON = new ObjectMapper();
     static final AtomicReference<String> output = new AtomicReference<>(ResumeStructure.SCHEMA);
     static final AtomicReference<String> lastPrompt = new AtomicReference<>();
+    static final AtomicReference<String> lastAuthorization = new AtomicReference<>();
+    static final AtomicReference<String> lastPath = new AtomicReference<>();
+    static final java.util.concurrent.atomic.AtomicInteger providerStatus = new java.util.concurrent.atomic.AtomicInteger(200);
     static final HttpServer provider = provider();
     @Autowired ResumeService resumes;
     @Autowired ResumeParseWorker worker;
@@ -68,10 +71,18 @@ class ResumeHttpIntegrationTest {
             var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/", exchange -> {
                 lastPrompt.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                lastAuthorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+                lastPath.set(exchange.getRequestURI().getPath());
+                if (providerStatus.get() != 200) {
+                    exchange.sendResponseHeaders(providerStatus.get(), 0);
+                    try (var stream = exchange.getResponseBody()) { stream.write("private-provider-diagnostic".getBytes(StandardCharsets.UTF_8)); }
+                    return;
+                }
                 exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
                 exchange.sendResponseHeaders(200, 0);
                 var frame = Map.of("id", "resume-test", "object", "chat.completion.chunk", "created", 1,
-                    "model", "test-model", "choices", List.of(Map.of("index", 0, "delta", Map.of("role", "assistant", "content", output.get()))));
+                    "model", "test-model", "usage", Map.of("prompt_tokens", 12, "completion_tokens", 6, "total_tokens", 18),
+                    "choices", List.of(Map.of("index", 0, "delta", Map.of("role", "assistant", "content", output.get()))));
                 try (var stream = exchange.getResponseBody()) {
                     stream.write(("data: " + JSON.writeValueAsString(frame) + "\n\ndata: [DONE]\n\n").getBytes(StandardCharsets.UTF_8));
                 }
@@ -80,7 +91,7 @@ class ResumeHttpIntegrationTest {
         } catch (Exception ex) { throw new IllegalStateException(ex); }
     }
     @AfterAll static void stop() { provider.stop(0); }
-    @BeforeEach void reset() { output.set(ResumeStructure.SCHEMA); }
+    @BeforeEach void reset() { output.set(ResumeStructure.SCHEMA); providerStatus.set(200); }
     String owner(String token) { return identities.require("Bearer " + token); }
     JsonNode data(HttpResponse<String> response) throws Exception { return JSON.readTree(response.body()).path("data"); }
     HttpResponse<String> request(String method, String path, String token, String body) throws Exception {
@@ -165,5 +176,54 @@ class ResumeHttpIntegrationTest {
         worker.processNext();
         assertThat(resumes.get(owner(token), id).parseStatus()).isEqualTo("READY");
         assertThat(lastPrompt.get()).contains("image_url").contains("data:image/png;base64,");
+        assertThat(lastAuthorization.get()).isEqualTo("Bearer test-only-key");
+        assertThat(lastPath.get()).isEqualTo("/chat/completions");
+        assertThat(JSON.readTree(lastPrompt.get()).path("model").asText()).isEqualTo("deepseek-flash");
+        var meta = resumes.get(owner(token), id).currentVersion().parseMeta();
+        assertThat(meta.path("model").asText()).isEqualTo("deepseek-flash");
+        assertThat(meta.path("promptVersion").asText()).isEqualTo("v2");
+        assertThat(meta.path("imageCount").asInt()).isEqualTo(1);
+        assertThat(meta.path("durationMs").asLong()).isGreaterThanOrEqualTo(0);
+        assertThat(meta.path("totalTokens").asInt()).isEqualTo(18);
+    }
+    @Test void providerFailuresAreActionableAndDoNotLeakResponseBody() throws Exception {
+        String token = identities.create().accessToken();
+        var image = new BufferedImage(50, 50, BufferedImage.TYPE_INT_RGB);
+        var bytes = new ByteArrayOutputStream(); ImageIO.write(image, "png", bytes);
+        for (int status : List.of(401, 429, 503)) {
+            providerStatus.set(status);
+            String id = data(upload(token, "failure.png", bytes.toByteArray())).path("id").asText();
+            worker.processNext();
+            var resume = resumes.get(owner(token), id);
+            assertThat(resume.parseStatus()).isEqualTo("FAILED");
+            assertThat(resume.parseError()).doesNotContain("private-provider-diagnostic", "test-only-key")
+                .contains(status == 401 ? "鉴权" : status == 429 ? "受限" : "503");
+            assertThat(resumes.versions(owner(token), id)).isEmpty();
+        }
+    }
+    @Test void modelSettingsArePrivateValidatedAndSnapshottedForEachJob() throws Exception {
+        String token = identities.create().accessToken(), stranger = identities.create().accessToken();
+        assertThat(request("GET", "/resume-model-settings", null, null).statusCode()).isEqualTo(401);
+        var catalog = request("GET", "/resume-model-settings", token, null);
+        assertThat(catalog.statusCode()).isEqualTo(200);
+        assertThat(catalog.body()).doesNotContain("test-only-key", "test-only-vision-key", "apiKey", "baseUrl");
+        assertThat(data(catalog).path("selection").path("textTier").asText()).isEqualTo("CHEAP");
+        assertThat(request("PUT", "/resume-model-settings", token, "{\"textTier\":\"CHEAP\",\"visionTier\":\"PRO\"}").statusCode()).isEqualTo(400);
+        assertThat(request("PUT", "/resume-model-settings", token, "{\"textTier\":\"unknown\",\"visionTier\":\"CHEAP\"}").statusCode()).isEqualTo(400);
+        String id = data(upload(token, "before.txt", "测试简历".getBytes(StandardCharsets.UTF_8))).path("id").asText();
+        assertThat(request("PUT", "/resume-model-settings", token, "{\"textTier\":\"VISION_ALT\",\"visionTier\":\"VISION_ALT\"}").statusCode()).isEqualTo(200);
+        assertThat(data(request("GET", "/resume-model-settings", token, null)).path("selection").path("textTier").asText()).isEqualTo("VISION_ALT");
+        assertThat(data(request("GET", "/resume-model-settings", stranger, null)).path("selection").path("textTier").asText()).isEqualTo("CHEAP");
+        var queued = resumes.claim();
+        assertThat(queued.id()).isEqualTo(id);
+        assertThat(queued.textTier()).isEqualTo("CHEAP");
+        resumes.fail(queued, "模拟失败");
+        resumes.retry(owner(token), id);
+        var retried = resumes.claim();
+        assertThat(retried.textTier()).isEqualTo("VISION_ALT");
+        resumes.fail(retried, "结束夹具");
+        String nextId = data(upload(token, "after.txt", "新简历".getBytes(StandardCharsets.UTF_8))).path("id").asText();
+        worker.processNext();
+        assertThat(resumes.get(owner(token), nextId).currentVersion().parseMeta().path("tier").asText()).isEqualTo("VISION_ALT");
     }
 }
