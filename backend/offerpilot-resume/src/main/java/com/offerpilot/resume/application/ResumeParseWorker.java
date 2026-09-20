@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class ResumeParseWorker {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ResumeParseWorker.class);
     private final ResumeService service;
     private final ResumeObjectStore storage;
     private final ResumeDocumentReader reader;
@@ -23,9 +24,16 @@ public class ResumeParseWorker {
         try {
             var document = reader.read(storage.get(job.bucket(), job.key()), job.mime());
             service.progress(job);
-            service.complete(job, extractor.extract(document), document);
-        } catch (BusinessException ex) { service.fail(job, ex.getMessage()); }
-        catch (Exception ex) { service.fail(job, "解析暂未完成，请检查模型配置与网络后重试。原文件已保存。"); }
+            var result = extractor.extractResult(document, job.textTier(), job.visionTier());
+            service.complete(job, result.structured(), result.metadata());
+        } catch (BusinessException ex) {
+            log.warn("简历解析失败 resumeId={} code={}", job.id(), ex.errorCode().code());
+            service.fail(job, ex.getMessage());
+        } catch (Exception ex) {
+            // 不记录供应商响应正文、简历内容或凭据。
+            log.warn("简历解析失败 resumeId={} type={}", job.id(), ex.getClass().getSimpleName());
+            service.fail(job, "解析服务暂时异常，请稍后重试。原文件已保存。");
+        }
     }
     @Configuration
     @EnableScheduling

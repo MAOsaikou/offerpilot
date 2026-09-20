@@ -1,6 +1,6 @@
 # 后端本地启动（DeepSeek + PostgreSQL）
 
-当前实现包括持久化多轮文字聊天和简历上传解析。聊天链路：浏览器访客身份 → 会话 CRUD → `/api/v1/agent/chat` → Spring AI DeepSeek → SSE；支持停止、刷新恢复、分页与用户隔离。简历链路：`/api/v1/resumes` → MinIO 原件存储 → 后台解析 → PostgreSQL 结构化版本，可查询状态、失败重试与手动编辑。启动时自动执行 V1–V6 迁移。专家编排、聊天附件、RAG、长期记忆与工具调用仍未接入。集成测试需要 Docker，使用隔离 PostgreSQL/MinIO 和本地模型协议桩。
+当前实现包括持久化多轮文字聊天和简历上传解析。聊天链路：浏览器访客身份 → 会话 CRUD → `/api/v1/agent/chat` → Spring AI DeepSeek → SSE；支持停止、刷新恢复、分页与用户隔离。简历链路：`/api/v1/resumes` → MinIO 原件存储 → 后台解析 → PostgreSQL 结构化版本，可查询状态、失败重试与手动编辑。启动时自动执行 V1–V7 迁移。专家编排、聊天附件、RAG、长期记忆与工具调用仍未接入。集成测试需要 Docker，使用隔离 PostgreSQL/MinIO 和本地模型协议桩。
 
 ## 1. 准备环境
 
@@ -22,7 +22,7 @@ docker compose version
 ```dotenv
 DEEPSEEK_API_KEY=你的真实Key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-LLM_MODEL_CHEAP=deepseek-v4-flash
+LLM_MODEL_CHEAP=deepseek-flash
 DEEPSEEK_MODEL_PRO=deepseek-v4-pro
 POSTGRES_HOST=localhost
 POSTGRES_DB=offerpilot
@@ -36,9 +36,9 @@ Key 来自 [DeepSeek 控制台](https://platform.deepseek.com/api_keys)。文件
 
 默认 `dev` profile 从仓库根目录或 `backend` 工作目录读取此文件。Key 只在后端使用，不要放进前端 `.env` / `VITE_*`。修改后重启 Java 进程。根目录 `.env` 是完整 Docker 部署的配置，和本机 Java 使用的 `backend/.env.local` 区分。
 
-开发环境 FLASH 和 CHEAP 都映射到 DeepSeek Flash，PRO 映射到 DeepSeek Pro；文字聊天和文本简历解析可只配置 DeepSeek。图片/扫描 PDF 解析使用独立 VISION_ALT 档位，需要配置 BAILIAN_API_KEY 与支持图片的 LLM_MODEL_VISION_ALT。可配置 BAILIAN_BASE_URL 指向对应的 OpenAI 兼容端点。模式下拉框目前不代表已接入不同专家。
+开发环境 FLASH 和 CHEAP 都映射到 DeepSeek Flash，PRO 映射到 DeepSeek Pro；文字聊天和文本简历解析可只配置 DeepSeek。图文简历默认共用 DEEPSEEK_API_KEY，模型名为 deepseek-flash；VISION_ALT 保留为视觉路由档位，默认也使用 DeepSeek。要改用百炼，显式设置 LLM_VISION_PROVIDER=bailian、LLM_MODEL_VISION_ALT 和 BAILIAN_API_KEY / BAILIAN_BASE_URL。旧环境中曾填写的视觉模型名需同步调整，不能把百炼模型名交给 DeepSeek。模式下拉框目前不代表已接入不同专家。
 
-简历上传还需要 MinIO：backend/.env.local 中的 MINIO_ENDPOINT / MINIO_ROOT_USER / MINIO_ROOT_PASSWORD / MINIO_BUCKET 必须与容器一致（见 .env.example）。上传支持 PDF、DOCX、PNG、JPG、UTF-8 TXT/Markdown，单文件≤10MB、PDF≤10页；图片型 DOCX 请先导出 PDF 或图片。原有前端本地草稿仍保留，不会自动上传。
+简历上传还需要 MinIO：backend/.env.local 中的 MINIO_ENDPOINT / MINIO_ROOT_USER / MINIO_ROOT_PASSWORD / MINIO_BUCKET 必须与容器一致（见 .env.example）。上传支持 PDF、DOCX、PNG、JPG、UTF-8 TXT/Markdown，单文件≤10MB、PDF≤10页；DOCX 支持正文、页眉、页脚和 PNG/JPEG 嵌入图片（最多20张）；其他嵌入媒体需导出 PDF。PDF 每页同时提供文本与图像以避免混合内容遗漏。原有前端本地草稿仍保留，不会自动上传。
 
 ## 3. 启动依赖
 
@@ -51,7 +51,7 @@ docker compose --env-file backend/.env.local -f deploy/docker-compose.yml ps
 
 等待 postgres、redis 显示 `healthy`。首次需要下载镜像。端口为 PostgreSQL `5432`、Redis `6379`、MinIO `9000`（控制台 `9001`）。Redis 要求使用 `REDIS_PASSWORD` 认证，且宿主机端口仅绑定 `127.0.0.1`。聊天不调用 jobs-mcp，暂时不需要启动它。
 
-PostgreSQL 镜像已包含 pgvector。Java 启动自动执行 Flyway V1–V6，创建用户、会话、消息、文件元数据、简历与版本等表；无需手工运行 SQL。既有数据库只执行尚未应用的迁移，聊天和简历数据均按访客身份隔离。
+PostgreSQL 镜像已包含 pgvector。Java 启动自动执行 Flyway V1–V7，创建用户、会话、消息、文件元数据、简历与版本等表；无需手工运行 SQL。既有数据库只执行尚未应用的迁移，聊天和简历数据均按访客身份隔离。
 
 如果之前已经建立数据库卷，修改 `POSTGRES_PASSWORD` 不会重置库内密码，应填写现有密码；不要删除数据库卷来解决连接问题。
 
@@ -119,3 +119,13 @@ curl.exe -N http://localhost:8081/api/v1/agent/chat -H "Content-Type: applicatio
 ## 7. 验证范围
 
 `mvn -q -B -pl offerpilot-bootstrap -am package` 包含流式事件、中文、用量、参数校验、缺 Key、空回复、超时、取消和错误不泄露测试，以及真实 HTTP + Spring AI DeepSeek 适配器集成测试。集成测试使用 `test` profile 和本机模拟供应商，不消耗真实 Key，不替代 dev 环境的数据库及真实 DeepSeek 验收。
+
+## 网页切换简历解析模型
+
+打开「设置 → 模型选择」（/settings/models），选择文字模型和图片/PDF模型；支持图片的模型可以勾选共用。点击保存后立即对当前访客后续上传或失败重试生效，无需重启；不影响聊天、其他访客、已排队或正在解析的任务。简历列表也有快捷入口。
+
+服务器配置四个可选择档位：FLASH、CHEAP、PRO、VISION_ALT。每个档位都可独立设置供应商、型号和图片能力，页面显示实际供应商/型号。未配置 Key 或地址的选项不可选；“已配置”只代表配置齐全，不代表联网或额度验证通过。新增或更改供应商配置后重启后端并刷新页面。
+
+例如配置自定义 OpenAI 兼容服务：在 backend/.env.local 设置 LLM_PROVIDER_FLASH=custom、LLM_MODEL_FLASH=实际模型名、LLM_VISION_FLASH=true/false，并填写 CUSTOM_LLM_BASE_URL 与 CUSTOM_LLM_API_KEY；请求路径默认 /v1/chat/completions，可用 CUSTOM_LLM_COMPLETIONS_PATH 修改。不要将 /v1 同时填进 Base URL 和请求路径。百炼使用 provider=bailian 及 BAILIAN_API_KEY / BAILIAN_BASE_URL；DeepSeek 使用 provider=deepseek 及 DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL。PRO 在 dev 中的模型名使用 DEEPSEEK_MODEL_PRO 兼容旧配置，也支持 LLM_MODEL_PRO 覆盖。Key 只留在后端环境，网页不会读写密钥或任意接口地址。
+
+Flyway V7 新增当前访客的模型偏好及任务路由快照，V1–V6 不改写。

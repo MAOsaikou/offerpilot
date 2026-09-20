@@ -42,4 +42,18 @@ class ResumeExtractorTest {
         assertThatThrownBy(() -> ResumeStructure.validate(structure)).hasMessageContaining("结构");
     }
     private Flux<ChatResponse> response(String text) { return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(text))))); }
+    @Test void mapsTimeoutAndProviderStatusWithoutLeakingResponse() throws Exception {
+        var gateway = mock(ModelGateway.class);
+        when(gateway.defaultTier()).thenReturn(ModelTier.CHEAP);
+        var extractor = new ResumeExtractor(gateway, new ObjectMapper(), new ByteArrayResource("extract".getBytes()));
+        var document = new ResumeDocumentReader.Document("简历", List.of(), "text");
+        when(gateway.stream(any(), anyList(), eq(0.0))).thenReturn(Flux.error(new java.util.concurrent.TimeoutException()));
+        assertThatThrownBy(() -> extractor.extract(document)).hasMessageContaining("超时");
+        for (int status : List.of(401, 429, 500)) {
+            when(gateway.stream(any(), anyList(), eq(0.0))).thenReturn(Flux.error(
+                org.springframework.web.reactive.function.client.WebClientResponseException.create(status, "error", null, "secret-provider-body".getBytes(), null)));
+            assertThatThrownBy(() -> extractor.extract(document)).hasMessageNotContaining("secret-provider-body")
+                .hasMessageContaining(status == 401 ? "鉴权" : status == 429 ? "受限" : "模型调用失败");
+        }
+    }
 }

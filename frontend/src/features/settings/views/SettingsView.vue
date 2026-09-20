@@ -1,14 +1,35 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { computed, ref } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import { useWorkspace } from '@/shared/stores/workspace'
 import { getStoredTheme, setTheme, type ThemeMode } from '@/shared/utils/theme'
 import { downloadText } from '@/shared/utils/download'
 import { API_BASE } from '@/shared/api/client'
+import ResumeModelSettings from '../components/ResumeModelSettings.vue'
 const workspace = useWorkspace()
 const route = useRoute()
-const tab = ref(route.params.tab === 'connection' ? '连接与联调' : '个人偏好')
+const router = useRouter()
+const tab = computed(() =>
+  route.params.tab === 'connection'
+    ? '连接与联调'
+    : route.params.tab === 'models'
+      ? '模型选择'
+      : route.params.tab === 'privacy'
+        ? '数据与隐私'
+        : '个人偏好',
+)
+function selectTab(value: string) {
+  const suffix =
+    value === '模型选择'
+      ? '/models'
+      : value === '连接与联调'
+        ? '/connection'
+        : value === '数据与隐私'
+          ? '/privacy'
+          : ''
+  void router.replace('/settings' + suffix)
+}
 const theme = ref<ThemeMode>(getStoredTheme())
 const checking = ref(false)
 const result = ref('')
@@ -50,14 +71,14 @@ function exportWorkspace() {
     <PageHeading
       title="让工作区，更适合你"
       eyebrow="PREFERENCES & CONNECTION"
-      description="管理显示偏好，检查前后端连接。"
+      description="管理显示偏好，选择简历解析模型，检查前后端连接。"
     />
     <div class="tabs">
       <button
-        v-for="t in ['个人偏好', '连接与联调', '数据与隐私']"
+        v-for="t in ['个人偏好', '模型选择', '连接与联调', '数据与隐私']"
         :key="t"
         :class="{ selected: tab === t }"
-        @click="tab = t"
+        @click="selectTab(t)"
       >
         {{ t }}
       </button>
@@ -80,6 +101,7 @@ function exportWorkspace() {
       >
       <p class="subtle">修改即时生效，偏好保存在当前浏览器。</p>
     </section>
+    <ResumeModelSettings v-else-if="tab === '模型选择'" />
     <section v-else-if="tab === '连接与联调'" class="split-content">
       <div class="panel form-stack">
         <h2>后端连接</h2>
