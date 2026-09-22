@@ -58,7 +58,7 @@ describe('useAgentRunStore', () => {
     expect(run?.status).toBe('COMPLETED')
     expect(run?.text).toBe('你好，世界')
     expect(run?.goal).toBe('找工作')
-    expect(run?.steps[0]?.status).toBe('RUNNING')
+    expect(run?.steps[0]?.status).toBe('SKIPPED')
     expect(run?.durationMs).toBe(1234)
     expect(run?.lastEventId).toBe(6)
     expect(store.activeRunId).toBe(RUN)

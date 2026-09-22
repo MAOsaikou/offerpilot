@@ -10,7 +10,7 @@ defineProps<{
 <template>
   <section>
     <h3 class="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-      工具调用
+      工具与专家调用
     </h3>
 
     <p v-if="toolCalls.length === 0" class="text-sm text-muted-foreground">暂无</p>
@@ -26,12 +26,23 @@ defineProps<{
                   call.status === 'RUNNING' && 'bg-primary pulse-dot',
                   call.status === 'OK' && 'bg-success',
                   call.status === 'FAILED' && 'bg-danger',
+                  call.status === 'CANCELLED' && 'bg-muted-foreground/40',
                 )
               "
             />
-            <span class="truncate font-mono">{{ call.name }}</span>
+            <span class="min-w-0 break-all font-mono" :title="call.name">{{ call.name }}</span>
+            <span v-if="call.name.startsWith('placeholder.')" class="shrink-0 text-muted-foreground"
+              >占位</span
+            >
+            <span class="sr-only">{{ call.status }}</span>
             <span class="ml-auto shrink-0 font-mono text-muted-foreground">
-              {{ call.durationMs ? (call.durationMs / 1000).toFixed(1) + 's' : '…' }}
+              {{
+                call.durationMs !== undefined
+                  ? (call.durationMs / 1000).toFixed(1) + 's'
+                  : call.status === 'RUNNING'
+                    ? '…'
+                    : '—'
+              }}
             </span>
           </summary>
 
@@ -44,8 +55,7 @@ defineProps<{
             </p>
             <pre
               class="max-h-40 overflow-auto rounded-lg bg-foreground/5 p-2 font-mono text-xs leading-relaxed"
-              >{{ JSON.stringify(call.args, null, 2) }}</pre
-            >
+              >{{ JSON.stringify(call.args, null, 2) }}</pre>
           </div>
         </details>
       </li>

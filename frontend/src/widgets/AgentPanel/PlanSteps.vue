@@ -6,6 +6,7 @@ import type { StepStatus } from '@/shared/types/agent-events'
 defineProps<{
   goal: string | null
   steps: PlanStepState[]
+  running?: boolean
 }>()
 
 const labelOf: Record<StepStatus, string> = {
@@ -30,7 +31,9 @@ const dotOf: Record<StepStatus, string> = {
     <h3 class="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">计划</h3>
 
     <p v-if="goal" class="mb-3 text-sm leading-relaxed">{{ goal }}</p>
-    <p v-else class="mb-3 text-sm text-muted-foreground">等待规划…</p>
+    <p v-else class="mb-3 text-sm text-muted-foreground">
+      {{ running ? '正在识别任务…' : '本轮未生成执行计划' }}
+    </p>
 
     <ol class="space-y-2">
       <li v-for="step in steps" :key="step.id" class="flex gap-2.5">
@@ -47,7 +50,7 @@ const dotOf: Record<StepStatus, string> = {
           <p class="mt-0.5 font-mono text-xs text-muted-foreground">
             {{ labelOf[step.status] }}
             <template v-if="step.summary"> · {{ step.summary }}</template>
-            <template v-if="step.durationMs">
+            <template v-if="step.durationMs !== undefined">
               · {{ (step.durationMs / 1000).toFixed(1) }}s
             </template>
           </p>

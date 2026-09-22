@@ -34,7 +34,7 @@ export interface ToolCallView {
   source: string
   access: ToolAccess
   args: unknown
-  status: 'RUNNING' | 'OK' | 'FAILED'
+  status: 'RUNNING' | 'OK' | 'FAILED' | 'CANCELLED'
   resultPreview?: string
   durationMs?: number
   truncated?: boolean
@@ -266,7 +266,23 @@ export const useAgentRunStore = defineStore('agentRun', () => {
   function setError(runId: string, error: RunErrorView): void {
     const run = ensure(runId)
     run.error = error
-    if (!error.recoverable) run.status = 'FAILED'
+    if (!error.recoverable) {
+      run.status = 'FAILED'
+      settleUnfinished(run, 'FAILED')
+    }
+  }
+
+  function settleUnfinished(run: RunState, status: RunStatus): void {
+    for (const step of run.steps) {
+      if (step.status !== 'RUNNING' && step.status !== 'PENDING') continue
+      step.status = status === 'FAILED' && step.status === 'RUNNING' ? 'FAILED' : 'SKIPPED'
+      step.summary = status === 'CANCELLED' ? '运行已取消' : '运行已结束，步骤未完成'
+    }
+    for (const call of run.toolCalls) {
+      if (call.status !== 'RUNNING') continue
+      call.status = status === 'CANCELLED' ? 'CANCELLED' : 'FAILED'
+      call.resultPreview = status === 'CANCELLED' ? '运行已取消' : '运行已结束，未收到工具结果'
+    }
   }
 
   function complete(
@@ -281,6 +297,7 @@ export const useAgentRunStore = defineStore('agentRun', () => {
     run.durationMs = durationMs
     run.messageId = messageId
     run.finishedAt = finishedAt
+    settleUnfinished(run, status)
   }
 
   /** 事件归约入口：新增事件类型时 default 分支会编译期报错 */

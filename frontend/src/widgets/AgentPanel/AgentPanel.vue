@@ -47,7 +47,11 @@ const statusLabel = computed(() => {
 
     <div class="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
       <template v-if="hasRun">
-        <PlanSteps :goal="run?.goal ?? null" :steps="run?.steps ?? []" />
+        <PlanSteps
+          :goal="run?.goal ?? null"
+          :steps="run?.steps ?? []"
+          :running="run?.status === 'RUNNING'"
+        />
 
         <section v-if="run?.reasoning">
           <button
