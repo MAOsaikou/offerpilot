@@ -2,6 +2,7 @@ package com.offerpilot.agent.application;
 
 import com.offerpilot.agent.domain.AgentMode;
 import com.offerpilot.agent.event.AgentEvent;
+import com.offerpilot.agent.orchestrator.Orchestrator;
 import com.offerpilot.agent.web.ChatRequest;
 import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
@@ -37,15 +38,17 @@ import java.util.concurrent.atomic.AtomicReference;
 public class ChatService {
     private final ModelGateway gateway;
     private final ConversationService conversations;
+    private final Orchestrator orchestrator;
     private final String systemPrompt;
     private static final ZoneId PROMPT_ZONE = ZoneId.of("Asia/Shanghai");
     private record Active(ConversationService.Turn turn, StringBuffer answer, Sinks.Empty<Void> signal) {}
     private final Map<String, Active> cancellations = new ConcurrentHashMap<>();
 
     public ChatService(ModelGateway gateway, ConversationService conversations,
-                       @Value("classpath:prompts/chat/system.st") Resource prompt) throws IOException {
+                       @Value("classpath:prompts/chat/system.st") Resource prompt, Orchestrator orchestrator) throws IOException {
         this.gateway = gateway;
         this.conversations = conversations;
+        this.orchestrator = orchestrator;
         this.systemPrompt = prompt.getContentAsString(StandardCharsets.UTF_8);
     }
 
@@ -62,6 +65,8 @@ public class ChatService {
         var cancel = Sinks.<Void>empty();
         AtomicInteger seq = new AtomicInteger();
         AtomicReference<Usage> usage = new AtomicReference<>();
+        AtomicInteger planningPromptTokens = new AtomicInteger();
+        AtomicInteger planningCompletionTokens = new AtomicInteger();
         StringBuffer answer = new StringBuffer();
         cancellations.put(turn.runId(), new Active(turn, answer, cancel));
         long[] lastSaved = {0};
@@ -91,19 +96,28 @@ public class ChatService {
                             sink.next(new AgentEvent.TextDelta("text.delta", seq.incrementAndGet(), turn.runId(), Instant.now(), null, text));
                         }
                     }
-                }).takeUntilOther(cancel.asMono());
+                });
+        Flux<AgentEvent> work = Flux.defer(() -> orchestrator.run(turn.mode(), request.content(), turn.history(), tier,
+                        turn.runId(), seq, prompt, u -> {
+                            planningPromptTokens.addAndGet(u.getPromptTokens());
+                            planningCompletionTokens.addAndGet(u.getCompletionTokens());
+                        }))
+                .concatWith(response).takeUntilOther(cancel.asMono());
         Flux<AgentEvent> end = Flux.defer(() -> {
             if (answer.toString().isBlank() && !cancel.scan(reactor.core.Scannable.Attr.TERMINATED))
                 return Flux.error(new BusinessException(ErrorCode.MODEL_UNAVAILABLE));
             Usage u = usage.get();
-            Map<String, Object> savedUsage = u == null ? null : Map.of("promptTokens", u.getPromptTokens(), "completionTokens", u.getCompletionTokens());
+            int promptTokens = planningPromptTokens.get() + (u == null ? 0 : u.getPromptTokens());
+            int completionTokens = planningCompletionTokens.get() + (u == null ? 0 : u.getCompletionTokens());
+            boolean hasUsage = u != null || promptTokens + completionTokens > 0;
+            Map<String, Object> savedUsage = !hasUsage ? null : Map.of("promptTokens", promptTokens, "completionTokens", completionTokens);
             String status = conversations.finish(turn, answer.toString(), "COMPLETED", savedUsage, null);
-            Flux<AgentEvent> tokens = u == null ? Flux.empty() : Flux.just(new AgentEvent.Usage("usage", seq.incrementAndGet(),
-                    turn.runId(), Instant.now(), model, u.getPromptTokens(), u.getCompletionTokens(), 0, false));
+            Flux<AgentEvent> tokens = !hasUsage ? Flux.empty() : Flux.just(new AgentEvent.Usage("usage", seq.incrementAndGet(),
+                    turn.runId(), Instant.now(), model, promptTokens, completionTokens, 0, false));
             return tokens.concatWith(Flux.defer(() -> Flux.just(new AgentEvent.RunCompleted("run.completed", seq.incrementAndGet(),
                     turn.runId(), Instant.now(), turn.messageId(), status, (int) Duration.between(turn.startedAt(), Instant.now()).toMillis()))));
         });
-        return Flux.just(first).concatWith(response).concatWith(end)
+        return Flux.just(first).concatWith(work).concatWith(end)
                 .takeUntilOther(reactor.core.publisher.Mono.delay(Duration.ofMinutes(10)).flatMap(ignored ->
                         reactor.core.publisher.Mono.error(new TimeoutException())))
                 .onErrorResume(ex -> {

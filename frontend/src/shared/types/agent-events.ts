@@ -5,6 +5,7 @@
 import type { CardType } from './cards'
 
 export type AgentMode = 'AUTO' | 'CAREER_DISCOVERY' | 'RESUME' | 'JOB' | 'INTERVIEWER' | 'COACH'
+export type ExpertType = Exclude<AgentMode, 'AUTO'>
 
 export type StepStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'SKIPPED'
 
@@ -17,7 +18,7 @@ export type RunResultStatus = 'COMPLETED' | 'CANCELLED' | 'FAILED'
 export interface PlanStepView {
   id: string
   title: string
-  agent: AgentMode
+  agent: ExpertType
   status: StepStatus
   dependsOn: string[]
 }

@@ -62,8 +62,14 @@ class ChatHttpIntegrationTest {
                 exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
                 exchange.sendResponseHeaders(200, 0);
                 try (var out = exchange.getResponseBody()) {
-                    for (String text : new String[]{"你好", "，同学。"}) {
-                        String frame = "data: {\"id\":\"chat-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"" + text + "\"},\"finish_reason\":null}]}\n\n";
+                    boolean planning = body.contains("意图识别与规划 v1");
+                    String decision = body.contains("复合验收") ? """
+                            {"kind":"composite","confidence":1,"plan":{"goal":"岗位与简历准备","steps":[
+                            {"id":"s1","title":"岗位分析","agent":"JOB","inputs":{},"dependsOn":[]},
+                            {"id":"s2","title":"简历指导","agent":"RESUME","inputs":{"jobFrom":"s1"},"dependsOn":["s1"]}]}}
+                            """ : "{\"kind\":\"chitchat\",\"confidence\":1}";
+                    for (String text : planning ? new String[]{decision} : new String[]{"你好", "，同学。"}) {
+                        String frame = "data: {\"id\":\"chat-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":" + new ObjectMapper().writeValueAsString(text) + "},\"finish_reason\":null}]}\n\n";
                         out.write(frame.getBytes(StandardCharsets.UTF_8));
                         out.flush();
                     }
@@ -248,8 +254,31 @@ class ChatHttpIntegrationTest {
         var response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("event:run.started", "event:text.delta", "你好", "，同学。",
-                "event:usage", "\"promptTokens\":12", "\"completionTokens\":6", "event:run.completed", "COMPLETED");
+                "event:usage", "\"promptTokens\":24", "\"completionTokens\":12", "event:run.completed", "COMPLETED");
         assertThat(requestBody.get()).contains("我是大三学生", "deepseek-flash", "\"stream\":true", "仅提供文字建议");
         assertThat(response.body().indexOf("event:usage")).isLessThan(response.body().indexOf("event:run.completed"));
+    }
+
+    @Test
+    void compositeProducesRealSseAndPersistsFinalText() throws Exception {
+        String token = identities.create().accessToken();
+        var response = request("POST", "/agent/chat", token, "{\"content\":\"复合验收：分析岗位并指导简历\"}");
+        assertThat(response.statusCode()).isEqualTo(200);
+        var events = response.body().lines().filter(line -> line.startsWith("data:"))
+                .map(line -> {
+                    try { return json.readTree(line.substring(5).trim()); }
+                    catch (IOException ex) { throw new RuntimeException(ex); }
+                }).toList();
+        assertThat(events.stream().map(e -> e.path("type").asText()).toList()).containsExactly(
+                "run.started", "plan.created", "step.updated", "tool.call", "tool.result", "step.updated",
+                "step.updated", "tool.call", "tool.result", "step.updated", "text.delta", "text.delta", "usage", "run.completed");
+        assertThat(events.stream().map(e -> e.path("id").asInt()).toList())
+                .containsExactlyElementsOf(java.util.stream.IntStream.rangeClosed(1, events.size()).boxed().toList());
+        String conv = events.get(0).path("conversationId").asText();
+        var messages = conversations.messages(owner(token), conv, null, 30).items();
+        assertThat(messages.get(1).plainText()).isEqualTo("你好，同学。");
+        assertThat(messages.get(1).status()).isEqualTo("COMPLETED");
+        assertThat(requestBody.get()).contains("未执行真实业务操作");
+        java.nio.file.Files.writeString(java.nio.file.Path.of("target", "orchestrator-sse.json"), json.writeValueAsString(events));
     }
 }
