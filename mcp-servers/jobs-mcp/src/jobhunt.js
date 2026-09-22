@@ -125,12 +125,15 @@ export async function searchSite(siteId, options = {}) {
   } catch (error) {
     if (!keyword || !isEmptyResult(error)) throw error;
 
-    const rows = await cliSearchJobs(siteId, {
-      nature: resolvedNature,
-      location,
-      category,
-      limit: Math.max(limit * 5, 50),
-    });
+    let rows;
+    try {
+      rows = await cliSearchJobs(siteId, {
+        nature: resolvedNature, location, category, limit: Math.max(limit * 5, 50),
+      });
+    } catch (fallbackError) {
+      if (isEmptyResult(fallbackError)) return { jobs: [], degraded: true };
+      throw fallbackError;
+    }
     const needle = keyword.toLowerCase();
     return {
       jobs: rows.filter((job) => matchesQuery(job, needle)).slice(0, limit).map((job) => toJobCard(siteId, job)),

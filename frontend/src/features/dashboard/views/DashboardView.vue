@@ -5,8 +5,14 @@ import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { useQuery } from '@tanstack/vue-query'
 import { listResumes } from '@/shared/api/resumes'
-import { useWorkspace, jobs, learningTasks } from '@/shared/stores/workspace'
+import { useWorkspace, learningTasks } from '@/shared/stores/workspace'
 const workspace = useWorkspace()
+const savedJobs = computed(() =>
+  workspace.state.applications
+    .map((a) => workspace.jobFor(a.jobId))
+    .filter((j) => !!j)
+    .slice(0, 3),
+)
 const router = useRouter()
 const prompt = ref('')
 const resumes = useQuery({
@@ -116,14 +122,10 @@ function send() {
     <div class="dashboard-bottom">
       <section class="panel">
         <div class="section-heading">
-          <h2>发现你的下一站 <span class="tag">示例岗位</span></h2>
+          <h2>我收藏的机会</h2>
           <RouterLink to="/jobs">查看全部 →</RouterLink>
         </div>
-        <RouterLink
-          v-for="job in jobs.slice(0, 3)"
-          :key="job.id"
-          :to="'/jobs/' + job.id"
-          class="job-row"
+        <RouterLink v-for="job in savedJobs" :key="job.id" :to="'/jobs/' + job.id" class="job-row"
           ><span class="company-logo" :style="{ background: job.color }">{{
             job.company.slice(0, 1)
           }}</span>
@@ -134,6 +136,9 @@ function send() {
           <span class="salary">{{ job.salary }}</span
           ><AppIcon name="arrow" :size="17"
         /></RouterLink>
+        <p v-if="!savedJobs.length" class="subtle">
+          还没有收藏岗位。去搜索企业官网的真实机会，并生成简历匹配报告。
+        </p>
       </section>
       <section class="panel toolkit">
         <div class="section-heading">

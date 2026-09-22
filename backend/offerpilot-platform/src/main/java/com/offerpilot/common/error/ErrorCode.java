@@ -27,6 +27,9 @@ public enum ErrorCode {
     RESUME_NOT_FOUND(30402, HttpStatus.NOT_FOUND, "简历不存在或无权访问"),
     RESUME_VERSION_CONFLICT(30403, HttpStatus.CONFLICT, "简历已更新，请重新加载后保存"),
     RESUME_INVALID(30404, HttpStatus.BAD_REQUEST, "简历文件无效或无法读取"),
+    JOB_NOT_FOUND(30501, HttpStatus.NOT_FOUND, "岗位不存在，请重新搜索"),
+    JOB_CONTENT_MISSING(30502, HttpStatus.UNPROCESSABLE_ENTITY, "岗位详情不足，暂不能生成匹配报告，请查看企业官网"),
+    MATCH_NOT_FOUND(30503, HttpStatus.NOT_FOUND, "匹配报告不存在或无权访问"),
 
     MODEL_TIMEOUT(40001, HttpStatus.GATEWAY_TIMEOUT, "模型调用超时"),
     MODEL_RATE_LIMITED(40002, HttpStatus.BAD_GATEWAY, "模型限流"),

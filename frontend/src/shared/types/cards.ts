@@ -11,6 +11,7 @@ export type CardType =
   | 'resume_diff'
   | 'job_card'
   | 'job_match'
+  | 'job_evidence_match'
   | 'campus_calendar'
   | 'board_update'
   | 'interviewer_state'

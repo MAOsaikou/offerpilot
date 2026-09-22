@@ -13,6 +13,7 @@ export type CardLoader = () => Promise<Component>
 
 export const cardRegistry: Partial<Record<CardType, CardLoader>> = {
   job_match: () => import('@/features/job/components/MatchReport.vue'),
+  job_evidence_match: () => import('@/features/job/components/EvidenceMatchReport.vue'),
   resume_diff: () => import('@/features/resume/components/PatchDiffViewer.vue'),
   board_update: () => import('@/features/board/components/BoardUpdateCard.vue'),
 }

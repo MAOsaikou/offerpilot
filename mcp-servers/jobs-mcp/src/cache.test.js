@@ -5,6 +5,20 @@ import { cacheStats, clearCache, withCache } from './cache.js';
 
 test.beforeEach(() => clearCache());
 
+test('全站失败不缓存，恢复后的合法空结果可以缓存', async () => {
+  let calls = 0;
+  const loader = async () => ({ items: [], failed: ++calls === 1 });
+  const cacheable = (result) => !result.failed;
+  const failed = await withCache('outage', loader, 60000, cacheable);
+  assert.equal(failed.value.failed, true);
+  assert.equal(cacheStats().entries, 0);
+  const recovered = await withCache('outage', loader, 60000, cacheable);
+  assert.equal(recovered.cached, false);
+  assert.deepEqual(recovered.value.items, []);
+  assert.equal((await withCache('outage', loader, 60000, cacheable)).cached, true);
+  assert.equal(calls, 2);
+});
+
 test('首次未命中会执行 loader，第二次命中不再执行', async () => {
   let calls = 0;
   const loader = async () => {

@@ -33,12 +33,12 @@ function write(key, value, ttlMs) {
  * 命中缓存就直接返回，否则执行 loader 并缓存结果。
  * 返回 cached 标记，便于在 _meta 里告诉调用方数据是否来自缓存。
  */
-export async function withCache(key, loader, ttlMs = DEFAULT_TTL_MS) {
+export async function withCache(key, loader, ttlMs = DEFAULT_TTL_MS, shouldCache = () => true) {
   const hit = read(key);
   if (hit !== undefined) return { value: hit, cached: true };
 
   const value = await loader();
-  write(key, value, ttlMs);
+  if (shouldCache(value)) write(key, value, ttlMs);
   return { value, cached: false };
 }
 
