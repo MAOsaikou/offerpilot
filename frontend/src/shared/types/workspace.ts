@@ -17,6 +17,7 @@ export interface Application {
   stage: Stage
   note: string
   date: string
+  jobSnapshot?: Job
 }
 export interface Resume {
   id: string

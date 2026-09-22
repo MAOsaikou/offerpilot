@@ -17,14 +17,12 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 
 import { cacheStats, withCache } from './cache.js';
 import {
-  DEFAULT_NATURE,
   DEFAULT_SITES,
   getJobDetail,
   hasSite,
   listSites,
   normalizeNature,
   searchAcrossSites,
-  searchSite,
 } from './jobhunt.js';
 
 const PORT = Number(process.env.PORT || 7001);
@@ -72,15 +70,11 @@ async function handleSearch({ query, site, sites, nature, location, category, li
 
   const cacheKey = JSON.stringify({ targets, keyword, resolvedNature, location, category, max });
   const { value, cached } = await withCache(cacheKey, async () => {
-    if (targets.length === 1) {
-      const single = await searchSite(targets[0], { query: keyword, nature: resolvedNature, location, category, limit: max });
-      return { jobs: single.jobs, skipped: [], degradedSites: single.degraded ? [targets[0]] : [] };
-    }
     return searchAcrossSites(targets, { query: keyword, nature: resolvedNature, location, category, limit: max }, {
       concurrency: MAX_PARALLEL_SITES,
       timeoutMs: SITE_TIMEOUT_MS,
     });
-  }, CACHE_TTL_MS);
+  }, CACHE_TTL_MS, (result) => result.skipped.length < targets.length);
 
   const jobs = value.jobs.slice(0, max);
   return json({
@@ -179,7 +173,7 @@ app.post('/search_jobs', async (req, res) => {
 // MCP 端点：无状态模式，每个请求新建 server + transport
 app.post('/mcp', async (req, res) => {
   const server = createMcpServer();
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on('close', () => {
     transport.close();
     server.close();
@@ -198,7 +192,7 @@ app.get('/mcp', (req, res) => {
   res.status(405).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed. POST to /mcp.' }, id: null });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, process.env.HOST || '0.0.0.0', () => {
   const sites = listSites();
   console.log(`jobs-mcp listening on :${PORT} — ${sites.length} sites, tools: list_sites / search_jobs / get_job_detail`);
 });

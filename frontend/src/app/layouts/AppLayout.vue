@@ -88,7 +88,7 @@ function active(path: string) {
         </div>
       </header>
       <div class="workspace-notice">
-        本地草稿留在此浏览器 · 已上传简历与对话保存在后端 · 岗位为示例
+        本地草稿与看板留在此浏览器 · 已上传简历、对话与匹配报告保存在后端 · 岗位来自企业官网
       </div>
       <p v-if="workspace.storageError" class="error-banner" role="alert">
         {{ workspace.storageError }}

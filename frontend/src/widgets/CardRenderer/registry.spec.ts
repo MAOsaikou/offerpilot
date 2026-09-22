@@ -3,7 +3,12 @@ import { cardRegistry, resolveCardComponent } from './registry'
 
 describe('cardRegistry', () => {
   it('已实现的卡片类型都注册了组件', () => {
-    for (const type of ['job_match', 'resume_diff', 'board_update'] as const) {
+    for (const type of [
+      'job_match',
+      'job_evidence_match',
+      'resume_diff',
+      'board_update',
+    ] as const) {
       expect(cardRegistry[type]).toBeTypeOf('function')
       expect(resolveCardComponent(type)).not.toBeNull()
     }

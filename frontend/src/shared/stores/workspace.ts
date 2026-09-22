@@ -141,7 +141,14 @@ export const useWorkspace = defineStore('workspace', () => {
       read: false,
     })
   }
-  function saveJob(jobId: string) {
+  function jobFor(jobId: string) {
+    return (
+      state.value.applications.find((a) => a.jobId === jobId)?.jobSnapshot ??
+      jobs.find((j) => j.id === jobId)
+    )
+  }
+  function saveJob(job: string | Job) {
+    const jobId = typeof job === 'string' ? job : job.id
     if (state.value.applications.some((a) => a.jobId === jobId)) return
     state.value.applications.push({
       id: crypto.randomUUID(),
@@ -149,10 +156,11 @@ export const useWorkspace = defineStore('workspace', () => {
       stage: '收藏',
       note: '',
       date: new Date().toISOString().slice(0, 10),
+      ...(typeof job === 'string' ? {} : { jobSnapshot: job }),
     })
-    notify('已收藏岗位：' + jobs.find((j) => j.id === jobId)?.title)
+    notify('已收藏岗位：' + jobFor(jobId)?.title)
   }
-  return { state, storageError, notify, saveJob }
+  return { state, storageError, notify, saveJob, jobFor }
 })
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object'
@@ -179,7 +187,13 @@ export function isWorkspace(v: unknown): v is Workspace {
       v.applications,
       (a) =>
         ['id', 'jobId', 'note', 'date'].every((k) => typeof a[k] === 'string') &&
-        stages.includes(a.stage as Stage),
+        stages.includes(a.stage as Stage) &&
+        (a.jobSnapshot === undefined ||
+          (isRecord(a.jobSnapshot) &&
+            ['id', 'title', 'company', 'city', 'salary', 'category', 'description', 'color'].every(
+              (key) => typeof (a.jobSnapshot as Record<string, unknown>)[key] === 'string',
+            ) &&
+            strings(a.jobSnapshot.tags))),
     ) &&
     records(
       v.interviews,

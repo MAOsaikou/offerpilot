@@ -32,10 +32,10 @@ function Build-Backend {
 }
 
 function Start-Dependencies {
-    Invoke-Step '启动 PostgreSQL / Redis / MinIO，等待依赖就绪' {
+    Invoke-Step '启动 PostgreSQL / Redis / MinIO / jobs-mcp，等待依赖就绪' {
         if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw '未找到 docker，请安装并打开 Docker Desktop，再重试。' }
         if (-not (Test-Path -LiteralPath $keyFile)) { throw '缺少 backend/.env.local，请先选择「配置 DeepSeek」。' }
-        & docker compose --env-file $keyFile -f (Join-Path $projectRoot 'deploy/docker-compose.yml') up -d --wait postgres redis minio
+        & docker compose --env-file $keyFile -f (Join-Path $projectRoot 'deploy/docker-compose.yml') up -d --build --wait postgres redis minio jobs-mcp
         if ($LASTEXITCODE -ne 0) { throw '依赖启动失败，请检查 Docker Desktop、端口与数据库配置。' }
     }
 }
@@ -43,7 +43,8 @@ function Start-Dependencies {
 function Show-Status {
     foreach ($endpoint in @(
         @{Name='前端'; Url='http://localhost:8080'},
-        @{Name='后端健康检查'; Url='http://127.0.0.1:8081/actuator/health'}
+        @{Name='后端健康检查'; Url='http://127.0.0.1:8081/actuator/health'},
+        @{Name='企业岗位服务'; Url='http://127.0.0.1:7001/health'}
     )) {
         try {
             $response = Invoke-WebRequest -UseBasicParsing -Uri $endpoint.Url -TimeoutSec 3

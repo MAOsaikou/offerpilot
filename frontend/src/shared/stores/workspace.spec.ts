@@ -35,6 +35,25 @@ describe('本地工作区', () => {
     await nextTick()
     expect(localStorage.getItem('offerpilot-workspace-v1')).toBe(raw)
   })
+  it('真实岗位收藏携带快照，刷新后看板仍有标题且保留旧示例收藏', async () => {
+    const store = useWorkspace()
+    store.saveJob('j1')
+    store.saveJob({
+      id: 'job_real',
+      title: '实际岗位',
+      company: '企业',
+      city: '上海',
+      salary: '',
+      category: '',
+      tags: [],
+      description: '',
+      color: '',
+    })
+    await nextTick()
+    setActivePinia(createPinia())
+    expect(useWorkspace().jobFor('job_real')?.title).toBe('实际岗位')
+    expect(useWorkspace().jobFor('j1')?.title).toBeTruthy()
+  })
   it('不接受超出题库范围的面试位置或非字符串任务', () => {
     expect(isWorkspace(createWorkspace())).toBe(true)
     expect(isWorkspace({ ...createWorkspace(), tasks: [null] })).toBe(false)

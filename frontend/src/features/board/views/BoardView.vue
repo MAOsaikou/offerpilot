@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
-import { jobs, stages, useWorkspace } from '@/shared/stores/workspace'
+import { stages, useWorkspace } from '@/shared/stores/workspace'
 const workspace = useWorkspace()
-const jobFor = (id: string) => jobs.find((j) => j.id === id)
+const jobFor = workspace.jobFor
 function changed(title: string) {
   workspace.notify('更新了岗位进展：' + title)
 }
