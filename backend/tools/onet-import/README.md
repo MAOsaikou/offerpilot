@@ -1,0 +1,73 @@
+# O*NET 职业条目导入
+
+把美国劳工部 O*NET 数据库的职业条目转成本项目 `occupations` 表的种子数据。
+
+产出：`backend/offerpilot-bootstrap/src/main/resources/seed/occupations-onet.json`，
+由 `OccupationSeeder` 在后端启动时导入。
+
+## 为什么用 O*NET
+
+- **权威**：兴趣分数（RIASEC 六维）来自 O*NET 官方测评，不是我们自己估的。
+- **可溯源**：每条条目保留 `onetCode`（O*NET-SOC 编码），能回到源数据核对。
+- **公开领域**：O*NET 数据可自由使用。
+
+注意它的局限：O*NET 是美国的职业分类，**没有中国特有职业**（公务员、事业编等），
+这部分要另找数据源（计划里是《中华人民共和国职业分类大典》）。
+
+## 前置
+
+1. 从 <https://www.onetcenter.org/database.html> 下载 **CSV 版本**并解压，至少需要：
+   - `occupation_data.csv`（职业名称与描述）
+   - `career_interest_types.csv`（RIASEC 兴趣分数）
+   - `job_zones.csv`（岗位的教育/培训等级）
+   - `essential_skills.csv`（通用技能及其重要性）
+2. Node 22+，以及一个可用的 DeepSeek API Key。
+
+## 三步流程
+
+### 1. 生成候选清单
+
+```powershell
+powershell -File build-candidates.ps1 -OnetDir <CSV 目录> -OutFile candidates.json
+```
+
+默认只保留 **Job Zone >= 4** 的职业（Zone 4 通常要求本科学历，Zone 5 要求研究生），
+对应我们的目标用户「高校学生」。当前这一批筛出 378 条。
+
+得分处理：O*NET 用 1-7 分制，脚本线性归一化到 0-1；霍兰德三码按六维分数降序取前三。
+
+### 2. 翻译成中文
+
+```powershell
+$env:DEEPSEEK_API_KEY = '<your-key>'
+node translate.mjs candidates.json translated.json
+```
+
+- 结果按 `code` 匹配，不依赖模型返回顺序
+- 模型批量翻译偶发丢条目，脚本会自动用更小批次补翻（最多 3 轮）
+- 每批完成即落盘，中断后重跑会跳过已翻译的条目
+- 378 条实测约 60 秒、3.5 万 tokens
+
+### 3. 生成种子文件
+
+把 `translated.json` 转成 `occupations-onet.json`：字段名对齐 `docs/06` 的表结构，
+补上 `_meta`（数据来源、筛选条件、归一化方式），**每条职业一行**（便于 diff）。
+
+## 重新导入
+
+改完种子文件后需要重新构建，因为种子文件是打进 jar 的：
+
+```powershell
+cd backend
+mvn -q -B -pl offerpilot-bootstrap -am package -DskipTests
+```
+
+注意：构建前要先停掉正在运行的后端，否则 Windows 会锁住 jar 导致 repackage 失败。
+
+## 已知问题
+
+- **翻译未逐条人工校对**，且模型偶尔会补充原文没有的内容（例如给"历史学教师"加上
+  "中国史、世界史、专门史"）。重新生成时可在 Prompt 里强调"只转述原文"。
+- `core_skills` 用的是 O*NET 的**通用技能**（阅读理解、批判性思维等），不是技术技能。
+  技术技能建议改为从真实 JD 抽取（jobs-mcp 已经能返回 JD 全文）。
+- 更新 O*NET 版本时，`hollandScores` 会随之变化，需要重新跑一遍并复核差异。
