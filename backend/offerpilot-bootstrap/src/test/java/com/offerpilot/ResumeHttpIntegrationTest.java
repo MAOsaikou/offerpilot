@@ -39,9 +39,11 @@ import static org.assertj.core.api.Assertions.*;
 @Testcontainers
 class ResumeHttpIntegrationTest {
     @Container static PostgreSQLContainer<?> database = new PostgreSQLContainer<>(DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
-    @Container static GenericContainer<?> minio = new GenericContainer<>(DockerImageName.parse("quay.io/minio/minio:latest"))
-        .withEnv("MINIO_ROOT_USER", "resume-test").withEnv("MINIO_ROOT_PASSWORD", "resume-test-password")
-        .withCommand("server", "/data").withExposedPorts(9000).waitingFor(Wait.forHttp("/minio/health/ready").forPort(9000));
+    // quay.io/minio/minio 匿名 token 的 actions 为空，manifest 返回 UNAUTHORIZED。
+    // 固定 adobe/s3mock:5.2.0 的清单 digest。Testcontainers 1.21 不能同时解析 tag 与 digest。
+    @Container static GenericContainer<?> minio = new GenericContainer<>(DockerImageName.parse("adobe/s3mock@sha256:7a37f0d796e81a28b970c892dcae532797014616b3312b467af8f0274ebf0c26"))
+        .withEnv("COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS", "resume-test").withExposedPorts(9090)
+        .waitingFor(Wait.forHttp("/").forPort(9090).forStatusCode(200));
     static final ObjectMapper JSON = new ObjectMapper();
     static final AtomicReference<String> output = new AtomicReference<>(ResumeStructure.SCHEMA);
     static final AtomicReference<String> lastPrompt = new AtomicReference<>();
@@ -61,7 +63,7 @@ class ResumeHttpIntegrationTest {
         registry.add("spring.datasource.password", database::getPassword);
         registry.add("spring.ai.deepseek.base-url", () -> "http://127.0.0.1:" + provider.getAddress().getPort());
         registry.add("spring.ai.openai.base-url", () -> "http://127.0.0.1:" + provider.getAddress().getPort());
-        registry.add("offerpilot.storage.endpoint", () -> "http://" + minio.getHost() + ":" + minio.getMappedPort(9000));
+        registry.add("offerpilot.storage.endpoint", () -> "http://" + minio.getHost() + ":" + minio.getMappedPort(9090));
         registry.add("offerpilot.storage.access-key", () -> "resume-test");
         registry.add("offerpilot.storage.secret-key", () -> "resume-test-password");
         registry.add("offerpilot.storage.bucket", () -> "resume-test");

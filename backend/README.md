@@ -38,7 +38,7 @@ Key 来自 [DeepSeek 控制台](https://platform.deepseek.com/api_keys)。文件
 
 开发环境 FLASH 和 CHEAP 都映射到 DeepSeek Flash，PRO 映射到 DeepSeek Pro；文字聊天和文本简历解析可只配置 DeepSeek。图文简历默认共用 DEEPSEEK_API_KEY，模型名为 deepseek-flash；VISION_ALT 保留为视觉路由档位，默认也使用 DeepSeek。要改用百炼，显式设置 LLM_VISION_PROVIDER=bailian、LLM_MODEL_VISION_ALT 和 BAILIAN_API_KEY / BAILIAN_BASE_URL。旧环境中曾填写的视觉模型名需同步调整，不能把百炼模型名交给 DeepSeek。模式下拉框目前不代表已接入不同专家。
 
-简历上传还需要 MinIO：backend/.env.local 中的 MINIO_ENDPOINT / MINIO_ROOT_USER / MINIO_ROOT_PASSWORD / MINIO_BUCKET 必须与容器一致（见 .env.example）。上传支持 PDF、DOCX、PNG、JPG、UTF-8 TXT/Markdown，单文件≤10MB、PDF≤10页；DOCX 支持正文、页眉、页脚和 PNG/JPEG 嵌入图片（最多20张）；其他嵌入媒体需导出 PDF。PDF 每页同时提供文本与图像以避免混合内容遗漏。原有前端本地草稿仍保留，不会自动上传。
+简历上传还需要对象存储：`deploy/docker-compose.yml` 的 `minio` 服务运行 Adobe S3Mock，backend/.env.local 中的 MINIO_ENDPOINT / MINIO_ROOT_USER / MINIO_ROOT_PASSWORD / MINIO_BUCKET 必须与容器一致（见 .env.example）。S3Mock 不校验访问密钥，后端仍用这对密钥签名。上传支持 PDF、DOCX、PNG、JPG、UTF-8 TXT/Markdown，单文件≤10MB、PDF≤10页；DOCX 支持正文、页眉、页脚和 PNG/JPEG 嵌入图片（最多20张）；其他嵌入媒体需导出 PDF。PDF 每页同时提供文本与图像以避免混合内容遗漏。原有前端本地草稿仍保留，不会自动上传。
 
 ## 3. 启动依赖
 
@@ -49,7 +49,7 @@ docker compose --env-file backend/.env.local -f deploy/docker-compose.yml up -d 
 docker compose --env-file backend/.env.local -f deploy/docker-compose.yml ps
 ```
 
-等待 postgres、redis 显示 `healthy`。首次需要下载镜像。端口为 PostgreSQL `5432`、Redis `6379`、MinIO `9000`（控制台 `9001`）。Redis 要求使用 `REDIS_PASSWORD` 认证，且宿主机端口仅绑定 `127.0.0.1`。聊天不调用 jobs-mcp，暂时不需要启动它。
+等待 postgres、redis、minio 显示 `healthy`。首次需要下载镜像。端口为 PostgreSQL `5432`、Redis `6379`、对象存储 `127.0.0.1:9000`（无 9001 控制台）。Redis 要求使用 `REDIS_PASSWORD` 认证，且宿主机端口仅绑定 `127.0.0.1`。聊天不调用 jobs-mcp，暂时不需要启动它。
 
 PostgreSQL 镜像已包含 pgvector。Java 启动自动执行 Flyway V1–V7，创建用户、会话、消息、文件元数据、简历与版本等表；无需手工运行 SQL。既有数据库只执行尚未应用的迁移，聊天和简历数据均按访客身份隔离。
 

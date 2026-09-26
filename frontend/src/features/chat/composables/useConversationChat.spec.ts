@@ -183,4 +183,23 @@ describe('持久会话状态', () => {
       { cardId: 'stored-card-1', cardType: 'job_match', payload: { score: 60 } },
     ])
   })
+  it('新会话创建后立即出现在历史列表，不必等回复结束', async () => {
+    vi.mocked(conversationsApi.create).mockResolvedValue(conv('created'))
+    vi.mocked(conversationsApi.messages).mockResolvedValue(messagePage('saved'))
+    vi.mocked(conversationsApi.list).mockResolvedValue({
+      items: [conv('created')],
+      page: 1,
+      size: 20,
+      total: 1,
+    })
+    let listedDuringStream: string[] = []
+    const chat = scope.run(useConversationChat)!
+    startMock.mockImplementation(async () => {
+      await vi.waitFor(() => expect(chat.conversations.value).toHaveLength(1))
+      listedDuringStream = chat.conversations.value.map((c) => c.id)
+      return 'run'
+    })
+    await chat.send('hello', 'AUTO', 'CHEAP', vi.fn())
+    expect(listedDuringStream).toEqual(['created'])
+  })
 })
