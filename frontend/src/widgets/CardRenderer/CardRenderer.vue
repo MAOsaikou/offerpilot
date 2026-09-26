@@ -12,6 +12,8 @@ const component = computed(() => resolveCardComponent(props.cardType))
 </script>
 
 <template>
-  <component :is="component" v-if="component" :payload="payload" />
-  <CardFallback v-else :card-type="cardType" :payload="payload" />
+  <div class="card-reveal">
+    <component :is="component" v-if="component" :payload="payload" />
+    <CardFallback v-else :card-type="cardType" :payload="payload" />
+  </div>
 </template>

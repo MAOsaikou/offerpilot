@@ -61,7 +61,6 @@ async function importFile(event: Event) {
   <section class="page-stack">
     <PageHeading
       title="让每一段经历，有力表达"
-      eyebrow="RESUME STUDIO"
       description="整理真实经历，为不同的机会准备不同的简历。"
       ><button class="btn" :disabled="importing" @click="fileInput?.click()">
         {{ importing ? '上传中…' : '上传并解析' }}</button
@@ -80,7 +79,7 @@ async function importFile(event: Event) {
     <div class="helper-note">
       支持 PDF、DOCX、PNG、JPG、TXT / Markdown，单文件不超过 10MB，PDF 最多 10 页。
       点击上传后，原文件保存到服务端，内容将发送给配置的模型用于解析。请核对解析结果后保存。
-      <RouterLink to="/settings/models">切换解析模型 →</RouterLink>
+      <RouterLink to="/settings/models">切换解析模型</RouterLink>
     </div>
     <p v-if="server.isPending.value" role="status">正在加载服务端简历…</p>
     <div v-else-if="server.isError.value" class="error-banner" role="alert">
@@ -112,7 +111,7 @@ async function importFile(event: Event) {
           />
           <div class="card-footer">
             <span>{{ new Date(item.updatedAt).toLocaleString('zh-CN') }}</span
-            ><span>查看 →</span>
+            ><span>查看</span>
           </div>
         </RouterLink>
       </div>
@@ -151,7 +150,7 @@ async function importFile(event: Event) {
         <p class="subtle">{{ resume.content.slice(0, 100) }}…</p>
         <div class="card-footer">
           <span class="subtle">{{ resume.updated }}</span
-          ><span>编辑 →</span>
+          ><span>编辑</span>
         </div></RouterLink
       >
     </div>
@@ -159,7 +158,7 @@ async function importFile(event: Event) {
       <AppIcon name="resumes" :size="44" />
       <h2>你的故事，值得一份好简历</h2>
       <p>也可以先创建本地草稿，整理经历后再上传解析。</p>
-      <button class="btn primary" @click="create()">创建第一份简历 →</button>
+      <button class="btn primary" @click="create()">创建第一份简历</button>
     </div>
   </section>
 </template>

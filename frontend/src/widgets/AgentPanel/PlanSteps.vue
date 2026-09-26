@@ -19,7 +19,7 @@ const labelOf: Record<StepStatus, string> = {
 
 const dotOf: Record<StepStatus, string> = {
   PENDING: 'bg-muted-foreground/40',
-  RUNNING: 'bg-primary pulse-dot',
+  RUNNING: 'live-dot',
   DONE: 'bg-success',
   FAILED: 'bg-danger',
   SKIPPED: 'bg-muted-foreground/40',
@@ -28,7 +28,7 @@ const dotOf: Record<StepStatus, string> = {
 
 <template>
   <section>
-    <h3 class="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">计划</h3>
+    <h3 class="mb-2 text-xs font-semibold text-muted-foreground">计划</h3>
 
     <p v-if="goal" class="mb-3 text-sm leading-relaxed">{{ goal }}</p>
     <p v-else class="mb-3 text-sm text-muted-foreground">
@@ -47,7 +47,7 @@ const dotOf: Record<StepStatus, string> = {
           >
             {{ step.title }}
           </p>
-          <p class="mt-0.5 font-mono text-xs text-muted-foreground">
+          <p class="mt-0.5 text-xs text-muted-foreground">
             {{ labelOf[step.status] }}
             <template v-if="step.summary"> · {{ step.summary }}</template>
             <template v-if="step.durationMs !== undefined">

@@ -133,7 +133,6 @@ async function openReport(reportId: string) {
           ? job.data.value.company + ' · ' + (job.data.value.locations || '地点未提供')
           : '正在读取岗位记录'
       "
-      eyebrow="OPPORTUNITY DETAIL"
       ><RouterLink to="/jobs" class="btn">← 返回搜索</RouterLink></PageHeading
     >
     <p v-if="job.isPending.value" class="panel" role="status">正在加载岗位…</p>
@@ -230,11 +229,7 @@ async function openReport(reportId: string) {
             }}<button class="btn" @click="versions.refetch()">重试版本</button>
           </p>
           <div v-if="(resumes.data.value?.total || 0) > 20" class="card-footer">
-            <button
-              class="btn"
-              :disabled="page === 1 || busy"
-              @click="changeResumePage(-1)"
-            >
+            <button class="btn" :disabled="page === 1 || busy" @click="changeResumePage(-1)">
               上一页简历</button
             ><span>第 {{ page }} 页</span
             ><button

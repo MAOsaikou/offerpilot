@@ -73,9 +73,8 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
   <section class="page-stack">
     <PageHeading
       title="发现适合你的下一站"
-      eyebrow="FIND YOUR OPPORTUNITY"
       description="查询企业官网岗位，把真实机会与你的简历连接起来。"
-      ><RouterLink to="/board" class="btn">求职看板 →</RouterLink></PageHeading
+      ><RouterLink to="/board" class="btn">求职看板</RouterLink></PageHeading
     >
     <form class="panel form-stack" @submit.prevent="submit">
       <div class="job-filters">
@@ -156,9 +155,7 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
         }}。当前结果不包含这些企业，可稍后重试。
       </div>
       <p v-if="search.data.value.meta.degradedSites.length" class="helper-note">
-        {{
-          search.data.value.meta.degradedSites.map(name).join('、')
-        }}
+        {{ search.data.value.meta.degradedSites.map(name).join('、') }}
         使用企业返回列表进行关键词筛选，可能未覆盖所有岗位。
       </p>
       <p v-if="search.data.value.meta.truncated" class="helper-note">
@@ -184,7 +181,7 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
           </p>
           <p class="subtle">企业更新时间：{{ job.updatedAt || '未提供' }}</p>
           <div class="card-footer">
-            <RouterLink :to="'/jobs/' + job.id" class="btn primary">查看详情与匹配</RouterLink
+            <RouterLink :to="'/jobs/' + job.id" class="btn">查看详情与匹配</RouterLink
             ><button
               class="btn"
               :disabled="saved(job.id)"

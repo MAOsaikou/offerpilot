@@ -3,7 +3,10 @@ import { effectScope, ref } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useConversationChat } from './useConversationChat'
 import { conversationsApi } from '@/shared/api/conversations'
+import { useAgentRunStore } from '@/shared/stores/agentRun'
 import type { Conversation, MessagePage } from '@/shared/types/conversation'
+
+const startMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/shared/api/conversations', () => ({
   conversationsApi: {
@@ -18,7 +21,7 @@ vi.mock('@/shared/api/conversations', () => ({
 vi.mock('@/shared/composables/useAgentStream', () => ({
   useAgentStream: () => ({
     streaming: ref(false),
-    start: vi.fn().mockResolvedValue('run'),
+    start: startMock,
     stop: vi.fn().mockResolvedValue(undefined),
   }),
 }))
@@ -52,6 +55,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   scope = effectScope()
   vi.mocked(conversationsApi.list).mockResolvedValue({ items: [], page: 1, size: 20, total: 0 })
+  startMock.mockResolvedValue('run')
 })
 afterEach(() => scope.stop())
 describe('持久会话状态', () => {
@@ -119,5 +123,64 @@ describe('持久会话状态', () => {
     expect(created).toHaveBeenCalledWith('created')
     expect(chat.messages.value.map((m) => m.id)).toEqual(['saved'])
     expect(chat.sending.value).toBe(false)
+  })
+  it('发送后服务端改写的标题同步到当前会话，无需刷新页面', async () => {
+    vi.mocked(conversationsApi.create).mockResolvedValue({ ...conv('created'), title: '新对话' })
+    vi.mocked(conversationsApi.messages).mockResolvedValue(messagePage('saved'))
+    vi.mocked(conversationsApi.list).mockResolvedValue({
+      items: [{ ...conv('created'), title: '后端校招怎么选' }],
+      page: 1,
+      size: 20,
+      total: 1,
+    })
+    const chat = scope.run(useConversationChat)!
+    await chat.send('后端校招怎么选', 'AUTO', 'CHEAP', vi.fn())
+    await vi.waitFor(() => expect(chat.current.value?.title).toBe('后端校招怎么选'))
+  })
+  it('回复结束后保留本轮已渲染的卡片与思考摘要', async () => {
+    vi.mocked(conversationsApi.create).mockResolvedValue(conv('created'))
+    vi.mocked(conversationsApi.messages).mockResolvedValue(messagePage('saved'))
+    startMock.mockImplementation(async () => {
+      const store = useAgentRunStore()
+      const base = { runId: 'run', ts: '' }
+      store.apply({
+        ...base,
+        id: 1,
+        type: 'run.started',
+        conversationId: 'created',
+        messageId: 'm',
+        model: 'test',
+        mode: 'AUTO',
+      })
+      store.apply({ ...base, id: 2, type: 'reasoning.delta', text: '先查岗位' })
+      store.apply({
+        ...base,
+        id: 3,
+        type: 'ui.card',
+        cardId: 'card_1',
+        cardType: 'job_match',
+        payload: { score: 78 },
+      })
+      return 'run'
+    })
+    const chat = scope.run(useConversationChat)!
+    await chat.send('hello', 'AUTO', 'CHEAP', vi.fn())
+    const saved = chat.messages.value.find((m) => m.id === 'saved')
+    expect(saved?.cards?.map((c) => c.cardId)).toEqual(['card_1'])
+    expect(saved?.reasoning).toBe('先查岗位')
+  })
+  it('按契约读取服务端消息 parts 中的卡片', async () => {
+    const page = messagePage('stored')
+    page.items[0]!.parts = [
+      { type: 'text', text: 'stored' },
+      { type: 'card', cardType: 'job_match', payload: { score: 60 } },
+    ]
+    vi.mocked(conversationsApi.get).mockResolvedValue(conv('a'))
+    vi.mocked(conversationsApi.messages).mockResolvedValue(page)
+    const chat = scope.run(useConversationChat)!
+    await chat.open('a')
+    expect(chat.messages.value[0]?.cards).toEqual([
+      { cardId: 'stored-card-1', cardType: 'job_match', payload: { score: 60 } },
+    ])
   })
 })

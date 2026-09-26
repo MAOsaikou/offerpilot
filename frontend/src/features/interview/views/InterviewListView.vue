@@ -27,7 +27,6 @@ function start() {
   <section class="page-stack">
     <PageHeading
       title="让表达，先于机会准备好"
-      eyebrow="INTERVIEW PRACTICE"
       description="在轻松的练习里，把经历讲清楚，把信心建立起来。"
     />
     <div class="split-content">
@@ -52,7 +51,7 @@ function start() {
           使用 5 道固定通用题，自主作答并保存记录。不会生成 AI 评分；需要个性化讨论时可转到 AI
           对话。
         </p>
-        <button class="btn primary" type="submit">开始练习 →</button>
+        <button class="btn primary" type="submit">开始练习</button>
       </form>
       <aside class="panel form-stack">
         <span class="stat-icon"><AppIcon name="interviews" /></span>
@@ -84,7 +83,7 @@ function start() {
           <small>{{ session.kind }} · {{ session.date }}</small>
         </div>
         <span class="tag">{{ session.completed ? '已完成' : '进行中' }}</span
-        ><span>{{ session.completed ? '查看复盘' : '继续练习' }} →</span></RouterLink
+        ><span>{{ session.completed ? '查看复盘' : '继续练习' }}</span></RouterLink
       >
     </section>
   </section>

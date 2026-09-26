@@ -40,7 +40,6 @@ function choose(role: string) {
   <section class="page-stack">
     <PageHeading
       title="从了解自己，到找到方向"
-      eyebrow="DISCOVER YOUR PATH"
       description="先写下你的偏好，再探索值得投入的职业方向。"
       ><RouterLink
         :to="{
@@ -48,7 +47,7 @@ function choose(role: string) {
           query: { mode: 'CAREER_DISCOVERY', prompt: '请通过提问帮助我梳理职业兴趣和能力。' },
         }"
         class="btn primary"
-        >开始对话探索 ↗</RouterLink
+        >开始对话探索</RouterLink
       ></PageHeading
     >
     <p v-if="message" role="status" class="success-banner">{{ message }}</p>
@@ -98,7 +97,7 @@ function choose(role: string) {
           回想一件让你投入的事：你在做什么？其中哪一部分让你有成就感？这些具体经历，比一个简单的标签更有价值。
         </p>
         <div class="helper-note">此处是自填偏好与通用方向介绍，不是心理测评或 AI 匹配报告。</div>
-        <RouterLink to="/career" class="btn">把方向变成行动 →</RouterLink>
+        <RouterLink to="/career" class="btn">把方向变成行动</RouterLink>
       </aside>
     </div>
     <div class="section-heading">
@@ -112,7 +111,7 @@ function choose(role: string) {
         <p class="subtle">{{ direction.desc }}</p>
         <p class="tag">{{ direction.skills }}</p>
         <button class="btn" @click="choose(direction.role)">
-          {{ workspace.state.target === direction.role ? '当前目标' : '设为探索目标 →' }}
+          {{ workspace.state.target === direction.role ? '当前目标' : '设为探索目标' }}
         </button>
       </article>
     </div>

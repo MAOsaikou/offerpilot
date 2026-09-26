@@ -10,10 +10,7 @@ const progress = computed(() =>
 </script>
 <template>
   <section class="page-stack">
-    <PageHeading
-      title="把远方，拆成每一步"
-      eyebrow="YOUR GROWTH ROADMAP"
-      description="明确目标，持续练习，留下可回顾的成长轨迹。"
+    <PageHeading title="把远方，拆成每一步" description="明确目标，持续练习，留下可回顾的成长轨迹。"
       ><RouterLink to="/discover" class="btn">调整职业目标</RouterLink></PageHeading
     >
     <div class="split-content">
@@ -35,7 +32,7 @@ const progress = computed(() =>
       </section>
       <aside class="form-stack">
         <section class="panel form-stack">
-          <p class="eyebrow">YOUR DESTINATION</p>
+          <p class="eyebrow">目标方向</p>
           <h2>{{ workspace.state.target || '先确定一个目标' }}</h2>
           <p class="subtle">意向城市：{{ workspace.state.city || '不限' }}</p>
           <div class="large-number">{{ progress }}<span style="font-size: 1rem"> %</span></div>
@@ -57,7 +54,7 @@ const progress = computed(() =>
               },
             }"
             class="btn primary"
-            >和 AI 讨论下一步 ↗</RouterLink
+            >和 AI 讨论下一步</RouterLink
           >
         </section>
         <section class="panel form-stack">
@@ -65,7 +62,7 @@ const progress = computed(() =>
           <p class="subtle">
             选一个小问题，做出一个能展示的项目。每周留下一段复盘：做了什么、卡在哪里、下次怎么改。
           </p>
-          <RouterLink to="/kb" class="btn text">记录一次复盘 →</RouterLink>
+          <RouterLink to="/kb" class="btn text">记录一次复盘</RouterLink>
         </section>
       </aside>
     </div>

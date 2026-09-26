@@ -41,7 +41,6 @@ function exportAnswers() {
   <section v-if="session" class="page-stack">
     <PageHeading
       :title="session.completed ? '一次练习，一份积累' : session.role + ' · 文字练习'"
-      eyebrow="PRACTICE ROOM"
       :description="session.kind + ' · 固定题库自练'"
       ><RouterLink to="/interviews" class="btn">返回练习列表</RouterLink
       ><button v-if="session.completed" class="btn primary" @click="exportAnswers">
@@ -75,7 +74,7 @@ function exportAnswers() {
           >
             上一题</button
           ><button class="btn primary" :disabled="!answer.trim()">
-            {{ session.question === questions.length - 1 ? '完成并复盘' : '保存，下一题 →' }}
+            {{ session.question === questions.length - 1 ? '完成并复盘' : '保存，下一题' }}
           </button>
         </div>
       </form></template
@@ -102,7 +101,7 @@ function exportAnswers() {
               },
             }"
             class="btn primary"
-            >继续和 AI 练习 ↗</RouterLink
+            >继续和 AI 练习</RouterLink
           ><RouterLink to="/career" class="btn">更新成长行动</RouterLink>
         </aside>
       </div></template

@@ -30,16 +30,16 @@ const statusLabel = computed(() => {
 </script>
 
 <template>
-  <div class="glass-panel flex h-full flex-col overflow-hidden rounded-2xl">
+  <div class="surface flex h-full flex-col overflow-hidden rounded-[14px]">
     <header class="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-4">
-      <span class="text-sm font-medium">Agent</span>
+      <span class="text-sm font-semibold">执行过程</span>
       <span
         class="flex items-center gap-1.5 text-xs"
         :class="run?.status === 'FAILED' ? 'text-danger' : 'text-muted-foreground'"
       >
         <span
           class="size-1.5 rounded-full"
-          :class="run?.status === 'RUNNING' ? 'bg-primary pulse-dot' : 'bg-muted-foreground/40'"
+          :class="run?.status === 'RUNNING' ? 'live-dot' : 'bg-muted-foreground/40'"
         />
         {{ statusLabel }}
       </span>
@@ -56,7 +56,7 @@ const statusLabel = computed(() => {
         <section v-if="run?.reasoning">
           <button
             type="button"
-            class="flex w-full items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+            class="flex w-full items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
             @click="reasoningOpen = !reasoningOpen"
           >
             思考摘要
@@ -72,12 +72,10 @@ const statusLabel = computed(() => {
         <ApprovalCard :approvals="run?.approvals ?? []" />
 
         <section v-if="run && run.citations.length > 0">
-          <h3 class="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            引用
-          </h3>
+          <h3 class="mb-2 text-xs font-semibold text-muted-foreground">引用</h3>
           <ul class="space-y-1.5">
             <li v-for="source in run.citations" :key="source.docId" class="text-xs">
-              <span class="font-mono text-primary">[{{ source.index }}]</span>
+              <span class="num text-primary">[{{ source.index }}]</span>
               {{ source.title }}
               <span class="ml-1 text-muted-foreground">
                 {{ (source.score * 100).toFixed(0) }}%
@@ -87,9 +85,7 @@ const statusLabel = computed(() => {
         </section>
 
         <section v-if="run && run.memoryFacts.length > 0">
-          <h3 class="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            用到的记忆
-          </h3>
+          <h3 class="mb-2 text-xs font-semibold text-muted-foreground">用到的记忆</h3>
           <ul class="space-y-1 text-xs text-muted-foreground">
             <li v-for="fact in run.memoryFacts" :key="fact.id">{{ fact.fact }}</li>
           </ul>

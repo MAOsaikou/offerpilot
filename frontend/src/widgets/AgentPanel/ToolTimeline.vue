@@ -9,9 +9,7 @@ defineProps<{
 
 <template>
   <section>
-    <h3 class="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-      工具与专家调用
-    </h3>
+    <h3 class="mb-2 text-xs font-semibold text-muted-foreground">工具与专家调用</h3>
 
     <p v-if="toolCalls.length === 0" class="text-sm text-muted-foreground">暂无</p>
 
@@ -23,7 +21,7 @@ defineProps<{
               class="size-1.5 shrink-0 rounded-full"
               :class="
                 cn(
-                  call.status === 'RUNNING' && 'bg-primary pulse-dot',
+                  call.status === 'RUNNING' && 'live-dot',
                   call.status === 'OK' && 'bg-success',
                   call.status === 'FAILED' && 'bg-danger',
                   call.status === 'CANCELLED' && 'bg-muted-foreground/40',
@@ -35,7 +33,7 @@ defineProps<{
               >占位</span
             >
             <span class="sr-only">{{ call.status }}</span>
-            <span class="ml-auto shrink-0 font-mono text-muted-foreground">
+            <span class="ml-auto shrink-0 num text-muted-foreground">
               {{
                 call.durationMs !== undefined
                   ? (call.durationMs / 1000).toFixed(1) + 's'

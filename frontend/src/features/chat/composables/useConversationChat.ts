@@ -2,18 +2,30 @@ import { computed, onScopeDispose, ref } from 'vue'
 import { conversationsApi } from '@/shared/api/conversations'
 import { cancelAgentRun } from '@/shared/api/agent'
 import { useAgentStream } from '@/shared/composables/useAgentStream'
-import { useAgentRunStore } from '@/shared/stores/agentRun'
+import { useAgentRunStore, type CardView } from '@/shared/stores/agentRun'
 import type { Conversation, StoredMessage } from '@/shared/types/conversation'
 import type { AgentMode } from '@/shared/types/agent-events'
+import type { CardType } from '@/shared/types/cards'
 import type { ChatMessageView } from '../types'
 
-const messageView = (m: StoredMessage): ChatMessageView => ({
-  id: m.id,
-  role: m.role === 'USER' ? 'user' : 'assistant',
-  text: m.plainText || '',
-  status: m.status,
-  runId: m.runId,
-})
+interface RunExtras {
+  cards?: CardView[]
+  reasoning?: string
+}
+
+/** 未知 cardType 交给 CardRenderer 的兜底组件处理 */
+const storedCards = (m: StoredMessage): CardView[] =>
+  (m.parts ?? []).flatMap((part, index) =>
+    part.type === 'card' && typeof part.cardType === 'string'
+      ? [
+          {
+            cardId: part.cardId ?? `${m.id}-card-${index}`,
+            cardType: part.cardType as CardType,
+            payload: part.payload,
+          },
+        ]
+      : [],
+  )
 const errorText = (error: unknown) => (error instanceof Error ? error.message : '请求失败，请重试')
 
 export function useConversationChat() {
@@ -37,6 +49,24 @@ export function useConversationChat() {
   let epoch = 0
   let listEpoch = 0
   let poll: ReturnType<typeof setTimeout> | undefined
+  // 服务端记录尚未持久化卡片与思考摘要，本页会话内按 runId 保留已渲染的内容
+  const runExtras = new Map<string, RunExtras>()
+  function messageView(m: StoredMessage): ChatMessageView {
+    const view: ChatMessageView = {
+      id: m.id,
+      role: m.role === 'USER' ? 'user' : 'assistant',
+      text: m.plainText || '',
+      status: m.status,
+      runId: m.runId,
+    }
+    if (view.role === 'user') return view
+    const extras = m.runId ? runExtras.get(m.runId) : undefined
+    const cards = storedCards(m)
+    if (cards.length) view.cards = cards
+    else if (extras?.cards?.length) view.cards = extras.cards
+    if (extras?.reasoning) view.reasoning = extras.reasoning
+    return view
+  }
   const activeRun = computed(() => store.activeRun)
   const remoteRunId = computed(() => messages.value.find((m) => m.status === 'RUNNING')?.runId)
   const busy = computed(
@@ -73,6 +103,9 @@ export function useConversationChat() {
         : data.items
       page.value = nextPage
       hasMoreConversations.value = nextPage * data.size < data.total
+      // 首条消息发送后服务端会改写标题，当前会话随列表同步
+      const fresh = data.items.find((item) => item.id === current.value?.id)
+      if (fresh) current.value = fresh
     } catch (e) {
       if (version === listEpoch) listError.value = errorText(e)
     } finally {
@@ -169,6 +202,7 @@ export function useConversationChat() {
     error.value = ''
     store.reset()
     let id = current.value?.id
+    let runId: string | undefined
     try {
       if (!id) {
         const conversation = mock
@@ -191,7 +225,7 @@ export function useConversationChat() {
         { id: crypto.randomUUID(), role: 'user', text: content },
         { id: optimisticId.value, role: 'assistant', text: '', streaming: true },
       )
-      await stream.start({ conversationId: id, content, mode, options: { modelTier } })
+      runId = await stream.start({ conversationId: id, content, mode, options: { modelTier } })
       if (version === epoch && activeRun.value?.error) error.value = activeRun.value.error.message
     } catch (e) {
       if (version === epoch && !(e instanceof DOMException && e.name === 'AbortError'))
@@ -204,6 +238,9 @@ export function useConversationChat() {
           target.cards = activeRun.value?.cards
           target.reasoning = activeRun.value?.reasoning
           target.streaming = false
+          runId ||= activeRun.value?.runId
+          if (runId && (target.cards?.length || target.reasoning))
+            runExtras.set(runId, { cards: target.cards, reasoning: target.reasoning })
           target.status =
             activeRun.value?.status === 'CANCELLED'
               ? 'CANCELLED'

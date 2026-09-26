@@ -1,177 +1,301 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
-import PageHeading from '@/shared/components/PageHeading.vue'
-import AppIcon from '@/shared/components/AppIcon.vue'
 import { useQuery } from '@tanstack/vue-query'
+import AppIcon from '@/shared/components/AppIcon.vue'
 import { listResumes } from '@/shared/api/resumes'
-import { useWorkspace, learningTasks } from '@/shared/stores/workspace'
+import { useWorkspace, learningTasks, stages } from '@/shared/stores/workspace'
+import RouteStrip from '../components/RouteStrip.vue'
 const workspace = useWorkspace()
-const savedJobs = computed(() =>
-  workspace.state.applications
-    .map((a) => workspace.jobFor(a.jobId))
-    .filter((j) => !!j)
-    .slice(0, 3),
-)
 const router = useRouter()
 const prompt = ref('')
 const resumes = useQuery({
   queryKey: ['resumes', 1],
   queryFn: ({ signal }) => listResumes(1, signal),
 })
-const stats = computed(() => [
-  {
-    label: '我的简历',
-    value: resumes.isError.value
-      ? '—'
-      : workspace.state.resumes.length + (resumes.data.value?.total ?? 0),
-    icon: 'resumes',
-    to: '/resumes',
-    detail: '为下一次机会做好准备',
-  },
-  {
-    label: '跟进中的岗位',
-    value: workspace.state.applications.filter((a) => a.stage !== '已结束').length,
-    icon: 'jobs',
-    to: '/board',
-    detail: '所有进展，一目了然',
-  },
-  {
-    label: '面试练习',
-    value: workspace.state.interviews.length,
-    icon: 'interviews',
-    to: '/interviews',
-    detail: '每一次练习都算数',
-  },
-  {
-    label: '已完成的行动',
-    value: workspace.state.tasks.length,
-    icon: 'career',
-    to: '/career',
-    detail: '积累属于你的竞争力',
-  },
-])
+const savedJobs = computed(() =>
+  workspace.state.applications
+    .map((a) => workspace.jobFor(a.jobId))
+    .filter((j) => !!j)
+    .slice(0, 4),
+)
+const stops = computed(() =>
+  stages.map((stage) => ({
+    stage,
+    count: workspace.state.applications.filter((a) => a.stage === stage).length,
+  })),
+)
+const resumeCount = computed(() =>
+  resumes.isError.value
+    ? undefined
+    : workspace.state.resumes.length + (resumes.data.value?.total ?? 0),
+)
 const nextTask = computed(() => learningTasks.find((t) => !workspace.state.tasks.includes(t)))
+const progress = computed(() => (workspace.state.tasks.length / learningTasks.length) * 100)
+const today = new Date().toLocaleDateString('zh-CN', {
+  month: 'long',
+  day: 'numeric',
+  weekday: 'long',
+})
+const suggestions = [
+  { label: '梳理职业方向', text: '帮我梳理适合我的职业方向' },
+  { label: '打磨项目经历', text: '帮我优化简历里的项目经历' },
+  { label: '准备下一场面试', text: '帮我准备一场技术面试' },
+]
+const toolkit = [
+  { to: '/resumes', icon: 'resumes', title: '简历', desc: '上传解析，或继续编辑本地草稿' },
+  { to: '/interviews', icon: 'interviews', title: '模拟面试', desc: '从自我介绍开始练习表达' },
+  { to: '/kb', icon: 'kb', title: '知识库', desc: '记下每一次复盘' },
+]
 function send() {
   if (prompt.value.trim())
     void router.push({ path: '/chat', query: { prompt: prompt.value.trim() } })
 }
 </script>
 <template>
-  <section class="page-stack">
-    <PageHeading
-      :title="`你好，${workspace.state.name} 👋`"
-      eyebrow="YOUR NEXT CHAPTER"
-      description="理想的下一站，从今天的一小步开始。"
-      ><span class="date-label">{{
-        new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })
-      }}</span></PageHeading
-    >
-    <div class="dashboard-top">
-      <section class="copilot-card">
-        <div class="copilot-orbit" aria-hidden="true"><span /><span /><AppIcon :size="64" /></div>
-        <div class="copilot-copy">
-          <span class="light-eyebrow">OFFERPILOT AI</span>
-          <h2>你的求职旅程，<br />有一位新搭档。</h2>
-          <p>聊聊职业方向、简历或下一场面试。</p>
+  <section class="page-stack dashboard">
+    <header class="greeting">
+      <h1>你好，{{ workspace.state.name }}</h1>
+      <p class="date-label">{{ today }}</p>
+    </header>
+
+    <div class="ask-block">
+      <form class="ask" @submit.prevent="send">
+        <AppIcon name="spark" :size="18" />
+        <input
+          v-model="prompt"
+          maxlength="4000"
+          aria-label="告诉 AI 你的求职目标"
+          placeholder="问 OfferPilot：今天想解决什么？"
+          required
+        />
+        <button class="btn primary" :disabled="!prompt.trim()">提问</button>
+      </form>
+      <div class="chips">
+        <button
+          v-for="(item, index) in suggestions"
+          :key="item.label"
+          type="button"
+          class="chip stagger-in"
+          :style="{ '--i': index + 2 }"
+          @click="prompt = item.text"
+        >
+          {{ item.label }}
+        </button>
+      </div>
+    </div>
+
+    <section class="route-section">
+      <div class="section-heading">
+        <h2>你的航线</h2>
+        <RouterLink to="/board">打开看板</RouterLink>
+      </div>
+      <RouteStrip :stops="stops" />
+    </section>
+
+    <div class="dashboard-grid">
+      <section class="panel next-panel">
+        <div class="section-heading">
+          <h2>下一步</h2>
+          <RouterLink to="/career">成长路线</RouterLink>
         </div>
-        <form class="quick-prompt" @submit.prevent="send">
-          <input
-            v-model="prompt"
-            maxlength="4000"
-            aria-label="告诉 AI 你的求职目标"
-            placeholder="今天，想一起解决什么？"
-            required
-          /><button aria-label="发送到 AI 对话"><AppIcon name="arrow" /></button>
-        </form>
-        <div class="prompt-chips">
-          <button @click="prompt = '帮我梳理适合我的职业方向'">探索职业方向 ↗</button
-          ><button @click="prompt = '帮我优化简历里的项目经历'">打磨项目经历 ↗</button
-          ><button @click="prompt = '帮我准备一场技术面试'">准备下一场面试 ↗</button>
-        </div>
-      </section>
-      <section class="panel today-card">
-        <div class="section-label">
-          <span class="eyebrow">TODAY'S FOCUS</span><AppIcon name="discover" />
-        </div>
-        <h2>让目标更近一点</h2>
         <p class="subtle">目标方向</p>
-        <strong class="target-title">{{ workspace.state.target || '还没有设定目标' }}</strong>
-        <div class="focus-progress">
-          <div
-            :style="{ width: (workspace.state.tasks.length / learningTasks.length) * 100 + '%' }"
-          />
+        <p class="target-title">{{ workspace.state.target || '还没有设定目标' }}</p>
+        <div class="focus-progress" role="presentation">
+          <div :style="{ width: progress + '%' }" />
         </div>
         <p class="subtle">
-          {{ workspace.state.tasks.length }} / {{ learningTasks.length }} 项成长行动已完成
+          已完成 <span class="num">{{ workspace.state.tasks.length }}</span> /
+          <span class="num">{{ learningTasks.length }}</span> 项成长行动。你有
+          <span class="num">{{ resumeCount ?? '—' }}</span> 份简历、
+          <span class="num">{{ workspace.state.interviews.length }}</span> 场面试练习。
         </p>
-        <RouterLink to="/career" class="next-action"
-          ><span><small>下一步</small>{{ nextTask || '本轮行动已完成，回顾成长记录' }}</span
-          ><AppIcon name="arrow"
-        /></RouterLink>
+        <RouterLink to="/career" class="next-action">
+          <span class="next-dot" aria-hidden="true" />
+          <span>{{ nextTask || '本轮行动已完成，回顾一下成长记录' }}</span>
+          <AppIcon name="arrow" :size="18" />
+        </RouterLink>
+        <div class="toolkit">
+          <RouterLink v-for="entry in toolkit" :key="entry.to" :to="entry.to" class="list-row"
+            ><span class="stat-icon"><AppIcon :name="entry.icon" :size="18" /></span>
+            <div>
+              <h3>{{ entry.title }}</h3>
+              <small>{{ entry.desc }}</small>
+            </div>
+          </RouterLink>
+        </div>
       </section>
-    </div>
-    <div class="stat-grid">
-      <RouterLink v-for="stat in stats" :key="stat.label" :to="stat.to" class="panel stat-card"
-        ><span class="stat-icon"><AppIcon :name="stat.icon" /></span>
-        <p>{{ stat.label }}</p>
-        <strong>{{ stat.value.toString().padStart(2, '0') }}</strong
-        ><small>{{ stat.detail }}</small></RouterLink
-      >
-    </div>
-    <div class="dashboard-bottom">
+
       <section class="panel">
         <div class="section-heading">
-          <h2>我收藏的机会</h2>
-          <RouterLink to="/jobs">查看全部 →</RouterLink>
-        </div>
-        <RouterLink v-for="job in savedJobs" :key="job.id" :to="'/jobs/' + job.id" class="job-row"
-          ><span class="company-logo" :style="{ background: job.color }">{{
-            job.company.slice(0, 1)
-          }}</span>
-          <div>
-            <h3>{{ job.title }}</h3>
-            <p>{{ job.company }} · {{ job.city }} · {{ job.tags[0] }}</p>
-          </div>
-          <span class="salary">{{ job.salary }}</span
-          ><AppIcon name="arrow" :size="17"
-        /></RouterLink>
-        <p v-if="!savedJobs.length" class="subtle">
-          还没有收藏岗位。去搜索企业官网的真实机会，并生成简历匹配报告。
-        </p>
-      </section>
-      <section class="panel toolkit">
-        <div class="section-heading">
-          <h2>求职工具箱</h2>
-          <span class="subtle">准备好，再出发</span>
+          <h2>收藏的机会</h2>
+          <RouterLink to="/jobs">搜索岗位</RouterLink>
         </div>
         <RouterLink
-          v-for="entry in [
-            {
-              to: '/resumes',
-              icon: 'resumes',
-              title: '让经历被看见',
-              desc: '整理简历，呈现你的真实优势',
-            },
-            {
-              to: '/interviews',
-              icon: 'interviews',
-              title: '把下一场，当作主场',
-              desc: '从自我介绍开始练习表达',
-            },
-            { to: '/kb', icon: 'kb', title: '把经验变成积累', desc: '收藏知识，留住每一次复盘' },
-          ]"
-          :key="entry.to"
-          :to="entry.to"
-          class="tool-row"
-          ><span class="stat-icon"><AppIcon :name="entry.icon" /></span>
+          v-for="(job, index) in savedJobs"
+          :key="job.id"
+          :to="'/jobs/' + job.id"
+          class="job-row stagger-in"
+          :style="{ '--i': index }"
+          ><span class="company-logo">{{ job.company.slice(0, 1) }}</span>
           <div>
-            <h3>{{ entry.title }}</h3>
-            <p>{{ entry.desc }}</p>
+            <h3>{{ job.title }}</h3>
+            <p>{{ job.company }}，{{ job.city }}</p>
           </div>
-          <span>↗</span></RouterLink
-        >
+          <AppIcon name="arrow" :size="16"
+        /></RouterLink>
+        <div v-if="!savedJobs.length" class="empty-state">
+          <p>还没有收藏岗位。搜索企业官网的真实岗位，收藏后就会出现在航线上。</p>
+          <RouterLink to="/jobs" class="btn">搜索岗位</RouterLink>
+        </div>
       </section>
     </div>
   </section>
 </template>
+<style scoped>
+.greeting {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.greeting h1 {
+  font-size: 40px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+.ask-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 760px;
+}
+.ask {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-float);
+  transition:
+    border-color var(--dur-fast),
+    box-shadow var(--dur-mid);
+}
+.ask:focus-within {
+  border-color: var(--primary);
+  box-shadow:
+    var(--shadow-float),
+    0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.ask > svg {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+.ask input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+}
+.ask input::placeholder {
+  color: var(--muted-foreground);
+}
+.ask .btn {
+  min-height: 44px;
+  padding: 0 20px;
+}
+.route-section {
+  padding: 24px 0 8px;
+  border-top: 1px solid var(--border);
+}
+.route-section .section-heading {
+  margin-bottom: 20px;
+}
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.next-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.target-title {
+  margin-top: -6px;
+  font-size: 21px;
+  font-weight: 650;
+}
+.next-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-weight: 550;
+  transition:
+    border-color var(--dur-fast),
+    color var(--dur-fast);
+}
+.next-action span:nth-child(2) {
+  flex: 1;
+}
+.next-action > svg {
+  color: var(--muted-foreground);
+  transition: transform var(--dur-mid) var(--ease-out);
+}
+.next-action:hover {
+  border-color: var(--primary);
+}
+.next-action:hover > svg {
+  color: var(--primary);
+  transform: translateX(3px);
+}
+.next-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--primary);
+}
+.toolkit {
+  margin-top: 8px;
+}
+@media (max-width: 1000px) {
+  .route-section {
+    padding: 24px 0 8px;
+    border-top: 1px solid var(--border);
+  }
+  .route-section .section-heading {
+    margin-bottom: 20px;
+  }
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .greeting {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .greeting h1 {
+    font-size: 30px;
+  }
+  .ask {
+    padding-left: 12px;
+  }
+  .ask .btn {
+    padding: 0 14px;
+  }
+}
+</style>

@@ -9,10 +9,19 @@ export interface Conversation {
   updatedAt: string
 }
 export type MessageStatus = 'RUNNING' | 'COMPLETED' | 'CANCELLED' | 'FAILED'
+/** docs/05 §3 消息 parts；目前后端只写 text，card 等类型按契约兼容读取 */
+export interface MessagePart {
+  type: string
+  text?: string
+  cardId?: string
+  cardType?: string
+  payload?: unknown
+}
 export interface StoredMessage {
   id: string
   conversationId: string
   role: 'USER' | 'ASSISTANT'
+  parts?: MessagePart[]
   plainText: string
   runId: string
   model: string
