@@ -115,6 +115,33 @@ textarea::placeholder {
   color: var(--muted-foreground);
   white-space: nowrap;
 }
+:slotted(.tool-select) {
+  min-height: 30px;
+  padding: 0 26px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background-color: var(--background);
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 13px) 50%,
+    calc(100% - 9px) 50%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 13px;
+  appearance: none;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast),
+    border-color var(--dur-fast);
+}
+:slotted(.tool-select:hover:not(:disabled)) {
+  color: var(--foreground);
+  border-color: var(--input);
+}
 .composer-send {
   width: 38px;
   padding: 0;
