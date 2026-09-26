@@ -5,6 +5,8 @@ import { useConversationChat } from './useConversationChat'
 import { conversationsApi } from '@/shared/api/conversations'
 import type { Conversation, MessagePage } from '@/shared/types/conversation'
 
+const startMock = vi.hoisted(() => vi.fn())
+
 vi.mock('@/shared/api/conversations', () => ({
   conversationsApi: {
     list: vi.fn(),
@@ -18,7 +20,7 @@ vi.mock('@/shared/api/conversations', () => ({
 vi.mock('@/shared/composables/useAgentStream', () => ({
   useAgentStream: () => ({
     streaming: ref(false),
-    start: vi.fn().mockResolvedValue('run'),
+    start: startMock,
     stop: vi.fn().mockResolvedValue(undefined),
   }),
 }))
@@ -52,6 +54,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   scope = effectScope()
   vi.mocked(conversationsApi.list).mockResolvedValue({ items: [], page: 1, size: 20, total: 0 })
+  startMock.mockResolvedValue('run')
 })
 afterEach(() => scope.stop())
 describe('持久会话状态', () => {
@@ -119,5 +122,18 @@ describe('持久会话状态', () => {
     expect(created).toHaveBeenCalledWith('created')
     expect(chat.messages.value.map((m) => m.id)).toEqual(['saved'])
     expect(chat.sending.value).toBe(false)
+  })
+  it('发送后服务端改写的标题同步到当前会话，无需刷新页面', async () => {
+    vi.mocked(conversationsApi.create).mockResolvedValue({ ...conv('created'), title: '新对话' })
+    vi.mocked(conversationsApi.messages).mockResolvedValue(messagePage('saved'))
+    vi.mocked(conversationsApi.list).mockResolvedValue({
+      items: [{ ...conv('created'), title: '后端校招怎么选' }],
+      page: 1,
+      size: 20,
+      total: 1,
+    })
+    const chat = scope.run(useConversationChat)!
+    await chat.send('后端校招怎么选', 'AUTO', 'CHEAP', vi.fn())
+    await vi.waitFor(() => expect(chat.current.value?.title).toBe('后端校招怎么选'))
   })
 })

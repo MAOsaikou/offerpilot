@@ -73,6 +73,9 @@ export function useConversationChat() {
         : data.items
       page.value = nextPage
       hasMoreConversations.value = nextPage * data.size < data.total
+      // 首条消息发送后服务端会改写标题，当前会话随列表同步
+      const fresh = data.items.find((item) => item.id === current.value?.id)
+      if (fresh) current.value = fresh
     } catch (e) {
       if (version === listEpoch) listError.value = errorText(e)
     } finally {
