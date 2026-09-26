@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.offerpilot.agent.domain.*;
 import com.offerpilot.agent.event.AgentEvent;
 import com.offerpilot.agent.experts.ExpertRegistry;
+import com.offerpilot.agent.experts.ExpertResult;
 import com.offerpilot.llm.*;
 import org.junit.jupiter.api.*;
 import org.springframework.ai.chat.messages.*;
@@ -35,7 +36,7 @@ class OrchestratorTest {
     }
 
     private Flux<AgentEvent> run(AgentMode mode) {
-        return orchestrator.run(mode, "分析岗位并指导简历", List.of(), ModelTier.CHEAP, "run", new AtomicInteger(), reply, u -> {});
+        return orchestrator.run(mode, "分析岗位并指导简历", List.of(), ModelTier.CHEAP, "run", new AtomicInteger(), reply, u -> {}, "owner", Map.of());
     }
 
     private String composite() {
@@ -57,7 +58,7 @@ class OrchestratorTest {
         assertThat(events).extracting(AgentEvent::id).containsExactlyElementsOf(java.util.stream.IntStream.rangeClosed(1,13).boxed().toList());
         var plan = (AgentEvent.PlanCreated) events.get(0);
         assertThat(plan.steps()).extracting(AgentEvent.PlanStepView::id).containsExactly("s1", "s2", "s3");
-        verify(experts).execute(argThat(s -> s.id().equals("s2")), argThat(upstream -> upstream.get("s1").contains("占位")));
+        verify(experts).execute(eq("owner"), eq(Map.of()), eq("run"), argThat(s -> s.id().equals("s2")), argThat(upstream -> upstream.get("s1").contains("占位")));
         var call = (AgentEvent.ToolCall) events.get(2);
         var result = (AgentEvent.ToolResult) events.get(3);
         assertThat(result.toolCallId()).isEqualTo(call.toolCallId());
@@ -67,12 +68,12 @@ class OrchestratorTest {
 
     @Test void failureSkipsDependentsAndStillRunsIndependentStepsWithoutLeakingException() {
         model(composite());
-        doReturn(Mono.error(new RuntimeException("private-secret"))).when(experts).execute(argThat(s -> s.id().equals("s1")), anyMap());
+        doReturn(Mono.error(new RuntimeException("private-secret"))).when(experts).execute(any(), any(), any(), argThat(s -> s.id().equals("s1")), anyMap());
         var events = run(AgentMode.AUTO).collectList().block(Duration.ofSeconds(3));
         assertThat(events).filteredOn(e -> e instanceof AgentEvent.StepUpdated)
                 .map(e -> ((AgentEvent.StepUpdated)e).status()).containsExactly(AgentEvent.StepStatus.RUNNING,
                         AgentEvent.StepStatus.FAILED, AgentEvent.StepStatus.SKIPPED, AgentEvent.StepStatus.RUNNING, AgentEvent.StepStatus.DONE);
-        verify(experts, never()).execute(argThat(s -> s.id().equals("s2")), anyMap());
+        verify(experts, never()).execute(any(), any(), any(), argThat(s -> s.id().equals("s2")), anyMap());
         assertThat(events.toString()).doesNotContain("private-secret");
     }
 
@@ -89,7 +90,7 @@ class OrchestratorTest {
         model(composite().replace("\"JOB\"", "\"UNKNOWN\""));
         assertThat(run(AgentMode.AUTO).collectList().block(Duration.ofSeconds(3))).isEmpty();
         verify(gateway, times(3)).stream(any(), anyList(), eq(0.1));
-        verify(experts, never()).execute(any(), anyMap());
+        verify(experts, never()).execute(any(), any(), any(), any(), anyMap());
         assertThat(reply.get(0).getText()).contains("降级");
     }
 
@@ -100,18 +101,18 @@ class OrchestratorTest {
             model(json);
             assertThat(run(AgentMode.AUTO).collectList().block(Duration.ofSeconds(3))).isEmpty();
         }
-        verify(experts, never()).execute(any(), anyMap());
+        verify(experts, never()).execute(any(), any(), any(), any(), anyMap());
         assertThat(reply).hasSize(2);
     }
 
     @Test void cancellationStopsCurrentExpertAndNeverStartsNext() {
         model(composite());
         AtomicBoolean cancelled = new AtomicBoolean();
-        doReturn(Mono.<String>never().doOnCancel(() -> cancelled.set(true))).when(experts).execute(any(), anyMap());
+        doReturn(Mono.<ExpertResult>never().doOnCancel(() -> cancelled.set(true))).when(experts).execute(any(), any(), any(), any(), anyMap());
         var subscription = run(AgentMode.AUTO).subscribe();
         subscription.dispose();
         assertThat(cancelled).isTrue();
-        verify(experts, times(1)).execute(any(), anyMap());
+        verify(experts, times(1)).execute(any(), any(), any(), any(), anyMap());
         assertThat(reply).isEmpty();
     }
 

@@ -16,6 +16,7 @@ import org.testcontainers.utility.DockerImageName;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.offerpilot.auth.application.GuestIdentityService;
 import com.offerpilot.conversation.application.ConversationService;
+import com.offerpilot.conversation.application.MessageCard;
 import com.offerpilot.agent.domain.AgentMode;
 import com.offerpilot.common.error.BusinessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -278,7 +279,57 @@ class ChatHttpIntegrationTest {
         var messages = conversations.messages(owner(token), conv, null, 30).items();
         assertThat(messages.get(1).plainText()).isEqualTo("你好，同学。");
         assertThat(messages.get(1).status()).isEqualTo("COMPLETED");
+        assertThat(messages.get(1).parts()).hasSize(1);
+        assertThat(messages.get(1).parts().get(0).path("type").asText()).isEqualTo("text");
         assertThat(requestBody.get()).contains("未执行真实业务操作");
         java.nio.file.Files.writeString(java.nio.file.Path.of("target", "orchestrator-sse.json"), json.writeValueAsString(events));
+    }
+
+    @Test
+    void terminalMessagesPersistAcceptedCardsAndKeepTextWhenCardsAreRejected() throws Exception {
+        String token = identities.create().accessToken();
+        String user = owner(token);
+        String conv = conversations.create(user, null, null).id();
+        var match = json.createObjectNode().put("score", 80);
+        var turn = conversations.begin(user, conv, "匹配这个岗位", null, "test");
+        conversations.finish(turn, "已生成匹配报告", "COMPLETED", null, null, java.util.List.of(
+                new MessageCard("card_job_1", "job_match", match),
+                new MessageCard("card_job_1", "job_match", json.createObjectNode().put("score", 1)),
+                new MessageCard("bad id", "job_match", match),
+                new MessageCard("card_nope", "not_a_card", match),
+                new MessageCard("card_board_1", "board_update", json.createObjectNode().put("change", "CREATED"))));
+        var body = json.readTree(request("GET", "/conversations/" + conv + "/messages", token, null).body());
+        var assistant = body.path("data").path("items").get(1);
+        assertThat(assistant.path("plainText").asText()).isEqualTo("已生成匹配报告");
+        assertThat(assistant.path("parts")).hasSize(3);
+        assertThat(assistant.path("parts").get(0).path("type").asText()).isEqualTo("text");
+        assertThat(assistant.path("parts").get(1).path("cardId").asText()).isEqualTo("card_job_1");
+        assertThat(assistant.path("parts").get(1).path("cardType").asText()).isEqualTo("job_match");
+        assertThat(assistant.path("parts").get(1).path("payload").path("score").asInt()).isEqualTo(80);
+        assertThat(assistant.path("parts").get(2).path("cardId").asText()).isEqualTo("card_board_1");
+
+        var plain = conversations.begin(user, conv, "只要文字", null, "test");
+        conversations.finish(plain, "只有文字", "COMPLETED", null, null);
+        var textOnly = conversations.messages(user, conv, null, 10).items().stream()
+                .filter(message -> message.plainText().equals("只有文字")).findFirst().orElseThrow();
+        assertThat(textOnly.parts()).hasSize(1);
+        assertThat(textOnly.parts().get(0).path("type").asText()).isEqualTo("text");
+
+        var failed = conversations.begin(user, conv, "失败的问题", null, "test");
+        conversations.finish(failed, "失败前的文字", "FAILED", null, "test failure",
+                java.util.List.of(new MessageCard("card_gap_1", "skill_gap", json.createObjectNode().put("overall", 1))));
+        var failedMessage = conversations.messages(user, conv, null, 20).items().stream()
+                .filter(message -> message.plainText().equals("失败前的文字")).findFirst().orElseThrow();
+        assertThat(failedMessage.status()).isEqualTo("FAILED");
+        assertThat(failedMessage.parts().get(1).path("cardId").asText()).isEqualTo("card_gap_1");
+
+        var cancelled = conversations.begin(user, conv, "取消的问题", null, "test");
+        conversations.cancel(user, cancelled.runId(), "取消前的文字",
+                java.util.List.of(new MessageCard("card_resume_1", "resume_diff", json.createObjectNode().put("batchId", "pb_1"))));
+        var cancelledMessage = conversations.messages(user, conv, null, 20).items().stream()
+                .filter(message -> "取消前的文字".equals(message.plainText())).findFirst().orElseThrow();
+        assertThat(cancelledMessage.status()).isEqualTo("CANCELLED");
+        assertThat(cancelledMessage.parts().get(1).path("cardType").asText()).isEqualTo("resume_diff");
+        assertThat(cancelledMessage.parts().get(1).path("cardId").asText()).isEqualTo("card_resume_1");
     }
 }

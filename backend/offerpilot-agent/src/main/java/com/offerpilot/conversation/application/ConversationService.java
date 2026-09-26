@@ -9,6 +9,8 @@ import com.offerpilot.common.id.IdGenerator;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +27,7 @@ import java.util.Map;
 /** Owns conversation transactions; model calls never hold database locks. */
 @Service
 public class ConversationService {
+    private static final Logger log = LoggerFactory.getLogger(ConversationService.class);
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     public ConversationService(JdbcTemplate jdbc, ObjectMapper json) { this.jdbc = jdbc; this.json = json; }
@@ -147,15 +150,20 @@ public class ConversationService {
     public boolean checkpoint(Turn turn, String text) {
         var state = jdbc.queryForObject("SELECT status FROM agent_runs WHERE id=? FOR UPDATE", String.class, turn.runId());
         if (!"RUNNING".equals(state)) return false;
-        writeMessage(turn.messageId(), text, "RUNNING", null);
+        writeMessage(turn.messageId(), text, "RUNNING", null, List.of());
         return true;
     }
 
     @Transactional
     public String finish(Turn turn, String text, String status, Map<String, Object> usage, String error) {
+        return finish(turn, text, status, usage, error, List.of());
+    }
+
+    @Transactional
+    public String finish(Turn turn, String text, String status, Map<String, Object> usage, String error, List<MessageCard> cards) {
         String current = jdbc.queryForObject("SELECT status FROM agent_runs WHERE id=? FOR UPDATE", String.class, turn.runId());
         if (!"RUNNING".equals(current)) return current;
-        writeMessage(turn.messageId(), text, status, usage);
+        writeMessage(turn.messageId(), text, status, usage, cards);
         jdbc.update("UPDATE agent_runs SET status=?,finished_at=CURRENT_TIMESTAMP,error=CAST(? AS jsonb) WHERE id=?",
                 status, error == null ? null : encode(Map.of("message", error)), turn.runId());
         return status;
@@ -168,12 +176,17 @@ public class ConversationService {
 
     @Transactional
     public void cancel(String owner, String runId, String partial) {
+        cancel(owner, runId, partial, List.of());
+    }
+
+    @Transactional
+    public void cancel(String owner, String runId, String partial, List<MessageCard> cards) {
         var ids = jdbc.queryForList("SELECT assistant_message_id FROM agent_runs WHERE id=? AND user_id=? FOR UPDATE", String.class, runId, owner);
         if (ids.isEmpty()) throw new BusinessException(ErrorCode.RUN_NOT_FOUND);
         int changed = jdbc.update("UPDATE agent_runs SET status='CANCELLED',finished_at=CURRENT_TIMESTAMP WHERE id=? AND status='RUNNING'", runId);
         if (changed > 0) {
             if (partial == null) jdbc.update("UPDATE messages SET status='CANCELLED' WHERE id=?", ids.get(0));
-            else writeMessage(ids.get(0), partial, "CANCELLED", null);
+            else writeMessage(ids.get(0), partial, "CANCELLED", null, cards);
         }
     }
 
@@ -199,13 +212,16 @@ public class ConversationService {
     }
     private void insertMessage(String id, String conv, String owner, String role, String text, String run, String model, String status) {
         jdbc.update("INSERT INTO messages(id,conversation_id,user_id,role,parts,plain_text,run_id,model,status) VALUES (?,?,?,?,CAST(? AS jsonb),?,?,?,?)",
-                id, conv, owner, role, parts(text), text, run, model, status);
+                id, conv, owner, role, parts(text, List.of()), text, run, model, status);
     }
-    private void writeMessage(String id, String text, String status, Map<String, Object> usage) {
+    private void writeMessage(String id, String text, String status, Map<String, Object> usage, List<MessageCard> cards) {
+        List<MessageCard> incoming = cards == null ? List.of() : cards;
+        List<MessageCard> kept = MessageCards.select(text, incoming, json);
+        if (kept.size() != incoming.size()) log.warn("消息 {} 有 {} 张卡片未写入 parts", id, incoming.size() - kept.size());
         jdbc.update("UPDATE messages SET plain_text=?,parts=CAST(? AS jsonb),status=?,usage=CAST(? AS jsonb) WHERE id=?",
-                text, parts(text), status, usage == null ? null : encode(usage), id);
+                text, parts(text, kept), status, usage == null ? null : encode(usage), id);
     }
-    private String parts(String text) { return encode(List.of(Map.of("type", "text", "text", text))); }
+    private String parts(String text, List<MessageCard> cards) { return MessageCards.encode(text, cards, json); }
     private String encode(Object value) {
         try { return json.writeValueAsString(value); }
         catch (JsonProcessingException ex) { throw new IllegalStateException(ex); }
