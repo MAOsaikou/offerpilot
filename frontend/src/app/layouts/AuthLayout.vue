@@ -3,8 +3,8 @@ import { RouterView } from 'vue-router'
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center px-4">
-    <div class="glass-panel rise-in w-full max-w-sm rounded-2xl p-8 shadow-2xl">
+  <div class="flex min-h-screen items-center px-6 py-12 sm:px-16">
+    <div class="mx-auto w-full max-w-5xl">
       <RouterView />
     </div>
   </div>

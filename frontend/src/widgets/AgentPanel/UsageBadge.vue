@@ -9,11 +9,11 @@ defineProps<{
 
 <template>
   <section>
-    <h3 class="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">用量</h3>
+    <h3 class="mb-2 text-xs font-semibold text-muted-foreground">用量</h3>
 
     <p v-if="!usage && !model" class="text-sm text-muted-foreground">暂无</p>
 
-    <dl v-else class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono text-xs">
+    <dl v-else class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 num text-xs">
       <dt class="text-muted-foreground">模型</dt>
       <dd class="truncate text-right">{{ usage?.model ?? model ?? '—' }}</dd>
 

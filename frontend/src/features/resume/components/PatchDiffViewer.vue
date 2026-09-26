@@ -41,7 +41,7 @@ function isKept(patch: ResumePatch): boolean {
 </script>
 
 <template>
-  <article v-if="data" class="glass-card overflow-hidden rounded-2xl">
+  <article v-if="data" class="surface overflow-hidden rounded-[14px]">
     <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-4 py-3">
       <h3 class="text-sm font-medium">简历改写建议</h3>
       <span class="font-mono text-xs text-muted-foreground">

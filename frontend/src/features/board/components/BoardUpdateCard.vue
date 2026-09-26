@@ -19,8 +19,10 @@ const statusLabel: Record<ApplicationStatus, string> = {
 </script>
 
 <template>
-  <article v-if="data" class="glass-card flex items-center gap-3 rounded-2xl px-4 py-3">
-    <span class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-sm text-primary">
+  <article v-if="data" class="surface flex items-center gap-3 rounded-[14px] px-4 py-3">
+    <span
+      class="flex size-9 shrink-0 items-center justify-center rounded-[8px] bg-muted text-sm text-foreground"
+    >
       {{ data.change === 'CREATED' ? '+' : '↻' }}
     </span>
 

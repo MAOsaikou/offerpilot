@@ -23,17 +23,15 @@ const severityLabel = { LOW: '轻微', MEDIUM: '中等', HIGH: '严重' } as con
 </script>
 
 <template>
-  <article v-if="data" class="glass-card overflow-hidden rounded-2xl">
+  <article v-if="data" class="surface overflow-hidden rounded-[14px]">
     <header class="flex items-baseline gap-3 border-b border-border/60 px-4 py-3">
       <div>
         <p class="text-xs text-muted-foreground">简历与岗位匹配度</p>
-        <p class="mt-0.5 text-3xl font-semibold tracking-tight">
+        <p class="mt-0.5 num text-4xl leading-none">
           {{ data.score }}<span class="ml-0.5 text-sm font-normal text-muted-foreground">/100</span>
         </p>
       </div>
-      <span class="ml-auto font-mono text-xs text-muted-foreground">
-        jobId={{ data.jobId }}
-      </span>
+      <span class="ml-auto font-mono text-xs text-muted-foreground"> jobId={{ data.jobId }} </span>
     </header>
 
     <div class="space-y-2 px-4 py-3">
@@ -41,11 +39,11 @@ const severityLabel = { LOW: '轻微', MEDIUM: '中等', HIGH: '严重' } as con
         <span class="w-12 shrink-0 text-xs text-muted-foreground">{{ dim.label }}</span>
         <div class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-foreground/10">
           <div
-            class="h-full rounded-full bg-primary transition-[width] duration-500"
+            class="h-full rounded-full bg-foreground/75 transition-[width] duration-500"
             :style="{ width: `${Math.max(0, Math.min(100, dim.value))}%` }"
           />
         </div>
-        <span class="w-8 shrink-0 text-right font-mono text-xs">{{ dim.value }}</span>
+        <span class="w-8 shrink-0 text-right num text-xs">{{ dim.value }}</span>
       </div>
     </div>
 
