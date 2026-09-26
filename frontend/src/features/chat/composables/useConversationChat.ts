@@ -218,7 +218,10 @@ export function useConversationChat() {
         if (version !== epoch) return
         current.value = conversation
         id = conversation.id
-        if (!mock) created(id)
+        if (!mock) {
+          created(id)
+          void refreshList()
+        }
       }
       optimisticId.value = crypto.randomUUID()
       messages.value.push(
