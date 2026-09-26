@@ -34,15 +34,25 @@ services:
       retries: 10
 
   minio:
-    # MinIO's Docker Hub repository is archived; official images are published on Quay.
-    image: quay.io/minio/minio:latest
+    # quay.io/minio/minio 匿名拉取返回 401；Docker Hub 的 minio/minio 与 dl.min.io 二进制也不可用。
+    # S3 API 仍在容器 9000。S3Mock 不校验访问密钥；后端继续用 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD 签名。
+    image: adobe/s3mock:5.2.0@sha256:7a37f0d796e81a28b970c892dcae532797014616b3312b467af8f0274ebf0c26
+    user: "0:0"
     restart: always
-    command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-offerpilot}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me-minio-at-least-8-chars}
-    ports: ["9000:9000", "9001:9001"]
+      COM_ADOBE_TESTING_S3MOCK_HTTP_PORT: "9000"
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: ${MINIO_BUCKET:-offerpilot}
+      COM_ADOBE_TESTING_S3MOCK_STORE_ROOT: /data
+      COM_ADOBE_TESTING_S3MOCK_STORE_RETAIN_FILES_ON_EXIT: "true"
+    ports: ["127.0.0.1:9000:9000"]
     volumes: [minio_data:/data]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9000/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
 
   jobs-mcp:
     build: ../mcp-servers/jobs-mcp
@@ -73,7 +83,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
-      minio: { condition: service_started }
+      minio: { condition: service_healthy }
       jobs-mcp: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
