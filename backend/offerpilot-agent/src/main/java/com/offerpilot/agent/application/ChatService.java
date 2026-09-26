@@ -105,11 +105,13 @@ public class ChatService {
                         }
                     }
                 });
+        Map<String, Object> context = request.options() == null || request.options().context() == null
+                ? Map.of() : request.options().context();
         Flux<AgentEvent> work = Flux.defer(() -> orchestrator.run(turn.mode(), request.content(), turn.history(), tier,
                         turn.runId(), seq, prompt, u -> {
                             planningPromptTokens.addAndGet(u.getPromptTokens());
                             planningCompletionTokens.addAndGet(u.getCompletionTokens());
-                        }))
+                        }, owner, context))
                 .concatWith(response).takeUntilOther(cancel.asMono());
         Flux<AgentEvent> end = Flux.defer(() -> {
             if (answer.toString().isBlank() && !cancel.scan(reactor.core.Scannable.Attr.TERMINATED))
