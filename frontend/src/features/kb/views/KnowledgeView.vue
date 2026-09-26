@@ -56,7 +56,6 @@ function edit(id: string) {
   <section class="page-stack">
     <PageHeading
       title="把经验，存成下一次的底气"
-      eyebrow="PERSONAL KNOWLEDGE"
       description="记录知识、项目亮点和面试复盘，让成长有迹可循。"
     />
     <div class="helper-note">这里是本地知识笔记；内容未上传，也尚未接入后端 RAG 检索。</div>

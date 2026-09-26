@@ -70,7 +70,6 @@ function exportWorkspace() {
   <section class="page-stack">
     <PageHeading
       title="让工作区，更适合你"
-      eyebrow="PREFERENCES & CONNECTION"
       description="管理显示偏好，选择简历解析模型，检查前后端连接。"
     />
     <div class="tabs">
@@ -121,7 +120,7 @@ function exportWorkspace() {
           {{ result }}
         </p>
         <div class="filter-bar">
-          <RouterLink to="/chat" class="btn">测试流式对话 →</RouterLink
+          <RouterLink to="/chat" class="btn">测试流式对话</RouterLink
           ><a href="/swagger-ui.html" target="_blank" rel="noopener" class="btn">接口文档 ↗</a>
         </div>
       </div>

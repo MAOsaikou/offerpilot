@@ -10,10 +10,7 @@ function changed(title: string) {
 </script>
 <template>
   <section class="page-stack">
-    <PageHeading
-      title="每一个机会，都有迹可循"
-      eyebrow="APPLICATION TRACKER"
-      description="用清晰的进度，管理你的求职节奏。"
+    <PageHeading title="每一个机会，都有迹可循" description="用清晰的进度，管理你的求职节奏。"
       ><RouterLink to="/jobs" class="btn primary">＋ 发现岗位</RouterLink></PageHeading
     >
     <div class="helper-note">
@@ -23,7 +20,7 @@ function changed(title: string) {
     <div v-if="!workspace.state.applications.length" class="panel empty-state">
       <h2>把第一个机会放进看板</h2>
       <p>在岗位页点击收藏，随后就能在这里记录投递、面试和 Offer 进度。</p>
-      <RouterLink to="/jobs" class="btn primary">去发现岗位 →</RouterLink>
+      <RouterLink to="/jobs" class="btn primary">去发现岗位</RouterLink>
     </div>
     <div v-else class="kanban">
       <section v-for="stage in stages" :key="stage" class="kanban-column">

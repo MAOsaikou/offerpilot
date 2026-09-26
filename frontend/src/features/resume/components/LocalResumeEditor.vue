@@ -37,10 +37,7 @@ function printResume() {
 </script>
 <template>
   <section v-if="resume" class="page-stack">
-    <PageHeading
-      :title="resume.title"
-      eyebrow="RESUME STUDIO"
-      description="每一次修改，都让你的优势更清晰。"
+    <PageHeading :title="resume.title" description="每一次修改，都让你的优势更清晰。"
       ><RouterLink to="/resumes" class="btn">返回</RouterLink
       ><button class="btn" @click="downloadText(resume.title + '.md', resume.content)">
         导出 Markdown</button
@@ -80,7 +77,7 @@ function printResume() {
               query: { mode: 'RESUME', prompt: '请指导我如何优化简历的项目经历表达，不编造事实。' },
             }"
             class="btn"
-            >向 AI 请教简历写法 ↗</RouterLink
+            >向 AI 请教简历写法</RouterLink
           ></template
         ><template v-else
           ><p v-if="!resume.versions.length" class="subtle">

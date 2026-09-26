@@ -10,10 +10,7 @@ const saved = computed(() => workspace.state.applications.some((a) => a.jobId ==
 </script>
 <template>
   <section v-if="job" class="page-stack">
-    <PageHeading
-      :title="job.title"
-      :description="job.company + ' · ' + job.city"
-      eyebrow="OPPORTUNITY DETAIL"
+    <PageHeading :title="job.title" :description="job.company + ' · ' + job.city"
       ><RouterLink to="/jobs" class="btn">← 返回岗位</RouterLink
       ><button class="btn primary" :disabled="saved" @click="workspace.saveJob(job.id)">
         {{ saved ? '已收藏至看板' : '收藏至看板' }}
@@ -41,7 +38,7 @@ const saved = computed(() => workspace.state.applications.some((a) => a.jobId ==
             },
           }"
           class="btn"
-          >在 AI 对话中讨论这个方向 ↗</RouterLink
+          >在 AI 对话中讨论这个方向</RouterLink
         >
       </article>
       <aside class="panel form-stack">

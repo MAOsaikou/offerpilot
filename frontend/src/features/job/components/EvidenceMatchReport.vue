@@ -62,15 +62,21 @@ const excerpt = computed(() => {
       </div>
       <p>{{ item.reason }}</p>
       <button class="evidence-link" @click="evidence(item, 'jd')">
-        岗位依据：{{ item.jdQuote }} ↗
+        岗位依据：{{ item.jdQuote }}
       </button>
       <button v-if="item.resumeQuote" class="evidence-link" @click="evidence(item, 'resume')">
-        简历依据：{{ item.resumeQuote }} ↗
+        简历依据：{{ item.resumeQuote }}
       </button>
       <p v-else class="subtle">所选简历中未找到可引用的证据。</p>
       <p><strong>准备建议：</strong>{{ item.suggestion }}</p>
     </article>
-    <section v-if="selected && excerpt" ref="evidencePanel" tabindex="-1" class="helper-note" aria-live="polite">
+    <section
+      v-if="selected && excerpt"
+      ref="evidencePanel"
+      tabindex="-1"
+      class="helper-note"
+      aria-live="polite"
+    >
       <div class="section-heading">
         <h3>{{ selected.title }}</h3>
         <button class="btn" @click="selected = undefined">收起原文</button>

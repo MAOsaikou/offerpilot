@@ -203,7 +203,6 @@ const basics = [
   <section class="page-stack resume-editor">
     <PageHeading
       :title="resume?.title ?? '简历详情'"
-      eyebrow="RESUME STUDIO"
       description="核对每一段经历，让真实的优势清晰可见。"
     >
       <RouterLink class="btn" to="/resumes">返回简历中心</RouterLink>

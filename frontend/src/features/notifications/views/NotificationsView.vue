@@ -8,10 +8,7 @@ const unread = computed(() => workspace.state.notices.filter((n) => !n.read).len
 </script>
 <template>
   <section class="page-stack">
-    <PageHeading
-      title="你的每一步，都有回响"
-      eyebrow="ACTIVITY & NOTIFICATIONS"
-      :description="unread + ' 条未读 · 本地操作记录'"
+    <PageHeading title="你的每一步，都有回响" :description="unread + ' 条未读 · 本地操作记录'"
       ><button
         class="btn"
         :disabled="!unread"
