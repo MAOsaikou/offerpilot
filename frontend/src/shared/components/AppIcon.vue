@@ -20,6 +20,11 @@ const paths: Record<string, string> = {
   check: 'M4 12l5 5L20 6',
   menu: 'M4 6h16 M4 12h16 M4 18h16',
   spark: 'm12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z',
+  send: 'M12 19V5 M6 11l6-6 6 6',
+  stop: 'M7 7h10v10H7z',
+  history: 'M3 12a9 9 0 1 0 3-6.7 M3 4v4h4 M12 7v5l3 2',
+  panel: 'M3 4h18v16H3z M15 4v16',
+  more: 'M5 12h.01 M12 12h.01 M19 12h.01',
 }
 </script>
 <template>
