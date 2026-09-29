@@ -65,6 +65,14 @@ class JobsHttpIntegrationTest {
             s.createContext("/chat/completions",x->{
                 modelInput.set(new String(x.getRequestBody().readAllBytes(),StandardCharsets.UTF_8));
                 String output="{\"summary\":\"Java项目提供基础证据\",\"requirements\":[{\"requirement\":\"Java\",\"status\":\"MET\",\"jdQuote\":\"熟悉Java\",\"resumePath\":\"/summary\",\"resumeQuote\":\""+(badEvidence?"虚构经历":"Java项目")+"\",\"reason\":\"简历有项目经历\",\"suggestion\":\"准备项目细节\"}]}";
+                String system=JSON.readTree(modelInput.get()).path("messages").get(0).path("content").asText();
+                if(system.contains("意图识别与规划 v1")) output="{\"kind\":\"single\",\"expert\":\"JOB\",\"confidence\":1}";
+                else if(system.contains("岗位动作与搜索参数解析 v1")) {
+                    var messages=JSON.readTree(modelInput.get()).path("messages");
+                    String last=messages.get(messages.size()-1).path("content").asText();
+                    output=last.contains("请匹配选定版本") ? "{\"action\":\"match\"}"
+                            : "{\"action\":\"search\",\"query\":\"Java\",\"site\":\"测试企业\",\"nature\":\"campus\",\"location\":\"上海\"}";
+                } else if(!system.contains("求职材料匹配助手")) output="请查看本轮工具结果；岗位与匹配均以卡片中的原文证据为准。";
                 String frame="data: "+JSON.writeValueAsString(Map.of("id","test","object","chat.completion.chunk","created",1,"model","deepseek-flash","choices",List.of(Map.of("index",0,"delta",Map.of("role","assistant","content",output)))))+"\n\ndata: [DONE]\n\n";
                 byte[] out=frame.getBytes(StandardCharsets.UTF_8); x.getResponseHeaders().set("Content-Type","text/event-stream");x.sendResponseHeaders(200,out.length);x.getResponseBody().write(out);x.close();
             });
@@ -127,6 +135,46 @@ class JobsHttpIntegrationTest {
     @Test void totalUpstreamFailureIsNotAnEmptySearch() throws Exception {
         allSitesFailed=true;
         assertThat(request("GET","/jobs?query=Java",identities.create().accessToken(),null).statusCode()).isEqualTo(502);
+    }
+
+    @Test void chatSearchAutoAndJobPersistSnapshotThenMatchExplicitSavedVersion() throws Exception {
+        String token=identities.create().accessToken(), resume=seed(token);
+        for(String mode:List.of("AUTO","JOB")) {
+            var response=request("POST","/agent/chat",token,Map.of("content","找上海Java校招岗位","mode",mode));
+            assertThat(response.statusCode()).isEqualTo(200);
+            var events=events(response.body());
+            assertThat(events.stream().map(e->e.path("type").asText())).contains("run.completed","ui.card");
+            var card=events.stream().filter(e->"ui.card".equals(e.path("type").asText())).findFirst().orElseThrow();
+            assertThat(card.path("cardType").asText()).isEqualTo("job_card");
+            assertThat(card.path("payload").path("meta").path("skipped")).hasSize(1);
+            assertThat(card.path("payload").path("criteria").path("site").asText()).isEqualTo("fixture");
+            assertThat(response.body()).contains("mcp:jobs-mcp").doesNotContain("placeholder.JOB");
+            String conv=events.get(0).path("conversationId").asText();
+            var messages=data(request("GET","/conversations/"+conv+"/messages",token,null)).path("items");
+            assertThat(messages.toString()).contains(card.path("cardId").asText(),"job_card");
+            String job=card.path("payload").path("items").get(0).path("id").asText();
+            var context=Map.of("jobId",job,"resumeId",resume,"resumeVersionId",resume);
+            var matched=request("POST","/agent/chat",token,Map.of("conversationId",conv,"content","请匹配选定版本","mode","JOB","options",Map.of("context",context)));
+            assertThat(matched.body()).contains("matchJobToResume","ui.card","job_match","run.completed");
+            var searchAgain=request("POST","/agent/chat",token,Map.of("conversationId",conv,"content","继续找Java校招","mode","JOB","options",Map.of("context",context)));
+            assertThat(searchAgain.body()).contains("search_jobs","job_card").doesNotContain("matchJobToResume");
+            String stranger=identities.create().accessToken();
+            assertThat(request("GET","/conversations/"+conv+"/messages",stranger,null).statusCode()).isEqualTo(404);
+        }
+    }
+
+    @Test void chatAllSitesFailureIsVisibleWithoutJobCard() throws Exception {
+        allSitesFailed=true;
+        var response=request("POST","/agent/chat",identities.create().accessToken(),Map.of("content","找Java","mode","JOB"));
+        assertThat(response.body()).contains("search_jobs","均不可用").doesNotContain("ui.card");
+        assertThat(events(response.body()).stream().filter(e->"tool.result".equals(e.path("type").asText()))).allSatisfy(e->assertThat(e.path("ok").asBoolean()).isFalse());
+    }
+
+    List<JsonNode> events(String body) {
+        return body.lines().filter(line->line.startsWith("data:")).map(line->{
+            try { return JSON.readTree(line.substring(5).strip()); }
+            catch(Exception e) { throw new IllegalStateException(e); }
+        }).toList();
     }
 
     @Test void activeMatchBlocksAnotherRequestAndExpiredRunCanRecover() throws Exception {

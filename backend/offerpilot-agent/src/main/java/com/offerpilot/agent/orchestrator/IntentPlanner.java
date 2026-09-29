@@ -9,9 +9,11 @@ import com.offerpilot.llm.ModelTier;
 import org.springframework.ai.chat.messages.*;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Flux;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -27,14 +29,22 @@ public class IntentPlanner {
     private final ObjectMapper mapper;
     private final ExpertRegistry experts;
     private final String prompt;
+    private final JobIntentParser jobs;
 
     public IntentPlanner(ModelGateway gateway, ObjectMapper mapper, ExpertRegistry experts,
-                         @Value("classpath:prompts/agent/plan.st") Resource prompt) throws IOException {
+                         Resource prompt) throws IOException {
+        this(gateway, mapper, experts, prompt, null);
+    }
+
+    @Autowired
+    public IntentPlanner(ModelGateway gateway, ObjectMapper mapper, ExpertRegistry experts,
+                         @Value("classpath:prompts/agent/plan.st") Resource prompt, JobIntentParser jobs) throws IOException {
         this.gateway = gateway;
         this.mapper = mapper.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         this.experts = experts;
         this.prompt = prompt.getContentAsString(StandardCharsets.UTF_8);
+        this.jobs = jobs;
     }
 
     public Mono<Decision> prepare(AgentMode mode, String content, List<Message> history, ModelTier tier,
@@ -42,13 +52,29 @@ public class IntentPlanner {
         Map<String, Object> safeContext = context == null ? Map.of() : context;
         if (mode != null && mode != AgentMode.AUTO) {
             ExpertType expert = ExpertType.valueOf(mode.name());
-            return Mono.just(new Decision("single", expert, 1.0, false, null, single(content, expert, safeContext)));
+            return resolveJobs(new Decision("single", expert, 1.0, false, null, single(content, expert, safeContext)),
+                    content, history, tier, onUsage, safeContext);
         }
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(prompt.replace("{experts}", experts.capabilities())));
         messages.addAll(history.subList(Math.max(0, history.size() - 12), history.size()));
         messages.add(new UserMessage(content));
-        return attempt(messages, content, tier, onUsage, 0, safeContext);
+        return attempt(messages, content, tier, onUsage, 0, safeContext)
+                .flatMap(decision -> resolveJobs(decision, content, history, tier, onUsage, safeContext));
+    }
+
+    private Mono<Decision> resolveJobs(Decision decision, String content, List<Message> history, ModelTier tier,
+                                        Consumer<Usage> onUsage, Map<String, Object> context) {
+        if (jobs == null || decision.plan() == null) return Mono.just(decision);
+        return Flux.fromIterable(decision.plan().steps()).concatMap(step -> step.agent() == ExpertType.JOB
+                ? jobs.prepare(step, content, history, tier, onUsage, context) : Mono.just(step)).collectList().map(steps -> {
+            for (var step : steps) {
+                if ("clarify".equals(step.inputs().get("action"))) return new Decision(decision.kind(), decision.expert(),
+                        decision.confidence(), true, (String) step.inputs().get("question"), null);
+            }
+            return new Decision(decision.kind(), decision.expert(), decision.confidence(), false, null,
+                    PlanValidator.validate(new Plan(decision.plan().goal(), steps)));
+        });
     }
 
     private Mono<Decision> attempt(List<Message> messages, String content, ModelTier tier,
@@ -102,7 +128,8 @@ public class IntentPlanner {
 
     private Plan single(String content, ExpertType expert, Map<String, Object> context) {
         PlanStep probe = new PlanStep("s1", experts.label(expert), expert, Map.of("request", content), List.of());
-        String title = experts.label(expert) + (experts.matching(probe, context) ? "" : "（占位）");
+        String title = experts.label(expert) + (experts.matching(probe, context) || experts.diagnosing(probe, context)
+                || expert == ExpertType.JOB && jobs != null ? "" : "（占位）");
         return PlanValidator.validate(new Plan(content, List.of(new PlanStep("s1", title,
                 expert, Map.of("request", content), List.of()))));
     }

@@ -38,6 +38,7 @@ import static org.assertj.core.api.Assertions.*;
 @ActiveProfiles("test")
 @Testcontainers
 class ResumeHttpIntegrationTest {
+    @Autowired ResumeDiagnosisService diagnoses;
     @Container static PostgreSQLContainer<?> database = new PostgreSQLContainer<>(DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
     // quay.io/minio/minio 匿名 token 的 actions 为空，manifest 返回 UNAUTHORIZED。
     // 固定 adobe/s3mock:5.2.0 的清单 digest。Testcontainers 1.21 不能同时解析 tag 与 digest。
@@ -111,6 +112,59 @@ class ResumeHttpIntegrationTest {
             .timeout(Duration.ofSeconds(30)).header("Content-Type", "multipart/form-data; boundary=" + boundary);
         if (token != null) builder.header("Authorization", "Bearer " + token);
         return HttpClient.newHttpClient().send(builder.POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+    }
+    @Test void diagnosisSsePersistsVersionEvidenceAndRestoresWithoutAnotherModelCall() throws Exception {
+        String token=identities.create().accessToken(), stranger=identities.create().accessToken();
+        var structure=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(ResumeStructure.SCHEMA);
+        structure.put("summary","负责缓存优化"); structure.withObject("/basics").put("email","private@example.test");
+        output.set(structure.toString());
+        String id=data(upload(token,"diagnosis.txt","虚构简历".getBytes(StandardCharsets.UTF_8))).path("id").asText();
+        worker.processNext();
+        String version=resumes.get(owner(token),id).currentVersionId();
+        output.set("""
+            {"summary":"补充个人行动和验证结果", "strengths":[],"findings":[{"ruleId":"CONTRIBUTION","kind":"NEEDS_CLARIFICATION","priority":"MEDIUM","evidence":[{"path":"/summary","quote":"负责缓存优化"}],"reason":"缺少个人行动细节","suggestion":"补充真实策略","questions":["具体采用什么策略？"]}]}
+            """);
+        String path="/resumes/"+id+"/versions/"+version+"/analyze", body="{\"requestId\":\"diagnosis-request-0001\"}";
+        assertThat(request("POST",path,stranger,body).statusCode()).isEqualTo(404);
+        var response=request("POST",path,token,body);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("run.started","ui.card","resume_diagnosis","run.completed").doesNotContain("private@example.test");
+        assertThat(lastPrompt.get()).doesNotContain("private@example.test");
+        var list=data(request("GET","/resumes/"+id+"/diagnoses",token,null));
+        String reportId=list.get(0).path("id").asText();
+        var report=data(request("GET","/resumes/diagnoses/"+reportId,token,null)).path("report");
+        assertThat(report.path("versionId").asText()).isEqualTo(version);
+        assertThat(report.path("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(report.path("inputTokens").asInt()).isEqualTo(12);
+        assertThat(report.path("outputTokens").asInt()).isEqualTo(6);
+        providerStatus.set(503);
+        assertThat(request("POST",path,token,body).body()).contains("ui.card").doesNotContain("event:error");
+        assertThat(request("GET","/resumes/diagnoses/"+reportId,stranger,null).statusCode()).isEqualTo(404);
+        assertThat(request("POST","/resumes/diagnoses/"+reportId+"/cancel",stranger,null).statusCode()).isEqualTo(404);
+        structure.put("summary","新版内容");
+        var updated=resumes.save(owner(token),id,version,structure);
+        assertThat(diagnoses.report(owner(token),id,version,reportId)).isEqualTo(report);
+        assertThatThrownBy(() -> diagnoses.report(owner(token),id,updated.currentVersionId(),reportId)).hasMessageContaining("不存在");
+        assertThat(request("POST","/resumes/"+id+"/versions/"+updated.currentVersionId()+"/analyze",token,body).statusCode()).isEqualTo(400);
+    }
+    @Test void diagnosisCancellationExpirationAndInvalidOutputCannotPublishReport() throws Exception {
+        String token=identities.create().accessToken();
+        String id=data(upload(token,"cancel.txt","虚构简历".getBytes(StandardCharsets.UTF_8))).path("id").asText(); worker.processNext();
+        String version=resumes.get(owner(token),id).currentVersionId();
+        var work=diagnoses.begin(owner(token),id,version,"diagnosis-request-cancel");
+        assertThatThrownBy(() -> diagnoses.begin(owner(token),id,version,"diagnosis-request-other")).hasMessageContaining("进行中");
+        diagnoses.cancel(owner(token),work.id());
+        assertThatThrownBy(() -> diagnoses.execute(work).block(Duration.ofSeconds(3))).hasMessageContaining("取消");
+        assertThat(diagnoses.get(owner(token),work.id()).path("status").asText()).isEqualTo("CANCELLED");
+        assertThat(diagnoses.get(owner(token),work.id()).has("report")).isFalse();
+        var expired=diagnoses.begin(owner(token),id,version,"diagnosis-request-expired");
+        jdbc.update("UPDATE resume_diagnoses SET created_at=now()-interval '4 minutes' WHERE id=?",expired.id());
+        assertThat(diagnoses.get(owner(token),expired.id()).path("status").asText()).isEqualTo("FAILED");
+        assertThatThrownBy(() -> diagnoses.execute(expired).block(Duration.ofSeconds(3))).hasMessageContaining("过期");
+        output.set("not a report");
+        var failed=request("POST","/resumes/"+id+"/versions/"+version+"/analyze",token,"{\"requestId\":\"diagnosis-request-invalid\"}");
+        assertThat(failed.body()).contains("event:error").doesNotContain("event:ui.card");
+        assertThat(diagnoses.list(owner(token),id).get(0).path("status").asText()).isEqualTo("FAILED");
     }
     @Test void uploadParseEditRestoreAndOwnership() throws Exception {
         String token = identities.create().accessToken(), stranger = identities.create().accessToken();

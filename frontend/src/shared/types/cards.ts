@@ -62,7 +62,9 @@ export interface ResumeDiagnosisIssue {
   suggestion: string
 }
 
-export interface ResumeDiagnosisPayload {
+export type ResumeDiagnosisPayload =
+  LegacyResumeDiagnosisPayload | import('./diagnosis').ResumeDiagnosisReport
+export interface LegacyResumeDiagnosisPayload {
   overall: number
   dimensions: {
     completeness: number
@@ -141,12 +143,7 @@ export interface CampusCalendarPayload {
 /* ---------- 看板 ---------- */
 
 export type ApplicationStatus =
-  | 'TODO'
-  | 'APPLIED'
-  | 'WRITTEN_TEST'
-  | 'INTERVIEW'
-  | 'OFFER'
-  | 'CLOSED'
+  'TODO' | 'APPLIED' | 'WRITTEN_TEST' | 'INTERVIEW' | 'OFFER' | 'CLOSED'
 
 export interface BoardUpdatePayload {
   application: {
@@ -259,7 +256,7 @@ export interface CardPayloadMap {
   career_compare: CareerComparePayload
   resume_diagnosis: ResumeDiagnosisPayload
   resume_diff: ResumeDiffPayload
-  job_card: JobCardItem
+  job_card: JobCardItem | import('./jobs').ChatJobSearch
   job_match: JobMatchPayload
   campus_calendar: CampusCalendarPayload
   board_update: BoardUpdatePayload

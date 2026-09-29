@@ -24,8 +24,8 @@ function Build-Backend {
     Invoke-Step '编译并测试后端' {
         Push-Location (Join-Path $projectRoot 'backend')
         try {
-            if (Get-Command mvn -ErrorAction SilentlyContinue) { & mvn -q -B -pl offerpilot-bootstrap -am package }
-            else { & './mvnw.cmd' -q -B -pl offerpilot-bootstrap -am package }
+            if (Get-Command mvn -ErrorAction SilentlyContinue) { & mvn -q -B -pl offerpilot-bootstrap -am clean package }
+            else { & './mvnw.cmd' -q -B -pl offerpilot-bootstrap -am clean package }
             if ($LASTEXITCODE -ne 0) { throw '后端构建失败。' }
         } finally { Pop-Location }
     }

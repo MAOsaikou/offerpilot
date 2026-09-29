@@ -12,6 +12,7 @@ import {
 import { resumeStatus, type ResumeStructure, type ResumeVersion } from '@/shared/types/resume'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import ResumeSectionEditor from './ResumeSectionEditor.vue'
+import ResumeDiagnosisPanel from './ResumeDiagnosisPanel.vue'
 import { downloadText } from '@/shared/utils/download'
 
 const props = defineProps<{ id: string }>()
@@ -97,6 +98,7 @@ async function run(action: () => Promise<void>) {
   }
 }
 async function save() {
+  let success = false
   await run(async () => {
     if (!draft.value || !baseVersion.value) return
     if (!title.value.trim()) throw new Error('请填写简历名称。')
@@ -110,7 +112,9 @@ async function save() {
     populate()
     message.value = '已保存为新版本，可在版本记录中查看。'
     void cache.invalidateQueries({ queryKey: ['resumes'] })
+    success = true
   })
+  return success
 }
 async function retry() {
   await run(async () => {
@@ -249,6 +253,8 @@ const basics = [
         <div class="tabs no-print">
           <button :disabled="busy" :class="{ selected: tab === '内容' }" @click="tab = '内容'">
             内容编辑</button
+          ><button :disabled="busy" :class="{ selected: tab === '诊断' }" @click="tab = '诊断'">
+            AI 诊断</button
           ><button :disabled="busy" :class="{ selected: tab === '版本' }" @click="showHistory">
             版本记录
           </button>
@@ -302,6 +308,13 @@ const basics = [
             </button>
           </div>
         </form>
+        <ResumeDiagnosisPanel
+          v-else-if="tab === '诊断'"
+          :resume-id="id"
+          :version-id="baseVersion"
+          :dirty="!!dirty"
+          :save-first="save"
+        />
         <section v-else class="panel form-stack">
           <p v-if="historyLoading" role="status">正在加载版本…</p>
           <div v-for="version in history" :key="version.id" class="list-row">

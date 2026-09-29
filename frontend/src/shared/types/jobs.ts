@@ -31,6 +31,14 @@ export interface JobSearchResult {
     degradedSites: string[]
   }
 }
+export interface ChatJobSearch {
+  schemaVersion: 2
+  criteria: { query: string; site: string; nature: string; location: string }
+  items: Pick<RealJob, 'id' | 'site' | 'title' | 'company' | 'locations' | 'nature' | 'updatedAt'>[]
+  returnedCount: number
+  fetchedAt: string
+  meta: JobSearchResult['meta']
+}
 export interface MatchRequirement {
   requirement: string
   status: 'MET' | 'PARTIAL' | 'MISSING'

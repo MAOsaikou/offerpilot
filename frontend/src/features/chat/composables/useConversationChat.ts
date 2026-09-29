@@ -195,6 +195,7 @@ export function useConversationChat() {
     mode: AgentMode,
     modelTier: 'FLASH' | 'CHEAP' | 'PRO',
     created: (id: string) => void,
+    context?: Record<string, unknown>,
   ) {
     if (busy.value) return
     const version = epoch
@@ -228,7 +229,12 @@ export function useConversationChat() {
         { id: crypto.randomUUID(), role: 'user', text: content },
         { id: optimisticId.value, role: 'assistant', text: '', streaming: true },
       )
-      runId = await stream.start({ conversationId: id, content, mode, options: { modelTier } })
+      runId = await stream.start({
+        conversationId: id,
+        content,
+        mode,
+        options: { modelTier, ...(context ? { context } : {}) },
+      })
       if (version === epoch && activeRun.value?.error) error.value = activeRun.value.error.message
     } catch (e) {
       if (version === epoch && !(e instanceof DOMException && e.name === 'AbortError'))
