@@ -242,6 +242,26 @@ async function openReport(reportId: string) {
           </div>
           <div class="card-footer">
             <RouterLink to="/resumes" class="btn">上传或编辑简历</RouterLink
+            ><RouterLink
+              v-if="
+                resumeId &&
+                versionId &&
+                !versions.isFetching.value &&
+                !versions.isError.value &&
+                !busy
+              "
+              class="btn"
+              :to="{
+                path: '/chat',
+                query: {
+                  mode: 'JOB',
+                  jobId: id,
+                  resumeId,
+                  resumeVersionId: versionId,
+                  prompt: '请将选定岗位与这份已保存的简历版本进行匹配，说明已有证据和差距。',
+                },
+              }"
+              >在聊天中匹配</RouterLink
             ><button
               class="btn primary"
               :disabled="

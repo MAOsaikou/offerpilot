@@ -6,12 +6,14 @@ import type { CardType } from '@/shared/types/cards'
 /**
  * cardType → 组件（docs/07 §9）。
  *
- * 当前只实现了对话链路里用到的三张；其余类型走 CardFallback 显示原始 JSON，
+ * 已接入的业务卡片在此注册；其余类型走 CardFallback 显示原始 JSON，
  * 等对应 feature 完成后逐个补上，届时 registry 完整性测试（docs/07 §14）才成立。
  */
 export type CardLoader = () => Promise<Component>
 
 export const cardRegistry: Partial<Record<CardType, CardLoader>> = {
+  job_card: () => import('@/features/job/components/JobSearchCard.vue'),
+  resume_diagnosis: () => import('@/features/resume/components/DiagnosisCard.vue'),
   job_match: () => import('@/features/job/components/MatchReport.vue'),
   job_evidence_match: () => import('@/features/job/components/EvidenceMatchReport.vue'),
   resume_diff: () => import('@/features/resume/components/PatchDiffViewer.vue'),

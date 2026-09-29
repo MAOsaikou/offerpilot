@@ -18,6 +18,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ExpertRegistryTest {
+    @Test void resumeDiagnosisUsesOnlyExplicitContextAndReadsExistingReport() throws Exception {
+        var facade=org.mockito.Mockito.mock(com.offerpilot.resume.application.ResumeDiagnosisForChat.class);
+        var report=new ObjectMapper().readTree("{\"reportId\":\"diag1\",\"schemaVersion\":2,\"summary\":\"有依据的诊断\"}");
+        org.mockito.Mockito.when(facade.execute(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),
+            org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString())).thenReturn(reactor.core.publisher.Mono.just(report));
+        var beans=new org.springframework.beans.factory.support.StaticListableBeanFactory(); beans.addBean("diagnoses",facade);
+        var registry=new ExpertRegistry(beans.getBeanProvider(com.offerpilot.job.application.JobMatchForChat.class),beans.getBeanProvider(com.offerpilot.resume.application.ResumeDiagnosisForChat.class));
+        var step=new PlanStep("s1","诊断",ExpertType.RESUME,Map.of("resumeId","guessed","resumeVersionId","guessed"),List.of());
+        assertThat(registry.execute("owner",Map.of(),"run",step,Map.of()).block().card()).isNull();
+        org.mockito.Mockito.verifyNoInteractions(facade);
+        var result=registry.execute("owner",Map.of("resumeId","rs1","resumeVersionId","v1","diagnosisReportId","diag1"),"run",step,Map.of()).block();
+        assertThat(result.card().cardType()).isEqualTo("resume_diagnosis");
+        assertThat(result.card().payload()).isEqualTo(report);
+        org.mockito.Mockito.verify(facade).execute("owner","rs1","v1","diag1",ExpertRegistry.requestId("run","s1"));
+    }
     private final ObjectMapper json = new ObjectMapper();
     private final List<List<String>> calls = new CopyOnWriteArrayList<>();
 
@@ -51,7 +66,7 @@ class ExpertRegistryTest {
         assertThat(fromContext.card().payload().toString()).doesNotContain("快照");
         assertThat(fromInputs.card().cardType()).isEqualTo("job_match");
         assertThat(resume.card()).isNull();
-        assertThat(resume.summary()).contains("未执行搜索");
+        assertThat(resume.summary()).contains("未选择已保存的简历版本");
     }
 
     @Test

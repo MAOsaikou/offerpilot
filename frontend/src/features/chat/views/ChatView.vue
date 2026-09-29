@@ -37,6 +37,13 @@ const modes: { value: AgentMode; label: string }[] = [
   { value: 'COACH', label: '成长教练' },
 ]
 const mode = ref<AgentMode>('AUTO')
+watch(
+  () => route.query.diagnosisReportId,
+  (id) => {
+    if (typeof id === 'string') mode.value = 'RESUME'
+  },
+  { immediate: true },
+)
 const tier = ref<'FLASH' | 'CHEAP' | 'PRO'>('FLASH')
 const seed = ref('')
 const lastAttempt = ref('')
@@ -61,7 +68,7 @@ watch(
     await chat.open(id)
     seed.value = typeof route.query.prompt === 'string' ? route.query.prompt : ''
     mode.value =
-      current.value?.mode || modes.find((m) => m.value === route.query.mode)?.value || 'AUTO'
+      modes.find((m) => m.value === route.query.mode)?.value || current.value?.mode || 'AUTO'
     await nextTick()
     if (scrollArea.value) scrollArea.value.scrollTop = scrollArea.value.scrollHeight
   },
@@ -94,9 +101,20 @@ async function onSend(content: string) {
   if (missingConversation.value) return
   lastAttempt.value = content
   seed.value = ''
-  await chat.send(content, mode.value, tier.value, (id) => {
-    void router.replace(`/chat/${encodeURIComponent(id)}`)
-  })
+  const context: Record<string, string> = {}
+  for (const key of ['jobId', 'resumeId', 'resumeVersionId', 'diagnosisReportId']) {
+    if (typeof route.query[key] === 'string') context[key] = route.query[key]
+  }
+  await chat.send(
+    content,
+    mode.value,
+    tier.value,
+    (id) => {
+      const query = Object.keys(context).length ? { ...context, mode: mode.value } : {}
+      void router.replace({ path: `/chat/${encodeURIComponent(id)}`, query })
+    },
+    Object.keys(context).length ? context : undefined,
+  )
   await nextTick()
   if (scrollArea.value) scrollArea.value.scrollTop = scrollArea.value.scrollHeight
 }
@@ -152,6 +170,20 @@ async function remove(id: string) {
         />
         <div ref="scrollArea" class="chat-scroll" aria-live="polite" aria-relevant="additions text">
           <div class="chat-column">
+            <p v-if="typeof route.query.jobId === 'string'" class="helper-note">
+              已关联选定岗位和简历版本。发送匹配请求后生成报告；搜索新岗位仍按本轮搜索条件执行。
+              <RouterLink :to="'/jobs/' + encodeURIComponent(route.query.jobId)"
+                >返回岗位</RouterLink
+              >
+            </p>
+            <p v-if="route.query.diagnosisReportId" class="helper-note">
+              已关联选定版本的简历诊断报告。发送消息后，AI 会读取报告继续讨论。
+              <RouterLink
+                v-if="typeof route.query.resumeId === 'string'"
+                :to="'/resumes/' + encodeURIComponent(route.query.resumeId)"
+                >返回简历</RouterLink
+              >
+            </p>
             <button
               v-if="hasMoreMessages"
               class="btn text older"

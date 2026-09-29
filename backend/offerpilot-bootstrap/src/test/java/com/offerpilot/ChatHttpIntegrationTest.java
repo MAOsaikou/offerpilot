@@ -66,7 +66,7 @@ class ChatHttpIntegrationTest {
                     boolean planning = body.contains("意图识别与规划 v1");
                     String decision = body.contains("复合验收") ? """
                             {"kind":"composite","confidence":1,"plan":{"goal":"岗位与简历准备","steps":[
-                            {"id":"s1","title":"岗位分析","agent":"JOB","inputs":{},"dependsOn":[]},
+                            {"id":"s1","title":"职业探索","agent":"CAREER_DISCOVERY","inputs":{},"dependsOn":[]},
                             {"id":"s2","title":"简历指导","agent":"RESUME","inputs":{"jobFrom":"s1"},"dependsOn":["s1"]}]}}
                             """ : "{\"kind\":\"chitchat\",\"confidence\":1}";
                     for (String text : planning ? new String[]{decision} : new String[]{"你好", "，同学。"}) {

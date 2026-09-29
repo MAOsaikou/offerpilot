@@ -43,6 +43,9 @@ public final class MessageCards {
         if (cardId == null || !CARD_ID.matcher(cardId).matches() || !allowedType(cardType)) return null;
         JsonNode node = node(payload, json);
         if (node == null || !node.isObject()) return null;
+        if ("resume_diagnosis".equals(cardType) && node.has("schemaVersion")
+                && (!com.offerpilot.resume.application.ResumeDiagnosisValidator.validCard(node)
+                    || !cardId.equals(node.path("reportId").asText()))) return null;
         JsonNode copy = node.deepCopy();
         if (encoded(copy, json).length() > MAX_PAYLOAD_CHARS) return null;
         return new MessageCard(cardId, cardType, copy);
