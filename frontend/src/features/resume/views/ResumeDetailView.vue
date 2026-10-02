@@ -11,5 +11,7 @@ const local = computed(() => workspace.state.resumes.some((resume) => resume.id 
 </script>
 <template>
   <LocalResumeEditor v-if="local" :key="'local-' + id" />
-  <ServerResumeEditor v-else :id="id" :key="id" />
+  <ServerResumeEditor v-else :id="id" :key="id">
+    <template #optimization-card="card"><slot name="optimization-card" v-bind="card" /></template>
+  </ServerResumeEditor>
 </template>

@@ -262,6 +262,20 @@ async function openReport(reportId: string) {
                 },
               }"
               >在聊天中匹配</RouterLink
+            ><RouterLink
+              v-if="
+                resumeId &&
+                versionId &&
+                !versions.isFetching.value &&
+                !versions.isError.value &&
+                !busy
+              "
+              class="btn"
+              :to="{
+                path: '/resumes/' + resumeId,
+                query: { tab: 'optimize', jobId: id, resumeVersionId: versionId },
+              }"
+              >针对岗位改写</RouterLink
             ><button
               class="btn primary"
               :disabled="

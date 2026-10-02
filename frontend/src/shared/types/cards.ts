@@ -1,6 +1,6 @@
 /**
  * 生成式 UI 卡片 payload 契约。
- * 与 docs/05-接口文档.md §18 对应；卡片组件 props 一律为 { payload }。
+ * 与 docs/05-接口文档.md §18 对应；payload 是公共输入，resume_diff 可选交互属性由宿主提供。
  */
 
 export type CardType =

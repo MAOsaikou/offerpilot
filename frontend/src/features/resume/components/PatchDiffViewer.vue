@@ -1,42 +1,104 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { cn } from '@/shared/utils/cn'
 import { asPayload } from '@/shared/utils/payload'
 import type { ResumeDiffPayload, ResumePatch } from '@/shared/types/cards'
+import type { PatchDecision } from '@/shared/types/optimization'
 
-const props = defineProps<{ payload: unknown }>()
+const props = defineProps<{
+  payload: unknown
+  interactive?: boolean
+  disabled?: boolean
+  appliedVersionId?: string | null
+}>()
+const emit = defineEmits<{ apply: [decision: PatchDecision] }>()
 
 const data = computed(() => asPayload<ResumeDiffPayload>(props.payload, 'patches'))
 
-/** 标记为「需你确认」的补丁默认不勾选，避免示例数字被当成真实数据采纳 */
-const dropped = ref(new Set<string>())
+const selected = ref(new Set<string>())
+const confirmed = ref(new Set<string>())
+const edited = ref<Record<string, string>>({})
 
 watch(
   () => data.value?.patches,
-  (patches) => {
-    const next = new Set<string>()
-    for (const patch of patches ?? []) {
-      if (patch.needsUserConfirmation) next.add(patch.id)
-    }
-    dropped.value = next
+  () => {
+    selected.value = new Set()
+    confirmed.value = new Set()
+    edited.value = {}
   },
   { immediate: true },
 )
 
-const acceptedCount = computed(() => {
-  const total = data.value?.patches.length ?? 0
-  return total - dropped.value.size
-})
+const acceptedCount = computed(() => selected.value.size)
+const locked = computed(() => props.disabled || !!props.appliedVersionId || !props.interactive)
+const pendingConfirmation = computed(() =>
+  data.value?.patches.some(
+    (p) => selected.value.has(p.id) && p.needsUserConfirmation && !confirmed.value.has(p.id),
+  ),
+)
+const noChange = computed(() =>
+  data.value?.patches.some(
+    (p) => selected.value.has(p.id) && (edited.value[p.id] ?? p.value) === p.from,
+  ),
+)
 
 function toggle(id: string): void {
-  const next = new Set(dropped.value)
+  if (locked.value) return
+  const next = new Set(selected.value)
   if (next.has(id)) next.delete(id)
   else next.add(id)
-  dropped.value = next
+  selected.value = next
+  if (!next.has(id)) {
+    const confirmations = new Set(confirmed.value)
+    confirmations.delete(id)
+    confirmed.value = confirmations
+  }
 }
 
 function isKept(patch: ResumePatch): boolean {
-  return !dropped.value.has(patch.id)
+  return selected.value.has(patch.id)
+}
+function fieldLabel(path: string): string {
+  if (path === '/summary') return '个人概述'
+  const match = /^\/(experience|projects|skills)\/(\d+)\/(bullets|items)\/(\d+)$/.exec(path)
+  if (!match) return '简历内容'
+  const section = { experience: '实习与工作', projects: '项目经历', skills: '技能' }[
+    match[1] as 'experience' | 'projects' | 'skills'
+  ]
+  return `${section} ${Number(match[2]) + 1} · 第 ${Number(match[4]) + 1} 条`
+}
+function confirm(id: string, checked: boolean) {
+  const next = new Set(confirmed.value)
+  if (checked) next.add(id)
+  else next.delete(id)
+  confirmed.value = next
+}
+function edit(id: string, value: string) {
+  edited.value[id] = value
+  confirm(id, false)
+}
+function apply() {
+  if (
+    locked.value ||
+    !data.value?.batchId ||
+    !acceptedCount.value ||
+    pendingConfirmation.value ||
+    noChange.value
+  )
+    return
+  const decision: PatchDecision = {
+    batchId: data.value.batchId,
+    accepted: [],
+    edited: {},
+    confirmed: [],
+  }
+  for (const patch of data.value.patches) {
+    if (!selected.value.has(patch.id)) continue
+    const value = edited.value[patch.id] ?? patch.value
+    if (value === patch.value) decision.accepted.push(patch.id)
+    else decision.edited[patch.id] = { value }
+    if (confirmed.value.has(patch.id)) decision.confirmed.push(patch.id)
+  }
+  emit('apply', decision)
 }
 </script>
 
@@ -44,34 +106,29 @@ function isKept(patch: ResumePatch): boolean {
   <article v-if="data" class="surface overflow-hidden rounded-[14px]">
     <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-4 py-3">
       <h3 class="text-sm font-medium">简历改写建议</h3>
-      <span class="font-mono text-xs text-muted-foreground">
-        +{{ data.stats.added }} ~{{ data.stats.replaced }} -{{ data.stats.removed }}
-      </span>
-      <span class="ml-auto font-mono text-xs text-muted-foreground">{{ data.batchId }}</span>
+      <span class="text-xs text-muted-foreground">共 {{ data.patches.length }} 条建议</span>
+      <span class="ml-auto text-xs text-muted-foreground">核对真实经历后逐条采纳</span>
     </header>
 
     <ul class="divide-y divide-border/60">
-      <li v-for="patch in data.patches" :key="patch.id" class="px-4 py-3">
+      <li v-for="(patch, index) in data.patches" :key="patch.id" class="min-w-0 px-4 py-3">
         <div class="flex items-center gap-2">
-          <span class="font-mono text-xs text-muted-foreground">{{ patch.path }}</span>
+          <span class="text-xs text-muted-foreground">{{ fieldLabel(patch.path) }}</span>
           <button
+            v-if="interactive"
             type="button"
-            class="ml-auto rounded-lg px-2.5 py-1 text-xs transition-colors"
-            :class="
-              cn(
-                isKept(patch)
-                  ? 'bg-primary/15 text-primary'
-                  : 'text-muted-foreground hover:bg-foreground/5',
-              )
-            "
+            class="btn ml-auto shrink-0"
+            :aria-label="'采纳建议 ' + (index + 1)"
+            :aria-pressed="isKept(patch)"
+            :disabled="locked || patch.op !== 'replace'"
             @click="toggle(patch.id)"
           >
-            {{ isKept(patch) ? '采纳' : '已跳过' }}
+            {{ isKept(patch) ? '已选择' : '选择采纳' }}
           </button>
         </div>
 
         <p
-          v-if="patch.from"
+          v-if="patch.from !== undefined"
           class="mt-2 rounded-lg bg-danger/10 px-2.5 py-1.5 text-xs leading-relaxed text-muted-foreground line-through"
         >
           {{ patch.from }}
@@ -79,10 +136,33 @@ function isKept(patch: ResumePatch): boolean {
         <p class="mt-1.5 rounded-lg bg-success/10 px-2.5 py-1.5 text-xs leading-relaxed">
           {{ patch.value }}
         </p>
+        <label v-if="interactive && isKept(patch)" class="field mt-2 text-xs">
+          采纳内容（可编辑）
+          <textarea
+            :aria-label="'编辑建议 ' + (index + 1)"
+            :value="edited[patch.id] ?? patch.value"
+            :disabled="locked"
+            maxlength="5000"
+            rows="3"
+            @input="edit(patch.id, ($event.target as HTMLTextAreaElement).value)"
+          />
+        </label>
 
         <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
           <span class="text-foreground">理由：</span>{{ patch.reason }}
         </p>
+        <label
+          v-if="interactive && patch.needsUserConfirmation"
+          class="mt-2 flex items-start gap-2 text-xs"
+        >
+          <input
+            type="checkbox"
+            :checked="confirmed.has(patch.id)"
+            :disabled="locked || !isKept(patch)"
+            @change="confirm(patch.id, ($event.target as HTMLInputElement).checked)"
+          />
+          <span>已核对建议 {{ index + 1 }} 的事实与贡献范围</span>
+        </label>
         <p v-if="patch.jdEvidence" class="mt-1 text-xs leading-relaxed text-muted-foreground">
           <span class="text-foreground">JD 依据：</span>{{ patch.jdEvidence }}
         </p>
@@ -98,8 +178,20 @@ function isKept(patch: ResumePatch): boolean {
     <footer
       class="flex flex-wrap items-center gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground"
     >
-      <span>已采纳 {{ acceptedCount }} / {{ data.patches.length }} 条</span>
-      <span class="ml-auto">采纳后调用 apply-patches 生成新版本 —— 接口待接入</span>
+      <span v-if="appliedVersionId" role="status">这批建议已生成新版本，可在版本记录中查看。</span>
+      <template v-else-if="interactive">
+        <span>已选择 {{ acceptedCount }} / {{ data.patches.length }} 条</span>
+        <span v-if="pendingConfirmation" role="status">请核对并确认标记的建议。</span>
+        <span v-if="noChange" role="status">选中内容与原文相同，请修改或取消选择。</span>
+        <button
+          class="btn primary ml-auto"
+          :disabled="locked || !acceptedCount || pendingConfirmation || noChange"
+          @click="apply"
+        >
+          采纳所选并保存新版本
+        </button>
+      </template>
+      <span v-else>仅查看建议；可在对应简历的定向改写页核对并采纳。</span>
     </footer>
   </article>
 </template>
