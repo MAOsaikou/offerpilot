@@ -51,9 +51,11 @@ class ResumeHttpIntegrationTest {
     static final AtomicReference<String> lastAuthorization = new AtomicReference<>();
     static final AtomicReference<String> lastPath = new AtomicReference<>();
     static final java.util.concurrent.atomic.AtomicInteger providerStatus = new java.util.concurrent.atomic.AtomicInteger(200);
+    static final java.util.concurrent.atomic.AtomicInteger providerCalls = new java.util.concurrent.atomic.AtomicInteger();
     static final HttpServer provider = provider();
     @Autowired ResumeService resumes;
     @Autowired ResumePatchService patches;
+    @Autowired ResumeOptimizationService optimizations;
     @Autowired ResumeParseWorker worker;
     @Autowired ResumeObjectStore store;
     @Autowired GuestIdentityService identities;
@@ -74,6 +76,7 @@ class ResumeHttpIntegrationTest {
         try {
             var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/", exchange -> {
+                providerCalls.incrementAndGet();
                 lastPrompt.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
                 lastAuthorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
                 lastPath.set(exchange.getRequestURI().getPath());
@@ -95,7 +98,7 @@ class ResumeHttpIntegrationTest {
         } catch (Exception ex) { throw new IllegalStateException(ex); }
     }
     @AfterAll static void stop() { provider.stop(0); }
-    @BeforeEach void reset() { output.set(ResumeStructure.SCHEMA); providerStatus.set(200); }
+    @BeforeEach void reset() { output.set(ResumeStructure.SCHEMA); providerStatus.set(200); providerCalls.set(0); }
     String owner(String token) { return identities.require("Bearer " + token); }
     JsonNode data(HttpResponse<String> response) throws Exception { return JSON.readTree(response.body()).path("data"); }
     HttpResponse<String> request(String method, String path, String token, String body) throws Exception {
@@ -309,6 +312,73 @@ class ResumeHttpIntegrationTest {
             assertThat(patches.get(owner(token), resume.id(), resume.currentVersionId(), batch.batchId()).appliedVersionId()).isNull();
         } finally { jdbc.execute("ALTER TABLE resume_patch_batches DROP CONSTRAINT patch_fixture_failure"); }
         assertThat(request("POST", applyPath(resume), token, decision(batch, "p1")).statusCode()).isEqualTo(200);
+    }
+    static final String OPTIMIZE_REPORT="""
+        {"summary":"突出已有后端贡献","patches":[{"id":"p1","op":"replace","path":"/summary","from":"负责后端开发","value":"参与后端服务开发","reason":"明确职责","jdEvidence":"后端服务开发","needsUserConfirmation":false}]}
+        """;
+    static final String OPTIMIZE_JD="熟悉Java；具备后端服务开发能力。";
+    String optimizeBody(String requestId) {return JSON.createObjectNode().put("requestId",requestId).put("jobDescription",OPTIMIZE_JD).toString();}
+    @Test void optimizePersistsSuggestionsWithoutEditingAndReplaysBeforeExplicitApply() throws Exception {
+        String token=identities.create().accessToken(),stranger=identities.create().accessToken();var resume=patchFixture(token);
+        output.set(OPTIMIZE_REPORT);String path=applyPath(resume).replace("apply-patches","optimize"),body=optimizeBody("optimize-request-success");
+        assertThat(request("POST",path,stranger,body).statusCode()).isEqualTo(404);
+        var response=request("POST",path,token,body);assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("run.started","resume_diff","run.completed");
+        assertThat(lastPrompt.get()).contains("不得把「参与」改为「主导」",OPTIMIZE_JD).doesNotContain("\"basics\"");
+        assertThat(resumes.versions(owner(token),resume.id())).hasSize(1);
+        var tasks=data(request("GET","/resumes/"+resume.id()+"/optimizations",token,null));String reportId=tasks.get(0).path("id").asText();
+        var task=data(request("GET","/resumes/optimizations/"+reportId,token,null));var report=task.path("report");
+        assertThat(report.path("resumeVersionId").asText()).isEqualTo(resume.currentVersionId());
+        assertThat(report.path("patches").size()).isEqualTo(1);String batchId=report.path("batchId").asText();
+        assertThat(patches.get(owner(token),resume.id(),resume.currentVersionId(),batchId).appliedVersionId()).isNull();
+        int calls=providerCalls.get();providerStatus.set(503);
+        assertThat(request("POST",path,token,body).body()).contains("run.completed").doesNotContain("event:error");
+        assertThat(providerCalls.get()).isEqualTo(calls);
+        assertThat(request("POST",path,token,body.replace(OPTIMIZE_JD,"另一个岗位")).statusCode()).isEqualTo(400);
+        assertThat(request("GET","/resumes/optimizations/"+reportId,stranger,null).statusCode()).isEqualTo(404);
+        assertThat(request("POST","/resumes/optimizations/"+reportId+"/cancel",stranger,null).statusCode()).isEqualTo(404);
+        var applied=request("POST",applyPath(resume),token,"{\"batchId\":\""+batchId+"\",\"accepted\":[\"p1\"]}");
+        assertThat(applied.statusCode()).isEqualTo(200);assertThat(data(applied).path("version").path("source").asText()).isEqualTo("OPTIMIZED");
+        assertThat(request("GET","/resumes/optimizations/"+reportId,token,null).body()).contains(batchId);
+    }
+    @Test void optimizeEmptyAndInvalidOutputNeverCreateSpuriousVersionsOrBatches() throws Exception {
+        String token=identities.create().accessToken();var resume=patchFixture(token);String path=applyPath(resume).replace("apply-patches","optimize");
+        output.set("{\"summary\":\"原文已清楚，无需改写\",\"patches\":[]}");
+        assertThat(request("POST",path,token,optimizeBody("optimize-request-empty")).body()).contains("run.completed");
+        var task=optimizations.get(owner(token),optimizations.list(owner(token),resume.id()).get(0).path("id").asText());
+        assertThat(task.path("report").path("batchId").isNull()).isTrue();
+        output.set(OPTIMIZE_REPORT.replace("参与后端服务开发","提升性能60%"));int before=providerCalls.get();
+        assertThat(request("POST",path,token,optimizeBody("optimize-request-invalid")).body()).contains("event:error").doesNotContain("event:ui.card");
+        assertThat(providerCalls.get()-before).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM resume_patch_batches WHERE user_id=?",Integer.class,owner(token))).isZero();
+        assertThat(resumes.versions(owner(token),resume.id())).hasSize(1);
+        assertThat(optimizations.list(owner(token),resume.id()).get(0).path("status").asText()).isEqualTo("FAILED");
+    }
+    @Test void optimizeRejectsUnknownInputConcurrentWorkCancelledAndExpiredResults() throws Exception {
+        String token=identities.create().accessToken();var resume=patchFixture(token);String path=applyPath(resume).replace("apply-patches","optimize");
+        var input=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(optimizeBody("optimize-request-fields"));input.put("jobId","guessed");
+        assertThat(request("POST",path,token,input.toString()).statusCode()).isEqualTo(400);
+        assertThat(request("POST",path,token,optimizeBody("short")).statusCode()).isEqualTo(400);
+        var work=optimizations.begin(owner(token),resume.id(),resume.currentVersionId(),new ResumeOptimizationService.Input("optimize-request-cancel",OPTIMIZE_JD));
+        assertThat(request("POST",path,token,optimizeBody("optimize-request-other")).statusCode()).isEqualTo(429);
+        optimizations.cancel(owner(token),work.id());
+        assertThatThrownBy(() -> optimizations.execute(work).block(Duration.ofSeconds(3))).hasMessageContaining("取消");
+        var expired=optimizations.begin(owner(token),resume.id(),resume.currentVersionId(),new ResumeOptimizationService.Input("optimize-request-expired",OPTIMIZE_JD));
+        jdbc.update("UPDATE resume_optimizations SET created_at=now()-interval '4 minutes' WHERE id=?",expired.id());
+        assertThatThrownBy(() -> optimizations.execute(expired).block(Duration.ofSeconds(3))).hasMessageContaining("过期");
+        assertThat(optimizations.get(owner(token),expired.id()).path("status").asText()).isEqualTo("FAILED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM resume_patch_batches WHERE user_id=?",Integer.class,owner(token))).isZero();
+    }
+    @Test void optimizeReportSaveFailureRollsBackGeneratedBatch() throws Exception {
+        String token=identities.create().accessToken();var resume=patchFixture(token);output.set(OPTIMIZE_REPORT);
+        var work=optimizations.begin(owner(token),resume.id(),resume.currentVersionId(),new ResumeOptimizationService.Input("optimize-request-rollback",OPTIMIZE_JD));
+        jdbc.execute("ALTER TABLE resume_optimizations ADD CONSTRAINT optimize_fixture_failure CHECK (id <> '"+work.id()+"' OR status <> 'SUCCEEDED')");
+        try {
+            assertThatThrownBy(() -> optimizations.execute(work).block(Duration.ofSeconds(10))).isInstanceOf(com.offerpilot.common.error.BusinessException.class);
+            assertThat(optimizations.get(owner(token),work.id()).path("status").asText()).isEqualTo("FAILED");
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM resume_patch_batches WHERE user_id=?",Integer.class,owner(token))).isZero();
+            assertThat(resumes.versions(owner(token),resume.id())).hasSize(1);
+        } finally {jdbc.execute("ALTER TABLE resume_optimizations DROP CONSTRAINT optimize_fixture_failure");}
     }
     @Test void failureRetryLeaseRecoveryAndStaleWorkerCannotOverwrite() throws Exception {
         String token = identities.create().accessToken();
