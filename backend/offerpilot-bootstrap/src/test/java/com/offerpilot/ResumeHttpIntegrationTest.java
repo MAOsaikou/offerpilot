@@ -52,6 +52,7 @@ class ResumeHttpIntegrationTest {
     static final AtomicReference<String> lastPath = new AtomicReference<>();
     static final java.util.concurrent.atomic.AtomicInteger providerStatus = new java.util.concurrent.atomic.AtomicInteger(200);
     static final java.util.concurrent.atomic.AtomicInteger providerCalls = new java.util.concurrent.atomic.AtomicInteger();
+    static final java.util.concurrent.atomic.AtomicInteger rewriteCalls = new java.util.concurrent.atomic.AtomicInteger();
     static final HttpServer provider = provider();
     @Autowired ResumeService resumes;
     @Autowired ResumePatchService patches;
@@ -87,9 +88,15 @@ class ResumeHttpIntegrationTest {
                 }
                 exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
                 exchange.sendResponseHeaders(200, 0);
+                String content = output.get(), prompt = lastPrompt.get();
+                if (prompt.contains("简历动作解析 v1")) content = prompt.contains("本轮请求：解释已有建议") ? "{\"action\":\"discuss\"}" : "{\"action\":\"optimize\"}";
+                else if (prompt.contains("意图识别与规划 v1")) content = "{\"kind\":\"single\",\"expert\":\"RESUME\",\"confidence\":1}";
+                else if (prompt.contains("中文应届生简历的岗位定向编辑")) rewriteCalls.incrementAndGet();
+                else if (prompt.contains("本轮分析结果已作为卡片展示")) content = "建议已保存，请核对后采纳。";
+                else if (prompt.contains("本轮真实业务调用未成功")) content = "本次调用失败，请检查选定资源。";
                 var frame = Map.of("id", "resume-test", "object", "chat.completion.chunk", "created", 1,
                     "model", "test-model", "usage", Map.of("prompt_tokens", 12, "completion_tokens", 6, "total_tokens", 18),
-                    "choices", List.of(Map.of("index", 0, "delta", Map.of("role", "assistant", "content", output.get()))));
+                    "choices", List.of(Map.of("index", 0, "delta", Map.of("role", "assistant", "content", content))));
                 try (var stream = exchange.getResponseBody()) {
                     stream.write(("data: " + JSON.writeValueAsString(frame) + "\n\ndata: [DONE]\n\n").getBytes(StandardCharsets.UTF_8));
                 }
@@ -98,7 +105,7 @@ class ResumeHttpIntegrationTest {
         } catch (Exception ex) { throw new IllegalStateException(ex); }
     }
     @AfterAll static void stop() { provider.stop(0); }
-    @BeforeEach void reset() { output.set(ResumeStructure.SCHEMA); providerStatus.set(200); providerCalls.set(0); }
+    @BeforeEach void reset() { output.set(ResumeStructure.SCHEMA); providerStatus.set(200); providerCalls.set(0); rewriteCalls.set(0); }
     String owner(String token) { return identities.require("Bearer " + token); }
     JsonNode data(HttpResponse<String> response) throws Exception { return JSON.readTree(response.body()).path("data"); }
     HttpResponse<String> request(String method, String path, String token, String body) throws Exception {
@@ -318,6 +325,65 @@ class ResumeHttpIntegrationTest {
         """;
     static final String OPTIMIZE_JD="熟悉Java；具备后端服务开发能力。";
     String optimizeBody(String requestId) {return JSON.createObjectNode().put("requestId",requestId).put("jobDescription",OPTIMIZE_JD).toString();}
+    String chatJob(String description) {
+        String id = "job_" + UUID.randomUUID().toString().replace("-", "");
+        var payload = JSON.createObjectNode().put("title", "后端实习生").put("description", description).put("requirement", "");
+        jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES (?,'fixture',?,'intern',?::jsonb)", id, id, payload.toString());
+        return id;
+    }
+    List<JsonNode> events(HttpResponse<String> response) {
+        return response.body().lines().filter(line -> line.startsWith("data:")).map(line -> {
+            try { return JSON.readTree(line.substring(5).strip()); } catch (Exception ex) { throw new IllegalStateException(ex); }
+        }).toList();
+    }
+    String chatBody(String mode, String conversationId, String content, Map<String,String> context) {
+        var body = JSON.createObjectNode().put("mode", mode).put("content", content);
+        if (conversationId != null) body.put("conversationId", conversationId);
+        body.putObject("options").put("modelTier", "CHEAP").set("context", JSON.valueToTree(context));
+        return body.toString();
+    }
+    @Test void chatRewritePersistsReadOnlyCardAndDiscussionRestoresWithoutRegeneration() throws Exception {
+        String token = identities.create().accessToken(), stranger = identities.create().accessToken();
+        var resume = patchFixture(token); String jobId = chatJob(OPTIMIZE_JD); output.set(OPTIMIZE_REPORT);
+        var selected = Map.of("jobId", jobId, "resumeId", resume.id(), "resumeVersionId", resume.currentVersionId());
+        var response = request("POST", "/agent/chat", token, chatBody("AUTO", null, "针对岗位生成改写建议", selected));
+        assertThat(response.statusCode()).isEqualTo(200);
+        var stream = events(response);
+        var card = stream.stream().filter(e -> "ui.card".equals(e.path("type").asText())).findFirst().orElseThrow();
+        assertThat(card.path("cardType").asText()).isEqualTo("resume_diff");
+        assertThat(card.path("cardId").asText()).isEqualTo(card.path("payload").path("reportId").asText());
+        assertThat(stream.get(stream.size()-1).path("status").asText()).isEqualTo("COMPLETED");
+        String conversationId = stream.get(0).path("conversationId").asText(), reportId = card.path("cardId").asText();
+        var report = optimizations.get(owner(token), reportId).path("report");
+        assertThat(card.path("payload")).isEqualTo(report);
+        assertThat(resumes.get(owner(token), resume.id()).currentVersionId()).isEqualTo(resume.currentVersionId());
+        assertThat(resumes.versions(owner(token), resume.id())).hasSize(1);
+        assertThat(patches.get(owner(token), resume.id(), resume.currentVersionId(), report.path("batchId").asText()).appliedVersionId()).isNull();
+        int calls = rewriteCalls.get(); assertThat(calls).isEqualTo(1);
+        var history = data(request("GET", "/conversations/" + conversationId + "/messages", token, null));
+        assertThat(history.toString()).contains("resume_diff", reportId, report.path("batchId").asText());
+        assertThat(rewriteCalls.get()).isEqualTo(calls);
+        var discussion = Map.of("resumeId", resume.id(), "resumeVersionId", resume.currentVersionId(), "optimizationReportId", reportId);
+        var discussed = events(request("POST", "/agent/chat", token, chatBody("RESUME", conversationId, "解释已有建议", discussion)));
+        assertThat(discussed).anySatisfy(e -> { assertThat(e.path("type").asText()).isEqualTo("ui.card"); assertThat(e.path("payload")).isEqualTo(report); });
+        assertThat(rewriteCalls.get()).isEqualTo(calls);
+        var denied = request("POST", "/agent/chat", stranger, chatBody("RESUME", null, "解释已有建议", discussion));
+        assertThat(denied.body()).contains("FAILED").doesNotContain("event:ui.card", "负责后端开发");
+        assertThat(rewriteCalls.get()).isEqualTo(calls);
+        var newer = resumes.save(owner(token), resume.id(), resume.currentVersionId(), resume.currentVersion().structured());
+        var wrongVersion = Map.of("resumeId", resume.id(), "resumeVersionId", newer.currentVersionId(), "optimizationReportId", reportId);
+        assertThat(request("POST", "/agent/chat", token, chatBody("RESUME", null, "解释已有建议", wrongVersion)).body()).contains("不属于").doesNotContain("event:ui.card");
+        assertThat(rewriteCalls.get()).isEqualTo(calls);
+    }
+    @Test void chatRewriteMissingJobContentsFailsWithoutModelOrVersionWrites() throws Exception {
+        String token = identities.create().accessToken(); var resume = patchFixture(token);
+        var selected = Map.of("jobId", chatJob(""), "resumeId", resume.id(), "resumeVersionId", resume.currentVersionId());
+        var response = request("POST", "/agent/chat", token, chatBody("RESUME", null, "针对岗位生成改写建议", selected));
+        assertThat(response.body()).contains("岗位缺少职责与要求", "FAILED").doesNotContain("event:ui.card");
+        assertThat(rewriteCalls.get()).isZero();
+        assertThat(optimizations.list(owner(token), resume.id())).isEmpty();
+        assertThat(resumes.versions(owner(token), resume.id())).hasSize(1);
+    }
     @Test void optimizePersistsSuggestionsWithoutEditingAndReplaysBeforeExplicitApply() throws Exception {
         String token=identities.create().accessToken(),stranger=identities.create().accessToken();var resume=patchFixture(token);
         output.set(OPTIMIZE_REPORT);String path=applyPath(resume).replace("apply-patches","optimize"),body=optimizeBody("optimize-request-success");

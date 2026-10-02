@@ -5,6 +5,8 @@ import com.offerpilot.agent.domain.PlanStep;
 import com.offerpilot.job.application.JobMatchCards;
 import com.offerpilot.job.application.JobMatchForChat;
 import com.offerpilot.job.application.JobSearchForChat;
+import com.offerpilot.job.application.JobDescriptionForChat;
+import com.offerpilot.resume.application.ResumeOptimizationForChat;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -15,7 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 
-/** 已接入的岗位搜索、匹配和简历诊断；其他专家仍明确返回占位结果。 */
+/** 已接入的岗位搜索、匹配、简历诊断与定向改写；其他专家仍明确返回占位结果。 */
 @Component
 public class ExpertRegistry {
     private static final Map<ExpertType, String> LABELS = Map.of(
@@ -24,6 +26,8 @@ public class ExpertRegistry {
     private final JobMatchForChat matches;
     private com.offerpilot.resume.application.ResumeDiagnosisForChat diagnoses;
     private JobSearchForChat searches;
+    private ResumeOptimizationForChat optimizations;
+    private JobDescriptionForChat descriptions;
 
     public ExpertRegistry() {
         this.matches = null;
@@ -38,12 +42,28 @@ public class ExpertRegistry {
         this.diagnoses = diagnoses.getIfAvailable();
     }
 
-    @Autowired
     public ExpertRegistry(ObjectProvider<JobMatchForChat> matches,
                           ObjectProvider<com.offerpilot.resume.application.ResumeDiagnosisForChat> diagnoses,
                           JobSearchForChat searches) {
         this(matches, diagnoses);
         this.searches = searches;
+    }
+
+    @Autowired
+    public ExpertRegistry(ObjectProvider<JobMatchForChat> matches,
+                          ObjectProvider<com.offerpilot.resume.application.ResumeDiagnosisForChat> diagnoses,
+                          JobSearchForChat searches, ResumeOptimizationForChat optimizations, JobDescriptionForChat descriptions) {
+        this(matches, diagnoses, searches);
+        this.optimizations = optimizations;
+        this.descriptions = descriptions;
+    }
+
+    public boolean optimizing(PlanStep step, Map<String,Object> context) {
+        if (optimizations == null || step.agent() != ExpertType.RESUME || context == null
+                || text(context.get("resumeId")) == null || text(context.get("resumeVersionId")) == null) return false;
+        return "read_optimization".equals(step.inputs().get("action"))
+                ? text(context.get("optimizationReportId")) != null
+                : "optimize".equals(step.inputs().get("action")) && descriptions != null && text(context.get("jobId")) != null;
     }
 
     public boolean searching(PlanStep step) {
@@ -52,6 +72,7 @@ public class ExpertRegistry {
 
     public boolean diagnosing(PlanStep step, Map<String,Object> context) {
         return diagnoses != null && step.agent() == ExpertType.RESUME && context != null
+            && !"optimize".equals(step.inputs().get("action")) && !"read_optimization".equals(step.inputs().get("action")) && !"advice".equals(step.inputs().get("action"))
             && text(context.get("resumeId")) != null && text(context.get("resumeVersionId")) != null;
     }
 
@@ -81,6 +102,17 @@ public class ExpertRegistry {
                         requestId(runId, step.id()), "job_card", card);
             }).subscribeOn(Schedulers.boundedElastic());
         }
+        if (optimizing(step, context)) {
+            String resumeId = text(context.get("resumeId")), versionId = text(context.get("resumeVersionId"));
+            Mono<com.fasterxml.jackson.databind.JsonNode> result = "read_optimization".equals(step.inputs().get("action"))
+                    ? optimizations.report(owner, resumeId, versionId, text(context.get("optimizationReportId")))
+                    : Mono.fromCallable(() -> descriptions.description(text(context.get("jobId"))))
+                        .subscribeOn(Schedulers.boundedElastic()).flatMap(jd -> optimizations.generate(owner, resumeId, versionId, jd, requestId(runId, step.id())));
+            return result.map(report -> ExpertResult.card("已保存的改写建议（本轮未执行采纳，采纳状态请在简历页查看）：" + report,
+                    report.path("reportId").asText(), "resume_diff", report));
+        }
+        if ("advice".equals(step.inputs().get("action")) && step.agent() == ExpertType.RESUME)
+            return Mono.just(ExpertResult.text("本轮仅提供简历文字指导；没有生成报告或修改简历。采纳须进入定向改写页逐条确认并保存。"));
         if (diagnosing(step, context)) {
             return diagnoses.execute(owner,text(context.get("resumeId")),text(context.get("resumeVersionId")),
                 text(context.get("diagnosisReportId")),requestId(runId,step.id())).map(report ->

@@ -2,6 +2,7 @@ import { createApp, h, nextTick, type App } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import PatchDiffViewer from './PatchDiffViewer.vue'
 import type { ResumeDiffPayload } from '@/shared/types/cards'
+import { createRouter, createMemoryHistory } from 'vue-router'
 
 const payload: ResumeDiffPayload = {
   batchId: 'b1',
@@ -33,11 +34,21 @@ afterEach(() => {
   app?.unmount()
   root?.remove()
 })
-function mount(interactive = true) {
+function mount(interactive = true, data: unknown = payload) {
   const apply = vi.fn()
   root = document.createElement('div')
   document.body.append(root)
-  app = createApp({ render: () => h(PatchDiffViewer, { payload, interactive, onApply: apply }) })
+  app = createApp({
+    render: () => h(PatchDiffViewer, { payload: data, interactive, onApply: apply }),
+  }).use(
+    createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: {} },
+        { path: '/resumes/:id', component: {} },
+      ],
+    }),
+  )
   app.mount(root)
   return apply
 }
@@ -96,4 +107,14 @@ it('聊天和旧卡片默认只读，没有保存入口', () => {
   mount(false)
   expect(root.querySelector('button')).toBeNull()
   expect(root.textContent).toContain('仅查看建议')
+})
+it('保存卡片提供绑定报告与版本的采纳入口，空建议不误报已改写', () => {
+  mount(false, { ...payload, resumeId: 'r1', reportId: 'o1', batchId: null, patches: [] })
+  const link = root.querySelector('a')!
+  expect(link.getAttribute('href')).toBe(
+    '/resumes/r1?tab=optimize&resumeVersionId=v1&optimizationReportId=o1',
+  )
+  expect(link.textContent).toContain('查看改写记录')
+  expect(root.textContent).toContain('未创建简历新版本')
+  expect(root.querySelector('button')).toBeNull()
 })

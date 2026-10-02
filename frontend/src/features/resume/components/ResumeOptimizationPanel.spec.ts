@@ -72,6 +72,7 @@ const version: ResumeVersion = {
 }
 const task = {
   id: 'o1',
+  resumeId: 'r1',
   versionId: 'v1',
   versionNo: 1,
   requestId: 'req',
@@ -97,6 +98,7 @@ async function mount(
   dirty = false,
   versionId = 'v1',
   saveFirst = vi.fn().mockResolvedValue(false),
+  optimizationReportId?: string,
 ) {
   cache = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const router = createRouter({
@@ -104,7 +106,7 @@ async function mount(
     routes: [{ path: '/', component: { template: '<div />' } }],
   })
   await router.push('/')
-  const props = reactive({ resumeId: 'r1', versionId, dirty, saveFirst })
+  const props = reactive({ resumeId: 'r1', versionId, dirty, saveFirst, optimizationReportId })
   const saved = vi.fn()
   root = document.createElement('div')
   document.body.append(root)
@@ -241,6 +243,23 @@ it('历史恢复已采纳状态，无模型调用或重复保存', async () => {
   expect(root.querySelector('[aria-label="采纳建议 1"]')).toBeNull()
   expect(optimizeResume).not.toHaveBeenCalled()
   expect(applyPatches).not.toHaveBeenCalled()
+})
+it('聊天卡片深链直接恢复正确报告，既不重新生成也不自动保存', async () => {
+  vi.mocked(getOptimization).mockResolvedValue(task)
+  await mount(false, 'v1', undefined, 'o1')
+  await vi.waitFor(() => expect(root.textContent).toContain(report.summary))
+  expect(getOptimization).toHaveBeenCalledWith('o1')
+  expect(root.querySelector('textarea')?.value).toBe('接口开发')
+  expect(optimizeResume).not.toHaveBeenCalled()
+  expect(applyPatches).not.toHaveBeenCalled()
+})
+it('深链报告属于另一份简历时拒绝显示，也不读取批次或调用模型', async () => {
+  vi.mocked(getOptimization).mockResolvedValue({ ...task, resumeId: 'r2' })
+  await mount(false, 'v1', undefined, 'o1')
+  await vi.waitFor(() => expect(root.textContent).toContain('不属于所选简历版本'))
+  expect(root.textContent).not.toContain(report.summary)
+  expect(getPatchBatch).not.toHaveBeenCalled()
+  expect(optimizeResume).not.toHaveBeenCalled()
 })
 it('取消调用服务端并停止流；空建议不显示保存入口', async () => {
   await mount()

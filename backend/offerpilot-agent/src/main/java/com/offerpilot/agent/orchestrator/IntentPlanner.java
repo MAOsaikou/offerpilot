@@ -30,21 +30,29 @@ public class IntentPlanner {
     private final ExpertRegistry experts;
     private final String prompt;
     private final JobIntentParser jobs;
+    private final ResumeIntentParser resumes;
 
     public IntentPlanner(ModelGateway gateway, ObjectMapper mapper, ExpertRegistry experts,
                          Resource prompt) throws IOException {
         this(gateway, mapper, experts, prompt, null);
     }
 
-    @Autowired
     public IntentPlanner(ModelGateway gateway, ObjectMapper mapper, ExpertRegistry experts,
                          @Value("classpath:prompts/agent/plan.st") Resource prompt, JobIntentParser jobs) throws IOException {
+        this(gateway, mapper, experts, prompt, jobs, null);
+    }
+
+    @Autowired
+    public IntentPlanner(ModelGateway gateway, ObjectMapper mapper, ExpertRegistry experts,
+                         @Value("classpath:prompts/agent/plan.st") Resource prompt, JobIntentParser jobs,
+                         ResumeIntentParser resumes) throws IOException {
         this.gateway = gateway;
         this.mapper = mapper.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         this.experts = experts;
         this.prompt = prompt.getContentAsString(StandardCharsets.UTF_8);
         this.jobs = jobs;
+        this.resumes = resumes;
     }
 
     public Mono<Decision> prepare(AgentMode mode, String content, List<Message> history, ModelTier tier,
@@ -52,7 +60,7 @@ public class IntentPlanner {
         Map<String, Object> safeContext = context == null ? Map.of() : context;
         if (mode != null && mode != AgentMode.AUTO) {
             ExpertType expert = ExpertType.valueOf(mode.name());
-            return resolveJobs(new Decision("single", expert, 1.0, false, null, single(content, expert, safeContext)),
+            return resolveActions(new Decision("single", expert, 1.0, false, null, single(content, expert, safeContext)),
                     content, history, tier, onUsage, safeContext);
         }
         List<Message> messages = new ArrayList<>();
@@ -60,14 +68,17 @@ public class IntentPlanner {
         messages.addAll(history.subList(Math.max(0, history.size() - 12), history.size()));
         messages.add(new UserMessage(content));
         return attempt(messages, content, tier, onUsage, 0, safeContext)
-                .flatMap(decision -> resolveJobs(decision, content, history, tier, onUsage, safeContext));
+                .flatMap(decision -> resolveActions(decision, content, history, tier, onUsage, safeContext));
     }
 
-    private Mono<Decision> resolveJobs(Decision decision, String content, List<Message> history, ModelTier tier,
+    private Mono<Decision> resolveActions(Decision decision, String content, List<Message> history, ModelTier tier,
                                         Consumer<Usage> onUsage, Map<String, Object> context) {
-        if (jobs == null || decision.plan() == null) return Mono.just(decision);
-        return Flux.fromIterable(decision.plan().steps()).concatMap(step -> step.agent() == ExpertType.JOB
-                ? jobs.prepare(step, content, history, tier, onUsage, context) : Mono.just(step)).collectList().map(steps -> {
+        if (decision.plan() == null) return Mono.just(decision);
+        return Flux.fromIterable(decision.plan().steps()).concatMap(step -> {
+            if (step.agent() == ExpertType.JOB && jobs != null) return jobs.prepare(step, content, history, tier, onUsage, context);
+            if (step.agent() == ExpertType.RESUME && resumes != null) return resumes.prepare(step, content, history, tier, onUsage, context);
+            return Mono.just(step);
+        }).collectList().map(steps -> {
             for (var step : steps) {
                 if ("clarify".equals(step.inputs().get("action"))) return new Decision(decision.kind(), decision.expert(),
                         decision.confidence(), true, (String) step.inputs().get("question"), null);

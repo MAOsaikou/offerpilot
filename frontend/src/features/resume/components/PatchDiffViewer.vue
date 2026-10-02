@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import { asPayload } from '@/shared/utils/payload'
 import type { ResumeDiffPayload, ResumePatch } from '@/shared/types/cards'
 import type { PatchDecision } from '@/shared/types/optimization'
@@ -13,6 +14,26 @@ const props = defineProps<{
 const emit = defineEmits<{ apply: [decision: PatchDecision] }>()
 
 const data = computed(() => asPayload<ResumeDiffPayload>(props.payload, 'patches'))
+const reference = computed(() => {
+  if (!data.value || !props.payload || typeof props.payload !== 'object') return null
+  const payload = props.payload as Record<string, unknown>
+  const keys = ['resumeId', 'resumeVersionId', 'reportId'] as const
+  if (
+    !keys.every(
+      (key) =>
+        typeof payload[key] === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(payload[key] as string),
+    )
+  )
+    return null
+  return {
+    path: '/resumes/' + payload.resumeId,
+    query: {
+      tab: 'optimize',
+      resumeVersionId: payload.resumeVersionId as string,
+      optimizationReportId: payload.reportId as string,
+    },
+  }
+})
 
 const selected = ref(new Set<string>())
 const confirmed = ref(new Set<string>())
@@ -110,6 +131,10 @@ function apply() {
       <span class="ml-auto text-xs text-muted-foreground">核对真实经历后逐条采纳</span>
     </header>
 
+    <p v-if="!data.patches.length" class="px-4 py-3 text-sm" role="status">
+      没有需要采纳的改写建议，未创建简历新版本。
+    </p>
+
     <ul class="divide-y divide-border/60">
       <li v-for="(patch, index) in data.patches" :key="patch.id" class="min-w-0 px-4 py-3">
         <div class="flex items-center gap-2">
@@ -191,7 +216,12 @@ function apply() {
           采纳所选并保存新版本
         </button>
       </template>
-      <span v-else>仅查看建议；可在对应简历的定向改写页核对并采纳。</span>
+      <template v-else>
+        <span>仅查看建议；可在对应简历的定向改写页核对并采纳。</span>
+        <RouterLink v-if="reference" class="btn ml-auto" :to="reference">{{
+          data.patches.length ? '核对并采纳建议' : '查看改写记录'
+        }}</RouterLink>
+      </template>
     </footer>
   </article>
 </template>

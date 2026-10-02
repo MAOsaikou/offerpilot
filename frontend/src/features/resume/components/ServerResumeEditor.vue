@@ -352,6 +352,11 @@ const basics = [
               : undefined
           "
           :job-id="typeof route.query.jobId === 'string' ? route.query.jobId : undefined"
+          :optimization-report-id="
+            typeof route.query.optimizationReportId === 'string'
+              ? route.query.optimizationReportId
+              : undefined
+          "
           :dirty="!!dirty"
           :save-first="save"
           @saved="optimized"

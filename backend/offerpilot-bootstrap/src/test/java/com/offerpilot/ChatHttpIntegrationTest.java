@@ -67,7 +67,7 @@ class ChatHttpIntegrationTest {
                     String decision = body.contains("复合验收") ? """
                             {"kind":"composite","confidence":1,"plan":{"goal":"岗位与简历准备","steps":[
                             {"id":"s1","title":"职业探索","agent":"CAREER_DISCOVERY","inputs":{},"dependsOn":[]},
-                            {"id":"s2","title":"简历指导","agent":"RESUME","inputs":{"jobFrom":"s1"},"dependsOn":["s1"]}]}}
+                            {"id":"s2","title":"成长指导","agent":"COACH","inputs":{"jobFrom":"s1"},"dependsOn":["s1"]}]}}
                             """ : "{\"kind\":\"chitchat\",\"confidence\":1}";
                     for (String text : planning ? new String[]{decision} : new String[]{"你好", "，同学。"}) {
                         String frame = "data: {\"id\":\"chat-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":" + new ObjectMapper().writeValueAsString(text) + "},\"finish_reason\":null}]}\n\n";

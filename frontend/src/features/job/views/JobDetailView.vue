@@ -276,6 +276,26 @@ async function openReport(reportId: string) {
                 query: { tab: 'optimize', jobId: id, resumeVersionId: versionId },
               }"
               >针对岗位改写</RouterLink
+            ><RouterLink
+              v-if="
+                resumeId &&
+                versionId &&
+                !versions.isFetching.value &&
+                !versions.isError.value &&
+                !busy
+              "
+              class="btn"
+              :to="{
+                path: '/chat',
+                query: {
+                  mode: 'RESUME',
+                  jobId: id,
+                  resumeId,
+                  resumeVersionId: versionId,
+                  prompt: '请针对这个岗位，为选定的简历保存版本生成定向改写建议，不要自动采纳。',
+                },
+              }"
+              >在聊天中改写</RouterLink
             ><button
               class="btn primary"
               :disabled="

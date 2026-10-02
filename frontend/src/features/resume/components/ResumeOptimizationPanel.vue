@@ -20,6 +20,7 @@ const props = defineProps<{
   versionId: string
   targetVersionId?: string
   jobId?: string
+  optimizationReportId?: string
   dirty: boolean
   saveFirst: () => Promise<boolean>
 }>()
@@ -93,7 +94,7 @@ async function reveal(value: OptimizationReport, jd: string, request: number) {
   reportJd.value = jd
   appliedVersionId.value = applied
 }
-async function show(id: string) {
+async function show(id: string, expectedVersion?: string) {
   if (running.value || saving.value) return
   const request = ++epoch
   selecting.value = true
@@ -101,8 +102,12 @@ async function show(id: string) {
   message.value = ''
   try {
     const task = await getOptimization(id)
+    if (task.resumeId !== props.resumeId || (expectedVersion && task.versionId !== expectedVersion))
+      throw new Error('改写记录不属于所选简历版本，请从对应简历打开。')
     if (!task.report) throw new Error('建议尚未完成，请刷新改写记录。')
     await reveal(task.report, task.jobDescription || '', request)
+    if (alive && request === epoch && !jobDescription.value.trim())
+      jobDescription.value = task.jobDescription || ''
   } catch (cause) {
     if (alive && request === epoch)
       error.value = cause instanceof Error ? cause.message : '建议加载失败'
@@ -110,6 +115,13 @@ async function show(id: string) {
     if (alive && request === epoch) selecting.value = false
   }
 }
+watch(
+  () => props.optimizationReportId,
+  (id) => {
+    if (id) void show(id, props.targetVersionId)
+  },
+  { immediate: true },
+)
 async function start(save: boolean) {
   if (occupied.value || !jobDescription.value.trim()) return
   running.value = true
@@ -310,6 +322,20 @@ onBeforeUnmount(() => {
         <summary>本次使用的岗位描述</summary>
         <pre class="jd-snapshot">{{ reportJd }}</pre>
       </details>
+      <RouterLink
+        class="btn"
+        :to="{
+          path: '/chat',
+          query: {
+            mode: 'RESUME',
+            resumeId,
+            resumeVersionId: report.resumeVersionId,
+            optimizationReportId: report.reportId,
+            prompt: '请解释这批改写建议及其依据，不重新生成或采纳。',
+          },
+        }"
+        >带着建议继续讨论</RouterLink
+      >
       <p v-if="!appliedVersionId && !canApply && report.patches.length" class="helper-note">
         当前简历版本不同或有未保存修改，此批建议仅供查看。请保存当前内容并重新生成，避免覆盖后续编辑。
       </p>

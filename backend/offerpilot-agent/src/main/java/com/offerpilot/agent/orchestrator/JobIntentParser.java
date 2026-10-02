@@ -78,6 +78,7 @@ public class JobIntentParser {
     private PlanStep normalize(PlanStep step, Intent intent, Map<String, Object> context) {
         if (intent == null || intent.action() == null) throw new IllegalArgumentException("缺少动作");
         if ("clarify".equals(intent.action())) return clarify(step, field(intent.question(), 300, false));
+        if ("optimize".equals(intent.action())) return ResumeIntentParser.optimize(step, context);
         if ("match".equals(intent.action())) {
             // 资源标识只来自调用方选定的上下文，绝不接受规划模型生成的 ID。
             for (String key : List.of("jobId", "resumeId", "resumeVersionId")) {
