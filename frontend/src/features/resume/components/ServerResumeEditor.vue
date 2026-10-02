@@ -9,7 +9,12 @@ import {
   retryResume,
   saveResume,
 } from '@/shared/api/resumes'
-import { resumeStatus, type ResumeStructure, type ResumeVersion } from '@/shared/types/resume'
+import {
+  resumeStatus,
+  resumeVersionSource,
+  type ResumeStructure,
+  type ResumeVersion,
+} from '@/shared/types/resume'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import ResumeSectionEditor from './ResumeSectionEditor.vue'
 import ResumeDiagnosisPanel from './ResumeDiagnosisPanel.vue'
@@ -325,7 +330,7 @@ const basics = [
               </h3>
               <small
                 >{{ new Date(version.createdAt).toLocaleString('zh-CN') }} ·
-                {{ version.source === 'UPLOAD' ? '上传解析' : '手动编辑' }}</small
+                {{ resumeVersionSource[version.source] ?? '其他来源' }}</small
               >
             </div>
             <div class="resume-actions">

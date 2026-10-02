@@ -3,7 +3,7 @@ import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ServerResumeEditor from './ServerResumeEditor.vue'
-import { getResume, saveResume } from '@/shared/api/resumes'
+import { getResume, listResumeVersions, saveResume } from '@/shared/api/resumes'
 import type { ServerResume } from '@/shared/types/resume'
 
 vi.mock('@/shared/api/resumes', () => ({
@@ -117,4 +117,18 @@ it('保存期间禁止编辑和载入历史，成功后同步新版本并显示�
   )
   expect(button('保存新版本').disabled).toBe(true)
   expect(root.querySelector<HTMLInputElement>('.resume-basics input')?.value).toBe('Saved changes')
+})
+it('版本记录正确区分改写采纳、手动编辑与上传解析', async () => {
+  const original = fixture().currentVersion!
+  vi.mocked(listResumeVersions).mockResolvedValue([
+    { ...original, id: 'v3', versionNo: 3, source: 'OPTIMIZED', parentVersionId: 'v2' },
+    { ...original, id: 'v2', versionNo: 2, source: 'MANUAL_EDIT', parentVersionId: 'v1' },
+    original,
+  ])
+  button('版本记录').click()
+  await vi.waitFor(() => expect(root.querySelectorAll('.list-row')).toHaveLength(3))
+  const rows = [...root.querySelectorAll('.list-row')].map((row) => row.textContent)
+  expect(rows[0]).toContain('改写采纳')
+  expect(rows[1]).toContain('手动编辑')
+  expect(rows[2]).toContain('上传解析')
 })

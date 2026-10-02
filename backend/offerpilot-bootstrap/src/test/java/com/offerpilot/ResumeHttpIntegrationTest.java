@@ -53,6 +53,7 @@ class ResumeHttpIntegrationTest {
     static final java.util.concurrent.atomic.AtomicInteger providerStatus = new java.util.concurrent.atomic.AtomicInteger(200);
     static final HttpServer provider = provider();
     @Autowired ResumeService resumes;
+    @Autowired ResumePatchService patches;
     @Autowired ResumeParseWorker worker;
     @Autowired ResumeObjectStore store;
     @Autowired GuestIdentityService identities;
@@ -194,6 +195,120 @@ class ResumeHttpIntegrationTest {
         assertThat(request("PATCH", "/resumes/" + id, stranger, "{\"title\":\"attack\"}").statusCode()).isEqualTo(404);
         assertThat(request("PUT", "/resumes/" + id + "/versions/" + base + "/structured", stranger, structure.toString()).statusCode()).isEqualTo(404);
         assertThat(request("GET", "/resumes", null, null).statusCode()).isEqualTo(401);
+    }
+    ResumeService.Resume patchFixture(String token) throws Exception {
+        var structure = (com.fasterxml.jackson.databind.node.ObjectNode) JSON.readTree(ResumeStructure.SCHEMA);
+        structure.put("summary", "负责后端开发");
+        ((com.fasterxml.jackson.databind.node.ArrayNode) structure.get("projects")).removeAll().add(JSON.readTree("""
+            {"name":"校园平台","role":"后端","start":"2025","end":"2026","tech":["Java"],"bullets":["实现登录","优化缓存"]}
+            """));
+        output.set(structure.toString());
+        String id = data(upload(token, "patch.txt", "虚构简历".getBytes(StandardCharsets.UTF_8))).path("id").asText();
+        worker.processNext();
+        return resumes.get(owner(token), id);
+    }
+    ResumePatchService.Batch batch(String token, ResumeService.Resume resume) throws Exception {
+        return patches.store(owner(token), resume.id(), resume.currentVersionId(), JSON.readTree("""
+            [{"id":"p1","op":"replace","path":"/summary","from":"负责后端开发","value":"设计与实现后端服务","reason":"突出贡献","needsUserConfirmation":false},
+             {"id":"p2","op":"replace","path":"/projects/0/bullets/0","from":"实现登录","value":"实现登录与权限校验","reason":"明确职责","needsUserConfirmation":true,"confirmationHint":"请核对实际贡献"},
+             {"id":"p3","op":"replace","path":"/projects/0/bullets/1","from":"优化缓存","value":"优化缓存策略","reason":"明确行动","needsUserConfirmation":false}]
+            """));
+    }
+    String applyPath(ResumeService.Resume resume) {
+        return "/resumes/" + resume.id() + "/versions/" + resume.currentVersionId() + "/apply-patches";
+    }
+    String decision(ResumePatchService.Batch batch, String accepted) {
+        return "{\"batchId\":\"" + batch.batchId() + "\",\"accepted\":[\"" + accepted + "\"]}";
+    }
+    @Test void patchesApplyEditedSubsetPreserveHistoryAndRetryOriginalResult() throws Exception {
+        String token = identities.create().accessToken(), stranger = identities.create().accessToken();
+        var resume = patchFixture(token); var batch = batch(token, resume);
+        String getPath = "/resumes/" + resume.id() + "/versions/" + resume.currentVersionId() + "/patches/" + batch.batchId();
+        assertThat(resumes.versions(owner(token), resume.id())).hasSize(1);
+        assertThat(data(request("GET", getPath, token, null)).path("stats").path("replaced").asInt()).isEqualTo(3);
+        assertThat(request("GET", getPath, stranger, null).statusCode()).isEqualTo(404);
+        assertThat(request("POST", applyPath(resume), stranger, decision(batch, "p1")).statusCode()).isEqualTo(404);
+        assertThat(request("POST", applyPath(resume), null, decision(batch, "p1")).statusCode()).isEqualTo(401);
+        String body = "{\"batchId\":\"" + batch.batchId() + "\",\"accepted\":[\"p1\"],\"edited\":{\"p2\":{\"value\":\"本人实现登录与权限校验\"}},\"confirmed\":[\"p2\"]}";
+        var applied = request("POST", applyPath(resume), token, body);
+        assertThat(applied.statusCode()).isEqualTo(200);
+        JsonNode version = data(applied).path("version");
+        assertThat(version.path("versionNo").asInt()).isEqualTo(2);
+        assertThat(version.path("source").asText()).isEqualTo("OPTIMIZED");
+        assertThat(version.path("parentVersionId").asText()).isEqualTo(resume.currentVersionId());
+        assertThat(version.path("parseMeta").path("batchId").asText()).isEqualTo(batch.batchId());
+        assertThat(version.path("structured").at("/projects/0/bullets/0").asText()).isEqualTo("本人实现登录与权限校验");
+        assertThat(version.path("structured").at("/projects/0/bullets/1").asText()).isEqualTo("优化缓存");
+        assertThat(version.path("plainText").asText()).contains("本人实现登录与权限校验", "优化缓存");
+        assertThat(resumes.version(owner(token), resume.id(), resume.currentVersionId()).structured()).isEqualTo(resume.currentVersion().structured());
+        assertThat(data(request("GET", getPath, token, null)).path("appliedVersionId").asText()).isEqualTo(version.path("id").asText());
+        // Retry is the original version, even after a subsequent manual edit.
+        resumes.save(owner(token), resume.id(), version.path("id").asText(), version.path("structured"));
+        assertThat(data(request("POST", applyPath(resume), token, body)).path("version")).isEqualTo(version);
+        assertThat(request("POST", applyPath(resume), token, decision(batch, "p3")).statusCode()).isEqualTo(409);
+        assertThat(resumes.versions(owner(token), resume.id())).hasSize(3);
+    }
+    @Test void patchesRejectInvalidDecisionsAndStaleVersionsWithoutPartialWrites() throws Exception {
+        String token = identities.create().accessToken(); var resume = patchFixture(token); var batch = batch(token, resume);
+        for (String body : List.of(decision(batch, "p2"), decision(batch, "unknown"),
+                "{\"batchId\":\"" + batch.batchId() + "\",\"accepted\":[]}",
+                "{\"batchId\":\"" + batch.batchId() + "\",\"accepted\":[\"p1\",\"p1\"]}",
+                "{\"batchId\":\"" + batch.batchId() + "\",\"accepted\":[\"p1\"],\"extra\":true}")) {
+            assertThat(request("POST", applyPath(resume), token, body).statusCode()).isEqualTo(400);
+            assertThat(patches.get(owner(token), resume.id(), resume.currentVersionId(), batch.batchId()).appliedVersionId()).isNull();
+            assertThat(resumes.versions(owner(token), resume.id())).hasSize(1);
+        }
+        var newResume = resumes.save(owner(token), resume.id(), resume.currentVersionId(), resume.currentVersion().structured());
+        assertThat(request("POST", applyPath(resume), token, decision(batch, "p1")).statusCode()).isEqualTo(409);
+        String wrongVersion = "/resumes/" + resume.id() + "/versions/" + newResume.currentVersionId();
+        assertThat(request("GET", wrongVersion + "/patches/" + batch.batchId(), token, null).statusCode()).isEqualTo(404);
+        assertThat(request("POST", wrongVersion + "/apply-patches", token, decision(batch, "p1")).statusCode()).isEqualTo(404);
+        assertThat(resumes.versions(owner(token), resume.id())).hasSize(2);
+        assertThat(patches.get(owner(token), resume.id(), resume.currentVersionId(), batch.batchId()).appliedVersionId()).isNull();
+    }
+    @Test void patchesConcurrentIdenticalRetriesCreateOnlyOneVersionAndNormalizeOrder() throws Exception {
+        String token = identities.create().accessToken(); var resume = patchFixture(token); var batch = batch(token, resume);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        String body = "{\"batchId\":\"" + batch.batchId() + "\",\"accepted\":[\"p3\",\"p1\"]}";
+        try {
+            var a = executor.submit(() -> { start.await(); return request("POST", applyPath(resume), token, body); });
+            var b = executor.submit(() -> { start.await(); return request("POST", applyPath(resume), token, body.replace("[\"p3\",\"p1\"]", "[\"p1\",\"p3\"]")); });
+            start.countDown();
+            var first = a.get(30, java.util.concurrent.TimeUnit.SECONDS); var second = b.get(30, java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(first.statusCode()).isEqualTo(200); assertThat(second.statusCode()).isEqualTo(200);
+            assertThat(data(first)).isEqualTo(data(second));
+            assertThat(resumes.versions(owner(token), resume.id())).hasSize(2);
+        } finally { executor.shutdownNow(); }
+    }
+    @Test void patchesCompetingBatchesAndManualSaveHaveOnlyOneWinner() throws Exception {
+        String token = identities.create().accessToken(); var resume = patchFixture(token);
+        var first = batch(token, resume); var second = batch(token, resume);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(3);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try {
+            var a = executor.submit(() -> { start.await(); return request("POST", applyPath(resume), token, decision(first, "p1")); });
+            var b = executor.submit(() -> { start.await(); return request("POST", applyPath(resume), token, decision(second, "p3")); });
+            var c = executor.submit(() -> { start.await(); return request("PUT", "/resumes/" + resume.id() + "/versions/" + resume.currentVersionId() + "/structured", token, resume.currentVersion().structured().toString()); });
+            start.countDown();
+            assertThat(List.of(a.get(30, java.util.concurrent.TimeUnit.SECONDS).statusCode(), b.get(30, java.util.concurrent.TimeUnit.SECONDS).statusCode(), c.get(30, java.util.concurrent.TimeUnit.SECONDS).statusCode()))
+                .containsExactlyInAnyOrder(200, 409, 409);
+            assertThat(resumes.versions(owner(token), resume.id())).hasSize(2);
+            assertThat(resumes.get(owner(token), resume.id()).currentVersion().parentVersionId()).isEqualTo(resume.currentVersionId());
+        } finally { executor.shutdownNow(); }
+    }
+    @Test void patchesDatabaseFailureRollsBackBothVersionAndDecision() throws Exception {
+        String token = identities.create().accessToken(); var resume = patchFixture(token); var batch = batch(token, resume);
+        // A fixture-only database constraint forces failure AFTER the version insert.
+        jdbc.execute("ALTER TABLE resume_patch_batches ADD CONSTRAINT patch_fixture_failure CHECK (id <> '" + batch.batchId() + "' OR applied_version_id IS NULL)");
+        try {
+            assertThatThrownBy(() -> patches.apply(owner(token), resume.id(), resume.currentVersionId(), JSON.readTree(decision(batch, "p1"))))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            assertThat(resumes.get(owner(token), resume.id()).currentVersionId()).isEqualTo(resume.currentVersionId());
+            assertThat(resumes.versions(owner(token), resume.id())).hasSize(1);
+            assertThat(patches.get(owner(token), resume.id(), resume.currentVersionId(), batch.batchId()).appliedVersionId()).isNull();
+        } finally { jdbc.execute("ALTER TABLE resume_patch_batches DROP CONSTRAINT patch_fixture_failure"); }
+        assertThat(request("POST", applyPath(resume), token, decision(batch, "p1")).statusCode()).isEqualTo(200);
     }
     @Test void failureRetryLeaseRecoveryAndStaleWorkerCannotOverwrite() throws Exception {
         String token = identities.create().accessToken();

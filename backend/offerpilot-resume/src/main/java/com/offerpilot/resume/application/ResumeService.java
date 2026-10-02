@@ -102,19 +102,23 @@ public class ResumeService {
         return get(owner, id);
     }
     public Resume save(String owner, String id, String baseId, JsonNode structured) {
+        appendVersion(owner, id, baseId, structured, "MANUAL_EDIT", json.createObjectNode().put("channel", "manual"));
+        return get(owner, id);
+    }
+    Version appendVersion(String owner, String id, String baseId, JsonNode structured, String source, JsonNode metadata) {
         ResumeStructure.validate(structured);
-        tx.executeWithoutResult(status -> {
+        return tx.execute(status -> {
             var current = jdbc.queryForList("SELECT current_version_id,parse_status FROM resumes WHERE id=? AND user_id=? FOR UPDATE", id, owner);
             if (current.isEmpty()) throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);
             if (!"READY".equals(current.get(0).get("parse_status"))) throw new BusinessException(ErrorCode.RESUME_BUSY);
             if (!baseId.equals(current.get(0).get("current_version_id"))) throw new BusinessException(ErrorCode.RESUME_VERSION_CONFLICT);
             var previous = version(owner, id, baseId);
             String next = IdGenerator.next("rv");
-            jdbc.update("INSERT INTO resume_versions(id,resume_id,user_id,version_no,parent_version_id,source,structured,plain_text,parse_meta) VALUES (?,?,?,?,?,'MANUAL_EDIT',?::jsonb,?,?::jsonb)",
-                next, id, owner, previous.versionNo() + 1, baseId, structured.toString(), plain(structured), "{\"channel\":\"manual\"}");
+            jdbc.update("INSERT INTO resume_versions(id,resume_id,user_id,version_no,parent_version_id,source,structured,plain_text,parse_meta) VALUES (?,?,?,?,?,?,?::jsonb,?,?::jsonb)",
+                next, id, owner, previous.versionNo() + 1, baseId, source, structured.toString(), plain(structured), metadata.toString());
             jdbc.update("UPDATE resumes SET current_version_id=?,updated_at=now() WHERE id=? AND user_id=?", next, id, owner);
+            return version(owner, id, next);
         });
-        return get(owner, id);
     }
     public Job claim() {
         return tx.execute(status -> {
