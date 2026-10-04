@@ -7,11 +7,11 @@ import CardRenderer from '@/widgets/CardRenderer/CardRenderer.vue'
 import LegacyJobDetail from '../components/LegacyJobDetail.vue'
 import { getJob, refreshJob, matchJob, listJobMatches, getJobMatch } from '@/shared/api/jobs'
 import { listResumes, listResumeVersions } from '@/shared/api/resumes'
-import { useWorkspace } from '@/shared/stores/workspace'
-import { localJobSnapshot, officialJobUrl } from '@/shared/utils/jobs'
+import { useBoard } from '@/shared/composables/useBoard'
+import { officialJobUrl } from '@/shared/utils/jobs'
 import type { EvidenceMatch } from '@/shared/types/jobs'
 const route = useRoute(),
-  workspace = useWorkspace()
+  board = useBoard()
 const id = computed(() => String(route.params.id)),
   real = computed(() => id.value.startsWith('job_'))
 const job = useQuery({
@@ -70,7 +70,7 @@ watch(
     if (items?.length && !versionId.value) versionId.value = items[0]!.id
   },
 )
-const saved = computed(() => workspace.state.applications.some((a) => a.jobId === id.value))
+const saved = computed(() => board.saved(id.value))
 function changeResumePage(delta: number) {
   page.value += delta
   resumeId.value = ''
@@ -126,6 +126,14 @@ async function openReport(reportId: string) {
 <template>
   <LegacyJobDetail v-if="!real" />
   <section v-else class="page-stack">
+    <p v-if="board.query.isPending.value" role="status">正在读取看板…</p>
+    <div v-if="board.query.isError.value" class="error-banner" role="alert">
+      收藏读取失败：{{ board.query.error.value?.message }}
+      <button class="btn" @click="board.query.refetch()">重试加载</button>
+    </div>
+    <p v-if="board.error.value" class="error-banner" role="alert">
+      收藏失败：{{ board.error.value }}，请重试。
+    </p>
     <PageHeading
       :title="job.data.value?.title || '岗位详情'"
       :description="
@@ -152,8 +160,10 @@ async function openReport(reportId: string) {
             >查看官网原岗位 ↗</a
           ><button
             class="btn"
-            :disabled="saved"
-            @click="workspace.saveJob(localJobSnapshot(job.data.value))"
+            :disabled="
+              saved || board.busy.value || board.query.isPending.value || board.query.isError.value
+            "
+            @click="board.favorite(job.data.value.id)"
           >
             {{ saved ? '已收藏至看板' : '收藏至看板' }}</button
           ><button class="btn" :disabled="refreshing || busy" @click="refresh">
@@ -177,7 +187,7 @@ async function openReport(reportId: string) {
           {{ job.data.value.requirement || '企业未提供独立要求字段，请结合工作职责和官网查看。' }}
         </p>
         <p class="helper-note">
-          岗位可能调整或关闭，以企业官网为准。收藏与看板状态仅保存在此浏览器，不会代你投递。
+          岗位可能调整或关闭，以企业官网为准。收藏与看板状态保存在服务端，不会代你投递。
         </p>
       </div>
       <section class="panel form-stack">
@@ -353,9 +363,6 @@ async function openReport(reportId: string) {
         </div>
       </section>
     </template>
-    <p v-if="workspace.storageError" class="error-banner" role="alert">
-      {{ workspace.storageError }}
-    </p>
   </section>
 </template>
 <style scoped>

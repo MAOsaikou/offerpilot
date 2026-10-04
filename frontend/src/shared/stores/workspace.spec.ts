@@ -8,10 +8,15 @@ describe('本地工作区', () => {
     localStorage.clear()
     setActivePinia(createPinia())
   })
-  it('同一岗位不会重复收藏，刷新后阶段和备注仍保留', async () => {
+  it('旧本地收藏仍作为归档保留，不被服务端看板替换或删除', async () => {
     const workspace = useWorkspace()
-    workspace.saveJob('j1')
-    workspace.saveJob('j1')
+    workspace.state.applications.push({
+      id: 'old',
+      jobId: 'j1',
+      stage: '收藏',
+      note: '',
+      date: '2026-10-03',
+    })
     expect(workspace.state.applications).toHaveLength(1)
     const app = workspace.state.applications[0]!
     app.stage = '面试中'
@@ -37,17 +42,30 @@ describe('本地工作区', () => {
   })
   it('真实岗位收藏携带快照，刷新后看板仍有标题且保留旧示例收藏', async () => {
     const store = useWorkspace()
-    store.saveJob('j1')
-    store.saveJob({
-      id: 'job_real',
-      title: '实际岗位',
-      company: '企业',
-      city: '上海',
-      salary: '',
-      category: '',
-      tags: [],
-      description: '',
-      color: '',
+    store.state.applications.push({
+      id: 'old',
+      jobId: 'j1',
+      stage: '收藏',
+      note: '',
+      date: '2026-10-03',
+    })
+    store.state.applications.push({
+      id: 'old-real',
+      jobId: 'job_real',
+      stage: '收藏',
+      note: '',
+      date: '2026-10-03',
+      jobSnapshot: {
+        id: 'job_real',
+        title: '实际岗位',
+        company: '企业',
+        city: '上海',
+        salary: '',
+        category: '',
+        tags: [],
+        description: '',
+        color: '',
+      },
     })
     await nextTick()
     setActivePinia(createPinia())

@@ -132,6 +132,35 @@ class JobsHttpIntegrationTest {
         assertThat(request("GET","/jobs/unknown",token,null).statusCode()).isEqualTo(404);
     }
 
+    @Test void boardPersistsAcrossClientsAndIsPrivateAndIdempotent() throws Exception {
+        String token=identities.create().accessToken(), other=identities.create().accessToken(), job=jobId(token);
+        assertThat(request("GET","/applications",null,null).statusCode()).isEqualTo(401);
+        var created=data(request("POST","/applications",token,Map.of("jobId",job)));
+        String id=created.path("id").asText();
+        assertThat(created.path("status").asText()).isEqualTo("TODO");
+        assertThat(created.path("job").path("title").asText()).isEqualTo("Java工程师");
+        assertThat(data(request("POST","/applications",token,Map.of("jobId",job))).path("id").asText()).isEqualTo(id);
+        data(request("PATCH","/applications/"+id,token,Map.of("status","INTERVIEW")));
+        data(request("PATCH","/applications/"+id,token,Map.of("note","周五面试，准备项目复盘")));
+        // request() creates a fresh HTTP client each time; no browser-local state participates.
+        var restored=data(request("GET","/applications",token,null));
+        assertThat(restored).hasSize(1);
+        assertThat(restored.get(0).path("status").asText()).isEqualTo("INTERVIEW");
+        assertThat(restored.get(0).path("note").asText()).isEqualTo("周五面试，准备项目复盘");
+        assertThat(data(request("POST","/applications",token,Map.of("jobId",job))).path("status").asText()).isEqualTo("INTERVIEW");
+        assertThat(data(request("GET","/applications",other,null))).isEmpty();
+        assertThat(request("PATCH","/applications/"+id,other,Map.of("note","越权")).statusCode()).isEqualTo(404);
+        assertThat(request("PATCH","/applications/unknown",token,Map.of("status","TODO")).statusCode()).isEqualTo(404);
+        assertThat(request("POST","/applications",token,Map.of("jobId","unknown")).statusCode()).isEqualTo(404);
+        assertThat(request("PATCH","/applications/"+id,token,Map.of("status","INVALID")).statusCode()).isEqualTo(400);
+        assertThat(request("PATCH","/applications/"+id,token,Map.of("note","x".repeat(2001))).statusCode()).isEqualTo(400);
+        assertThat(request("PATCH","/applications/"+id,token,Map.of()).statusCode()).isEqualTo(400);
+        for(String status:List.of("OFFER","CLOSED","TODO","APPLIED"))
+            assertThat(data(request("PATCH","/applications/"+id,token,Map.of("status",status))).path("status").asText()).isEqualTo(status);
+        assertThat(data(request("PATCH","/applications/"+id,token,Map.of("note",""))).path("note").asText()).isEmpty();
+        assertThat(data(request("POST","/applications",other,Map.of("jobId",job))).path("id").asText()).isNotEqualTo(id);
+    }
+
     @Test void totalUpstreamFailureIsNotAnEmptySearch() throws Exception {
         allSitesFailed=true;
         assertThat(request("GET","/jobs?query=Java",identities.create().accessToken(),null).statusCode()).isEqualTo(502);
