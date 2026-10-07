@@ -33,7 +33,13 @@ export function authHeaders(extra: Record<string, string> = {}): Record<string, 
 }
 
 const IDENTITY_KEY = 'offerpilot-guest-v1'
+/** 登录 JWT 的 localStorage 键；features/auth/api 与认证 store 共用。 */
+export const ACCESS_TOKEN_KEY = 'offerpilot-access-token'
 let pendingIdentity: Promise<string> | undefined
+
+function loginToken(): string | null {
+  return localStorage.getItem(ACCESS_TOKEN_KEY)
+}
 
 async function guestToken(): Promise<string> {
   // Never silently replace an expired credential: that would hide the user's history.
@@ -65,6 +71,9 @@ export async function authenticatedHeaders(
   extra: Record<string, string> = {},
 ): Promise<Record<string, string>> {
   if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK === 'true') return authHeaders(extra)
+  // 已登录（邮箱密码）优先使用 JWT；否则回退到访客身份。
+  const jwt = loginToken()
+  if (jwt) return authHeaders({ ...extra, Authorization: `Bearer ${jwt}` })
   // Web Locks also serialize the first visit across tabs where supported.
   const token =
     typeof navigator !== 'undefined' && navigator.locks

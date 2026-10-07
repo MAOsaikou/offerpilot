@@ -1,14 +1,19 @@
 import type { Router } from 'vue-router'
+import { useAuthStore } from '@/shared/stores/auth'
 
 const APP_NAME = import.meta.env.VITE_APP_NAME || 'OfferPilot'
 
 export function registerGuards(router: Router): void {
-  router.beforeEach(() => {
-    // TODO(auth): 接入 useAuthStore 后启用登录守卫
-    // const auth = useAuthStore()
-    // if (!to.meta.public && !auth.isAuthenticated) {
-    //   return { name: 'login', query: { redirect: to.fullPath } }
-    // }
+  router.beforeEach((to) => {
+    const auth = useAuthStore()
+    // 未登录访问受保护页面 → 跳转登录页并记录来路
+    if (!to.meta.public && !auth.isAuthenticated) {
+      return { name: 'login', query: { redirect: to.fullPath } }
+    }
+    // 已登录访问登录页 → 直接回工作台
+    if (to.name === 'login' && auth.isAuthenticated) {
+      return { path: '/' }
+    }
     return true
   })
 

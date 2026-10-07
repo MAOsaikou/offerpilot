@@ -108,6 +108,18 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/staff/login',
+    name: 'staff-login',
+    component: () => import('@/features/auth/views/StaffLoginView.vue'),
+    meta: { title: '客服登录', public: true },
+  },
+  {
+    path: '/staff',
+    name: 'staff-console',
+    component: () => import('@/features/auth/views/StaffConsoleView.vue'),
+    meta: { title: '客服工作台' },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/shared/views/NotFoundView.vue'),

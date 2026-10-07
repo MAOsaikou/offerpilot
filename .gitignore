@@ -51,3 +51,4 @@ docs/eval-results/
 deploy/windows/runtime/
 .cursor/
 .claude/
+.workbuddy/

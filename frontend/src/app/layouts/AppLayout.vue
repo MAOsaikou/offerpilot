@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { RouterLink, RouterView, useRoute } from 'vue-router'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import BrandMark from '@/shared/components/BrandMark.vue'
 import { useWorkspace } from '@/shared/stores/workspace'
+import { useAuthStore } from '@/shared/stores/auth'
 const route = useRoute()
+const router = useRouter()
 const workspace = useWorkspace()
+const auth = useAuthStore()
 const mobileOpen = ref(false)
 const unread = computed(() => workspace.state.notices.filter((n) => !n.read).length)
+const displayName = computed(() => auth.user?.nickname || workspace.state.name)
+
+function onLogout() {
+  auth.logout()
+  router.push({ name: 'login' })
+}
 const items = [
   { name: 'dashboard', label: '工作台', path: '/' },
   { name: 'chat', label: 'AI 对话', path: '/chat' },
@@ -70,10 +79,13 @@ watch(
           }}</span></RouterLink
         >
         <RouterLink to="/settings" class="profile-link"
-          ><span class="avatar">{{ workspace.state.name.slice(0, 1) }}</span
-          ><span>{{ workspace.state.name }}<small>本地工作区</small></span
+          ><span class="avatar">{{ displayName.slice(0, 1) }}</span
+          ><span>{{ displayName }}<small>已登录</small></span
           ><AppIcon name="settings" :size="18"
         /></RouterLink>
+        <button class="nav-link" type="button" @click="onLogout"
+          ><AppIcon name="logout" :size="18" />退出登录</button
+        >
       </div>
     </aside>
     <div class="app-body">

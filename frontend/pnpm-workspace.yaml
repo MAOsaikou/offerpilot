@@ -3,3 +3,5 @@
 allowBuilds:
   vue-demi: true
   msw: true
+# 本机环境（受限沙箱）无法创建符号链接，使用 hoisted 布局（硬链接），功能等价
+nodeLinker: hoisted
