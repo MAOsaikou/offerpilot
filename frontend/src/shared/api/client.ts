@@ -50,11 +50,16 @@ let pendingIdentity: Promise<string> | undefined
 const responseCredentials = new WeakMap<Response, string>()
 const responseSessions = new WeakMap<Response, AbortSignal>()
 
+function assertCredential(credential: string): void {
+  const active = getStoredToken() || (loginRequired() ? null : localStorage.getItem(IDENTITY_KEY))
+  if (credential !== active) throw new ApiError('身份已切换，请重新读取数据', { code: 20001 })
+}
+
 export function assertResponseIdentity(response: Response): void {
   const credential = responseCredentials.get(response)
-  const active = getStoredToken() || (loginRequired() ? null : localStorage.getItem(IDENTITY_KEY))
-  if (responseSessions.get(response)?.aborted || (credential && credential !== active))
+  if (responseSessions.get(response)?.aborted)
     throw new ApiError('身份已切换，请重新读取数据', { code: 20001 })
+  if (credential) assertCredential(credential)
 }
 
 export async function readApiData<T>(response: Response): Promise<T> {
@@ -70,6 +75,7 @@ export async function fetchWithIdentity(
 ): Promise<Response> {
   const authorization = new Headers(init.headers).get('Authorization')
   const credential = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
+  if (credential) assertCredential(credential)
   const session = identitySignal()
   const signal = init.signal ? AbortSignal.any([init.signal, session]) : session
   const response = await fetch(input, { ...init, signal })
@@ -87,6 +93,7 @@ async function guestToken(): Promise<string> {
   if (saved) return saved
   if (!pendingIdentity) {
     pendingIdentity = (async () => {
+      const session = identitySignal()
       // Confirm browser storage is available before creating a server-side identity.
       localStorage.setItem('offerpilot-storage-check', '1')
       localStorage.removeItem('offerpilot-storage-check')
@@ -96,6 +103,7 @@ async function guestToken(): Promise<string> {
       })
       if (!response.ok) throw await toApiError(response)
       const body = await readApiData<{ accessToken: string }>(response)
+      session.throwIfAborted()
       const token = body.accessToken
       if (!token) throw new Error('无法建立访客身份，请重试')
       saveGuest(token)
@@ -118,10 +126,19 @@ export async function authenticatedHeaders(
   if (loginRequired())
     throw new ApiError('身份已失效，请重新登录或明确选择继续原访客', { code: 20002, status: 401 })
   // Web Locks also serialize the first visit across tabs where supported.
+  const session = identitySignal()
+  const readGuest = async () => {
+    session.throwIfAborted()
+    // Storage may already have changed before its cross-tab event is delivered.
+    if (getStoredToken() || loginRequired())
+      throw new ApiError('身份已切换，请重新读取数据', { code: 20001 })
+    return guestToken()
+  }
   const token =
     typeof navigator !== 'undefined' && navigator.locks
-      ? await navigator.locks.request('offerpilot-guest', guestToken)
-      : await guestToken()
+      ? await navigator.locks.request('offerpilot-guest', readGuest)
+      : await readGuest()
+  assertCredential(token)
   return authHeaders({ ...extra, Authorization: `Bearer ${token}` })
 }
 

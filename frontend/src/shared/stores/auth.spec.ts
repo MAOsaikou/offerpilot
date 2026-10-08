@@ -10,6 +10,8 @@ import { createApp, defineComponent, nextTick, onUnmounted, ref } from 'vue'
 import App from '@/app/App.vue'
 import { identitySignal } from '@/shared/utils/authSession'
 import { optimizeResume } from '@/shared/api/optimizations'
+import { listStaffUsers, setUserStatus } from '@/shared/api/auth'
+import { authenticatedHeaders, fetchWithIdentity } from '@/shared/api/client'
 
 function jwt(id: string, expires = Date.now() / 1000 + 43200): string {
   return `e30.${btoa(JSON.stringify({ sub: id, exp: expires }))}.signature`
@@ -52,6 +54,97 @@ afterEach(() => {
   queryClient.clear()
   vi.unstubAllGlobals()
   vi.useRealTimers()
+})
+
+it.each([
+  ['request', 'old-guest'],
+  ['request', null],
+  ['enterGuest', 'old-guest'],
+  ['enterGuest', null],
+] as const)('等待访客锁期间登录，排队的 %s 不使用旧访客或覆盖新账号：%s', async (method, guest) => {
+  if (guest) localStorage.setItem('offerpilot-guest-v1', guest)
+  let release!: () => void
+  const request = vi.fn(
+    (_name: string, callback: () => Promise<unknown>) =>
+      new Promise<unknown>((resolve) => {
+        release = () => resolve(callback())
+      }),
+  )
+  vi.stubGlobal('navigator', { locks: { request } })
+  const fetch = vi.fn().mockResolvedValue(loginResponse('B'))
+  vi.stubGlobal('fetch', fetch)
+  const auth = useAuthStore()
+  const pending = (method === 'request' ? apiRequest('/resumes') : auth.enterGuest()).catch(
+    (error) => error,
+  )
+  expect(request).toHaveBeenCalledOnce()
+  await auth.login('B@example.com', 'password')
+  release()
+  expect(await pending).toBeInstanceOf(Error)
+  expect(auth.user?.id).toBe('B')
+  expect(auth.isLoggedIn).toBe(true)
+  expect(fetch).toHaveBeenCalledOnce()
+  expect(localStorage.getItem('offerpilot-guest-v1')).toBe(guest)
+})
+
+it('取到请求头后切换账号，不发出旧凭据的写请求', async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(loginResponse('A'))
+    .mockResolvedValueOnce(loginResponse('B'))
+  vi.stubGlobal('fetch', fetch)
+  const auth = useAuthStore()
+  await auth.login('A@example.com', 'password')
+  const headers = await authenticatedHeaders()
+  await auth.login('B@example.com', 'password')
+  await expect(
+    fetchWithIdentity('/api/v1/resumes', { method: 'POST', headers }),
+  ).rejects.toMatchObject({ code: 20001 })
+  expect(fetch).toHaveBeenCalledTimes(2)
+})
+
+it.each(['list', 'status'] as const)(
+  '客服 %s 请求的迟到正文在身份切换后不能交付',
+  async (method) => {
+    let body!: ReadableStreamDefaultController<Uint8Array>
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          body = controller
+        },
+      }),
+    )
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(loginResponse('A', ['STAFF']))
+      .mockResolvedValueOnce(response)
+      .mockResolvedValueOnce(loginResponse('B'))
+    vi.stubGlobal('fetch', fetch)
+    const auth = useAuthStore()
+    await auth.staffLogin('A@example.com', 'password')
+    const pending = (
+      method === 'list' ? listStaffUsers() : setUserStatus('user', 'DISABLED')
+    ).catch((error) => error)
+    await vi.waitFor(() => expect(response.bodyUsed).toBe(true))
+    await auth.login('B@example.com', 'password')
+    body.enqueue(new TextEncoder().encode(JSON.stringify({ data: ['A-private'] })))
+    body.close()
+    expect(await pending).toMatchObject({ code: 20001 })
+    expect(auth.user?.id).toBe('B')
+  },
+)
+
+it('客服接口当前 401 使原账号失效且不重放请求', async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(loginResponse('staff', ['STAFF']))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ code: 20002 }), { status: 401 }))
+  vi.stubGlobal('fetch', fetch)
+  const auth = useAuthStore()
+  await auth.staffLogin('staff@example.com', 'password')
+  await expect(listStaffUsers()).rejects.toMatchObject({ code: 20002 })
+  expect(auth.isAuthenticated).toBe(false)
+  expect(fetch).toHaveBeenCalledTimes(2)
 })
 
 it('访客体验只在明确选择后创建，恢复时不创建替代身份', async () => {

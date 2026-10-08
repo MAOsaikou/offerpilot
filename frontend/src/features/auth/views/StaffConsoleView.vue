@@ -3,9 +3,13 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { listStaffUsers, setUserStatus, verifyToken, type StaffUserRow } from '@/shared/api/auth'
 import { useAuthStore } from '@/shared/stores/auth'
+import { getStoredToken, identitySignal } from '@/shared/utils/authSession'
 
 const router = useRouter()
 const auth = useAuthStore()
+const session = identitySignal()
+const credential = getStoredToken()
+const isCurrentSession = () => !session.aborted && getStoredToken() === credential
 
 const staffName = ref('')
 const users = ref<StaffUserRow[]>([])
@@ -30,8 +34,11 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    users.value = await listStaffUsers()
+    const rows = await listStaffUsers()
+    if (!isCurrentSession()) return
+    users.value = rows
   } catch (ex) {
+    if (!isCurrentSession()) return
     error.value = ex instanceof Error ? ex.message : '加载账号列表失败'
     if (isAuthError(error.value)) logout()
   } finally {
@@ -47,9 +54,11 @@ async function toggle(row: StaffUserRow) {
   notice.value = ''
   try {
     const updated = await setUserStatus(row.id, next)
+    if (!isCurrentSession()) return
     users.value = users.value.map((u) => (u.id === updated.id ? updated : u))
     notice.value = `已${next === 'DISABLED' ? '禁用' : '启用'}账号 ${updated.nickname}`
   } catch (ex) {
+    if (!isCurrentSession()) return
     error.value = ex instanceof Error ? ex.message : '操作失败，请稍后重试'
     if (isAuthError(error.value)) logout()
   } finally {
@@ -73,8 +82,10 @@ function formatTime(value: string): string {
 
 onMounted(async () => {
   // 先用已存令牌确认客服身份，再加载账号列表
+  loading.value = true
   try {
     const info = await verifyToken()
+    if (!isCurrentSession()) return
     if (!info.roles.includes('STAFF')) {
       error.value = '当前登录的不是客服账号'
       logout()
@@ -82,8 +93,12 @@ onMounted(async () => {
     }
     staffName.value = info.nickname || info.userId
     await load()
-  } catch {
-    logout()
+  } catch (ex) {
+    if (!isCurrentSession()) return
+    error.value = ex instanceof Error ? ex.message : '验证失败，请重试'
+    if (isAuthError(error.value)) logout()
+  } finally {
+    loading.value = false
   }
 })
 </script>
@@ -145,7 +160,10 @@ onMounted(async () => {
               <span v-for="role in row.roles" :key="role" class="role-tag">{{ role }}</span>
             </td>
             <td>
-              <span class="status-pill" :class="row.status === 'ACTIVE' ? 'is-active' : 'is-disabled'">
+              <span
+                class="status-pill"
+                :class="row.status === 'ACTIVE' ? 'is-active' : 'is-disabled'"
+              >
                 {{ row.status === 'ACTIVE' ? '启用' : '禁用' }}
               </span>
             </td>
@@ -198,6 +216,10 @@ onMounted(async () => {
   gap: 10px;
 }
 .staff-chip {
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 4px 12px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--primary) 12%, transparent);
@@ -301,6 +323,7 @@ onMounted(async () => {
   color: var(--muted-foreground);
 }
 .status-pill {
+  white-space: nowrap;
   display: inline-block;
   padding: 2px 10px;
   border-radius: 999px;
@@ -328,5 +351,15 @@ onMounted(async () => {
 }
 .toggle.danger:hover {
   background: color-mix(in srgb, var(--destructive, #c53030) 10%, transparent);
+}
+@media (max-width: 640px) {
+  .console-head {
+    flex-direction: column;
+  }
+  .head-right {
+    width: 100%;
+    min-width: 0;
+    justify-content: space-between;
+  }
 }
 </style>

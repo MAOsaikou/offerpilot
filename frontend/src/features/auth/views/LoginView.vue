@@ -37,6 +37,29 @@ const stops = [
   { x: 430, y: 60, label: '拿到 Offer' },
 ]
 
+function returnToWorkspace() {
+  const redirect = route.query.redirect
+  void router.push(
+    typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')
+      ? redirect
+      : '/',
+  )
+}
+
+async function continueGuest() {
+  if (loading.value) return
+  loading.value = true
+  error.value = ''
+  try {
+    if (await auth.enterGuest()) returnToWorkspace()
+    else error.value = '原访客身份已失效，访问凭据仍保留。请联系管理员恢复历史数据。'
+  } catch (ex) {
+    error.value = ex instanceof Error ? ex.message : '无法进入访客体验，请重试'
+  } finally {
+    loading.value = false
+  }
+}
+
 async function submit() {
   if (loading.value) return
   error.value = ''
@@ -47,8 +70,7 @@ async function submit() {
     } else {
       await auth.login(email.value.trim(), password.value)
     }
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
-    router.push(redirect)
+    returnToWorkspace()
   } catch (ex) {
     error.value = ex instanceof Error ? ex.message : '操作失败，请稍后重试'
   } finally {
@@ -94,13 +116,24 @@ function switchMode() {
           </li>
         </ul>
 
-        <svg class="login-route" viewBox="0 0 470 300" fill="none" aria-hidden="true" style="--i: 4">
+        <svg
+          class="login-route"
+          viewBox="0 0 470 300"
+          fill="none"
+          aria-hidden="true"
+          style="--i: 4"
+        >
           <path
             class="login-route-line"
             d="M40 250 C 110 250, 120 190, 170 190 S 250 150, 300 150 S 390 60, 430 60"
             pathLength="1"
           />
-          <g v-for="(stop, index) in stops" :key="stop.label" class="login-stop" :style="{ '--i': index }">
+          <g
+            v-for="(stop, index) in stops"
+            :key="stop.label"
+            class="login-stop"
+            :style="{ '--i': index }"
+          >
             <circle
               :cx="stop.x"
               :cy="stop.y"
@@ -181,7 +214,15 @@ function switchMode() {
 
           <button class="submit-btn" type="submit" :disabled="loading">
             <span v-if="loading" class="spinner" aria-hidden="true" />
-            {{ loading ? (mode === 'register' ? '注册中…' : '登录中…') : mode === 'register' ? '注 册' : '登 录' }}
+            {{
+              loading
+                ? mode === 'register'
+                  ? '注册中…'
+                  : '登录中…'
+                : mode === 'register'
+                  ? '注 册'
+                  : '登 录'
+            }}
             <AppIcon v-if="!loading" name="arrow" :size="17" class="submit-arrow" />
           </button>
         </form>
@@ -189,12 +230,40 @@ function switchMode() {
         <p class="mode-switch">
           <template v-if="mode === 'register'">已有账号？</template>
           <template v-else>还没有账号？</template>
-          <button type="button" class="mode-link" @click="switchMode">
+          <button type="button" class="mode-link" :disabled="loading" @click="switchMode">
             {{ mode === 'register' ? '直接登录' : '立即注册' }}
           </button>
         </p>
 
         <footer class="panel-foot">
+          <p v-if="auth.requiresLogin" class="subtle" role="status">
+            登录已结束或身份失效，请重新登录。原访客数据仍保留。
+          </p>
+          <button
+            v-if="auth.hasGuest"
+            type="button"
+            class="btn"
+            :disabled="loading"
+            @click="continueGuest"
+          >
+            继续使用原访客身份
+          </button>
+          <button
+            v-else-if="!auth.hasStoredGuest"
+            type="button"
+            class="btn"
+            :disabled="loading"
+            @click="continueGuest"
+          >
+            以访客身份体验
+          </button>
+          <p v-else class="subtle" role="status">
+            原访客身份已失效，访问凭据仍保留。请联系管理员恢复历史数据。
+          </p>
+          <p class="subtle">
+            访客身份有效期为 30
+            天。注册账号不会自动迁移访客数据；清除浏览器数据后无法找回访客访问凭据。
+          </p>
           <RouterLink to="/staff/login" class="staff-entry">
             <AppIcon name="headset" :size="14" />
             客服人员入口
@@ -231,6 +300,7 @@ function switchMode() {
   inset: 0;
   z-index: 0;
   pointer-events: none;
+  overflow: hidden;
 }
 .orb {
   position: absolute;
@@ -625,7 +695,9 @@ function switchMode() {
 }
 .panel-foot {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   border-top: 1px solid var(--border);
   padding-top: 14px;
 }

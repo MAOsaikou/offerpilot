@@ -53,7 +53,7 @@ export interface StaffUserRow {
 export async function listStaffUsers(): Promise<StaffUserRow[]> {
   const token = getStoredToken()
   if (!token) throw new Error('尚未登录，请先登录客服端')
-  const response = await fetch(apiUrl('/staff/users'), {
+  const response = await fetchWithIdentity(apiUrl('/staff/users'), {
     headers: authHeaders({ Authorization: `Bearer ${token}` }),
   })
   if (!response.ok) throw await toApiError(response)
@@ -67,11 +67,17 @@ export async function setUserStatus(
 ): Promise<StaffUserRow> {
   const token = getStoredToken()
   if (!token) throw new Error('尚未登录，请先登录客服端')
-  const response = await fetch(apiUrl(`/staff/users/${encodeURIComponent(id)}/status`), {
-    method: 'PATCH',
-    headers: authHeaders({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }),
-    body: JSON.stringify({ status }),
-  })
+  const response = await fetchWithIdentity(
+    apiUrl(`/staff/users/${encodeURIComponent(id)}/status`),
+    {
+      method: 'PATCH',
+      headers: authHeaders({
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      }),
+      body: JSON.stringify({ status }),
+    },
+  )
   if (!response.ok) throw await toApiError(response)
   return readApiData<StaffUserRow>(response)
 }

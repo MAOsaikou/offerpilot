@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
@@ -118,9 +119,9 @@ public class PasswordLoginService {
         if (!normalized.matches("[^@\\s]+@[^@\\s]+\\.[^@\\s]+") || normalized.length() > 200) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "邮箱格式不正确");
         }
-        if (password == null || password.length() < 6 || password.length() > 72) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "密码长度需为 6-72 位");
-        }
+        validatePassword(password);
+        if (password.length() < 6)
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "密码至少 6 位，UTF-8 编码不超过 72 字节");
         String userId = IdGenerator.next("usr");
         String nickname = normalized.substring(0, normalized.indexOf('@'));
         String passwordHash = passwordEncoder.encode(password);
@@ -135,9 +136,10 @@ public class PasswordLoginService {
     }
 
     private Account loadAndVerify(String email, String password) {
-        if (email == null || email.isBlank() || password == null || password.isBlank()) {
+        if (email == null || email.isBlank()) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         }
+        validatePassword(password);
         List<Account> found = jdbc.query("""
                 SELECT id, email, password_hash, nickname, array_to_string(roles, ',') AS roles_csv, status
                 FROM users WHERE email = ?
@@ -159,6 +161,13 @@ public class PasswordLoginService {
         if (!account.roles().contains(role)) {
             throw new BusinessException(ErrorCode.FORBIDDEN,
                     ROLE_STAFF.equals(role) ? "该账号不是客服账号" : "该账号不是用户账号");
+        }
+    }
+
+    private static void validatePassword(String password) {
+        if (password == null || password.isBlank() || password.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "密码不能全为空白，UTF-8 编码不超过 72 字节");
         }
     }
 

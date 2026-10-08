@@ -96,11 +96,21 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function enterGuest(): Promise<boolean> {
+    const session = identitySignal()
+    const initialToken = getStoredToken()
+    const initialGuest = getStoredGuest()
+    const initialLoginRequired = loginRequired()
     const enter = async () => {
+      session.throwIfAborted()
+      if (
+        getStoredToken() !== initialToken ||
+        getStoredGuest() !== initialGuest ||
+        loginRequired() !== initialLoginRequired
+      )
+        throw new Error('身份已切换，请重新选择访客体验')
       if (getStoredGuest()) return resumeGuest()
       localStorage.setItem('offerpilot-storage-check', '1')
       localStorage.removeItem('offerpilot-storage-check')
-      const session = identitySignal()
       const credential = await createGuest()
       session.throwIfAborted()
       saveGuest(credential)

@@ -108,6 +108,77 @@ class ChatHttpIntegrationTest {
     private String owner(String token) { return identities.require("Bearer " + token); }
 
     @Test
+    void passwordValidationEnforcesUtf8LimitWithoutTruncation() throws Exception {
+        String email = "password-boundary-" + java.util.UUID.randomUUID() + "@example.com";
+        for (String invalid : new String[]{"      ", "\u2003".repeat(6), "汉".repeat(24) + "a", "😀".repeat(19)}) {
+            var response = request("POST", "/auth/register", null,
+                    json.writeValueAsString(java.util.Map.of("email", email, "password", invalid)));
+            assertThat(response.statusCode()).isEqualTo(400);
+            assertThat(json.readTree(response.body()).path("code").asInt()).isEqualTo(10001);
+        }
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE email=?", Integer.class, email)).isZero();
+        String password = "汉".repeat(24);
+        String payload = json.writeValueAsString(java.util.Map.of("email", email, "password", password));
+        assertThat(request("POST", "/auth/register", null, payload).statusCode()).isEqualTo(200);
+        assertThat(request("POST", "/auth/login", null, payload).statusCode()).isEqualTo(200);
+        for (String endpoint : new String[]{"/auth/login", "/auth/staff/login"}) {
+            assertThat(request("POST", endpoint, null, json.writeValueAsString(
+                    java.util.Map.of("email", email, "password", password + "different"))).statusCode()).isEqualTo(400);
+        }
+    }
+
+    @Test
+    void staffAdministrationEnforcesRolesAndControlsExistingCredentials() throws Exception {
+        String staffId = com.offerpilot.common.id.IdGenerator.next("usr");
+        String staffEmail = "admin-" + java.util.UUID.randomUUID() + "@example.com";
+        jdbc.update("INSERT INTO users(id,email,password_hash,nickname,roles) VALUES (?,?,?,?,'{STAFF}')",
+                staffId, staffEmail, passwordEncoder.encode("isolated-admin-password"), "Test admin");
+        var staffLogin = request("POST", "/auth/staff/login", null,
+                json.writeValueAsString(java.util.Map.of("email", staffEmail, "password", "isolated-admin-password")));
+        String staff = json.readTree(staffLogin.body()).path("data").path("accessToken").asText();
+        String email = "managed-" + java.util.UUID.randomUUID() + "@example.com";
+        var registered = request("POST", "/auth/register", null,
+                json.writeValueAsString(java.util.Map.of("email", email, "password", "isolated-user-password")));
+        var user = json.readTree(registered.body()).path("data");
+        String userId = user.path("user").path("id").asText();
+        String token = user.path("accessToken").asText();
+        String guest = identities.create().accessToken();
+        String guestId = owner(guest);
+        assertThat(request("GET", "/staff/users", null, null).statusCode()).isEqualTo(401);
+        assertThat(request("GET", "/staff/users", token, null).statusCode()).isEqualTo(403);
+        assertThat(request("GET", "/staff/users", guest, null).statusCode()).isEqualTo(401);
+        assertThat(request("PATCH", "/staff/users/" + userId + "/status", token,
+                "{\"status\":\"DISABLED\"}").statusCode()).isEqualTo(403);
+        var list = request("GET", "/staff/users", staff, null);
+        assertThat(list.statusCode()).isEqualTo(200);
+        assertThat(list.headers().firstValue("cache-control")).contains("no-store");
+        assertThat(json.readTree(list.body()).path("data").findValuesAsText("id"))
+                .contains(userId, guestId).doesNotContain(staffId);
+        assertThat(request("PATCH", "/staff/users/" + staffId + "/status", staff,
+                "{\"status\":\"DISABLED\"}").statusCode()).isEqualTo(403);
+        assertThat(request("PATCH", "/staff/users/missing/status", staff,
+                "{\"status\":\"DISABLED\"}").statusCode()).isEqualTo(404);
+        assertThat(request("PATCH", "/staff/users/" + userId + "/status", staff,
+                "{\"status\":\"DELETED\"}").statusCode()).isEqualTo(400);
+        for (String target : new String[]{userId, guestId}) {
+            assertThat(request("PATCH", "/staff/users/" + target + "/status", staff,
+                    "{\"status\":\"DISABLED\"}").statusCode()).isEqualTo(200);
+        }
+        assertThat(request("GET", "/conversations", token, null).statusCode()).isEqualTo(401);
+        assertThat(request("GET", "/conversations", guest, null).statusCode()).isEqualTo(401);
+        for (String target : new String[]{userId, guestId}) {
+            assertThat(request("PATCH", "/staff/users/" + target + "/status", staff,
+                    "{\"status\":\"ACTIVE\"}").statusCode()).isEqualTo(200);
+        }
+        assertThat(request("GET", "/conversations", token, null).statusCode()).isEqualTo(200);
+        assertThat(request("GET", "/conversations", guest, null).statusCode()).isEqualTo(200);
+        assertThat(request("PATCH", "/staff/users/" + userId + "/status", staff,
+                "{\"status\":\"ACTIVE\"}").statusCode()).isEqualTo(400);
+        jdbc.update("UPDATE users SET status='DISABLED' WHERE id=?", staffId);
+        assertThat(request("GET", "/staff/users", staff, null).statusCode()).isEqualTo(401);
+    }
+
+    @Test
     void passwordAuthenticationAndGuestOwnershipRemainIsolated() throws Exception {
         String email = "auth-" + java.util.UUID.randomUUID() + "@example.com";
         String payload = json.writeValueAsString(java.util.Map.of("email", email, "password", "integration-only-password"));
