@@ -22,7 +22,7 @@ public record OfferPilotProperties(
 
     public record Security(
             String jwtSecret,
-            @DefaultValue("15m") Duration accessTtl,
+            @DefaultValue("12h") Duration accessTtl,
             @DefaultValue("7d") Duration refreshTtl,
             @DefaultValue("") String corsOrigins
     ) {

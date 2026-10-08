@@ -117,7 +117,7 @@ export const routes: RouteRecordRaw[] = [
     path: '/staff',
     name: 'staff-console',
     component: () => import('@/features/auth/views/StaffConsoleView.vue'),
-    meta: { title: '客服工作台' },
+    meta: { title: '客服工作台', staff: true },
   },
   {
     path: '/:pathMatch(.*)*',

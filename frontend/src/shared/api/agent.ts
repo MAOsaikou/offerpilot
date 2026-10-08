@@ -1,4 +1,10 @@
-import { apiUrl, authenticatedHeaders, toApiError } from './client'
+import {
+  apiUrl,
+  authenticatedHeaders,
+  assertResponseIdentity,
+  fetchWithIdentity,
+  toApiError,
+} from './client'
 import { parseSse } from './sse'
 import type { AgentEvent, ChatRequest } from '@/shared/types/agent-events'
 
@@ -28,7 +34,7 @@ export async function streamAgentChat(
   body: ChatRequest,
   options: AgentStreamOptions = {},
 ): Promise<string> {
-  const response = await fetch(apiUrl('/agent/chat'), {
+  const response = await fetchWithIdentity(apiUrl('/agent/chat'), {
     method: 'POST',
     headers: await authenticatedHeaders({
       'Content-Type': 'application/json',
@@ -43,6 +49,7 @@ export async function streamAgentChat(
   let runId = ''
   let completed = false
   for await (const frame of parseSse(response.body)) {
+    assertResponseIdentity(response)
     const event = decodeEvent(frame.data)
     if (!event) continue
     runId ||= event.runId
@@ -62,7 +69,7 @@ export async function resumeAgentRun(
   afterId: number,
   options: AgentStreamOptions = {},
 ): Promise<void> {
-  const response = await fetch(
+  const response = await fetchWithIdentity(
     apiUrl(`/agent/runs/${encodeURIComponent(runId)}/events?after=${afterId}&follow=true`),
     {
       headers: await authenticatedHeaders({ Accept: 'text/event-stream' }),
@@ -73,6 +80,7 @@ export async function resumeAgentRun(
   if (!response.ok || !response.body) throw await toApiError(response)
 
   for await (const frame of parseSse(response.body)) {
+    assertResponseIdentity(response)
     const event = decodeEvent(frame.data)
     if (!event) continue
     options.onEvent?.(event)
@@ -82,9 +90,12 @@ export async function resumeAgentRun(
 
 /** 中断运行：POST /agent/runs/{runId}/cancel */
 export async function cancelAgentRun(runId: string): Promise<void> {
-  const response = await fetch(apiUrl(`/agent/runs/${encodeURIComponent(runId)}/cancel`), {
-    method: 'POST',
-    headers: await authenticatedHeaders(),
-  })
+  const response = await fetchWithIdentity(
+    apiUrl(`/agent/runs/${encodeURIComponent(runId)}/cancel`),
+    {
+      method: 'POST',
+      headers: await authenticatedHeaders(),
+    },
+  )
   if (!response.ok) throw await toApiError(response)
 }

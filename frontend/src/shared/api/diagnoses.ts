@@ -1,4 +1,11 @@
-import { apiRequest, apiUrl, authenticatedHeaders, toApiError } from './client'
+import {
+  apiRequest,
+  apiUrl,
+  authenticatedHeaders,
+  assertResponseIdentity,
+  fetchWithIdentity,
+  toApiError,
+} from './client'
 import { parseSse } from './sse'
 import type { DiagnosisTask, ResumeDiagnosisReport } from '@/shared/types/diagnosis'
 import type { ResumeVersion } from '@/shared/types/resume'
@@ -21,7 +28,7 @@ export async function analyzeResume(
   signal: AbortSignal,
   started: (id: string) => void,
 ): Promise<ResumeDiagnosisReport> {
-  const response = await fetch(
+  const response = await fetchWithIdentity(
     apiUrl(`/resumes/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/analyze`),
     {
       method: 'POST',
@@ -37,6 +44,7 @@ export async function analyzeResume(
   let report: ResumeDiagnosisReport | undefined
   let complete = false
   for await (const frame of parseSse(response.body)) {
+    assertResponseIdentity(response)
     const event = JSON.parse(frame.data) as {
       type: string
       reportId?: string

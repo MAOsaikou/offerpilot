@@ -1,10 +1,12 @@
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 import { createPinia } from 'pinia'
 import { VueQueryPlugin } from '@tanstack/vue-query'
 import App from './App.vue'
 import { router } from './router'
 import { queryClient } from './providers/query'
 import { initTheme } from '@/shared/utils/theme'
+import { useAuthStore } from '@/shared/stores/auth'
+import { useAgentRunStore } from '@/shared/stores/agentRun'
 import '@/shared/styles/index.css'
 import '@/shared/styles/transition.css'
 import '@/shared/styles/markdown.css'
@@ -29,6 +31,31 @@ const app = createApp(App)
 app.use(createPinia())
 app.use(router)
 app.use(VueQueryPlugin, { queryClient })
+
+const auth = useAuthStore()
+watch(
+  () => auth.identityKey,
+  () => {
+    useAgentRunStore().reset()
+    const current = router.currentRoute.value
+    if (current.matched.length && !current.meta.public && auth.isAuthenticated) {
+      void router.replace(current.meta.staff && auth.isStaff ? '/staff' : '/')
+    }
+  },
+  { flush: 'sync' },
+)
+watch(
+  () => auth.requiresLogin,
+  (required) => {
+    const current = router.currentRoute.value
+    if (required && current.matched.length && !current.meta.public) {
+      void router.replace({
+        name: current.meta.staff ? 'staff-login' : 'login',
+        query: { redirect: current.fullPath },
+      })
+    }
+  },
+)
 
 enableMocking()
   .catch((error: unknown) => {

@@ -1,6 +1,6 @@
 # 后端本地启动（DeepSeek + PostgreSQL）
 
-当前实现包括持久化多轮文字聊天和简历上传解析。聊天链路：浏览器访客身份 → 会话 CRUD → `/api/v1/agent/chat` → Spring AI DeepSeek → SSE；支持停止、刷新恢复、分页与用户隔离。简历链路：`/api/v1/resumes` → MinIO 原件存储 → 后台解析 → PostgreSQL 结构化版本，可查询状态、失败重试与手动编辑。启动时自动执行 V1–V7 迁移。专家编排、聊天附件、RAG、长期记忆与工具调用仍未接入。集成测试需要 Docker，使用隔离 PostgreSQL/MinIO 和本地模型协议桩。
+当前实现包括持久化多轮文字聊天和简历上传解析。聊天链路：浏览器账号/访客身份 → 会话 CRUD → `/api/v1/agent/chat` → Spring AI DeepSeek → SSE；支持停止、刷新恢复、分页与用户隔离。简历链路：`/api/v1/resumes` → MinIO 原件存储 → 后台解析 → PostgreSQL 结构化版本，可查询状态、失败重试与手动编辑。启动时自动执行 V1–V12 迁移。专家编排、聊天附件、RAG、长期记忆与工具调用仍未接入。集成测试需要 Docker，使用隔离 PostgreSQL/MinIO 和本地模型协议桩。
 
 ## 1. 准备环境
 
@@ -13,9 +13,11 @@ docker version
 docker compose version
 ```
 
-本机已有 Java 和 Maven。当前 Maven Wrapper 在 Windows 上存在空数组错误，本轮使用已安装的 `mvn` 构建；不要执行父聚合工程的 `spring-boot:run`，它不是启动模块。
+优先使用仓库 Maven Wrapper（Windows：`./mvnw.cmd`，Maven 3.9.11），也可使用已安装的 `mvn`；不要执行父聚合工程的 `spring-boot:run`，它不是启动模块。
 
 ## 2. 填 DeepSeek Key
+
+先配置认证密钥：JWT_SECRET 必须为至少 64 字节随机串，例如用 `openssl rand -base64 64` 生成后写入忽略的 backend/.env.local。缺失、短值或 change-me 占位值会拒绝启动；不要把生成值提交到仓库。测试使用独立 test profile，不读取本机凭据。V12 会停用未轮换公开密码的旧测试账号并保留数据；用户可自行注册，正式客服需受控创建和设置密码。
 
 编辑 `backend/.env.local`（本轮已创建占位模板；新克隆时从 `backend/.env.example` 复制），将 `sk-not-configured` 替换为真实 Key：
 
@@ -51,7 +53,7 @@ docker compose --env-file backend/.env.local -f deploy/docker-compose.yml ps
 
 等待 postgres、redis、minio 显示 `healthy`。首次需要下载镜像。端口为 PostgreSQL `5432`、Redis `6379`、对象存储 `127.0.0.1:9000`（无 9001 控制台）。Redis 要求使用 `REDIS_PASSWORD` 认证，且宿主机端口仅绑定 `127.0.0.1`。聊天不调用 jobs-mcp，暂时不需要启动它。
 
-PostgreSQL 镜像已包含 pgvector。Java 启动自动执行 Flyway V1–V7，创建用户、会话、消息、文件元数据、简历与版本等表；无需手工运行 SQL。既有数据库只执行尚未应用的迁移，聊天和简历数据均按访客身份隔离。
+PostgreSQL 镜像已包含 pgvector。Java 启动自动执行 Flyway V1–V12，创建用户、会话、消息、文件元数据、简历与版本等表；无需手工运行 SQL。既有数据库只执行尚未应用的迁移，聊天和简历数据均按当前身份隔离。
 
 如果之前已经建立数据库卷，修改 `POSTGRES_PASSWORD` 不会重置库内密码，应填写现有密码；不要删除数据库卷来解决连接问题。
 
@@ -65,7 +67,7 @@ mvn -q -B -pl offerpilot-bootstrap -am package
 java -jar offerpilot-bootstrap/target/offerpilot-bootstrap-0.1.0-SNAPSHOT.jar --spring.profiles.active=dev
 ```
 
-保持窗口打开。健康检查：`http://localhost:8081/actuator/health`，预期 `{"status":"UP"}`；接口文档：`http://localhost:8081/swagger-ui.html`。健康检查覆盖数据库 / Redis，不代表模型 Key 有效。本机调试尚未接入 JWT，不应直接作为公网服务发布。
+保持窗口打开。健康检查：`http://localhost:8081/actuator/health`，预期 `{"status":"UP"}`；接口文档：`http://localhost:8081/swagger-ui.html`。健康检查覆盖数据库 / Redis，不代表模型 Key 有效。当前已接入 12 小时密码登录 JWT 和 30 天访客凭据；公网部署仍需 HTTPS、正式随机密钥及部署规范中的环境配置。
 
 RAG 尚未实现，dev 只关闭 Embedding 与 Spring AI VectorStore 自动装配，不关闭 PostgreSQL、Flyway、JPA 或 Redis，也不需要百炼 Key。
 

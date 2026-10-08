@@ -28,9 +28,12 @@ public class JwtTokenService {
 
     public JwtTokenService(OfferPilotProperties properties) {
         String secret = properties.security().jwtSecret();
+        if (secret == null || secret.isBlank() || secret.trim().startsWith("change-me")) {
+            throw new IllegalStateException("JWT_SECRET 必须配置为随机密钥，不能使用公开占位值");
+        }
         byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
-        if (bytes.length < 32) {
-            throw new IllegalStateException("offerpilot.security.jwt-secret 至少需要 32 字节（HS256）");
+        if (bytes.length < 64) {
+            throw new IllegalStateException("JWT_SECRET 至少需要 64 字节的随机密钥");
         }
         this.key = Keys.hmacShaKeyFor(bytes);
         this.accessTtl = properties.security().accessTtl();
@@ -45,7 +48,7 @@ public class JwtTokenService {
                 .claim("nickname", nickname)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(accessTtl)))
-                .signWith(key)
+                .signWith(key, Jwts.SIG.HS256)
                 .compact();
     }
 

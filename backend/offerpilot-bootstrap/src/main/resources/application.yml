@@ -86,7 +86,7 @@ springdoc:
 
 offerpilot:
   security:
-    jwt-secret: ${JWT_SECRET:change-me-generate-with-openssl-rand-base64-64}
+    jwt-secret: ${JWT_SECRET:}
     access-ttl: 12h
     refresh-ttl: 7d
     cors-origins: ${CORS_ORIGINS:}

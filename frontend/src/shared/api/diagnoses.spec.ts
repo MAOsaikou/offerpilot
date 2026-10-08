@@ -3,6 +3,8 @@ import { analyzeResume } from './diagnoses'
 vi.mock('./client', () => ({
   apiUrl: (path: string) => path,
   authenticatedHeaders: async () => ({ Authorization: 'Bearer fixture' }),
+  fetchWithIdentity: (input: RequestInfo | URL, init: RequestInit) => fetch(input, init),
+  assertResponseIdentity: vi.fn(),
   toApiError: async () => new Error('接口失败'),
 }))
 afterEach(() => vi.unstubAllGlobals())

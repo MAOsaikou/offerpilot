@@ -9,7 +9,8 @@ afterEach(() => {
 it('search passes filters, cancellation and owner to the backend, never directly to MCP', async () => {
   const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { items: [] } })))
   vi.stubGlobal('fetch', fetch)
-  const signal = new AbortController().signal
+  const controller = new AbortController()
+  const signal = controller.signal
   await searchJobs(
     { query: 'Java & SQL', site: 'bytedance', nature: 'campus', location: '上海' },
     signal,
@@ -17,7 +18,9 @@ it('search passes filters, cancellation and owner to the backend, never directly
   const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit]
   expect(url).toContain('/jobs?')
   expect(new URL(url, 'http://localhost').searchParams.get('query')).toBe('Java & SQL')
-  expect(init.signal).toBe(signal)
+  expect(init.signal?.aborted).toBe(false)
+  controller.abort()
+  expect(init.signal?.aborted).toBe(true)
   expect((init.headers as Record<string, string>).Authorization).toBe('Bearer jobs-owner')
 })
 it('matching sends the selected saved version and does not silently retry failures', async () => {

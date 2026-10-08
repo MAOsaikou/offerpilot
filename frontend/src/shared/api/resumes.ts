@@ -1,4 +1,11 @@
-import { apiRequest, apiUrl, authenticatedHeaders, toApiError } from './client'
+import {
+  apiRequest,
+  apiUrl,
+  authenticatedHeaders,
+  fetchWithIdentity,
+  readApiData,
+  toApiError,
+} from './client'
 import type {
   ResumePage,
   ResumeStructure,
@@ -17,13 +24,13 @@ export async function uploadResume(file: File): Promise<ServerResume> {
   if (error) throw new Error(error)
   const body = new FormData()
   body.append('file', file)
-  const response = await fetch(apiUrl('/resumes'), {
+  const response = await fetchWithIdentity(apiUrl('/resumes'), {
     method: 'POST',
     headers: await authenticatedHeaders(),
     body,
   })
   if (!response.ok) throw await toApiError(response)
-  return ((await response.json()) as { data: ServerResume }).data
+  return readApiData<ServerResume>(response)
 }
 export const listResumes = (page = 1, signal?: AbortSignal) =>
   apiRequest<ResumePage>(`/resumes?page=${page}&size=20`, { signal })

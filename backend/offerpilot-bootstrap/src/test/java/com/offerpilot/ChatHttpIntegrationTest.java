@@ -49,6 +49,7 @@ class ChatHttpIntegrationTest {
     @Autowired GuestIdentityService identities;
     @Autowired ConversationService conversations;
     @Autowired JdbcTemplate jdbc;
+    @Autowired org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     private static final AtomicReference<String> requestBody = new AtomicReference<>();
     private static final HttpServer provider = provider();
     @LocalServerPort
@@ -105,6 +106,52 @@ class ChatHttpIntegrationTest {
     }
 
     private String owner(String token) { return identities.require("Bearer " + token); }
+
+    @Test
+    void passwordAuthenticationAndGuestOwnershipRemainIsolated() throws Exception {
+        String email = "auth-" + java.util.UUID.randomUUID() + "@example.com";
+        String payload = json.writeValueAsString(java.util.Map.of("email", email, "password", "integration-only-password"));
+        var registered = request("POST", "/auth/register", null, payload);
+        assertThat(registered.statusCode()).isEqualTo(200);
+        assertThat(registered.headers().firstValue("cache-control")).contains("no-store");
+        var data = json.readTree(registered.body()).path("data");
+        String token = data.path("accessToken").asText();
+        String userId = data.path("user").path("id").asText();
+        assertThat(data.path("expiresIn").asLong()).isEqualTo(43200);
+        assertThat(request("POST", "/auth/register", null, payload).statusCode()).isEqualTo(409);
+        assertThat(request("POST", "/auth/login", null, payload).statusCode()).isEqualTo(200);
+        assertThat(request("POST", "/auth/staff/login", null, payload).statusCode()).isEqualTo(403);
+        assertThat(request("POST", "/auth/login", null,
+                json.writeValueAsString(java.util.Map.of("email", email, "password", "incorrect"))).statusCode()).isEqualTo(401);
+        assertThat(request("GET", "/auth/verify", token, null).statusCode()).isEqualTo(200);
+        assertThat(request("GET", "/auth/verify", null, null).statusCode()).isEqualTo(401);
+        assertThat(request("GET", "/auth/verify", token + "tampered", null).statusCode()).isEqualTo(401);
+
+        String conv = conversations.create(userId, "JWT 私有会话", null).id();
+        String guest = identities.create().accessToken();
+        assertThat(request("GET", "/conversations/" + conv, token, null).statusCode()).isEqualTo(200);
+        assertThat(request("GET", "/conversations/" + conv, guest, null).statusCode()).isEqualTo(404);
+        jdbc.update("UPDATE users SET status='DISABLED' WHERE id=?", userId);
+        assertThat(request("GET", "/auth/verify", token, null).statusCode()).isEqualTo(401);
+        assertThat(request("GET", "/conversations/" + conv, token, null).statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void publicSeedAccountsAreDisabledButAnIsolatedStaffFixtureCanLogin() throws Exception {
+        assertThat(jdbc.queryForList("SELECT status FROM users WHERE id IN ('usr_test_user001','usr_test_staff001')", String.class))
+                .containsExactlyInAnyOrder("DISABLED", "DISABLED");
+        String staffId = com.offerpilot.common.id.IdGenerator.next("usr");
+        String email = "staff-" + java.util.UUID.randomUUID() + "@example.com";
+        jdbc.update("INSERT INTO users(id,email,password_hash,nickname,roles) VALUES (?,?,?,?,'{STAFF}')",
+                staffId, email, passwordEncoder.encode("isolated-staff-password"), "Test staff");
+        String payload = json.writeValueAsString(java.util.Map.of("email", email, "password", "isolated-staff-password"));
+        var response = request("POST", "/auth/staff/login", null, payload);
+        assertThat(response.statusCode()).isEqualTo(200);
+        var result = json.readTree(response.body()).path("data");
+        assertThat(result.path("user").path("roles").get(0).asText()).isEqualTo("STAFF");
+        assertThat(request("POST", "/auth/login", null, payload).statusCode()).isEqualTo(403);
+        assertThat(request("GET", "/auth/verify", result.path("accessToken").asText(), null).statusCode()).isEqualTo(200);
+    }
 
     @Test
     void historySurvivesHttpRequestsAndOnlySameConversationEntersPrompt() throws Exception {

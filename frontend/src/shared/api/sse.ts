@@ -89,6 +89,7 @@ export async function* parseSse(stream: ReadableStream<Uint8Array>): AsyncGenera
       if (frame) yield frame
     }
   } finally {
+    await reader.cancel().catch(() => undefined)
     reader.releaseLock()
   }
 }

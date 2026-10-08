@@ -24,6 +24,29 @@ const stops = [
   { x: 430, y: 60, label: '拿到 Offer' },
 ]
 
+function returnToWorkspace() {
+  const redirect = route.query.redirect
+  void router.push(
+    typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')
+      ? redirect
+      : '/',
+  )
+}
+
+async function continueGuest() {
+  if (loading.value) return
+  loading.value = true
+  error.value = ''
+  try {
+    if (await auth.enterGuest()) returnToWorkspace()
+    else error.value = '原访客身份已失效，访问凭据仍保留。请联系管理员恢复历史数据。'
+  } catch (ex) {
+    error.value = ex instanceof Error ? ex.message : '无法进入访客体验，请重试'
+  } finally {
+    loading.value = false
+  }
+}
+
 async function submit() {
   if (loading.value) return
   error.value = ''
@@ -34,8 +57,7 @@ async function submit() {
     } else {
       await auth.login(email.value.trim(), password.value)
     }
-    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
-    router.push(redirect)
+    returnToWorkspace()
   } catch (ex) {
     error.value = ex instanceof Error ? ex.message : '操作失败，请稍后重试'
   } finally {
@@ -55,7 +77,11 @@ function switchMode() {
         <BrandMark :size="44" />
         <h1>{{ mode === 'register' ? '创建你的 OfferPilot 账号' : '欢迎来到 OfferPilot' }}</h1>
         <p class="subtle">
-          {{ mode === 'register' ? '只需一个邮箱和密码，马上开始你的求职旅程。' : '从了解自己，到找到下一站。登录后继续你的求职旅程。' }}
+          {{
+            mode === 'register'
+              ? '只需一个邮箱和密码，马上开始你的求职旅程。'
+              : '从了解自己，到找到下一站。登录后继续你的求职旅程。'
+          }}
         </p>
       </header>
 
@@ -114,12 +140,36 @@ function switchMode() {
       <p class="mode-switch">
         <template v-if="mode === 'register'">已有账号？</template>
         <template v-else>还没有账号？</template>
-        <button type="button" class="mode-link" @click="switchMode">
+        <button type="button" class="mode-link" :disabled="loading" @click="switchMode">
           {{ mode === 'register' ? '直接登录' : '立即注册' }}
         </button>
       </p>
 
       <footer class="login-foot">
+        <p v-if="auth.requiresLogin" role="status">
+          登录已结束或身份失效，请重新登录。原访客数据仍保留。
+        </p>
+        <template v-if="auth.hasGuest">
+          <button type="button" class="btn" :disabled="loading" @click="continueGuest">
+            继续使用原访客身份
+          </button>
+          <p class="subtle">
+            访客身份有效期为 30
+            天。注册账号不会自动迁移访客数据；清除浏览器数据后无法找回访客访问凭据。
+          </p>
+        </template>
+        <button
+          v-else-if="!auth.hasStoredGuest"
+          type="button"
+          class="btn"
+          :disabled="loading"
+          @click="continueGuest"
+        >
+          以访客身份体验
+        </button>
+        <p v-else class="subtle" role="status">
+          原访客身份已失效，访问凭据仍保留。请联系管理员恢复历史数据。
+        </p>
         <RouterLink to="/staff/login" class="staff-entry">客服人员登录</RouterLink>
       </footer>
     </div>
@@ -212,7 +262,9 @@ function switchMode() {
   background: var(--background);
   color: var(--foreground);
   font-size: 14px;
-  transition: border-color 160ms var(--ease-out, ease), box-shadow 160ms var(--ease-out, ease);
+  transition:
+    border-color 160ms var(--ease-out, ease),
+    box-shadow 160ms var(--ease-out, ease);
 }
 .field-control input {
   padding-right: 42px;
@@ -292,11 +344,21 @@ function switchMode() {
 }
 .login-foot {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   border-top: 1px solid var(--border);
   padding-top: 16px;
 }
+.login-foot p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
 .staff-entry {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   font-size: 13px;
   color: var(--muted-foreground);
   text-decoration: none;

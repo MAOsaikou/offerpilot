@@ -2,6 +2,18 @@
  * API 客户端基础设施。
  * 响应包裹、错误码与追踪约定见 docs/05 §1.2 / §1.3。
  */
+import {
+  ACCESS_TOKEN_KEY,
+  GUEST_TOKEN_KEY,
+  expireLoginIfNeeded,
+  getStoredToken,
+  invalidateCredential,
+  loginRequired,
+  identitySignal,
+  saveGuest,
+} from '@/shared/utils/authSession'
+
+export { ACCESS_TOKEN_KEY }
 
 export class ApiError extends Error {
   readonly code: number
@@ -32,13 +44,41 @@ export function authHeaders(extra: Record<string, string> = {}): Record<string, 
   return { 'X-Trace-Id': createTraceId(), ...extra }
 }
 
-const IDENTITY_KEY = 'offerpilot-guest-v1'
-/** 登录 JWT 的 localStorage 键；features/auth/api 与认证 store 共用。 */
-export const ACCESS_TOKEN_KEY = 'offerpilot-access-token'
+const IDENTITY_KEY = GUEST_TOKEN_KEY
+/** 合并首次访客身份创建请求，避免同时创建多份历史。 */
 let pendingIdentity: Promise<string> | undefined
+const responseCredentials = new WeakMap<Response, string>()
+const responseSessions = new WeakMap<Response, AbortSignal>()
 
-function loginToken(): string | null {
-  return localStorage.getItem(ACCESS_TOKEN_KEY)
+export function assertResponseIdentity(response: Response): void {
+  const credential = responseCredentials.get(response)
+  const active = getStoredToken() || (loginRequired() ? null : localStorage.getItem(IDENTITY_KEY))
+  if (responseSessions.get(response)?.aborted || (credential && credential !== active))
+    throw new ApiError('身份已切换，请重新读取数据', { code: 20001 })
+}
+
+export async function readApiData<T>(response: Response): Promise<T> {
+  const body = (await response.json()) as { data: T }
+  assertResponseIdentity(response)
+  return body.data
+}
+
+/** 关联请求使用的身份，迟到的错误不会注销随后登录的新账号。 */
+export async function fetchWithIdentity(
+  input: RequestInfo | URL,
+  init: RequestInit,
+): Promise<Response> {
+  const authorization = new Headers(init.headers).get('Authorization')
+  const credential = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
+  const session = identitySignal()
+  const signal = init.signal ? AbortSignal.any([init.signal, session]) : session
+  const response = await fetch(input, { ...init, signal })
+  responseSessions.set(response, session)
+  if (credential) {
+    responseCredentials.set(response, credential)
+    if (response.ok) assertResponseIdentity(response)
+  }
+  return response
 }
 
 async function guestToken(): Promise<string> {
@@ -50,15 +90,15 @@ async function guestToken(): Promise<string> {
       // Confirm browser storage is available before creating a server-side identity.
       localStorage.setItem('offerpilot-storage-check', '1')
       localStorage.removeItem('offerpilot-storage-check')
-      const response = await fetch(apiUrl('/auth/guest'), {
+      const response = await fetchWithIdentity(apiUrl('/auth/guest'), {
         method: 'POST',
         headers: authHeaders(),
       })
       if (!response.ok) throw await toApiError(response)
-      const body = (await response.json()) as { data: { accessToken: string } }
-      const token = body.data.accessToken
+      const body = await readApiData<{ accessToken: string }>(response)
+      const token = body.accessToken
       if (!token) throw new Error('无法建立访客身份，请重试')
-      localStorage.setItem(IDENTITY_KEY, token)
+      saveGuest(token)
       return token
     })().finally(() => {
       pendingIdentity = undefined
@@ -72,8 +112,11 @@ export async function authenticatedHeaders(
 ): Promise<Record<string, string>> {
   if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK === 'true') return authHeaders(extra)
   // 已登录（邮箱密码）优先使用 JWT；否则回退到访客身份。
-  const jwt = loginToken()
+  expireLoginIfNeeded()
+  const jwt = getStoredToken()
   if (jwt) return authHeaders({ ...extra, Authorization: `Bearer ${jwt}` })
+  if (loginRequired())
+    throw new ApiError('身份已失效，请重新登录或明确选择继续原访客', { code: 20002, status: 401 })
   // Web Locks also serialize the first visit across tabs where supported.
   const token =
     typeof navigator !== 'undefined' && navigator.locks
@@ -83,12 +126,12 @@ export async function authenticatedHeaders(
 }
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(apiUrl(path), {
+  const response = await fetchWithIdentity(apiUrl(path), {
     ...init,
     headers: await authenticatedHeaders({ 'Content-Type': 'application/json' }),
   })
   if (!response.ok) throw await toApiError(response)
-  return ((await response.json()) as { data: T }).data
+  return readApiData<T>(response)
 }
 
 /** 把非 2xx 响应映射成 ApiError，尽量读出服务端的 code / message / traceId */
@@ -105,6 +148,9 @@ export async function toApiError(response: Response): Promise<ApiError> {
   } catch {
     // 非 JSON 响应体，保留 HTTP 状态码
   }
+
+  const credential = responseCredentials.get(response)
+  if (response.status === 401 && credential) invalidateCredential(credential)
 
   return new ApiError(message, { code, status: response.status, traceId })
 }

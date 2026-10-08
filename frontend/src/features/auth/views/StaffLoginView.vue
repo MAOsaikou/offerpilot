@@ -1,18 +1,22 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { staffLogin, type LoginResult } from '../api'
+import { RouterLink, useRouter } from 'vue-router'
+import { useAuthStore } from '@/shared/stores/auth'
 
-const email = ref('staff@offerpilot.local')
-const password = ref('staff123456')
+const auth = useAuthStore()
+const router = useRouter()
+const email = ref('')
+const password = ref('')
 const loading = ref(false)
 const error = ref('')
-const result = ref<LoginResult | null>(null)
 
 async function submit() {
+  if (loading.value) return
   error.value = ''
   loading.value = true
   try {
-    result.value = await staffLogin(email.value, password.value)
+    await auth.staffLogin(email.value.trim(), password.value)
+    await router.push('/staff')
   } catch (ex) {
     error.value = ex instanceof Error ? ex.message : '登录失败'
   } finally {
@@ -21,18 +25,46 @@ async function submit() {
 }
 </script>
 <template>
-  <section class="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4">
+  <section class="staff-login mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4">
     <h1 class="text-xl font-semibold">客服端登录</h1>
     <form class="flex flex-col gap-3" @submit.prevent="submit">
-      <input v-model="email" type="email" required placeholder="客服邮箱" />
-      <input v-model="password" type="password" required placeholder="密码" />
-      <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
+      <label
+        >客服邮箱<input
+          v-model="email"
+          type="email"
+          autocomplete="username"
+          required
+          placeholder="客服邮箱"
+      /></label>
+      <label
+        >密码<input
+          v-model="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          placeholder="密码"
+      /></label>
+      <p v-if="error" class="text-sm text-red-600" role="alert">{{ error }}</p>
       <button class="btn primary" type="submit" :disabled="loading">
         {{ loading ? '登录中…' : '登录' }}
       </button>
     </form>
-    <p v-if="result" class="text-sm text-green-700">
-      客服 {{ result.user.nickname }} 登录成功（12 小时令牌已保存）
-    </p>
+    <RouterLink to="/login">返回用户登录</RouterLink>
   </section>
 </template>
+<style scoped>
+.staff-login {
+  padding: 24px;
+}
+label {
+  display: grid;
+  gap: 8px;
+}
+input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+</style>

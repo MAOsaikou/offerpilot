@@ -13,4 +13,4 @@ spring:
 
 offerpilot:
   security:
-    jwt-secret: test-jwt-secret-please-change-me-this-is-only-for-unit-tests
+    jwt-secret: isolated-test-signing-key-only-not-for-deployment-0123456789abcdef0123456789abcdef
