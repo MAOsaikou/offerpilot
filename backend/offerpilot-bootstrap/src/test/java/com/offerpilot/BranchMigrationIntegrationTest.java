@@ -1,0 +1,118 @@
+package com.offerpilot;
+
+import org.flywaydb.core.Flyway;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/** 只操作一次性数据库，验证 V1–V15 和历史对齐，不接触开发数据。 */
+@Testcontainers
+class BranchMigrationIntegrationTest {
+    @Container
+    static PostgreSQLContainer<?> database = new PostgreSQLContainer<>(
+            DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
+
+    private String newDatabase() {
+        String name = "migration_" + UUID.randomUUID().toString().replace("-", "");
+        jdbc(database.getJdbcUrl()).execute("CREATE DATABASE " + name);
+        return database.getJdbcUrl().replace("/" + database.getDatabaseName(), "/" + name);
+    }
+
+    private JdbcTemplate jdbc(String url) {
+        return new JdbcTemplate(new DriverManagerDataSource(url, database.getUsername(), database.getPassword()));
+    }
+
+    private Flyway migrations(String url, String target, boolean outOfOrder) {
+        return Flyway.configure().dataSource(url, database.getUsername(), database.getPassword())
+                .target(target).outOfOrder(outOfOrder).load();
+    }
+
+    private String legacy(String target) {
+        String url = newDatabase();
+        migrations(url, "10", false).migrate();
+        Flyway.configure().dataSource(url, database.getUsername(), database.getPassword())
+                .locations("classpath:legacy-feature-migrations").ignoreMigrationPatterns("*:missing")
+                .target(target).load().migrate();
+        jdbc(url).update("INSERT INTO users(id,email,password_hash,nickname) VALUES ('legacy-owner','legacy@example.test','private-hash','Preserve me')");
+        return url;
+    }
+
+    private void align(String url) throws Exception {
+        String sql = Files.readString(Path.of("..", "..", "deploy", "migrations", "align-legacy-feature-history.sql"));
+        jdbc(url).execute(sql);
+    }
+
+    @Test
+    void freshDatabaseAndReleasedMainUpgradeToFifteen() {
+        String url = newDatabase();
+        migrations(url, "12", false).migrate();
+        migrations(url, "latest", false).migrate();
+        assertThat(migrations(url, "latest", false).validateWithResult().validationSuccessful).isTrue();
+        assertThat(jdbc(url).queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(15);
+        assertThat(jdbc(url).queryForObject("SELECT status FROM users WHERE id='usr_test_staff001'", String.class)).isEqualTo("DISABLED");
+        String fresh = newDatabase();
+        migrations(fresh, "latest", false).migrate();
+        assertThat(migrations(fresh, "latest", false).validateWithResult().validationSuccessful).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"11", "12", "13"})
+    void legacyBranchesKeepOwnersAndBusinessDataWithoutReplayingTheirDdl(String target) throws Exception {
+        String url = legacy(target);
+        var jdbc = jdbc(url);
+        assertThat(jdbc.queryForObject("SELECT checksum FROM flyway_schema_history WHERE version='11'", Integer.class)).isEqualTo(-230072270);
+        jdbc.update("INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256) VALUES ('legacy-file','legacy-owner','RESUME','test','legacy.txt','legacy.txt','text/plain',10,'private-fixture')");
+        jdbc.update("INSERT INTO resumes(id,user_id,title,source_file_id,parse_status) VALUES ('legacy-resume','legacy-owner','Keep my resume','legacy-file','READY')");
+        jdbc.update("INSERT INTO resume_versions(id,resume_id,user_id,version_no,source,structured,plain_text) VALUES ('legacy-v','legacy-resume','legacy-owner',1,'OPTIMIZED','{\"summary\":\"Before\"}','Before')");
+        jdbc.update("UPDATE resumes SET current_version_id='legacy-v' WHERE id='legacy-resume'");
+        jdbc.update("INSERT INTO resume_patch_batches(id,user_id,resume_id,resume_version_id,patches) VALUES ('legacy-batch','legacy-owner','legacy-resume','legacy-v','[{\"path\":\"/summary\",\"before\":\"Before\",\"after\":\"After\"}]')");
+        if (!target.equals("11")) {
+            assertThat(jdbc.queryForObject("SELECT checksum FROM flyway_schema_history WHERE version='12'", Integer.class)).isEqualTo(-115544576);
+            jdbc.update("INSERT INTO resume_optimizations(id,user_id,resume_id,version_id,request_id,status,model_tier,job_description) VALUES ('legacy-report','legacy-owner','legacy-resume','legacy-v','legacy-request','FAILED','CHEAP','Keep my JD')");
+        }
+        if (target.equals("13")) {
+            assertThat(jdbc.queryForObject("SELECT checksum FROM flyway_schema_history WHERE version='13'", Integer.class)).isEqualTo(427451572);
+            jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES ('legacy-job','test','1','campus','{}')");
+            jdbc.update("INSERT INTO applications(id,user_id,job_id,status,note) VALUES ('legacy-app','legacy-owner','legacy-job','INTERVIEW','Keep my note')");
+        }
+        align(url);
+        align(url); // 可重复运行，不覆盖原历史备份。
+        migrations(url, "latest", true).migrate();
+        assertThat(migrations(url, "latest", false).validateWithResult().validationSuccessful).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(15);
+        assertThat(jdbc.queryForObject("SELECT nickname FROM users WHERE id='legacy-owner'", String.class)).isEqualTo("Preserve me");
+        assertThat(jdbc.queryForObject("SELECT source FROM resume_versions WHERE id='legacy-v'", String.class)).isEqualTo("OPTIMIZED");
+        assertThat(jdbc.queryForObject("SELECT current_version_id FROM resumes WHERE id='legacy-resume'", String.class)).isEqualTo("legacy-v");
+        assertThat(jdbc.queryForObject("SELECT resume_version_id FROM resume_patch_batches WHERE id='legacy-batch'", String.class)).isEqualTo("legacy-v");
+        assertThat(jdbc.queryForObject("SELECT version FROM offerpilot_legacy_flyway_history_backup WHERE script='V11__resume_patch_batches.sql'", String.class)).isEqualTo("11");
+        assertThat(jdbc.queryForObject("SELECT status FROM users WHERE id='usr_test_user001'", String.class)).isEqualTo("DISABLED");
+        if (!target.equals("11")) assertThat(jdbc.queryForObject("SELECT job_description FROM resume_optimizations WHERE id='legacy-report'", String.class)).isEqualTo("Keep my JD");
+        if (target.equals("13")) {
+            assertThat(jdbc.queryForObject("SELECT note FROM applications WHERE id='legacy-app'", String.class)).isEqualTo("Keep my note");
+            assertThat(jdbc.queryForObject("SELECT status FROM applications WHERE id='legacy-app'", String.class)).isEqualTo("INTERVIEW");
+        }
+    }
+
+    @Test
+    void modifiedHistoryIsRejectedAtomically() throws Exception {
+        String url = legacy("12");
+        jdbc(url).update("UPDATE flyway_schema_history SET checksum=1 WHERE version='12'");
+        assertThatThrownBy(() -> align(url)).hasMessageContaining("Unknown, modified or failed");
+        assertThat(jdbc(url).queryForObject("SELECT script FROM flyway_schema_history WHERE version='11'", String.class)).isEqualTo("V11__resume_patch_batches.sql");
+        assertThat(jdbc(url).queryForObject("SELECT to_regclass('public.offerpilot_legacy_flyway_history_backup') IS NULL", Boolean.class)).isTrue();
+        assertThat(jdbc(url).queryForObject("SELECT nickname FROM users WHERE id='legacy-owner'", String.class)).isEqualTo("Preserve me");
+    }
+}

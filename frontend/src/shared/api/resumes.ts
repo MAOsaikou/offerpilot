@@ -45,6 +45,10 @@ export const renameResume = (id: string, title: string) =>
   })
 export const listResumeVersions = (id: string, signal?: AbortSignal) =>
   apiRequest<ResumeVersion[]>(`/resumes/${encodeURIComponent(id)}/versions`, { signal })
+export const getResumeVersion = (id: string, version: string) =>
+  apiRequest<ResumeVersion>(
+    `/resumes/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}`,
+  )
 export const saveResume = (id: string, version: string, structured: ResumeStructure) =>
   apiRequest<ServerResume>(
     `/resumes/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/structured`,

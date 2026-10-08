@@ -13,7 +13,7 @@ export interface ResumeVersion {
   id: string
   versionNo: number
   parentVersionId: string | null
-  source: 'UPLOAD' | 'MANUAL_EDIT'
+  source: 'UPLOAD' | 'MANUAL_EDIT' | 'OPTIMIZED'
   structured: ResumeStructure
   plainText: string
   parseMeta: Record<string, unknown>
@@ -42,4 +42,9 @@ export const resumeStatus = {
   PARSING: '正在解析',
   READY: '可编辑',
   FAILED: '解析失败',
+}
+export const resumeVersionSource: Record<ResumeVersion['source'], string> = {
+  UPLOAD: '上传解析',
+  MANUAL_EDIT: '手动编辑',
+  OPTIMIZED: '改写采纳',
 }

@@ -4,25 +4,23 @@ import { useRouter, RouterLink } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { listResumes } from '@/shared/api/resumes'
-import { useWorkspace, learningTasks, stages } from '@/shared/stores/workspace'
+import { useWorkspace, learningTasks } from '@/shared/stores/workspace'
+import { useBoard } from '@/shared/composables/useBoard'
+import { applicationStages } from '@/shared/types/board'
 import RouteStrip from '../components/RouteStrip.vue'
 const workspace = useWorkspace()
+const board = useBoard()
 const router = useRouter()
 const prompt = ref('')
 const resumes = useQuery({
   queryKey: ['resumes', 1],
   queryFn: ({ signal }) => listResumes(1, signal),
 })
-const savedJobs = computed(() =>
-  workspace.state.applications
-    .map((a) => workspace.jobFor(a.jobId))
-    .filter((j) => !!j)
-    .slice(0, 4),
-)
+const savedJobs = computed(() => board.applications.value.map((a) => a.job).slice(0, 4))
 const stops = computed(() =>
-  stages.map((stage) => ({
+  Object.entries(applicationStages).map(([status, stage]) => ({
     stage,
-    count: workspace.state.applications.filter((a) => a.stage === stage).length,
+    count: board.applications.value.filter((a) => a.status === status).length,
   })),
 )
 const resumeCount = computed(() =>
@@ -90,7 +88,12 @@ function send() {
         <h2>你的航线</h2>
         <RouterLink to="/board">打开看板</RouterLink>
       </div>
-      <RouteStrip :stops="stops" />
+      <p v-if="board.query.isPending.value" role="status">正在读取看板…</p>
+      <p v-else-if="board.query.isError.value" class="error-banner" role="alert">
+        {{ board.query.error.value?.message
+        }}<button class="btn" @click="board.query.refetch()">重试加载</button>
+      </p>
+      <RouteStrip v-else :stops="stops" />
     </section>
 
     <div class="dashboard-grid">
@@ -140,11 +143,14 @@ function send() {
           ><span class="company-logo">{{ job.company.slice(0, 1) }}</span>
           <div>
             <h3>{{ job.title }}</h3>
-            <p>{{ job.company }}，{{ job.city }}</p>
+            <p>{{ job.company }}，{{ job.locations }}</p>
           </div>
           <AppIcon name="arrow" :size="16"
         /></RouterLink>
-        <div v-if="!savedJobs.length" class="empty-state">
+        <div
+          v-if="!board.query.isPending.value && !board.query.isError.value && !savedJobs.length"
+          class="empty-state"
+        >
           <p>还没有收藏岗位。搜索企业官网的真实岗位，收藏后就会出现在航线上。</p>
           <RouterLink to="/jobs" class="btn">搜索岗位</RouterLink>
         </div>

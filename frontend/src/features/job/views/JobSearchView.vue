@@ -4,11 +4,10 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import { listJobSites, searchJobs } from '@/shared/api/jobs'
-import { useWorkspace } from '@/shared/stores/workspace'
-import { localJobSnapshot } from '@/shared/utils/jobs'
+import { useBoard } from '@/shared/composables/useBoard'
 const route = useRoute(),
   router = useRouter(),
-  workspace = useWorkspace()
+  board = useBoard()
 const query = ref(String(route.query.q || '')),
   site = ref(String(route.query.site || ''))
 const nature = ref(String(route.query.nature || 'campus')),
@@ -66,11 +65,19 @@ function submit() {
     else void router.push({ path: '/jobs', query: next })
   }
 }
-const saved = (id: string) => workspace.state.applications.some((a) => a.jobId === id)
+const saved = (id: string) => board.saved(id)
 const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.name || id
 </script>
 <template>
   <section class="page-stack">
+    <p v-if="board.query.isPending.value" role="status">正在读取看板…</p>
+    <div v-if="board.query.isError.value" class="error-banner" role="alert">
+      收藏读取失败：{{ board.query.error.value?.message }}
+      <button class="btn" @click="board.query.refetch()">重试加载</button>
+    </div>
+    <p v-if="board.error.value" class="error-banner" role="alert">
+      收藏失败：{{ board.error.value }}，请重试。
+    </p>
     <PageHeading
       title="发现适合你的下一站"
       description="查询企业官网岗位，把真实机会与你的简历连接起来。"
@@ -184,8 +191,13 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
             <RouterLink :to="'/jobs/' + job.id" class="btn">查看详情与匹配</RouterLink
             ><button
               class="btn"
-              :disabled="saved(job.id)"
-              @click="workspace.saveJob(localJobSnapshot(job))"
+              :disabled="
+                saved(job.id) ||
+                board.busy.value ||
+                board.query.isPending.value ||
+                board.query.isError.value
+              "
+              @click="board.favorite(job.id)"
             >
               {{ saved(job.id) ? '已收藏' : '收藏' }}
             </button>
@@ -193,9 +205,6 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
         </article>
       </div>
     </template>
-    <p v-if="workspace.storageError" class="error-banner" role="alert">
-      {{ workspace.storageError }}
-    </p>
   </section>
 </template>
 <style scoped>

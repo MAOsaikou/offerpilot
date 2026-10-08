@@ -147,20 +147,8 @@ export const useWorkspace = defineStore('workspace', () => {
       jobs.find((j) => j.id === jobId)
     )
   }
-  function saveJob(job: string | Job) {
-    const jobId = typeof job === 'string' ? job : job.id
-    if (state.value.applications.some((a) => a.jobId === jobId)) return
-    state.value.applications.push({
-      id: crypto.randomUUID(),
-      jobId,
-      stage: '收藏',
-      note: '',
-      date: new Date().toISOString().slice(0, 10),
-      ...(typeof job === 'string' ? {} : { jobSnapshot: job }),
-    })
-    notify('已收藏岗位：' + jobFor(jobId)?.title)
-  }
-  return { state, storageError, notify, saveJob, jobFor }
+  // Existing applications remain a readable/exportable archive. Active board writes use the API.
+  return { state, storageError, notify, jobFor }
 })
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object'

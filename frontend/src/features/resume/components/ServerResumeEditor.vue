@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { RouterLink, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { RouterLink, onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   getResume,
@@ -9,13 +9,20 @@ import {
   retryResume,
   saveResume,
 } from '@/shared/api/resumes'
-import { resumeStatus, type ResumeStructure, type ResumeVersion } from '@/shared/types/resume'
+import {
+  resumeStatus,
+  resumeVersionSource,
+  type ResumeStructure,
+  type ResumeVersion,
+} from '@/shared/types/resume'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import ResumeSectionEditor from './ResumeSectionEditor.vue'
 import ResumeDiagnosisPanel from './ResumeDiagnosisPanel.vue'
+import ResumeOptimizationPanel from './ResumeOptimizationPanel.vue'
 import { downloadText } from '@/shared/utils/download'
 
 const props = defineProps<{ id: string }>()
+const route = useRoute()
 const cache = useQueryClient()
 const query = useQuery({
   queryKey: ['resume', props.id],
@@ -37,7 +44,13 @@ const baseVersion = ref('')
 const busy = ref(false)
 const error = ref('')
 const message = ref('')
-const tab = ref('内容')
+const tab = ref(route.query.tab === 'optimize' ? '改写' : '内容')
+watch(
+  () => route.query.tab,
+  (value) => {
+    if (value === 'optimize' && !busy.value) tab.value = '改写'
+  },
+)
 const history = ref<ResumeVersion[]>([])
 const historyLoading = ref(false)
 const selected = ref<ResumeVersion>()
@@ -148,6 +161,17 @@ function restore(version: ResumeVersion) {
   tab.value = '内容'
   message.value = '已载入历史版本，点击保存将创建新版本。'
 }
+function optimized(version: ResumeVersion) {
+  if (!resume.value || dirty.value) return
+  cache.setQueryData(['resume', props.id], {
+    ...resume.value,
+    currentVersionId: version.id,
+    currentVersion: version,
+    updatedAt: version.createdAt,
+  })
+  populate()
+  message.value = '改写已保存为新版本。'
+}
 function lines(value: string) {
   return value.split('\n')
 }
@@ -255,6 +279,8 @@ const basics = [
             内容编辑</button
           ><button :disabled="busy" :class="{ selected: tab === '诊断' }" @click="tab = '诊断'">
             AI 诊断</button
+          ><button :disabled="busy" :class="{ selected: tab === '改写' }" @click="tab = '改写'">
+            定向改写</button
           ><button :disabled="busy" :class="{ selected: tab === '版本' }" @click="showHistory">
             版本记录
           </button>
@@ -315,6 +341,31 @@ const basics = [
           :dirty="!!dirty"
           :save-first="save"
         />
+        <ResumeOptimizationPanel
+          v-else-if="tab === '改写'"
+          :key="route.fullPath"
+          :resume-id="id"
+          :version-id="baseVersion"
+          :target-version-id="
+            typeof route.query.resumeVersionId === 'string'
+              ? route.query.resumeVersionId
+              : undefined
+          "
+          :job-id="typeof route.query.jobId === 'string' ? route.query.jobId : undefined"
+          :optimization-report-id="
+            typeof route.query.optimizationReportId === 'string'
+              ? route.query.optimizationReportId
+              : undefined
+          "
+          :dirty="!!dirty"
+          :save-first="save"
+          @saved="optimized"
+          @saving="busy = $event"
+        >
+          <template #optimization-card="card"
+            ><slot name="optimization-card" v-bind="card"
+          /></template>
+        </ResumeOptimizationPanel>
         <section v-else class="panel form-stack">
           <p v-if="historyLoading" role="status">正在加载版本…</p>
           <div v-for="version in history" :key="version.id" class="list-row">
@@ -325,7 +376,7 @@ const basics = [
               </h3>
               <small
                 >{{ new Date(version.createdAt).toLocaleString('zh-CN') }} ·
-                {{ version.source === 'UPLOAD' ? '上传解析' : '手动编辑' }}</small
+                {{ resumeVersionSource[version.source] ?? '其他来源' }}</small
               >
             </div>
             <div class="resume-actions">

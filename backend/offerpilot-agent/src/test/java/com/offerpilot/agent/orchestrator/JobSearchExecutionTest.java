@@ -28,7 +28,7 @@ class JobSearchExecutionTest {
     final JobMatchForChat matches = mock(JobMatchForChat.class);
     final ObjectMapper json = new ObjectMapper();
     final List<Message> reply = new ArrayList<>();
-    final Map<String, Object> context = Map.of("jobId", "job_1", "resumeId", "res_1", "resumeVersionId", "ver_1");
+    final Map<String, Object> context = Map.of("jobId", "job_1", "resumeId", "res_1", "resumeVersionId", "ver_1", "optimizationReportId", "old_optimization");
 
     Orchestrator orchestrator() throws Exception {
         var beans = new StaticListableBeanFactory();

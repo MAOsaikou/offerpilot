@@ -2,21 +2,16 @@
 import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
-import { jobs, useWorkspace } from '@/shared/stores/workspace'
+import { jobs } from '@/shared/stores/workspace'
 const route = useRoute()
-const workspace = useWorkspace()
 const job = computed(() => jobs.find((j) => j.id === route.params.id))
-const saved = computed(() => workspace.state.applications.some((a) => a.jobId === job.value?.id))
 </script>
 <template>
   <section v-if="job" class="page-stack">
     <PageHeading :title="job.title" :description="job.company + ' · ' + job.city"
-      ><RouterLink to="/jobs" class="btn">← 返回岗位</RouterLink
-      ><button class="btn primary" :disabled="saved" @click="workspace.saveJob(job.id)">
-        {{ saved ? '已收藏至看板' : '收藏至看板' }}
-      </button></PageHeading
+      ><RouterLink to="/jobs" class="btn">← 返回岗位</RouterLink></PageHeading
     >
-    <div class="helper-note">这是虚构示例岗位，仅用于本地体验。收藏不会向企业发送投递。</div>
+    <div class="helper-note">这是虚构示例岗位。请在岗位搜索页收藏企业官网的真实岗位。</div>
     <div class="split-content">
       <article class="panel form-stack">
         <h2>岗位介绍</h2>

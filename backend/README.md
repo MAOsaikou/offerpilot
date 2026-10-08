@@ -1,6 +1,6 @@
 # 后端本地启动（DeepSeek + PostgreSQL）
 
-当前实现包括持久化多轮文字聊天和简历上传解析。聊天链路：浏览器账号/访客身份 → 会话 CRUD → `/api/v1/agent/chat` → Spring AI DeepSeek → SSE；支持停止、刷新恢复、分页与用户隔离。简历链路：`/api/v1/resumes` → MinIO 原件存储 → 后台解析 → PostgreSQL 结构化版本，可查询状态、失败重试与手动编辑。启动时自动执行 V1–V12 迁移。专家编排、聊天附件、RAG、长期记忆与工具调用仍未接入。集成测试需要 Docker，使用隔离 PostgreSQL/MinIO 和本地模型协议桩。
+当前实现包括账号/访客认证、持久化多轮聊天、简历上传解析与诊断、岗位定向改写及明确采纳、服务器岗位板。聊天链路通过专家编排复用岗位搜索/匹配、诊断与改写应用服务，支持停止、刷新恢复、分页与用户隔离。简历原件存入对象存储，后台解析后保存不可变结构化版本，支持失败重试、手动编辑及改写建议采纳。岗位收藏、阶段和备注按用户保存。启动时执行唯一的 V1–V15 迁移；已执行旧功能分支迁移的数据库按 [升级说明](../deploy/migrations/README.md) 先对齐历史。RAG、长期记忆和通用 MCP 工具编排仍为后续规划。集成测试需要 Docker，使用隔离 PostgreSQL/S3Mock 和本地模型协议桩。
 
 ## 1. 准备环境
 
@@ -53,7 +53,7 @@ docker compose --env-file backend/.env.local -f deploy/docker-compose.yml ps
 
 等待 postgres、redis、minio 显示 `healthy`。首次需要下载镜像。端口为 PostgreSQL `5432`、Redis `6379`、对象存储 `127.0.0.1:9000`（无 9001 控制台）。Redis 要求使用 `REDIS_PASSWORD` 认证，且宿主机端口仅绑定 `127.0.0.1`。聊天不调用 jobs-mcp，暂时不需要启动它。
 
-PostgreSQL 镜像已包含 pgvector。Java 启动自动执行 Flyway V1–V12，创建用户、会话、消息、文件元数据、简历与版本等表；无需手工运行 SQL。既有数据库只执行尚未应用的迁移，聊天和简历数据均按当前身份隔离。
+PostgreSQL 镜像已包含 pgvector。Java 启动自动执行 Flyway V1–V15，创建用户、会话、消息、文件元数据、简历与版本等表；无需手工运行 SQL。既有数据库只执行尚未应用的迁移，聊天和简历数据均按当前身份隔离。
 
 如果之前已经建立数据库卷，修改 `POSTGRES_PASSWORD` 不会重置库内密码，应填写现有密码；不要删除数据库卷来解决连接问题。
 

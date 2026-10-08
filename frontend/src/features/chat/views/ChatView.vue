@@ -7,6 +7,7 @@ import ConversationHistory from '../components/ConversationHistory.vue'
 import ChatWelcome from '../components/ChatWelcome.vue'
 import ChatToolbar from '../components/ChatToolbar.vue'
 import { useConversationChat } from '../composables/useConversationChat'
+import { optimizationContext } from '../optimizationContext'
 import type { AgentMode } from '@/shared/types/agent-events'
 import type { Conversation } from '@/shared/types/conversation'
 const route = useRoute()
@@ -38,9 +39,13 @@ const modes: { value: AgentMode; label: string }[] = [
 ]
 const mode = ref<AgentMode>('AUTO')
 watch(
-  () => route.query.diagnosisReportId,
-  (id) => {
-    if (typeof id === 'string') mode.value = 'RESUME'
+  [() => route.query.diagnosisReportId, () => route.query.optimizationReportId],
+  (ids) => {
+    if (
+      ids.some((id) => typeof id === 'string') &&
+      !modes.some((m) => m.value === route.query.mode)
+    )
+      mode.value = 'RESUME'
   },
   { immediate: true },
 )
@@ -68,7 +73,10 @@ watch(
     await chat.open(id)
     seed.value = typeof route.query.prompt === 'string' ? route.query.prompt : ''
     mode.value =
-      modes.find((m) => m.value === route.query.mode)?.value || current.value?.mode || 'AUTO'
+      modes.find((m) => m.value === route.query.mode)?.value ||
+      (route.query.optimizationReportId || route.query.diagnosisReportId
+        ? 'RESUME'
+        : current.value?.mode || 'AUTO')
     await nextTick()
     if (scrollArea.value) scrollArea.value.scrollTop = scrollArea.value.scrollHeight
   },
@@ -99,18 +107,31 @@ async function select(id?: string) {
 }
 async function onSend(content: string) {
   if (missingConversation.value) return
+  const submittedMode = mode.value
   lastAttempt.value = content
   seed.value = ''
-  const context: Record<string, string> = {}
-  for (const key of ['jobId', 'resumeId', 'resumeVersionId', 'diagnosisReportId']) {
+  let context: Record<string, string> = {}
+  for (const key of [
+    'jobId',
+    'resumeId',
+    'resumeVersionId',
+    'diagnosisReportId',
+    'optimizationReportId',
+  ]) {
     if (typeof route.query[key] === 'string') context[key] = route.query[key]
   }
+  context = optimizationContext(viewMessages.value, context)
+  if (current.value && context.optimizationReportId)
+    await router.replace({
+      path: `/chat/${encodeURIComponent(current.value.id)}`,
+      query: { ...route.query, ...context, mode: submittedMode },
+    })
   await chat.send(
     content,
-    mode.value,
+    submittedMode,
     tier.value,
     (id) => {
-      const query = Object.keys(context).length ? { ...context, mode: mode.value } : {}
+      const query = Object.keys(context).length ? { ...context, mode: submittedMode } : {}
       void router.replace({ path: `/chat/${encodeURIComponent(id)}`, query })
     },
     Object.keys(context).length ? context : undefined,
@@ -171,9 +192,24 @@ async function remove(id: string) {
         <div ref="scrollArea" class="chat-scroll" aria-live="polite" aria-relevant="additions text">
           <div class="chat-column">
             <p v-if="typeof route.query.jobId === 'string'" class="helper-note">
-              已关联选定岗位和简历版本。发送匹配请求后生成报告；搜索新岗位仍按本轮搜索条件执行。
+              已关联选定岗位和简历版本。可发送匹配或定向改写请求，生成建议后仍需逐条核对采纳；搜索新岗位按本轮条件执行。
               <RouterLink :to="'/jobs/' + encodeURIComponent(route.query.jobId)"
                 >返回岗位</RouterLink
+              >
+            </p>
+            <p v-if="route.query.optimizationReportId" class="helper-note">
+              已关联这批改写建议。讨论会读取保存结果；明确要求重新生成时才调用改写模型，采纳需到简历页确认。
+              <RouterLink
+                v-if="typeof route.query.resumeId === 'string'"
+                :to="{
+                  path: '/resumes/' + encodeURIComponent(route.query.resumeId),
+                  query: {
+                    tab: 'optimize',
+                    resumeVersionId: route.query.resumeVersionId,
+                    optimizationReportId: route.query.optimizationReportId,
+                  },
+                }"
+                >查看改写建议</RouterLink
               >
             </p>
             <p v-if="route.query.diagnosisReportId" class="helper-note">

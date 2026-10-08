@@ -13,7 +13,7 @@ import java.time.Instant;
 import java.util.*;
 
 @Service
-public class JobService {
+public class JobService implements JobDescriptionForChat {
     private final JobsMcpClient mcp;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
@@ -84,5 +84,15 @@ public class JobService {
     }
     public static String evidenceText(JsonNode job) {
         return "岗位："+job.path("title").asText()+"\n职责：\n"+job.path("description").asText()+"\n要求：\n"+job.path("requirement").asText();
+    }
+    @Override
+    public String description(String jobId) {
+        var job = get(jobId);
+        if (job.path("description").asText().isBlank() && job.path("requirement").asText().isBlank())
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "岗位缺少职责与要求，请先获取完整详情或在简历改写页粘贴JD");
+        String jd = evidenceText(job);
+        if (jd.length() > 20000)
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "岗位内容过长，请在简历改写页核对并精简JD");
+        return jd;
     }
 }

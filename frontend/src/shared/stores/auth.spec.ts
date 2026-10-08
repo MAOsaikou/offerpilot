@@ -9,6 +9,7 @@ import { streamAgentChat } from '@/shared/api/agent'
 import { createApp, defineComponent, nextTick, onUnmounted, ref } from 'vue'
 import App from '@/app/App.vue'
 import { identitySignal } from '@/shared/utils/authSession'
+import { optimizeResume } from '@/shared/api/optimizations'
 
 function jwt(id: string, expires = Date.now() / 1000 + 43200): string {
   return `e30.${btoa(JSON.stringify({ sub: id, exp: expires }))}.signature`
@@ -245,40 +246,53 @@ it('响应头已返回后切换账号，旧 JSON 正文不能进入新页面', a
   expect(auth.user?.id).toBe('B')
 })
 
-it('已连接的 SSE 在账号切换后丢弃旧帧并关闭读取器', async () => {
-  let body!: ReadableStreamDefaultController<Uint8Array>
-  const cancel = vi.fn()
-  const response = new Response(
-    new ReadableStream<Uint8Array>({
-      start(controller) {
-        body = controller
-      },
-      cancel,
-    }),
-  )
-  vi.stubGlobal(
-    'fetch',
-    vi
-      .fn()
-      .mockResolvedValueOnce(loginResponse('A'))
-      .mockResolvedValueOnce(response)
-      .mockResolvedValueOnce(loginResponse('B')),
-  )
-  const auth = useAuthStore()
-  await auth.login('A@example.com', 'password')
-  const onEvent = vi.fn()
-  const pending = streamAgentChat({ content: 'hello' }, { onEvent }).catch((error) => error)
-  await vi.waitFor(() => expect(response.body?.locked).toBe(true))
-  body.enqueue(new TextEncoder().encode('data: {"type":"run.started","runId":"A-run"}\n\n'))
-  await vi.waitFor(() => expect(onEvent).toHaveBeenCalledOnce())
-  await auth.login('B@example.com', 'password')
-  body.enqueue(
-    new TextEncoder().encode('data: {"type":"text.delta","runId":"A-run","delta":"A-private"}\n\n'),
-  )
-  expect(await pending).toMatchObject({ code: 20001 })
-  expect(onEvent).toHaveBeenCalledOnce()
-  expect(cancel).toHaveBeenCalledOnce()
-})
+it.each(['agent', 'optimization'])(
+  '已连接的 %s SSE 在账号切换后丢弃旧帧并关闭读取器',
+  async (kind) => {
+    let body!: ReadableStreamDefaultController<Uint8Array>
+    const cancel = vi.fn()
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          body = controller
+        },
+        cancel,
+      }),
+    )
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(loginResponse('A'))
+        .mockResolvedValueOnce(response)
+        .mockResolvedValueOnce(loginResponse('B')),
+    )
+    const auth = useAuthStore()
+    await auth.login('A@example.com', 'password')
+    const onEvent = vi.fn()
+    const pending = (
+      kind === 'agent'
+        ? streamAgentChat({ content: 'hello' }, { onEvent })
+        : optimizeResume('r', 'v', 'request', 'JD', new AbortController().signal, onEvent)
+    ).catch((error) => error)
+    await vi.waitFor(() => expect(response.body?.locked).toBe(true))
+    body.enqueue(
+      new TextEncoder().encode(
+        'data: {"type":"run.started","runId":"A-run","reportId":"A-report"}\n\n',
+      ),
+    )
+    await vi.waitFor(() => expect(onEvent).toHaveBeenCalledOnce())
+    await auth.login('B@example.com', 'password')
+    body.enqueue(
+      new TextEncoder().encode(
+        'data: {"type":"text.delta","runId":"A-run","delta":"A-private"}\n\n',
+      ),
+    )
+    expect(await pending).toMatchObject({ code: 20001 })
+    expect(onEvent).toHaveBeenCalledOnce()
+    expect(cancel).toHaveBeenCalledOnce()
+  },
+)
 
 it.each(['login', 'register', 'staffLogin', 'enterGuest'] as const)(
   '迟到的 %s 认证结果不会覆盖另一标签刚登录的新账号',

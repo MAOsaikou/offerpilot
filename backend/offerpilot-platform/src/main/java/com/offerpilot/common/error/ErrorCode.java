@@ -30,6 +30,7 @@ public enum ErrorCode {
     JOB_NOT_FOUND(30501, HttpStatus.NOT_FOUND, "岗位不存在，请重新搜索"),
     JOB_CONTENT_MISSING(30502, HttpStatus.UNPROCESSABLE_ENTITY, "岗位详情不足，暂不能生成匹配报告，请查看企业官网"),
     MATCH_NOT_FOUND(30503, HttpStatus.NOT_FOUND, "匹配报告不存在或无权访问"),
+    APPLICATION_NOT_FOUND(30601, HttpStatus.NOT_FOUND, "看板记录不存在或无权访问"),
 
     MODEL_TIMEOUT(40001, HttpStatus.GATEWAY_TIMEOUT, "模型调用超时"),
     MODEL_RATE_LIMITED(40002, HttpStatus.BAD_GATEWAY, "模型限流"),
