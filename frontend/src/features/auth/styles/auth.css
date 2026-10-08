@@ -1,0 +1,242 @@
+/* 登录入口沿用「航图」令牌，认证行为由各页面管理。 */
+.auth-page {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  align-items: center;
+  background: var(--background);
+}
+.auth-layout {
+  width: 100%;
+  max-width: 1088px;
+  margin-inline: auto;
+  padding: 48px 32px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 416px);
+  align-items: center;
+  gap: 64px;
+}
+.auth-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 24px;
+  min-width: 0;
+}
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.brand-name {
+  font-family: var(--app-font-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  font-size: 21px;
+}
+.brand-caption {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.hero-title {
+  font-size: 28px;
+  font-weight: 650;
+}
+.hero-sub {
+  max-width: 28em;
+  color: var(--muted-foreground);
+}
+.feature-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 32px;
+  margin: 0;
+  padding: 24px 0 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.feature-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.feature-list :deep(svg),
+.brand-row :deep(svg) {
+  flex-shrink: 0;
+}
+.auth-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+  padding: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow-wrap: anywhere;
+}
+.panel-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.panel-head h1,
+.panel-head h2 {
+  font-size: 21px;
+  font-weight: 650;
+}
+.panel-sub {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.field-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.field-control {
+  position: relative;
+  display: block;
+}
+.field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-control);
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 15px;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.field input::placeholder {
+  color: var(--muted-foreground);
+}
+.field-control input {
+  padding-right: 56px;
+}
+.field input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-color: var(--ring);
+  border-radius: var(--radius-control);
+}
+.eye-toggle {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted-foreground);
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.eye-toggle:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.submit-btn,
+.panel-foot > .btn {
+  width: 100%;
+  min-height: 44px;
+  font-size: 15px;
+}
+.mode-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.text-control {
+  min-height: 44px;
+  padding: 8px 4px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.text-control:hover:not(:disabled) {
+  background: var(--muted);
+}
+.panel-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+.secondary-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.secondary-link:hover {
+  color: var(--foreground);
+}
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid color-mix(in srgb, currentColor 40%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: auth-spin 700ms linear infinite;
+}
+@keyframes auth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.staff-layout {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 480px;
+  gap: 24px;
+}
+@media (max-width: 900px) {
+  .auth-layout {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 480px;
+    gap: 32px;
+    padding: 32px 24px;
+  }
+  .auth-intro {
+    gap: 16px;
+  }
+  .feature-list {
+    padding-top: 16px;
+  }
+}
+@media (max-width: 640px) {
+  .auth-panel {
+    padding: 24px;
+  }
+}
