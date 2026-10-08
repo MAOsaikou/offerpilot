@@ -84,6 +84,33 @@ public class PasswordLoginService {
                 claims.getExpiration() == null ? null : claims.getExpiration().toInstant());
     }
 
+    /**
+     * 解析 Bearer 令牌并要求其属于有效的 STAFF 账号：验签、有效期、角色、账号状态四重比对。
+     * 返回客服用户 ID；不满足条件分别抛 20001/20002/20003/20004。
+     */
+    @Transactional(readOnly = true)
+    public String requireStaffId(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            throw new BusinessException(ErrorCode.UNAUTHENTICATED);
+        }
+        Claims claims = tokens.parseAndVerify(authorization.substring(7).trim());
+        List<String> roles = readRoles(claims);
+        if (!roles.contains(ROLE_STAFF)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "需要客服账号权限");
+        }
+        String userId = claims.getSubject();
+        String status;
+        try {
+            status = jdbc.queryForObject("SELECT status FROM users WHERE id = ?", String.class, userId);
+        } catch (EmptyResultDataAccessException ex) {
+            throw new BusinessException(ErrorCode.TOKEN_INVALID, "令牌对应的用户不存在");
+        }
+        if (!"ACTIVE".equals(status)) {
+            throw new BusinessException(ErrorCode.TOKEN_INVALID, "令牌对应的用户已停用");
+        }
+        return userId;
+    }
+
     /** 用户端注册：仅需邮箱 + 密码，成功后直接签发令牌（自动登录）。 */
     @Transactional
     public LoginResponse register(String email, String password) {

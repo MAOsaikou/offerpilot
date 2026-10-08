@@ -20,13 +20,35 @@ function Invoke-ProjectScript([string]$Name, [string[]]$ScriptArguments = @()) {
     if ($LASTEXITCODE -ne 0) { throw ($Name + ' 执行失败，请查看上方错误。') }
 }
 
+# Windows keeps an exclusive lock on a jar while it is running, which makes
+# 'mvn clean' fail; release the lock before building.
+function Stop-JarOwner {
+    $owners = @(Get-CimInstance Win32_Process -Filter "Name = 'java.exe' OR Name = 'javaw.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine -like '*offerpilot-bootstrap*' })
+    foreach ($owner in $owners) {
+        Write-Host ('  stopping backend pid ' + $owner.ProcessId + ' to release the jar lock') -ForegroundColor Yellow
+        Stop-Process -Id $owner.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    if ($owners.Count -gt 0) { Start-Sleep -Seconds 3 }
+}
+
 function Build-Backend {
     Invoke-Step '编译并测试后端' {
+        Stop-JarOwner
         Push-Location (Join-Path $projectRoot 'backend')
         try {
-            if (Get-Command mvn -ErrorAction SilentlyContinue) { & mvn -q -B -pl offerpilot-bootstrap -am clean package }
-            else { & './mvnw.cmd' -q -B -pl offerpilot-bootstrap -am clean package }
-            if ($LASTEXITCODE -ne 0) { throw '后端构建失败。' }
+            $mvn = if (Get-Command mvn -ErrorAction SilentlyContinue) { 'mvn' } else { './mvnw.cmd' }
+            $built = $false
+            try {
+                # Windows locks the running jar, so clean fails while the backend is up.
+                & $mvn -q -B -pl offerpilot-bootstrap -am clean package
+                if ($LASTEXITCODE -eq 0) { $built = $true }
+            } catch { $built = $false }
+            if (-not $built) {
+                Write-Host '  clean failed (jar is usually locked by the running backend); rebuilding without clean.' -ForegroundColor Yellow
+                & $mvn -q -B -pl offerpilot-bootstrap -am package
+                if ($LASTEXITCODE -ne 0) { throw 'Backend build failed.' }
+            }
         } finally { Pop-Location }
     }
 }

@@ -37,3 +37,41 @@ export async function verifyToken(): Promise<VerifyResult> {
   if (!response.ok) throw await toApiError(response)
   return readApiData<VerifyResult>(response)
 }
+
+/* ===== 客服端：账号管理 ===== */
+
+export interface StaffUserRow {
+  id: string
+  email: string
+  nickname: string
+  roles: string[]
+  status: 'ACTIVE' | 'DISABLED' | 'DELETED'
+  createdAt: string
+}
+
+/** 列出所有用户端账号（不含客服账号），要求 STAFF 令牌。 */
+export async function listStaffUsers(): Promise<StaffUserRow[]> {
+  const token = getStoredToken()
+  if (!token) throw new Error('尚未登录，请先登录客服端')
+  const response = await fetch(apiUrl('/staff/users'), {
+    headers: authHeaders({ Authorization: `Bearer ${token}` }),
+  })
+  if (!response.ok) throw await toApiError(response)
+  return readApiData<StaffUserRow[]>(response)
+}
+
+/** 启用/禁用用户端账号，要求 STAFF 令牌。 */
+export async function setUserStatus(
+  id: string,
+  status: 'ACTIVE' | 'DISABLED',
+): Promise<StaffUserRow> {
+  const token = getStoredToken()
+  if (!token) throw new Error('尚未登录，请先登录客服端')
+  const response = await fetch(apiUrl(`/staff/users/${encodeURIComponent(id)}/status`), {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }),
+    body: JSON.stringify({ status }),
+  })
+  if (!response.ok) throw await toApiError(response)
+  return readApiData<StaffUserRow>(response)
+}
