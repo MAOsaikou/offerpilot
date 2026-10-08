@@ -68,7 +68,7 @@ watch(
       </nav>
       <div class="sidebar-foot">
         <p class="storage-note">
-          草稿和看板保存在这个浏览器里。上传的简历、对话和匹配报告保存在后端，岗位来自企业官网。
+          草稿保存在当前浏览器；求职看板、上传的简历、对话和匹配报告保存在服务端。岗位来自企业官网。
         </p>
         <RouterLink
           to="/notifications"
@@ -80,12 +80,13 @@ watch(
         >
         <RouterLink to="/settings" class="profile-link"
           ><span class="avatar">{{ displayName.slice(0, 1) }}</span
-          ><span>{{ displayName }}<small>已登录</small></span
+          ><span
+            >{{ displayName }}<small>{{ auth.isLoggedIn ? '已登录' : '访客体验' }}</small></span
           ><AppIcon name="settings" :size="18"
         /></RouterLink>
-        <button class="nav-link" type="button" @click="onLogout"
-          ><AppIcon name="logout" :size="18" />退出登录</button
-        >
+        <button class="nav-link" type="button" @click="onLogout">
+          <AppIcon name="logout" :size="18" />退出登录
+        </button>
       </div>
     </aside>
     <div class="app-body">

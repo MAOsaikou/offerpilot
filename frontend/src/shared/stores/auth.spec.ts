@@ -69,6 +69,44 @@ it('访客体验只在明确选择后创建，恢复时不创建替代身份', a
   expect(fetch).toHaveBeenCalledOnce()
 })
 
+it.each([null, 'existing-guest'])(
+  '其他标签在注销清除 JWT 时请求，不创建或回退访客：%s',
+  async (guest) => {
+    localStorage.setItem('offerpilot-access-token', jwt('A'))
+    if (guest) localStorage.setItem('offerpilot-guest-v1', guest)
+    const auth = useAuthStore()
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data: { accessToken: 'unexpected-guest' } })),
+      )
+    vi.stubGlobal('fetch', fetch)
+    const pending: Promise<unknown>[] = []
+    const removeItem = Storage.prototype.removeItem
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+    ) {
+      removeItem.call(this, key)
+      if (key === 'offerpilot-access-token' && pending.length === 0) {
+        // Another tab can react between separate localStorage writes.
+        window.dispatchEvent(new StorageEvent('storage', { key }))
+        pending.push(apiRequest('/conversations').catch((error: unknown) => error))
+      }
+    })
+    try {
+      auth.logout()
+      const responses = await Promise.all(pending)
+      expect(pending).toHaveLength(1)
+      expect(fetch).not.toHaveBeenCalled()
+      expect(responses[0]).toMatchObject({ code: 20002 })
+      expect(localStorage.getItem('offerpilot-guest-v1')).toBe(guest)
+    } finally {
+      remove.mockRestore()
+    }
+  },
+)
+
 it('当前访客 401 保留访问凭据，不允许创建新身份替代历史', async () => {
   localStorage.setItem('offerpilot-guest-v1', 'expired-guest')
   vi.stubGlobal(

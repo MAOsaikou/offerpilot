@@ -11,7 +11,7 @@ services:
     command: >
       postgres -c shared_buffers=512MB -c maintenance_work_mem=256MB
                -c max_connections=100 -c hnsw.ef_search=64
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     volumes: [pg_data:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]

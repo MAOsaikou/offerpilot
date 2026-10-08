@@ -72,11 +72,12 @@ export function saveGuest(credential: string): void {
 }
 
 export function clearLogin(): void {
+  // 另一标签可能在各次 localStorage 写入之间处理事件，先禁止访客回退。
+  localStorage.setItem(LOGIN_REQUIRED_KEY, 'true')
   resetPrivateCache()
   localStorage.removeItem(ACCESS_TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
   // 保留访客凭据，但退出/失效后只能由用户明确选择恢复它。
-  localStorage.setItem(LOGIN_REQUIRED_KEY, 'true')
   publishSession()
 }
 
