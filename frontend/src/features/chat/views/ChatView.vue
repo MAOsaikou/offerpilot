@@ -10,6 +10,7 @@ import { useConversationChat } from '../composables/useConversationChat'
 import { optimizationContext } from '../optimizationContext'
 import type { AgentMode } from '@/shared/types/agent-events'
 import type { Conversation } from '@/shared/types/conversation'
+import type { CareerTargetSelection } from '@/shared/types/cards'
 const route = useRoute()
 const router = useRouter()
 const chat = useConversationChat()
@@ -53,6 +54,12 @@ const tier = ref<'FLASH' | 'CHEAP' | 'PRO'>('FLASH')
 const seed = ref('')
 const lastAttempt = ref('')
 const panelOpen = ref(false)
+watch(
+  () => activeRun.value?.approvals.length,
+  (count) => {
+    if (count) panelOpen.value = true
+  },
+)
 const historyOpen = ref(false)
 const scrollArea = ref<HTMLElement | null>(null)
 const missingConversation = computed(
@@ -145,6 +152,22 @@ async function editLastQuestion() {
   await nextTick()
   seed.value = content
 }
+async function adoptTarget(selection: CareerTargetSelection) {
+  if (busy.value || missingConversation.value) return
+  panelOpen.value = true
+  const content = `请将「${selection.name}」设为目标职业`
+  lastAttempt.value = content
+  // Reuse the chat approval flow: this starts a WRITE step, never PUTs the profile from the card.
+  await chat.send(
+    content,
+    'CAREER_DISCOVERY',
+    tier.value,
+    (id) => {
+      void router.replace({ path: `/chat/${encodeURIComponent(id)}` })
+    },
+    { careerAction: 'setCareerTarget', ...selection },
+  )
+}
 async function older() {
   const el = scrollArea.value
   const height = el?.scrollHeight || 0
@@ -230,7 +253,14 @@ async function remove(id: string) {
             </button>
             <p v-if="loading" class="subtle" role="status">正在加载记录…</p>
             <MessageList v-if="viewMessages.length" :messages="viewMessages"
-              ><template #cards="{ cards }"><slot name="cards" :cards="cards" /></template
+              ><template #cards="{ cards }"
+                ><slot
+                  name="cards"
+                  v-bind="{
+                    cards,
+                    adoptTarget,
+                    disabled: busy || missingConversation,
+                  }" /></template
             ></MessageList>
             <ChatWelcome v-else-if="!loading && !missingConversation" @pick="seed = $event" />
           </div>

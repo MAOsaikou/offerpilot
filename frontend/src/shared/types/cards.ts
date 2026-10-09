@@ -1,6 +1,6 @@
 /**
  * 生成式 UI 卡片 payload 契约。
- * 与 docs/05-接口文档.md §18 对应；payload 是公共输入，resume_diff 可选交互属性由宿主提供。
+ * 与 docs/05-接口文档.md §18 对应；payload 是公共输入，卡片可选交互属性由宿主提供。
  */
 
 export type CardType =
@@ -45,6 +45,24 @@ export interface CareerProfileConfirmPayload {
   values: string[]
   constraints?: Record<string, unknown>
   actions: Array<'confirm' | 'edit'>
+}
+
+export interface CareerRecommendationPayload {
+  hollandCode: string
+  interestsUsed: string[]
+  recommendations: Array<{
+    occupationId: string
+    name: string
+    family: string | null
+    hollandCode: string
+    similarity: number
+    reasons: string[]
+  }>
+}
+
+export interface CareerTargetSelection {
+  occupationId: string
+  name: string
 }
 
 export interface CareerComparePayload {
@@ -252,7 +270,7 @@ export interface ReminderPayload {
 /** cardType → payload 类型，用于 CardRenderer 注册表做类型约束 */
 export interface CardPayloadMap {
   career_profile_confirm: CareerProfileConfirmPayload
-  career_recommendation: unknown
+  career_recommendation: CareerRecommendationPayload
   career_compare: CareerComparePayload
   resume_diagnosis: ResumeDiagnosisPayload
   resume_diff: ResumeDiffPayload

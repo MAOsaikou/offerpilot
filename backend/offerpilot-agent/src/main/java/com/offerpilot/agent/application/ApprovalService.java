@@ -62,11 +62,12 @@ public class ApprovalService {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "审批决策无效");
             var finalArgs = new java.util.LinkedHashMap<>(args);
             if (body.args() != null) {
-                if (!java.util.Set.of("status", "note").containsAll(body.args().keySet()))
-                    throw new BusinessException(ErrorCode.VALIDATION_FAILED, "只能编辑状态和备注");
+                var editable = CareerWriteTools.action(action) ? java.util.Set.<String>of() : java.util.Set.of("status", "note");
+                if (!editable.containsAll(body.args().keySet()))
+                    throw new BusinessException(ErrorCode.VALIDATION_FAILED, "审批包含不允许编辑的参数");
                 finalArgs.putAll(body.args());
             }
-            BoardWriteTools.validate(action, finalArgs);
+            validate(action, finalArgs);
             resolved = new Decision(body.decision(), Map.copyOf(finalArgs), body.reason());
             signal.tryEmitValue(resolved);
             return resolved;
@@ -80,7 +81,7 @@ public class ApprovalService {
 
     // Duration overload keeps timeout tests deterministic without waiting ten minutes.
     Ticket request(String owner, String runId, String action, Map<String, Object> args, Duration window) {
-        BoardWriteTools.validate(action, args);
+        validate(action, args);
         Ticket ticket = new Ticket(owner, action, args, window);
         String key = runId + ":" + ticket.id();
         tickets.put(key, ticket);
@@ -94,5 +95,10 @@ public class ApprovalService {
         Ticket ticket = tickets.get(runId + ":" + approvalId);
         if (ticket == null) throw new BusinessException(ErrorCode.RUN_NOT_FOUND, "审批不存在");
         return ticket.decide(owner, body);
+    }
+
+    private static void validate(String action, Map<String, Object> args) {
+        if (CareerWriteTools.action(action)) CareerWriteTools.validate(args);
+        else BoardWriteTools.validate(action, args);
     }
 }
