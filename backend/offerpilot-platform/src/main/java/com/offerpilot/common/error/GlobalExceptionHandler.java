@@ -87,6 +87,14 @@ public class GlobalExceptionHandler {
         ));
     }
 
+    @ExceptionHandler({org.springframework.web.servlet.resource.NoResourceFoundException.class,
+            org.springframework.web.servlet.NoHandlerFoundException.class})
+    public ResponseEntity<ApiResponse<Void>> handleNotFound(HttpServletRequest request) {
+        return ResponseEntity.status(ErrorCode.ROUTE_NOT_FOUND.status()).contentType(MediaType.APPLICATION_JSON)
+                .body(ApiResponse.fail(ErrorCode.ROUTE_NOT_FOUND.code(), ErrorCode.ROUTE_NOT_FOUND.message(),
+                        TraceIdFilter.current(request)));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnknown(Exception ex, HttpServletRequest request) {
         log.error("Unhandled exception traceId={}", TraceIdFilter.current(request), ex);
