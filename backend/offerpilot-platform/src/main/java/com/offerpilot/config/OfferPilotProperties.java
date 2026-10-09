@@ -120,7 +120,8 @@ public record OfferPilotProperties(
             String searchUrl,
             String searchApiKey,
             @DefaultValue("https://api.githubcopilot.com/mcp/") String githubUrl,
-            @DefaultValue("true") boolean serverEnabled
+            @DefaultValue("false") boolean serverEnabled,
+            @DefaultValue("") String serverApiKey
     ) {
     }
 }

@@ -68,6 +68,16 @@ spring:
         enabled: false
       server:
         enabled: ${MCP_SERVER_ENABLED:false}
+        name: offerpilot
+        type: SYNC
+        sse-endpoint: /sse
+        sse-message-endpoint: /mcp/message
+        request-timeout: 180s
+        instructions: Read-only resume diagnosis and job matching from supplied text, and public career-site job search. No access to private user records or write tools.
+        capabilities:
+          resource: false
+          prompt: false
+          completion: false
 
 management:
   endpoints:
@@ -167,6 +177,7 @@ offerpilot:
     search-api-key: ${SEARCH_MCP_API_KEY:}
     github-url: ${GITHUB_MCP_URL:https://api.githubcopilot.com/mcp/}
     server-enabled: ${MCP_SERVER_ENABLED:false}
+    server-api-key: ${MCP_SERVER_API_KEY:}
 
 logging:
   level:
