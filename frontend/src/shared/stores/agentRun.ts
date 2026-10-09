@@ -239,9 +239,7 @@ export const useAgentRunStore = defineStore('agentRun', () => {
   }
 
   function resolveApproval(event: EventOf<'approval.resolved'>): void {
-    const approval = ensure(event.runId).approvals.find(
-      (a) => a.approvalId === event.approvalId,
-    )
+    const approval = ensure(event.runId).approvals.find((a) => a.approvalId === event.approvalId)
     if (!approval) return
     approval.status =
       event.decision === 'APPROVE'

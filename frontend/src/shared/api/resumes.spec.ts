@@ -33,13 +33,11 @@ describe('简历上传与保存', () => {
     expect((options.body as FormData).get('file')).toBe(file)
   })
   it('保存冲突不自动重试覆盖新版本', async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ code: 30403, message: '简历已更新，请重新加载后保存' }), {
-          status: 409,
-        }),
-      )
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ code: 30403, message: '简历已更新，请重新加载后保存' }), {
+        status: 409,
+      }),
+    )
     vi.stubGlobal('fetch', fetch)
     const data: ResumeStructure = {
       basics: { name: '', phone: '', email: '', city: '', links: [] },

@@ -39,9 +39,7 @@ function delayFor(event: AgentEvent): number {
 }
 
 function sseFrame(event: AgentEvent): Uint8Array {
-  return encoder.encode(
-    `id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
-  )
+  return encoder.encode(`id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {

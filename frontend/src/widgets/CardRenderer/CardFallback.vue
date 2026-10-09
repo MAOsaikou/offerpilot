@@ -21,11 +21,12 @@ const props = defineProps<{
     <p v-if="props.error" class="mt-1 font-mono text-xs text-danger">{{ props.error.message }}</p>
 
     <details v-if="props.payload !== undefined" class="mt-2">
-      <summary class="cursor-pointer text-xs text-muted-foreground select-none">查看原始数据</summary>
+      <summary class="cursor-pointer text-xs text-muted-foreground select-none">
+        查看原始数据
+      </summary>
       <pre
         class="mt-2 max-h-52 overflow-auto rounded-lg bg-foreground/5 p-2 font-mono text-xs leading-relaxed"
-        >{{ JSON.stringify(props.payload, null, 2) }}</pre
-      >
+        >{{ JSON.stringify(props.payload, null, 2) }}</pre>
     </details>
   </div>
 </template>
