@@ -9,6 +9,7 @@ public enum ErrorCode {
     FILE_TYPE_UNSUPPORTED(10002, HttpStatus.BAD_REQUEST, "文件类型不支持"),
     FILE_TOO_LARGE(10003, HttpStatus.PAYLOAD_TOO_LARGE, "文件过大"),
     JSON_PARSE_FAILED(10004, HttpStatus.BAD_REQUEST, "JSON 解析失败"),
+    ROUTE_NOT_FOUND(10005, HttpStatus.NOT_FOUND, "接口或资源不存在"),
 
     UNAUTHENTICATED(20001, HttpStatus.UNAUTHORIZED, "未登录"),
     TOKEN_EXPIRED(20002, HttpStatus.UNAUTHORIZED, "令牌过期"),
