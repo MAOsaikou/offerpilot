@@ -1,7 +1,8 @@
 # Run with Windows PowerShell 5.1; no Pester or real service control required.
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot '../console.ps1')
-. (Join-Path $PSScriptRoot '../backend-preview.ps1')
+$defaultRuntimeRoot = [IO.Path]::GetFullPath('D:\OfferPilot')
+. (Join-Path $PSScriptRoot '../console.ps1') -RuntimeRoot $defaultRuntimeRoot
+. (Join-Path $PSScriptRoot '../backend-preview.ps1') -RuntimeRoot $defaultRuntimeRoot
 $fixtureExecutable = 'C:\fixture-jdk\bin\java.exe'
 $fixtureStartedAt = [DateTime]::Parse('2026-10-08T12:00:00Z').ToUniversalTime()
 $legacyJar = Join-Path $projectRoot 'backend/offerpilot-bootstrap/target/offerpilot-bootstrap-0.1.0-SNAPSHOT.jar'
@@ -49,9 +50,125 @@ function Assert-Throws([scriptblock]$Operation) {
 $passed = 0
 function Test-Case([string]$Name, [scriptblock]$Operation) {
     Reset-Fixture
-    & $Operation
-    Write-Host ('PASS ' + $Name)
-    $script:passed++
+    $previousRuntimeRoot = $env:OFFERPILOT_RUNTIME_ROOT
+    try {
+        & $Operation
+        Write-Host ('PASS ' + $Name)
+        $script:passed++
+    } finally { $env:OFFERPILOT_RUNTIME_ROOT = $previousRuntimeRoot }
+}
+
+function Assert-FrontendRuntimePaths([string]$Name, [string]$ExpectedRoot, [hashtable]$Parameters) {
+    # Stop immediately after path initialization; never download, build or control Nginx.
+    function Test-Path { param($LiteralPath) throw 'Intercepted frontend filesystem access.' }
+    try {
+        . (Join-Path $PSScriptRoot ('../' + $Name)) @Parameters
+        throw 'Frontend script did not reach the filesystem interceptor.'
+    } catch {
+        Assert-True ($_.Exception.Message -eq 'Intercepted frontend filesystem access.') ('Unexpected frontend error: ' + $_.Exception.Message)
+    }
+    Assert-True ($runtimeRoot -eq $ExpectedRoot) ($Name + ' resolved the wrong runtime root.')
+    $expectedNginx = Join-Path $ExpectedRoot 'nginx-1.31.5'
+    if ($Name -eq 'prepare.ps1') {
+        Assert-True ($NginxDirectory -eq $expectedNginx) 'Prepare used the wrong Nginx directory.'
+    } else {
+        Assert-True ($runtimeDirectory -eq $expectedNginx) ($Name + ' used the wrong Nginx directory.')
+    }
+    if ($Name -eq 'package.ps1') {
+        $expectedOutput = if ($Parameters.ContainsKey('OutputDirectory')) { $Parameters.OutputDirectory } else { Join-Path $ExpectedRoot 'releases' }
+        Assert-True ($OutputDirectory -eq $expectedOutput) 'Package used the wrong output directory.'
+    }
+}
+
+Test-Case 'all scripts default to the original runtime root without an override' {
+    $env:OFFERPILOT_RUNTIME_ROOT = $null
+    . (Join-Path $PSScriptRoot '../console.ps1')
+    Assert-True ($runtimeRoot -eq $defaultRuntimeRoot) 'Console default changed.'
+    . (Join-Path $PSScriptRoot '../backend-preview.ps1')
+    Assert-True ($runtimeRoot -eq $defaultRuntimeRoot) 'Backend default changed.'
+    Assert-True ($statePath -eq (Join-Path $defaultRuntimeRoot 'backend-preview.json')) 'Default state path changed.'
+    Assert-True ($logPath -eq (Join-Path $defaultRuntimeRoot 'backend-preview.log')) 'Default log path changed.'
+    Assert-FrontendRuntimePaths 'prepare.ps1' $defaultRuntimeRoot @{ SkipBuild = $true }
+    Assert-FrontendRuntimePaths 'control.ps1' $defaultRuntimeRoot @{}
+    Assert-FrontendRuntimePaths 'package.ps1' $defaultRuntimeRoot @{ SkipBuild = $true }
+}
+Test-Case 'environment runtime root controls every script and derived directory' {
+    $customRoot = Join-Path $projectRoot 'backend/target/deployment-tests/runtime with spaces/../environment-runtime'
+    $expectedRoot = [IO.Path]::GetFullPath($customRoot)
+    $env:OFFERPILOT_RUNTIME_ROOT = $customRoot
+    . (Join-Path $PSScriptRoot '../console.ps1')
+    Assert-True ($runtimeRoot -eq $expectedRoot) 'Console ignored the environment runtime root.'
+    . (Join-Path $PSScriptRoot '../backend-preview.ps1')
+    Assert-True ($runtimeRoot -eq $expectedRoot) 'Backend ignored the environment runtime root.'
+    Assert-True ($statePath -eq (Join-Path $expectedRoot 'backend-preview.json')) 'State escaped the custom root.'
+    Assert-True ($logPath -eq (Join-Path $expectedRoot 'backend-preview.log')) 'Log escaped the custom root.'
+    Assert-True ($errorLogPath -eq (Join-Path $expectedRoot 'backend-preview-error.log')) 'Error log escaped the custom root.'
+    Assert-FrontendRuntimePaths 'prepare.ps1' $expectedRoot @{ SkipBuild = $true }
+    Assert-FrontendRuntimePaths 'control.ps1' $expectedRoot @{}
+    Assert-FrontendRuntimePaths 'package.ps1' $expectedRoot @{ SkipBuild = $true }
+}
+Test-Case 'explicit runtime root overrides the environment in every script' {
+    $env:OFFERPILOT_RUNTIME_ROOT = Join-Path $projectRoot 'backend/target/deployment-tests/environment-runtime'
+    $customRoot = Join-Path $projectRoot 'backend/target/deployment-tests/explicit runtime/.'
+    $expectedRoot = [IO.Path]::GetFullPath($customRoot)
+    . (Join-Path $PSScriptRoot '../console.ps1') -RuntimeRoot $customRoot
+    Assert-True ($runtimeRoot -eq $expectedRoot) 'Console parameter did not override the environment.'
+    . (Join-Path $PSScriptRoot '../backend-preview.ps1') -RuntimeRoot $customRoot
+    Assert-True ($runtimeRoot -eq $expectedRoot) 'Backend parameter did not override the environment.'
+    Assert-True ($statePath -eq (Join-Path $expectedRoot 'backend-preview.json')) 'State ignored the explicit root.'
+    Assert-True ($logPath -eq (Join-Path $expectedRoot 'backend-preview.log')) 'Log ignored the explicit root.'
+    Assert-FrontendRuntimePaths 'prepare.ps1' $expectedRoot @{ RuntimeRoot = $customRoot; SkipBuild = $true }
+    Assert-FrontendRuntimePaths 'control.ps1' $expectedRoot @{ RuntimeRoot = $customRoot }
+    Assert-FrontendRuntimePaths 'package.ps1' $expectedRoot @{ RuntimeRoot = $customRoot; SkipBuild = $true }
+}
+Test-Case 'empty environment falls back and trailing separators remain valid' {
+    $env:OFFERPILOT_RUNTIME_ROOT = ''
+    Assert-True ((Resolve-OfferPilotRuntimeRoot) -eq $defaultRuntimeRoot) 'Empty environment changed the default.'
+    $customRoot = Join-Path $projectRoot 'backend/target/deployment-tests/runtime'
+    $customRoot += [IO.Path]::DirectorySeparatorChar
+    Assert-FrontendRuntimePaths 'prepare.ps1' ([IO.Path]::GetFullPath($customRoot)) @{ RuntimeRoot = $customRoot; SkipBuild = $true }
+}
+Test-Case 'package output directory remains independently overridable' {
+    $customRoot = Join-Path $projectRoot 'backend/target/deployment-tests/runtime'
+    $customOutput = Join-Path $projectRoot 'backend/target/deployment-tests/separate-releases'
+    Assert-FrontendRuntimePaths 'package.ps1' $customRoot @{ RuntimeRoot = $customRoot; OutputDirectory = $customOutput; SkipBuild = $true }
+}
+Test-Case 'prepare containment errors name the resolved runtime root' {
+    $customRoot = Join-Path $projectRoot 'backend/target/deployment-tests/runtime'
+    $outsideNginx = Join-Path $projectRoot 'backend/target/deployment-tests/runtime-other/nginx-1.31.5'
+    $message = $null
+    try { . (Join-Path $PSScriptRoot '../prepare.ps1') -RuntimeRoot $customRoot -NginxDirectory $outsideNginx -SkipBuild }
+    catch { $message = $_.Exception.Message }
+    Assert-True ($message -eq "NginxDirectory must be inside $customRoot.") 'Containment error ignored the custom root.'
+}
+Test-Case 'console passes the custom runtime root through every child action' {
+    $runtimeRoot = Join-Path $projectRoot 'backend/target/deployment-tests/menu runtime'
+    function Start-Dependencies {}
+    function Build-Backend { return $fixtureJar }
+    foreach ($selected in @('start', 'stop', 'start-frontend', 'stop-frontend', 'update-frontend', 'start-backend', 'restart-backend', 'package')) {
+        $script:steps = @()
+        Invoke-Action $selected
+        Assert-True ($script:steps.Count -gt 0) ($selected + ' invoked no child script.')
+        foreach ($step in $script:steps) {
+            Assert-True ($step.EndsWith('|-RuntimeRoot|' + $runtimeRoot)) ('Child ignored runtime root: ' + $step)
+        }
+    }
+}
+Test-Case 'console opens the log beneath its custom runtime root' {
+    $runtimeRoot = Join-Path $projectRoot 'backend/target/deployment-tests/menu runtime'
+    $expectedLog = Join-Path $runtimeRoot 'backend-preview.log'
+    function Test-Path {
+        param($LiteralPath)
+        Assert-True ($LiteralPath -eq $expectedLog) 'Console checked the wrong log path.'
+        return $true
+    }
+    function Start-Process {
+        param($FilePath, $ArgumentList)
+        Assert-True ($FilePath -eq 'notepad.exe' -and $ArgumentList -eq ('"' + $expectedLog + '"')) 'Console opened the wrong log.'
+        $script:steps += 'opened-log'
+    }
+    Invoke-Action 'logs'
+    Assert-True ($script:steps.Count -eq 1) 'Console did not open the log.'
 }
 
 Test-Case 'matching managed process stops and waits for exit' {
@@ -140,8 +257,8 @@ Test-Case 'an occupied port is preserved without adopting or launching' {
 Test-Case 'successful publication stops then passes exact built JAR' {
     Publish-Backend $fixtureJar
     Assert-True ($script:steps.Count -eq 2) 'Unexpected publication steps.'
-    Assert-True ($script:steps[0] -eq 'backend-preview.ps1:-Action|stop') 'Stop was not first.'
-    Assert-True ($script:steps[1] -eq ('backend-preview.ps1:-Action|start|-JarPath|' + $fixtureJar)) 'Wrong JAR was published.'
+    Assert-True ($script:steps[0] -eq ('backend-preview.ps1:-Action|stop|-RuntimeRoot|' + $defaultRuntimeRoot)) 'Stop was not first or used the wrong root.'
+    Assert-True ($script:steps[1] -eq ('backend-preview.ps1:-Action|start|-JarPath|' + $fixtureJar + '|-RuntimeRoot|' + $defaultRuntimeRoot)) 'Wrong JAR or runtime root was published.'
 }
 Test-Case 'stop failure prevents replacement startup' {
     $script:stopFails = $true

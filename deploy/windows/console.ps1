@@ -1,10 +1,13 @@
 ﻿param(
     [ValidateSet('menu','start','stop','status','start-frontend','stop-frontend','update-frontend','start-backend','restart-backend','package','config','logs')]
     [string]$Action = 'menu',
-    [switch]$DryRun
+    [switch]$DryRun,
+    [string]$RuntimeRoot
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+. (Join-Path $PSScriptRoot 'runtime-root.ps1')
+$runtimeRoot = Resolve-OfferPilotRuntimeRoot $RuntimeRoot
 $powershell = Join-Path $PSHOME 'powershell.exe'
 $backendJar = Join-Path $projectRoot 'backend/offerpilot-bootstrap/target/offerpilot-bootstrap-0.1.0-SNAPSHOT.jar'
 $keyFile = Join-Path $projectRoot 'backend/.env.local'
@@ -59,8 +62,8 @@ function Build-Backend {
 }
 
 function Publish-Backend([string]$JarPath) {
-    Invoke-Step '停止本入口管理的后端（核对进程归属）' { Invoke-ProjectScript 'backend-preview.ps1' @('-Action','stop') }
-    Invoke-Step '启动新版后端（dev / 8081）' { Invoke-ProjectScript 'backend-preview.ps1' @('-Action','start','-JarPath',$JarPath) }
+    Invoke-Step '停止本入口管理的后端（核对进程归属）' { Invoke-ProjectScript 'backend-preview.ps1' @('-Action','stop','-RuntimeRoot',$runtimeRoot) }
+    Invoke-Step '启动新版后端（dev / 8081）' { Invoke-ProjectScript 'backend-preview.ps1' @('-Action','start','-JarPath',$JarPath,'-RuntimeRoot',$runtimeRoot) }
 }
 
 function Start-Dependencies {
@@ -106,20 +109,20 @@ function Invoke-Action([string]$Selected) {
             Start-Dependencies
             $builtJar = Build-Backend
             Publish-Backend $builtJar
-            Invoke-Step '构建并更新前端' { Invoke-ProjectScript 'prepare.ps1' }
-            Invoke-Step '启动前端（8080）' { Invoke-ProjectScript 'control.ps1' @('-Action','start') }
+            Invoke-Step '构建并更新前端' { Invoke-ProjectScript 'prepare.ps1' @('-RuntimeRoot',$runtimeRoot) }
+            Invoke-Step '启动前端（8080）' { Invoke-ProjectScript 'control.ps1' @('-Action','start','-RuntimeRoot',$runtimeRoot) }
         }
         'stop' {
-            Invoke-Step '停止本入口管理的后端' { Invoke-ProjectScript 'backend-preview.ps1' @('-Action','stop') }
-            Invoke-Step '停止本项目 Nginx' { Invoke-ProjectScript 'control.ps1' @('-Action','stop') }
+            Invoke-Step '停止本入口管理的后端' { Invoke-ProjectScript 'backend-preview.ps1' @('-Action','stop','-RuntimeRoot',$runtimeRoot) }
+            Invoke-Step '停止本项目 Nginx' { Invoke-ProjectScript 'control.ps1' @('-Action','stop','-RuntimeRoot',$runtimeRoot) }
             Write-Host '  数据库容器继续运行，数据保留。' -ForegroundColor DarkGray
         }
         'status' { Invoke-Step '检查服务状态' { Show-Status } }
-        'start-frontend' { Invoke-Step '启动前端' { Invoke-ProjectScript 'control.ps1' @('-Action','start') } }
-        'stop-frontend' { Invoke-Step '停止前端' { Invoke-ProjectScript 'control.ps1' @('-Action','stop') } }
+        'start-frontend' { Invoke-Step '启动前端' { Invoke-ProjectScript 'control.ps1' @('-Action','start','-RuntimeRoot',$runtimeRoot) } }
+        'stop-frontend' { Invoke-Step '停止前端' { Invoke-ProjectScript 'control.ps1' @('-Action','stop','-RuntimeRoot',$runtimeRoot) } }
         'update-frontend' {
-            Invoke-Step '构建并更新前端' { Invoke-ProjectScript 'prepare.ps1' }
-            Invoke-Step '重载前端' { Invoke-ProjectScript 'control.ps1' @('-Action','reload') }
+            Invoke-Step '构建并更新前端' { Invoke-ProjectScript 'prepare.ps1' @('-RuntimeRoot',$runtimeRoot) }
+            Invoke-Step '重载前端' { Invoke-ProjectScript 'control.ps1' @('-Action','reload','-RuntimeRoot',$runtimeRoot) }
         }
         'start-backend' {
             $builtJar = Build-Backend
@@ -130,7 +133,7 @@ function Invoke-Action([string]$Selected) {
             $builtJar = Build-Backend
             Publish-Backend $builtJar
         }
-        'package' { Invoke-Step '生成前端分发包' { Invoke-ProjectScript 'package.ps1' } }
+        'package' { Invoke-Step '生成前端分发包' { Invoke-ProjectScript 'package.ps1' @('-RuntimeRoot',$runtimeRoot) } }
         'config' {
             Invoke-Step '打开 backend/.env.local（Key 不会打印到控制台）' {
                 if (-not (Test-Path -LiteralPath $keyFile)) {
@@ -142,7 +145,7 @@ function Invoke-Action([string]$Selected) {
         }
         'logs' {
             Invoke-Step '打开后端日志' {
-                $logFile = 'D:\OfferPilot\backend-preview.log'
+                $logFile = Join-Path $runtimeRoot 'backend-preview.log'
                 if (-not (Test-Path -LiteralPath $logFile)) { throw '还没有后端日志，请先启动后端。' }
                 Start-Process -FilePath notepad.exe -ArgumentList ('"' + $logFile + '"')
             }

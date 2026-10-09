@@ -1,11 +1,15 @@
 param(
     [ValidateSet('start','stop')][string]$Action = 'start',
-    [string]$JarPath
+    [string]$JarPath,
+    [string]$RuntimeRoot
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$runtimeRoot = 'D:\OfferPilot'
+. (Join-Path $PSScriptRoot 'runtime-root.ps1')
+$runtimeRoot = Resolve-OfferPilotRuntimeRoot $RuntimeRoot
 $statePath = Join-Path $runtimeRoot 'backend-preview.json'
+$logPath = Join-Path $runtimeRoot 'backend-preview.log'
+$errorLogPath = Join-Path $runtimeRoot 'backend-preview-error.log'
 function Get-OwnedBackend {
     if (-not (Test-Path -LiteralPath $statePath)) { return $null }
     try {
@@ -100,10 +104,10 @@ function Invoke-BackendPreview {
     }
     New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
     $arguments = @('-jar', ('"' + $jarPath + '"'), '--spring.profiles.active=dev', '--server.address=127.0.0.1')
-    $backendProcess = Start-Process -FilePath $javaExecutable -ArgumentList $arguments -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $runtimeRoot 'backend-preview.log') -RedirectStandardError (Join-Path $runtimeRoot 'backend-preview-error.log') -PassThru
+    $backendProcess = Start-Process -FilePath $javaExecutable -ArgumentList $arguments -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -PassThru
     @{ processId = $backendProcess.Id; startedAt = $backendProcess.StartTime.ToUniversalTime().ToString('o'); executable = $javaExecutable; projectRoot = $projectRoot; jarPath = $jarPath } | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding utf8
     for ($attempt = 0; $attempt -lt 45; $attempt++) {
-        if ($backendProcess.HasExited) { throw 'Preview backend failed. Read D:\OfferPilot\backend-preview.log.' }
+        if ($backendProcess.HasExited) { throw "Preview backend failed. Read $logPath." }
         try {
             $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8081/actuator/health' -TimeoutSec 1
             if ($health.status -eq 'UP') {
@@ -113,7 +117,7 @@ function Invoke-BackendPreview {
         } catch { }
         Start-Sleep -Milliseconds 500
     }
-    Write-Host 'Backend is still starting. Check D:\OfferPilot\backend-preview.log and the frontend connection settings.'
+    Write-Host "Backend is still starting. Check $logPath and the frontend connection settings."
 }
 
 if ($MyInvocation.InvocationName -ne '.') { Invoke-BackendPreview }

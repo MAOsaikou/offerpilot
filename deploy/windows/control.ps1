@@ -1,10 +1,12 @@
-param([ValidateSet('start','stop','reload')][string]$Action = 'start')
+param([ValidateSet('start','stop','reload')][string]$Action = 'start', [string]$RuntimeRoot)
 $ErrorActionPreference = 'Stop'
-$runtimeDirectory = 'D:\OfferPilot\nginx-1.31.5'
+. (Join-Path $PSScriptRoot 'runtime-root.ps1')
+$runtimeRoot = Resolve-OfferPilotRuntimeRoot $RuntimeRoot
+$runtimeDirectory = Join-Path $runtimeRoot 'nginx-1.31.5'
 $executable = Join-Path $runtimeDirectory 'nginx.exe'
 if (-not (Test-Path -LiteralPath $executable)) {
     if ($Action -ne 'start') { Write-Host 'This project Nginx is not installed.'; exit 0 }
-    & (Join-Path $PSScriptRoot 'prepare.ps1')
+    & (Join-Path $PSScriptRoot 'prepare.ps1') -RuntimeRoot $runtimeRoot
 }
 $pidFile = Join-Path $runtimeDirectory 'logs/nginx.pid'
 $running = $false

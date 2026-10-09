@@ -1,10 +1,13 @@
-param([string]$OutputDirectory = 'D:\OfferPilot\releases', [switch]$SkipBuild)
+param([string]$OutputDirectory, [switch]$SkipBuild, [string]$RuntimeRoot)
 $ErrorActionPreference = 'Stop'
-$runtimeDirectory = 'D:\OfferPilot\nginx-1.31.5'
+. (Join-Path $PSScriptRoot 'runtime-root.ps1')
+$runtimeRoot = Resolve-OfferPilotRuntimeRoot $RuntimeRoot
+$runtimeDirectory = Join-Path $runtimeRoot 'nginx-1.31.5'
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path $runtimeRoot 'releases' }
 $stamp = Get-Date -Format 'yyyyMMdd-HHmm'
 $packageDirectory = Join-Path $OutputDirectory ('OfferPilot-Frontend-' + $stamp)
 $zipPath = Join-Path $OutputDirectory ('OfferPilot-Frontend-' + $stamp + '.zip')
-if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'prepare.ps1') }
+if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'prepare.ps1') -RuntimeRoot $runtimeRoot }
 if (-not (Test-Path -LiteralPath (Join-Path $runtimeDirectory 'nginx.exe'))) { throw 'Nginx runtime missing. Run prepare.ps1 first.' }
 if (-not (Test-Path -LiteralPath (Join-Path $runtimeDirectory 'html/index.html'))) { throw 'Frontend build missing. Run prepare.ps1 first.' }
 New-Item -ItemType Directory -Path $packageDirectory -Force | Out-Null
