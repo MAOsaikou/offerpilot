@@ -40,9 +40,10 @@ public enum ErrorCode {
     TOOL_FAILED(40005, HttpStatus.BAD_GATEWAY, "工具执行失败"),
     TOOL_CALL_LIMIT(40006, HttpStatus.TOO_MANY_REQUESTS, "工具调用超限"),
     APPROVAL_REJECTED(40007, HttpStatus.UNPROCESSABLE_ENTITY, "用户拒绝审批"),
-    DAILY_QUOTA_EXCEEDED(40008, HttpStatus.TOO_MANY_REQUESTS, "每日配额用尽"),
+    DAILY_QUOTA_EXCEEDED(40008, HttpStatus.TOO_MANY_REQUESTS, "今日模型额度已用尽，请明天再试"),
     MODEL_NOT_CONFIGURED(40009, HttpStatus.SERVICE_UNAVAILABLE, "模型未配置，请配置 API Key 后重启后端"),
     MODEL_UNAVAILABLE(40010, HttpStatus.BAD_GATEWAY, "模型调用失败，请检查 API Key、账户余额、模型名和网络后重试"),
+    RATE_LIMITED(40011, HttpStatus.TOO_MANY_REQUESTS, "模型请求过于频繁，请稍后再试"),
 
     UNKNOWN(50000, HttpStatus.INTERNAL_SERVER_ERROR, "未知错误"),
     DATABASE_UNAVAILABLE(50001, HttpStatus.SERVICE_UNAVAILABLE, "数据库不可用"),

@@ -57,10 +57,9 @@ public class GuestIdentityService implements CurrentUser {
             throw new BusinessException(ErrorCode.UNAUTHENTICATED);
         }
         String token = authorization.substring(7).trim();
-        if (token.matches("[A-Za-z0-9_-]{43}")) {
-            return requireGuest(token);
-        }
-        return requireJwt(token);
+        String owner = token.matches("[A-Za-z0-9_-]{43}") ? requireGuest(token) : requireJwt(token);
+        com.offerpilot.llm.quota.LlmUserContext.verifiedRequest(owner);
+        return owner;
     }
 
     private String requireGuest(String token) {

@@ -24,7 +24,8 @@ public class ResumeParseWorker {
         try {
             var document = reader.read(storage.get(job.bucket(), job.key()), job.mime());
             service.progress(job);
-            var result = extractor.extractResult(document, job.textTier(), job.visionTier());
+            var result = com.offerpilot.llm.quota.LlmUserContext.asUser(job.owner(),
+                    () -> extractor.extractResult(document, job.textTier(), job.visionTier()));
             service.complete(job, result.structured(), result.metadata());
         } catch (BusinessException ex) {
             log.warn("简历解析失败 resumeId={} code={}", job.id(), ex.errorCode().code());

@@ -63,8 +63,15 @@ public record OfferPilotProperties(
 
     public record RateLimit(
             @DefaultValue("60") int perUserPerMinute,
-            @DefaultValue("2") int concurrentRunsPerUser
+            @DefaultValue("2") int concurrentRunsPerUser,
+            @DefaultValue("20") int guestPerUserPerMinute,
+            @DefaultValue("200000") int defaultDailyTokenLimit,
+            @DefaultValue("50000") int guestDailyTokenLimit
     ) {
+        public RateLimit {
+            if (perUserPerMinute < 1 || guestPerUserPerMinute < 1 || defaultDailyTokenLimit < 0 || guestDailyTokenLimit < 0)
+                throw new IllegalArgumentException("LLM request limits must be positive and token limits non-negative");
+        }
     }
 
     public record Llm(

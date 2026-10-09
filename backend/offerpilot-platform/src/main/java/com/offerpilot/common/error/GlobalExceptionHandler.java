@@ -36,8 +36,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException ex, HttpServletRequest request) {
         ErrorCode error = ex.errorCode();
-        return ResponseEntity.status(error.status())
-                .contentType(MediaType.APPLICATION_JSON)
+        var response = ResponseEntity.status(error.status()).contentType(MediaType.APPLICATION_JSON);
+        if (ex instanceof com.offerpilot.llm.quota.LlmQuotaException quota)
+            response.header("Retry-After", String.valueOf(quota.retryAfterSeconds()));
+        return response
                 .body(ApiResponse.fail(error.code(), ex.getMessage(), TraceIdFilter.current(request)));
     }
 

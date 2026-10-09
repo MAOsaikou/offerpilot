@@ -58,6 +58,7 @@ public class ResumeOptimizationService {
             if (jdbc.queryForObject("SELECT count(*) FROM resume_optimizations WHERE user_id=? AND status='RUNNING'",Integer.class,owner)>0)
                 throw new BusinessException(ErrorCode.CONCURRENT_RUN_LIMIT,"已有简历改写进行中，请等待完成或取消");
             gateway.requireAvailable(tier,false);
+            gateway.checkQuota(owner,tier);
             String id=IdGenerator.next("opt");
             jdbc.update("INSERT INTO resume_optimizations(id,user_id,resume_id,version_id,request_id,status,model_tier,job_description) VALUES (?,?,?,?,?,'RUNNING',?,?)",
                 id,owner,resumeId,versionId,input.requestId(),tier.name(),jd);
@@ -81,7 +82,8 @@ public class ResumeOptimizationService {
                     cancellations.remove(work.id(),cancellation);
                     if (signal==SignalType.CANCEL) cancel(work.owner(),work.id());
                 });
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(Schedulers.boundedElastic())
+                .contextWrite(context -> com.offerpilot.llm.quota.LlmUserContext.withUser(context, work.owner()));
     }
     private JsonNode complete(Work work,ObjectNode report) {
         return tx.execute(status -> {
