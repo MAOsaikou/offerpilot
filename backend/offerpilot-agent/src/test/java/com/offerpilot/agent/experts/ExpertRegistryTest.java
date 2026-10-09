@@ -18,6 +18,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ExpertRegistryTest {
+    @Test void interviewerNeverReturnsPlaceholderAndWritesCannotBypassApproval() {
+        var score = new PlanStep("s1", "评分", ExpertType.INTERVIEWER, Map.of("action", "scoreInterview"), List.of());
+        assertThat(new ExpertRegistry().execute("owner", Map.of(), "run", score, Map.of()).block().summary())
+                .contains("暂不可用").doesNotContain("占位专家");
+        var write = new PlanStep("s1", "开始", ExpertType.INTERVIEWER, Map.of("action", "startInterview"), List.of());
+        assertThatThrownBy(() -> new ExpertRegistry().execute("owner", Map.of(), "run", write, Map.of()).block())
+                .hasMessageContaining("必须先审批");
+    }
     @Test void careerReturnsRealCardOrClearGuidanceAndRequiresApprovalForWrites() {
         var careers = org.mockito.Mockito.mock(com.offerpilot.career.application.CareerRecommendForChat.class);
         var payload = new com.offerpilot.career.application.CareerRecommendForChat.Payload("IRC", List.of("技术研发", "数据分析"),
