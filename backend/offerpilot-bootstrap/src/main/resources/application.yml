@@ -104,8 +104,17 @@ offerpilot:
   encryption:
     key: ${DATA_ENCRYPTION_KEY:change-me-generate-with-openssl-rand-base64-32}
   rate-limit:
+    # Existing user/run knobs are not auth IP limits; this slice adds no LLM usage quota.
     per-user-per-minute: 60
     concurrent-runs-per-user: 2
+    # All POST attempts (success, failure, invalid body), independent buckets per client IP.
+    # Fixed 60s window starts at the first attempt; rejected requests do not extend it.
+    # getRemoteAddr() relies on framework forwarded headers behind a trusted proxy.
+    # The proxy MUST strip/overwrite client-supplied Forwarded and X-Forwarded-* headers.
+    auth-guest-per-minute: ${AUTH_GUEST_PER_MINUTE:15}
+    auth-login-per-minute: ${AUTH_LOGIN_PER_MINUTE:20}
+    auth-register-per-minute: ${AUTH_REGISTER_PER_MINUTE:20}
+    auth-staff-login-per-minute: ${AUTH_STAFF_LOGIN_PER_MINUTE:20}
   llm:
     default-tier: ${LLM_DEFAULT_TIER:FLASH}
     tiers:

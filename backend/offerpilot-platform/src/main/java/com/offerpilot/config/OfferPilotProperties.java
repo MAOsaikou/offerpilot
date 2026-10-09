@@ -63,8 +63,18 @@ public record OfferPilotProperties(
 
     public record RateLimit(
             @DefaultValue("60") int perUserPerMinute,
-            @DefaultValue("2") int concurrentRunsPerUser
+            @DefaultValue("2") int concurrentRunsPerUser,
+            @DefaultValue("15") int authGuestPerMinute,
+            @DefaultValue("20") int authLoginPerMinute,
+            @DefaultValue("20") int authRegisterPerMinute,
+            @DefaultValue("20") int authStaffLoginPerMinute
     ) {
+        public RateLimit {
+            if (authGuestPerMinute < 1 || authLoginPerMinute < 1
+                    || authRegisterPerMinute < 1 || authStaffLoginPerMinute < 1) {
+                throw new IllegalArgumentException("Auth rate limits must be positive");
+            }
+        }
     }
 
     public record Llm(
