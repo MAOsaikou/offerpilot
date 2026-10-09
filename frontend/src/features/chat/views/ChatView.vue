@@ -168,6 +168,21 @@ async function adoptTarget(selection: CareerTargetSelection) {
     { careerAction: 'setCareerTarget', ...selection },
   )
 }
+async function adoptGrowth(taskTitles: string[]) {
+  if (busy.value || missingConversation.value || !taskTitles.length) return
+  panelOpen.value = true
+  const content = `同步成长任务：我确认已完成「${taskTitles.join('」、「')}」`
+  lastAttempt.value = content
+  await chat.send(
+    content,
+    'COACH',
+    tier.value,
+    (id) => {
+      void router.replace({ path: `/chat/${encodeURIComponent(id)}` })
+    },
+    { coachAction: 'adoptGrowthPlan', taskTitles },
+  )
+}
 async function older() {
   const el = scrollArea.value
   const height = el?.scrollHeight || 0
@@ -259,6 +274,7 @@ async function remove(id: string) {
                   v-bind="{
                     cards,
                     adoptTarget,
+                    adoptGrowth,
                     disabled: busy || missingConversation,
                   }" /></template
             ></MessageList>

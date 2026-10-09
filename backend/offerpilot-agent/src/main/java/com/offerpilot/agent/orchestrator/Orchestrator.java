@@ -37,6 +37,7 @@ public class Orchestrator {
         AtomicBoolean producedCard = new AtomicBoolean();
         AtomicBoolean producedGuidance = new AtomicBoolean();
         AtomicBoolean producedInterviewOutcome = new AtomicBoolean();
+        AtomicBoolean producedCoachOutcome = new AtomicBoolean();
         AtomicBoolean producedCareerOutcome = new AtomicBoolean();
         return planner.prepare(mode, content, history, tier, onUsage, safeContext).flatMapMany(decision -> {
             if (decision.plan() == null) {
@@ -64,20 +65,22 @@ public class Orchestrator {
                 }
                 Instant started = Instant.now();
                 String callId = runId + ":" + step.id();
+                boolean coachStep = step.agent() == ExpertType.COACH;
+                boolean coachWrite = experts.writingCoach(step);
                 boolean interviewWrite = experts.writingInterview(step);
                 boolean interviewStep = step.agent() == ExpertType.INTERVIEWER;
                 boolean careerWrite = experts.writingCareer(step);
                 boolean careerStep = step.agent() == ExpertType.CAREER_DISCOVERY;
-                boolean willWrite = experts.writingBoard(step) || careerWrite || interviewWrite;
+                boolean willWrite = experts.writingBoard(step) || careerWrite || interviewWrite || coachWrite;
                 boolean willRecommend = experts.recommending(step);
                 boolean willMatch = experts.matching(step, safeContext);
                 boolean willDiagnose = experts.diagnosing(step, safeContext);
                 boolean willSearch = experts.searching(step);
                 boolean willOptimize = experts.optimizing(step, safeContext);
                 boolean willAdvise = step.agent() == ExpertType.RESUME && "advice".equals(step.inputs().get("action"));
-                if (willWrite || willMatch || willDiagnose || willSearch || willOptimize || willRecommend || interviewStep) attemptedBusiness.set(true);
-                String name = willWrite ? (String) step.inputs().get("action") : willSearch ? "search_jobs" : willMatch ? "matchJobToResume" : willOptimize ? "optimizeResumeForJob" : willDiagnose ? "diagnoseResume" : willAdvise ? "resumeGuidance" : interviewStep ? "scoreInterview" : careerStep ? "recommendCareers" : "placeholder." + step.agent().name();
-                String running = willWrite ? (interviewWrite ? "正在准备模拟面试，等待用户批准面试写入" : careerWrite ? "等待用户批准设置目标职业" : "等待用户批准看板写入") : willSearch ? "正在查询企业官网岗位" : willMatch ? "正在对照岗位要求与简历" : willOptimize ? "正在读取或生成改写建议，未修改简历" : willDiagnose ? "正在读取或生成简历诊断" : willAdvise ? "正在整理简历文字建议" : interviewStep ? "正在生成面试评分卡" : careerStep ? "正在根据兴趣推荐职业" : "正在运行占位专家";
+                if (willWrite || willMatch || willDiagnose || willSearch || willOptimize || willRecommend || interviewStep || coachStep) attemptedBusiness.set(true);
+                String name = willWrite ? (String) step.inputs().get("action") : willSearch ? "search_jobs" : willMatch ? "matchJobToResume" : willOptimize ? "optimizeResumeForJob" : willDiagnose ? "diagnoseResume" : willAdvise ? "resumeGuidance" : interviewStep ? "scoreInterview" : careerStep ? "recommendCareers" : coachStep ? "planLearning" : "placeholder." + step.agent().name();
+                String running = willWrite ? (coachWrite ? "等待用户批准同步成长任务" : interviewWrite ? "正在准备模拟面试，等待用户批准面试写入" : careerWrite ? "等待用户批准设置目标职业" : "等待用户批准看板写入") : willSearch ? "正在查询企业官网岗位" : willMatch ? "正在对照岗位要求与简历" : willOptimize ? "正在读取或生成改写建议，未修改简历" : willDiagnose ? "正在读取或生成简历诊断" : willAdvise ? "正在整理简历文字建议" : interviewStep ? "正在生成面试评分卡" : careerStep ? "正在根据兴趣推荐职业" : coachStep ? "正在分析技能差距与学习路线" : "正在运行占位专家";
                 Map<String, String> upstream = new LinkedHashMap<>();
                 step.dependsOn().forEach(id -> upstream.put(id, outputs.get(id)));
                 Function<Mono<ExpertResult>, Flux<AgentEvent>> finish = work -> work
@@ -85,14 +88,15 @@ public class Orchestrator {
                         .switchIfEmpty(Mono.error(new IllegalStateException("专家未返回结果")))
                         .flatMapMany(result -> {
                             outputs.put(step.id(), result.summary());
-                            if (result.card() != null) producedCard.set(true);
+                            if (!result.cards().isEmpty()) producedCard.set(true);
                             if (willAdvise) producedGuidance.set(true);
                             if (interviewStep) producedInterviewOutcome.set(true);
+                            if (coachStep) producedCoachOutcome.set(true);
                             if (careerStep) producedCareerOutcome.set(true);
                             String preview = result.summary() == null ? "" : result.summary();
                             boolean truncated = preview.length() > 500;
                             if (truncated) preview = preview.substring(0, 500);
-                            return outcome(runId, seq, step.id(), callId, name, true, preview, truncated, result.card(), started);
+                            return outcome(runId, seq, step.id(), callId, name, true, preview, truncated, result.cards(), started);
                         });
                 return Flux.<AgentEvent>just(new AgentEvent.StepUpdated("step.updated", seq.incrementAndGet(), runId, started,
                                 step.id(), AgentEvent.StepStatus.RUNNING, running, null),
@@ -100,21 +104,21 @@ public class Orchestrator {
                                 name, Map.of("inputs", step.inputs(), "upstreamOutputs", upstream), willSearch ? "mcp:jobs-mcp" : "local", willWrite ? AgentEvent.ToolAccess.WRITE : AgentEvent.ToolAccess.READ))
                         .concatWith(Flux.defer(() -> {
                             if (!willWrite) return finish.apply(experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream)));
-                            return Mono.fromCallable(() -> interviewWrite ? experts.requestInterview(owner, runId, step) : careerWrite ? experts.requestCareer(owner, runId, step) : experts.requestBoard(owner, runId, step))
-                                    .subscribeOn(careerWrite || interviewWrite ? reactor.core.scheduler.Schedulers.boundedElastic() : reactor.core.scheduler.Schedulers.immediate()).flatMapMany(ticket -> Flux.<AgentEvent>just(new AgentEvent.ApprovalRequired("approval.required", seq.incrementAndGet(), runId,
+                            return Mono.fromCallable(() -> coachWrite ? experts.requestCoach(owner, runId, step) : interviewWrite ? experts.requestInterview(owner, runId, step) : careerWrite ? experts.requestCareer(owner, runId, step) : experts.requestBoard(owner, runId, step))
+                                    .subscribeOn(careerWrite || interviewWrite || coachWrite ? reactor.core.scheduler.Schedulers.boundedElastic() : reactor.core.scheduler.Schedulers.immediate()).flatMapMany(ticket -> Flux.<AgentEvent>just(new AgentEvent.ApprovalRequired("approval.required", seq.incrementAndGet(), runId,
                                     Instant.now(), step.id(), ticket.id(), callId, name, ticket.args(),
-                                    (interviewWrite ? "此操作将创建面试、保存答案或更新会话状态，请核对后批准。" : careerWrite ? "此操作将把职业档案目标设为「" + ticket.args().get("name") + "」，请确认后批准。" : "此操作将修改求职看板，请确认状态和备注后批准。"), ticket.expiresAt(), careerWrite || interviewWrite ? List.of() : List.of("status", "note")))
+                                    (coachWrite ? "此操作将把所选任务标记完成，并保留原有完成项；请确认这些任务已完成后批准。" : interviewWrite ? "此操作将创建面试、保存答案或更新会话状态，请核对后批准。" : careerWrite ? "此操作将把职业档案目标设为「" + ticket.args().get("name") + "」，请确认后批准。" : "此操作将修改求职看板，请确认状态和备注后批准。"), ticket.expiresAt(), careerWrite || interviewWrite || coachWrite ? List.of() : List.of("status", "note")))
                                     .concatWith(ticket.await().flatMapMany(decisionResult -> Flux.<AgentEvent>just(
                                             new AgentEvent.ApprovalResolved("approval.resolved", seq.incrementAndGet(), runId,
                                                     Instant.now(), ticket.id(), decisionResult.decision()))
-                                            .concatWith(Flux.defer(() -> finish.apply(interviewWrite ? experts.executeInterview(owner, runId, step, decisionResult) : careerWrite ? experts.executeCareer(owner, step, decisionResult) : experts.executeBoard(owner, runId, step, decisionResult)))))));
+                                            .concatWith(Flux.defer(() -> finish.apply(coachWrite ? experts.executeCoach(owner, step, decisionResult) : interviewWrite ? experts.executeInterview(owner, runId, step, decisionResult) : careerWrite ? experts.executeCareer(owner, step, decisionResult) : experts.executeBoard(owner, runId, step, decisionResult)))))));
                         }).onErrorResume(ex -> {
                             failed.add(step.id());
-                            String summary = willWrite || willMatch || willDiagnose || willSearch || willOptimize || careerStep || interviewStep
-                                    ? ex instanceof BusinessException business ? business.getMessage() : willWrite ? (interviewWrite ? "面试写入失败或超时，请重试" : careerWrite ? "职业目标写入失败或超时，请重试" : "看板写入失败或超时，请重试") : willSearch ? "岗位搜索失败或超时，请重试" : "分析失败"
+                            String summary = willWrite || willMatch || willDiagnose || willSearch || willOptimize || careerStep || interviewStep || coachStep
+                                    ? ex instanceof BusinessException business ? business.getMessage() : willWrite ? (coachWrite ? "成长任务同步失败或超时，请重试" : interviewWrite ? "面试写入失败或超时，请重试" : careerWrite ? "职业目标写入失败或超时，请重试" : "看板写入失败或超时，请重试") : willSearch ? "岗位搜索失败或超时，请重试" : "分析失败"
                                     : "占位专家执行失败";
                             outputs.put(step.id(), summary);
-                            return outcome(runId, seq, step.id(), callId, name, false, summary, false, null, started);
+                            return outcome(runId, seq, step.id(), callId, name, false, summary, false, List.of(), started);
                         }));
             }), 1)).concatWith(Flux.defer(() -> {
                 if (producedCard.get()) {
@@ -122,8 +126,11 @@ public class Orchestrator {
                             + "面试状态卡包含当前问题，请原样呈现问题并等待用户回答；面试报告是文字规则评分，不推测端侧表现。只在工具明确说明已标记完成时声称完成状态已写入。"
                             + "请根据报告回答用户的问题，不要编造分数、经历、维度或资源标识。简历诊断不预测录用结果。"
                             + "职业推荐来自已保存兴趣与职业库的确定性 Holland 规则，仅供探索；推荐卡片不代表已设置目标。仅工具明确返回目标已设置时可说明写入成功。改写卡片只表示建议已保存，本轮未执行采纳；已有建议可能此前已采纳，状态请到简历页查看。新建议需用户逐条核对并保存。"
+                            + "技能差距与路线图为确定性证据参考，卡片未写入任务；无证据不等于没有能力。只有工具明确返回批准后同步成功时才能说已记录完成状态。"
                             + "搜索只描述卡片中实际返回的岗位，保留空结果、部分站点失败、降级和截断限制；返回数量不是全部在招数量。",
                             "报告摘要：" + outputs + "；失败或跳过的步骤：" + failed);
+                } else if (producedCoachOutcome.get() && failed.isEmpty()) {
+                    addReplyData(replyPrompt, "根据成长教练工具的实际结果回答；无目标时引导探索页设为目标。只有工具明确返回批准后同步成功时才能说明任务已标记完成。", "成长摘要：" + outputs);
                 } else if (producedInterviewOutcome.get() && failed.isEmpty()) {
                     addReplyData(replyPrompt, "根据文字面试工具的实际结果回答；展示当前问题并等待答案，不代替用户作答。评分卡不等于标记完成。", "面试摘要：" + outputs);
                 } else if (producedCareerOutcome.get() && failed.isEmpty()) {
@@ -134,7 +141,7 @@ public class Orchestrator {
                             "指导摘要：" + outputs + "；失败或跳过的步骤：" + failed);
                 } else if (attemptedBusiness.get()) {
                     addReplyData(replyPrompt, "本轮真实业务调用未成功。"
-                            + "不要声称匹配成功或诊断成功、搜索成功、改写成功，也不要声称看板或职业目标写入成功、面试创建或答案保存或完成或评分成功，不要编造岗位或资源标识。",
+                            + "不要声称匹配成功或诊断成功、搜索成功、改写成功，也不要声称成长任务同步成功、看板或职业目标写入成功、面试创建或答案保存或完成或评分成功，不要编造岗位或资源标识。",
                             "错误摘要：" + outputs + "；失败或跳过的步骤：" + failed);
                 } else {
                     addReplyData(replyPrompt, "本轮仅完成编排与占位专家调用，未执行真实业务操作。"
@@ -156,11 +163,11 @@ public class Orchestrator {
     }
 
     private Flux<AgentEvent> outcome(String runId, AtomicInteger seq, String stepId, String callId, String name,
-                                     boolean ok, String summary, boolean truncated, ExpertResult.Card card, Instant started) {
+                                     boolean ok, String summary, boolean truncated, List<ExpertResult.Card> cards, Instant started) {
         int elapsed = (int) Duration.between(started, Instant.now()).toMillis();
         Flux<AgentEvent> events = Flux.just(new AgentEvent.ToolResult("tool.result", seq.incrementAndGet(), runId, Instant.now(), stepId,
                 callId, name, ok, summary, elapsed, truncated));
-        if (card != null) {
+        for (var card : cards) {
             events = events.concatWith(Flux.just(new AgentEvent.UiCard("ui.card", seq.incrementAndGet(), runId, Instant.now(),
                     stepId, card.cardId(), card.cardType(), card.payload())));
         }

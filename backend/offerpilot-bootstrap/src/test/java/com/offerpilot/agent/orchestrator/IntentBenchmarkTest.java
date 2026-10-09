@@ -20,7 +20,10 @@ class IntentBenchmarkTest {
         return java.util.stream.StreamSupport.stream(dataset.path("cases").spliterator(), false)
                 .map(sample -> DynamicTest.dynamicTest(sample.path("id").asText() + ": " + sample.path("message").asText(), () -> {
                     var responses = new ArrayDeque<JsonNode>();
-                    responses.add(sample.path("expectedModelJson"));
+                    boolean directCoach = "single".equals(sample.path("expected").path("kind").asText())
+                            && "COACH".equals(sample.path("expected").path("expert").asText())
+                            && CoachIntentParser.matches(sample.path("message").asText());
+                    if (!directCoach) responses.add(sample.path("expectedModelJson"));
                     sample.path("actionModelJson").forEach(responses::add);
                     var gateway = new ReplayGateway(responses);
                     var planner = IntentBenchmark.planner(gateway);
@@ -58,7 +61,7 @@ class IntentBenchmarkTest {
                         }
                     } else assertThat(actual.kind()).isIn("chitchat", "unsafe");
                     assertThat(responses).as("Every pre-authored response was consumed").isEmpty();
-                    assertThat(gateway.calls).isEqualTo(1 + sample.path("actionModelJson").size());
+                    assertThat(gateway.calls).isEqualTo((directCoach ? 0 : 1) + sample.path("actionModelJson").size());
                 }));
     }
 

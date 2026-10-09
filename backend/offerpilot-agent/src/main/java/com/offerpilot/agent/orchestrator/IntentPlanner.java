@@ -68,6 +68,11 @@ public class IntentPlanner {
             return resolveActions(new Decision("single", ExpertType.CAREER_DISCOVERY, 1.0, false, null,
                     single(content, ExpertType.CAREER_DISCOVERY, safeContext)), content, history, tier, onUsage, safeContext);
         }
+        if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.COACH)
+                && (safeContext.containsKey("coachAction") || CoachIntentParser.matches(content))) {
+            return resolveActions(new Decision("single", ExpertType.COACH, 1.0, false, null,
+                    single(content, ExpertType.COACH, safeContext)), content, history, tier, onUsage, safeContext);
+        }
         if (mode != null && mode != AgentMode.AUTO) {
             ExpertType expert = ExpertType.valueOf(mode.name());
             return resolveActions(new Decision("single", expert, 1.0, false, null, single(content, expert, safeContext)),
@@ -85,6 +90,7 @@ public class IntentPlanner {
                                         Consumer<Usage> onUsage, Map<String, Object> context) {
         if (decision.plan() == null) return Mono.just(decision);
         return Flux.fromIterable(decision.plan().steps()).concatMap(step -> {
+            if (step.agent() == ExpertType.COACH) return Mono.just(CoachIntentParser.prepare(step, content, context));
             if (step.agent() == ExpertType.INTERVIEWER) return Mono.just(InterviewIntentParser.prepare(step, content, context));
             if (step.agent() == ExpertType.CAREER_DISCOVERY) return Mono.just(CareerIntentParser.prepare(step, content, context));
             if (step.agent() == ExpertType.JOB && jobs != null) return jobs.prepare(step, content, history, tier, onUsage, context);
@@ -152,7 +158,7 @@ public class IntentPlanner {
     private Plan single(String content, ExpertType expert, Map<String, Object> context) {
         PlanStep probe = new PlanStep("s1", experts.label(expert), expert, Map.of("request", content), List.of());
         String title = experts.label(expert) + (experts.matching(probe, context) || experts.diagnosing(probe, context)
-                || expert == ExpertType.CAREER_DISCOVERY || experts.interviewing(probe)
+                || expert == ExpertType.COACH || expert == ExpertType.CAREER_DISCOVERY || experts.interviewing(probe)
                 || expert == ExpertType.JOB && jobs != null ? "" : "（占位）");
         return PlanValidator.validate(new Plan(content, List.of(new PlanStep("s1", title,
                 expert, Map.of("request", content), List.of()))));

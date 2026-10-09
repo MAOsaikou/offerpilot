@@ -15,6 +15,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   apply: [decision: PatchDecision]
+  adoptGrowth: [taskTitles: string[]]
   adoptTarget: [selection: CareerTargetSelection]
 }>()
 
@@ -30,11 +31,12 @@ const component = computed(() => resolveCardComponent(props.cardType))
       v-bind="
         cardType === 'resume_diff'
           ? { interactive, disabled, appliedVersionId }
-          : cardType === 'career_recommendation'
+          : cardType === 'career_recommendation' || cardType === 'roadmap'
             ? { interactive, disabled }
             : {}
       "
       @apply="emit('apply', $event)"
+      @adopt-growth="emit('adoptGrowth', $event)"
       @adopt-target="emit('adoptTarget', $event)"
     />
     <CardFallback v-else :card-type="cardType" :payload="payload" />
