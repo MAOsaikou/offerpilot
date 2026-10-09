@@ -3,6 +3,7 @@ package com.offerpilot.agent.orchestrator;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.offerpilot.agent.domain.PlanStep;
+import com.offerpilot.agent.application.BoardWriteTools;
 import com.offerpilot.llm.ModelGateway;
 import com.offerpilot.llm.ModelTier;
 import org.springframework.ai.chat.messages.*;
@@ -21,7 +22,7 @@ import java.util.function.Consumer;
 
 @Component
 public class JobIntentParser {
-    record Intent(String action, String query, String site, String nature, String location, String question) {}
+    record Intent(String action, String query, String site, String nature, String location, String question, String status, String note) {}
     private final ModelGateway gateway;
     private final ObjectMapper json;
     private final String prompt;
@@ -36,6 +37,7 @@ public class JobIntentParser {
 
     public Mono<PlanStep> prepare(PlanStep step, String content, List<Message> history, ModelTier tier,
                                   Consumer<Usage> onUsage, Map<String, Object> context) {
+        if (BoardWriteTools.recognizes(step)) return Mono.just(step);
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(prompt));
         messages.addAll(history.subList(Math.max(0, history.size() - 12), history.size()));
@@ -78,6 +80,17 @@ public class JobIntentParser {
     private PlanStep normalize(PlanStep step, Intent intent, Map<String, Object> context) {
         if (intent == null || intent.action() == null) throw new IllegalArgumentException("缺少动作");
         if ("clarify".equals(intent.action())) return clarify(step, field(intent.question(), 300, false));
+        if (Set.of("createApplication", "updateApplicationStatus").contains(intent.action())) {
+            String key = "createApplication".equals(intent.action()) ? "jobId" : "applicationId";
+            if (!(context.get(key) instanceof String id) || id.isBlank() || id.length() > 80)
+                return clarify(step, "请先提供目标" + key + "，确认要操作的投递记录或岗位。");
+            var inputs = new LinkedHashMap<String, Object>();
+            inputs.put("action", intent.action());
+            inputs.put(key, context.get(key));
+            if (intent.status() != null) inputs.put("status", intent.status());
+            if (intent.note() != null) inputs.put("note", intent.note());
+            return new PlanStep(step.id(), "确认看板写入", step.agent(), inputs, step.dependsOn());
+        }
         if ("optimize".equals(intent.action())) return ResumeIntentParser.optimize(step, context);
         if ("match".equals(intent.action())) {
             // 资源标识只来自调用方选定的上下文，绝不接受规划模型生成的 ID。

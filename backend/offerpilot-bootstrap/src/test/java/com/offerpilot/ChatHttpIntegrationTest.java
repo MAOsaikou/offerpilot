@@ -72,15 +72,20 @@ class ChatHttpIntegrationTest {
                 exchange.sendResponseHeaders(200, 0);
                 try (var out = exchange.getResponseBody()) {
                     boolean planning = body.contains("意图识别与规划 v1");
+                    boolean jobAction = body.contains("岗位动作与搜索参数解析 v1");
                     boolean resumeAction = body.contains("简历动作解析 v1");
-                    String decision = body.contains("改写刷新验收") ? (planning
+                    String decision = body.contains("看板审批验收") ? (planning
+                            ? "{\"kind\":\"single\",\"expert\":\"JOB\",\"confidence\":1}"
+                            : body.contains("新建") ? "{\"action\":\"createApplication\",\"status\":\"TODO\"}"
+                            : body.contains("非法状态") ? "{\"action\":\"updateApplicationStatus\",\"status\":\"WRITTEN_TEST\"}"
+                            : "{\"action\":\"updateApplicationStatus\",\"status\":\"INTERVIEW\"}") : body.contains("改写刷新验收") ? (planning
                             ? "{\"kind\":\"single\",\"expert\":\"RESUME\",\"confidence\":1}"
                             : "{\"action\":\"optimize\",\"question\":\"\"}") : body.contains("复合验收") ? """
                             {"kind":"composite","confidence":1,"plan":{"goal":"岗位与简历准备","steps":[
                             {"id":"s1","title":"职业探索","agent":"CAREER_DISCOVERY","inputs":{},"dependsOn":[]},
                             {"id":"s2","title":"成长指导","agent":"COACH","inputs":{"jobFrom":"s1"},"dependsOn":["s1"]}]}}
                             """ : "{\"kind\":\"chitchat\",\"confidence\":1}";
-                    for (String text : planning || resumeAction ? new String[]{decision} : new String[]{"你好", "，同学。"}) {
+                    for (String text : planning || resumeAction || jobAction ? new String[]{decision} : new String[]{"你好", "，同学。"}) {
                         String frame = "data: {\"id\":\"chat-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":" + new ObjectMapper().writeValueAsString(text) + "},\"finish_reason\":null}]}\n\n";
                         out.write(frame.getBytes(StandardCharsets.UTF_8));
                         out.flush();
@@ -510,6 +515,100 @@ class ChatHttpIntegrationTest {
         verify(optimizations).generate(eq(user), eq("res_refresh_fixture"), eq("ver_refresh_fixture"),
                 contains("Java 校招岗位 JD"), matches("[a-z0-9-]{36}"));
         verify(optimizations, never()).report(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Autowired com.offerpilot.board.application.ApplicationService applications;
+
+    private void boardJobFixture() {
+        jdbc.update("""
+                INSERT INTO jobs(id,site,external_id,nature,payload) VALUES ('job_board_fixture','fixture','board','campus',?::jsonb)
+                ON CONFLICT (id) DO NOTHING
+                """, json.createObjectNode().put("company", "BoardCorp").put("title", "Java 岗位")
+                .put("site", "fixture").put("nature", "campus").toString());
+    }
+
+    @Test
+    void boardChatApprovalCreatesUpdatesAndRejectsThroughRealHttpWithOwnerIsolation() throws Exception {
+        boardJobFixture();
+        String token = identities.create().accessToken(), user = owner(token);
+        String stranger = identities.create().accessToken();
+        String applicationId = null;
+        for (String operation : java.util.List.of("新建", "更新", "拒绝")) {
+            String identifier = applicationId;
+            var context = operation.equals("新建") ? java.util.Map.of("jobId", "job_board_fixture")
+                    : java.util.Map.of("applicationId", identifier);
+            var body = json.writeValueAsString(java.util.Map.of("content", "看板审批验收：" + operation,
+                    "options", java.util.Map.of("context", context)));
+            var chatRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/chat"))
+                    .timeout(Duration.ofSeconds(20)).header("Authorization", "Bearer " + token)
+                    .header("Content-Type", "application/json").header("Accept", "text/event-stream")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            var response = HttpClient.newHttpClient().send(chatRequest, HttpResponse.BodyHandlers.ofInputStream());
+            assertThat(response.statusCode()).isEqualTo(200);
+            try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                var events = new java.util.ArrayList<com.fasterxml.jackson.databind.JsonNode>();
+                com.fasterxml.jackson.databind.JsonNode approval = null;
+                for (String line; (line = reader.readLine()) != null;) {
+                    if (!line.startsWith("data:")) continue;
+                    var event = json.readTree(line.substring(5).trim());
+                    events.add(event);
+                    if (event.path("type").asText().equals("approval.required")) { approval = event; break; }
+                }
+                assertThat(approval).isNotNull();
+                assertThat(events.get(events.size()-2).path("access").asText()).isEqualTo("WRITE");
+                assertThat(events.get(events.size()-2).path("type").asText()).isEqualTo("tool.call");
+                assertThat(approval.path("editableFields").toString()).contains("status", "note");
+                if (operation.equals("新建")) assertThat(applications.list(user)).isEmpty();
+                else assertThat(applications.list(user).get(0).status()).isEqualTo(operation.equals("更新") ? "APPLIED" : "INTERVIEW");
+                String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
+                assertThat(request("POST", path, stranger, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
+                assertThat(request("POST", path + "missing", token, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
+                assertThat(request("POST", path, token, "{\"decision\":\"MAYBE\"}").statusCode()).isEqualTo(400);
+                assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\",\"args\":{\"status\":\"WRITTEN_TEST\"}}").statusCode()).isEqualTo(400);
+                assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\",\"args\":{\"applicationId\":\"other\"}}").statusCode()).isEqualTo(400);
+                boolean reject = operation.equals("拒绝");
+                var decision = reject ? "{\"decision\":\"REJECT\"}" : json.writeValueAsString(java.util.Map.of(
+                        "decision", "APPROVE", "args", java.util.Map.of("status", operation.equals("新建") ? "APPLIED" : "INTERVIEW", "note", "审批备注")));
+                assertThat(request("POST", path, token, decision).statusCode()).isEqualTo(200);
+                assertThat(request("POST", path, token, decision).statusCode()).isEqualTo(409);
+                for (String line; (line = reader.readLine()) != null;)
+                    if (line.startsWith("data:")) events.add(json.readTree(line.substring(5).trim()));
+                assertThat(events).anySatisfy(e -> {
+                    assertThat(e.path("type").asText()).isEqualTo("approval.resolved");
+                    assertThat(e.path("decision").asText()).isEqualTo(reject ? "REJECT" : "APPROVE");
+                });
+                var result = events.stream().filter(e -> e.path("type").asText().equals("tool.result")).findFirst().orElseThrow();
+                assertThat(result.path("ok").asBoolean()).isEqualTo(!reject);
+                var cards = events.stream().filter(e -> e.path("type").asText().equals("ui.card")).toList();
+                if (reject) {
+                    assertThat(cards).isEmpty();
+                    assertThat(result.path("resultPreview").asText()).isEqualTo("用户拒绝了该操作");
+                } else {
+                    assertThat(cards).hasSize(1);
+                    assertThat(cards.get(0).path("cardType").asText()).isEqualTo("board_update");
+                    assertThat(cards.get(0).path("payload").path("change").asText()).isEqualTo(operation.equals("新建") ? "CREATED" : "UPDATED");
+                    assertThat(cards.get(0).path("payload").path("application").path("company").asText()).isEqualTo("BoardCorp");
+                    assertThat(cards.get(0).path("payload").path("application").path("nextActionAt").isNull()).isTrue();
+                }
+                var saved = applications.list(user);
+                assertThat(saved).hasSize(1);
+                applicationId = saved.get(0).id();
+                assertThat(saved.get(0).status()).isEqualTo(operation.equals("新建") ? "APPLIED" : "INTERVIEW");
+                assertThat(saved.get(0).note()).isEqualTo("审批备注");
+                assertThat(events.stream().map(e -> e.path("id").asInt()).toList()).containsExactlyElementsOf(
+                        java.util.stream.IntStream.rangeClosed(1, events.size()).boxed().toList());
+                String conv = events.get(0).path("conversationId").asText();
+                if (!reject) assertThat(conversations.messages(user, conv, null, 30).items().get(1).parts().get(1).path("cardType").asText()).isEqualTo("board_update");
+            }
+        }
+        assertThat(applications.list(owner(stranger))).isEmpty();
+        String finalId = applicationId;
+        var bad = request("POST", "/agent/chat", token, json.writeValueAsString(java.util.Map.of("content", "看板审批验收：非法状态",
+                "options", java.util.Map.of("context", java.util.Map.of("applicationId", finalId)))));
+        assertThat(bad.body()).contains("状态仅支持", "\"ok\":false").doesNotContain("event:approval.required", "event:ui.card");
+        assertThat(applications.list(user).get(0).status()).isEqualTo("INTERVIEW");
+        var missing = request("POST", "/agent/chat", token, "{\"content\":\"看板审批验收：更新\"}");
+        assertThat(missing.body()).doesNotContain("event:approval.required", "event:ui.card");
     }
 
     @Test

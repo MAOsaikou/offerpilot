@@ -69,7 +69,11 @@ const statusLabel = computed(() => {
 
         <ToolTimeline :tool-calls="run?.toolCalls ?? []" />
 
-        <ApprovalCard :approvals="run?.approvals ?? []" />
+        <ApprovalCard
+          :approvals="run?.approvals ?? []"
+          :run-id="run?.runId ?? ''"
+          :running="run?.status === 'RUNNING'"
+        />
 
         <section v-if="run && run.citations.length > 0">
           <h3 class="mb-2 text-xs font-semibold text-muted-foreground">引用</h3>

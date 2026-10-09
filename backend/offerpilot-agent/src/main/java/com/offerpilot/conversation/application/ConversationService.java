@@ -190,6 +190,18 @@ public class ConversationService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public void requireRunOwner(String owner, String runId) {
+        if (jdbc.queryForList("SELECT id FROM agent_runs WHERE id=? AND user_id=?", String.class, runId, owner).isEmpty())
+            throw new BusinessException(ErrorCode.RUN_NOT_FOUND);
+    }
+
+    @Transactional
+    public void extendApprovalLease(String owner, String runId) {
+        if (jdbc.update("UPDATE agent_runs SET lease_expires_at=CURRENT_TIMESTAMP+INTERVAL '12 minutes' WHERE id=? AND user_id=? AND status='RUNNING' AND lease_expires_at>CURRENT_TIMESTAMP", runId, owner) == 0)
+            throw new BusinessException(ErrorCode.RUN_ALREADY_FINISHED);
+    }
+
     private void expire(String owner) {
         jdbc.queryForList("SELECT id FROM agent_runs WHERE user_id=? AND status='RUNNING' AND lease_expires_at<CURRENT_TIMESTAMP FOR UPDATE", String.class, owner);
         jdbc.update("""

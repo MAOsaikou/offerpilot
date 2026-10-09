@@ -1,5 +1,7 @@
 package com.offerpilot.agent.experts;
 
+import com.offerpilot.agent.application.ApprovalService;
+import com.offerpilot.agent.application.BoardWriteTools;
 import com.offerpilot.agent.domain.ExpertType;
 import com.offerpilot.agent.domain.PlanStep;
 import com.offerpilot.job.application.JobMatchCards;
@@ -17,7 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 
-/** 已接入的岗位搜索、匹配、简历诊断与定向改写；其他专家仍明确返回占位结果。 */
+/** 已接入的岗位搜索、匹配、审批看板写入、简历诊断与定向改写；其他专家仍明确返回占位结果。 */
 @Component
 public class ExpertRegistry {
     private static final Map<ExpertType, String> LABELS = Map.of(
@@ -28,6 +30,7 @@ public class ExpertRegistry {
     private JobSearchForChat searches;
     private ResumeOptimizationForChat optimizations;
     private JobDescriptionForChat descriptions;
+    private BoardWriteTools boards;
 
     public ExpertRegistry() {
         this.matches = null;
@@ -49,13 +52,35 @@ public class ExpertRegistry {
         this.searches = searches;
     }
 
-    @Autowired
     public ExpertRegistry(ObjectProvider<JobMatchForChat> matches,
                           ObjectProvider<com.offerpilot.resume.application.ResumeDiagnosisForChat> diagnoses,
                           JobSearchForChat searches, ResumeOptimizationForChat optimizations, JobDescriptionForChat descriptions) {
         this(matches, diagnoses, searches);
         this.optimizations = optimizations;
         this.descriptions = descriptions;
+    }
+
+    @Autowired
+    public ExpertRegistry(ObjectProvider<JobMatchForChat> matches,
+                          ObjectProvider<com.offerpilot.resume.application.ResumeDiagnosisForChat> diagnoses,
+                          JobSearchForChat searches, ResumeOptimizationForChat optimizations, JobDescriptionForChat descriptions,
+                          BoardWriteTools boards) {
+        this(matches, diagnoses, searches, optimizations, descriptions);
+        this.boards = boards;
+    }
+
+    public boolean writingBoard(PlanStep step) {
+        return BoardWriteTools.recognizes(step);
+    }
+
+    public ApprovalService.Ticket requestBoard(String owner, String runId, PlanStep step) {
+        if (boards == null) throw new IllegalStateException("看板工具不可用");
+        return boards.request(owner, runId, step);
+    }
+
+    public Mono<ExpertResult> executeBoard(String owner, String runId, PlanStep step,
+            ApprovalService.Decision decision) {
+        return boards.execute(owner, runId, step, decision);
     }
 
     public boolean optimizing(PlanStep step, Map<String,Object> context) {
@@ -87,12 +112,13 @@ public class ExpertRegistry {
 
     /** 岗位步骤是否会调用已有匹配。标识不齐或匹配服务不存在时保持占位。 */
     public boolean matching(PlanStep step, Map<String, Object> context) {
-        return matches != null && step.agent() == ExpertType.JOB && !"search".equals(step.inputs().get("action"))
+        return matches != null && step.agent() == ExpertType.JOB && !writingBoard(step) && !"search".equals(step.inputs().get("action"))
                 && target(step, context) != null;
     }
 
     public Mono<ExpertResult> execute(String owner, Map<String, Object> context, String runId, PlanStep step,
                                       Map<String, String> upstreamOutputs) {
+        if (writingBoard(step)) return Mono.error(new IllegalStateException("看板写入必须先审批"));
         if (searching(step)) {
             return Mono.fromCallable(() -> {
                 var inputs = step.inputs();

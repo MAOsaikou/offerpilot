@@ -133,7 +133,7 @@ public class ChatService {
             sink.next(event);
         });
         return streamed.concatWith(end)
-                .takeUntilOther(reactor.core.publisher.Mono.delay(Duration.ofMinutes(10)).flatMap(ignored ->
+                .takeUntilOther(reactor.core.publisher.Mono.delay(Duration.ofMinutes(100)).flatMap(ignored ->
                         reactor.core.publisher.Mono.error(new TimeoutException())))
                 .onErrorResume(ex -> {
                     ErrorCode code = ex instanceof TimeoutException ? ErrorCode.MODEL_TIMEOUT : ErrorCode.MODEL_UNAVAILABLE;

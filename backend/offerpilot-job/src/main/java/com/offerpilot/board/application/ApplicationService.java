@@ -36,6 +36,12 @@ public class ApplicationService {
             IdGenerator.next("app"),owner,jobId);
         return jdbc.queryForObject("SELECT * FROM applications WHERE user_id=? AND job_id=?",this::view,owner,jobId);
     }
+    /** Agent creation commits initial stage and note atomically after approval. */
+    @Transactional
+    public Application create(String owner, String jobId, String status, String note) {
+        Application saved = create(owner, jobId);
+        return update(owner, saved.id(), status == null ? "TODO" : status, note);
+    }
     @Transactional
     public Application update(String owner, String id, String status, String note) {
         if ((status==null && note==null) || (status!=null && !Set.of("TODO","APPLIED","INTERVIEW","OFFER","CLOSED").contains(status))

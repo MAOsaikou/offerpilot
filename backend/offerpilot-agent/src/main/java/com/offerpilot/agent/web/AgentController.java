@@ -41,7 +41,7 @@ public class AgentController {
         response.setHeader("Cache-Control", "no-cache");
         response.setHeader("X-Accel-Buffering", "no");
         response.setCharacterEncoding("UTF-8");
-        SseEmitter emitter = new SseEmitter(10 * 60_000L);
+        SseEmitter emitter = new SseEmitter(100 * 60_000L);
         var subscription = Disposables.swap();
         var heartbeat = Disposables.swap();
         var resources = Disposables.composite(subscription, heartbeat);
