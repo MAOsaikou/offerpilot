@@ -58,6 +58,11 @@ public class IntentPlanner {
     public Mono<Decision> prepare(AgentMode mode, String content, List<Message> history, ModelTier tier,
                                   Consumer<Usage> onUsage, Map<String, Object> context) {
         Map<String, Object> safeContext = context == null ? Map.of() : context;
+        if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.RESUME)
+                && "applyPatches".equals(safeContext.get("resumeAction"))) {
+            return resolveActions(new Decision("single", ExpertType.RESUME, 1.0, false, null,
+                    single(content, ExpertType.RESUME, safeContext)), content, history, tier, onUsage, safeContext);
+        }
         if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.INTERVIEWER)
                 && (safeContext.containsKey("interviewAction") || safeContext.containsKey("interviewSessionId"))) {
             return resolveActions(new Decision("single", ExpertType.INTERVIEWER, 1.0, false, null,

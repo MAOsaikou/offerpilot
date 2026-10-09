@@ -1,6 +1,7 @@
 package com.offerpilot.agent.experts;
 
 import com.offerpilot.agent.application.ApprovalService;
+import com.offerpilot.agent.application.ResumePatchWriteTools;
 import com.offerpilot.agent.application.BoardWriteTools;
 import com.offerpilot.agent.application.CareerWriteTools;
 import com.offerpilot.agent.application.InterviewWriteTools;
@@ -41,6 +42,7 @@ public class ExpertRegistry {
     private InterviewWriteTools interviewWrites;
     private com.offerpilot.career.application.CoachPlanForChat coach;
     private com.offerpilot.agent.application.CoachWriteTools coachWrites;
+    private ResumePatchWriteTools patchWrites;
 
     public ExpertRegistry() {
         this.matches = null;
@@ -99,7 +101,6 @@ public class ExpertRegistry {
         this.interviewWrites = interviewWrites.getIfAvailable();
     }
 
-    @Autowired
     public ExpertRegistry(ObjectProvider<JobMatchForChat> matches,
                           ObjectProvider<com.offerpilot.resume.application.ResumeDiagnosisForChat> diagnoses,
                           JobSearchForChat searches, ResumeOptimizationForChat optimizations, JobDescriptionForChat descriptions,
@@ -112,6 +113,29 @@ public class ExpertRegistry {
         this.coach = coach.getIfAvailable();
         this.coachWrites = coachWrites.getIfAvailable();
     }
+
+    @Autowired
+    public ExpertRegistry(ObjectProvider<JobMatchForChat> matches,
+                          ObjectProvider<com.offerpilot.resume.application.ResumeDiagnosisForChat> diagnoses,
+                          JobSearchForChat searches, ResumeOptimizationForChat optimizations, JobDescriptionForChat descriptions,
+                          BoardWriteTools boards, ObjectProvider<CareerRecommendForChat> careers,
+                          ObjectProvider<CareerWriteTools> careerWrites, ObjectProvider<InterviewCoachForChat> interviews,
+                          ObjectProvider<InterviewWriteTools> interviewWrites,
+                          ObjectProvider<com.offerpilot.career.application.CoachPlanForChat> coach,
+                          ObjectProvider<com.offerpilot.agent.application.CoachWriteTools> coachWrites,
+                          ObjectProvider<ResumePatchWriteTools> patchWrites) {
+        this(matches, diagnoses, searches, optimizations, descriptions, boards, careers, careerWrites, interviews, interviewWrites, coach, coachWrites);
+        this.patchWrites = patchWrites.getIfAvailable();
+    }
+    public boolean writingPatches(PlanStep step) { return ResumePatchWriteTools.recognizes(step); }
+    public ApprovalService.Ticket requestPatch(String owner, String runId, PlanStep step) {
+        if (patchWrites == null) throw new IllegalStateException("简历补丁工具暂不可用");
+        return patchWrites.request(owner, runId, step);
+    }
+    public Mono<ExpertResult> executePatch(String owner, String runId, PlanStep step, ApprovalService.Decision decision) {
+        return patchWrites.execute(owner, runId, step, decision);
+    }
+
     public boolean writingCoach(PlanStep step) { return com.offerpilot.agent.application.CoachWriteTools.recognizes(step); }
     public ApprovalService.Ticket requestCoach(String owner, String runId, PlanStep step) {
         if (coachWrites == null) throw new IllegalStateException("成长任务工具暂不可用");
@@ -174,7 +198,7 @@ public class ExpertRegistry {
 
     public boolean diagnosing(PlanStep step, Map<String,Object> context) {
         return diagnoses != null && step.agent() == ExpertType.RESUME && context != null
-            && !"optimize".equals(step.inputs().get("action")) && !"read_optimization".equals(step.inputs().get("action")) && !"advice".equals(step.inputs().get("action"))
+            && !writingPatches(step) && !"optimize".equals(step.inputs().get("action")) && !"read_optimization".equals(step.inputs().get("action")) && !"advice".equals(step.inputs().get("action"))
             && text(context.get("resumeId")) != null && text(context.get("resumeVersionId")) != null;
     }
 
@@ -195,7 +219,7 @@ public class ExpertRegistry {
 
     public Mono<ExpertResult> execute(String owner, Map<String, Object> context, String runId, PlanStep step,
                                       Map<String, String> upstreamOutputs) {
-        if (writingBoard(step) || writingCareer(step) || writingInterview(step) || writingCoach(step)) return Mono.error(new IllegalStateException("写入必须先审批"));
+        if (writingBoard(step) || writingCareer(step) || writingInterview(step) || writingCoach(step) || writingPatches(step)) return Mono.error(new IllegalStateException("写入必须先审批"));
         if (step.agent() == ExpertType.COACH) {
             if (coach == null) return Mono.just(ExpertResult.text("成长教练服务暂不可用，请稍后重试。"));
             return Mono.fromCallable(() -> {

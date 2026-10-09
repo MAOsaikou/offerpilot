@@ -8,6 +8,7 @@ import type { CareerTargetSelection } from '@/shared/types/cards'
 const props = defineProps<{
   cardType: string
   payload: unknown
+  applyLabel?: string
   interactive?: boolean
   disabled?: boolean
   appliedVersionId?: string | null
@@ -30,7 +31,7 @@ const component = computed(() => resolveCardComponent(props.cardType))
       :payload="payload"
       v-bind="
         cardType === 'resume_diff'
-          ? { interactive, disabled, appliedVersionId }
+          ? { interactive, disabled, appliedVersionId, applyLabel }
           : cardType === 'career_recommendation' || cardType === 'roadmap'
             ? { interactive, disabled }
             : {}
