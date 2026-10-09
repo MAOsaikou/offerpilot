@@ -1,3 +1,4 @@
+import type { ModelTier } from './model-tier'
 /**
  * SSE 事件契约，与 docs/05-接口文档.md §17 一一对应。
  * 前端消费时对 type 做 switch，default 分支用 assertNever 保证新增事件编译期可见。
@@ -118,7 +119,7 @@ export interface ChatRequest {
   attachments?: Array<{ fileId: string; kind: 'IMAGE' | 'PDF' | 'DOCX' | 'AUDIO' }>
   mode?: AgentMode
   options?: {
-    modelTier?: 'FLASH' | 'CHEAP' | 'PRO'
+    modelTier?: ModelTier
     enableReasoning?: boolean
     context?: Record<string, unknown>
   }

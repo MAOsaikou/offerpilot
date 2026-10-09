@@ -16,14 +16,19 @@ import org.springframework.ai.deepseek.DeepSeekChatModel;
 import org.springframework.ai.deepseek.DeepSeekChatOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.retry.support.RetryTemplate;
+import io.micrometer.observation.ObservationRegistry;
+import org.springframework.ai.retry.RetryUtils;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -35,29 +40,48 @@ public class ModelGateway {
     private static final Logger log = LoggerFactory.getLogger(ModelGateway.class);
 
     private final OfferPilotProperties properties;
-    private final ObjectProvider<DeepSeekChatModel> deepseek;
-    private final ObjectProvider<OpenAiChatModel> openai;
+    private final Map<ModelTier, ChatModel> models = new ConcurrentHashMap<>();
+    private final Map<ModelTier, OpenAiChatModel> visionModels = new ConcurrentHashMap<>();
     private final Environment environment;
     private final LlmQuotaLimiter quotas;
+    private final RetryTemplate retryTemplate;
+    private final ObservationRegistry observations;
 
     /** Compatibility constructor for isolated tests/live evaluations without business identity or Redis. */
-    public ModelGateway(OfferPilotProperties properties, ObjectProvider<DeepSeekChatModel> deepseek,
-                        ObjectProvider<OpenAiChatModel> openai, Environment environment) {
-        this(properties, deepseek, openai, environment, null);
+    public ModelGateway(OfferPilotProperties properties, Environment environment) {
+        this(properties, environment, null);
     }
 
     @Autowired
-    public ModelGateway(OfferPilotProperties properties, ObjectProvider<DeepSeekChatModel> deepseek,
-                        ObjectProvider<OpenAiChatModel> openai, Environment environment, LlmQuotaLimiter quotas) {
+    public ModelGateway(OfferPilotProperties properties, Environment environment, LlmQuotaLimiter quotas,
+                        ObjectProvider<RetryTemplate> retries, ObjectProvider<ObservationRegistry> observations) {
+        this(properties, environment, quotas, retries.getIfAvailable(() -> RetryUtils.DEFAULT_RETRY_TEMPLATE),
+                observations.getIfAvailable(() -> ObservationRegistry.NOOP));
+    }
+
+    public ModelGateway(OfferPilotProperties properties, Environment environment, LlmQuotaLimiter quotas) {
+        this(properties, environment, quotas, RetryUtils.DEFAULT_RETRY_TEMPLATE, ObservationRegistry.NOOP);
+    }
+
+    public ModelGateway(OfferPilotProperties properties, Environment environment, LlmQuotaLimiter quotas, RetryTemplate retries) {
+        this(properties, environment, quotas, retries, ObservationRegistry.NOOP);
+    }
+
+    private ModelGateway(OfferPilotProperties properties, Environment environment, LlmQuotaLimiter quotas,
+                         RetryTemplate retryTemplate, ObservationRegistry observations) {
         this.properties = properties;
-        this.deepseek = deepseek;
-        this.openai = openai;
         this.environment = environment;
         this.quotas = quotas;
+        this.retryTemplate = retryTemplate;
+        this.observations = observations;
+        for (String removed : List.of("LLM_MODEL_CHEAP", "LLM_PROVIDER_CHEAP", "LLM_VISION_CHEAP")) {
+            if (environment.containsProperty(removed)) log.warn("{} is removed and ignored; configure FLASH instead", removed);
+        }
     }
 
     public ModelTier defaultTier() {
-        return ModelTier.from(properties.llm().defaultTier());
+        ModelTier tier = ModelTier.from(properties.llm().defaultTier());
+        return tier == ModelTier.VISION_ALT ? ModelTier.FLASH : tier;
     }
 
     public ChatModel chatModel(ModelTier tier) {
@@ -80,14 +104,18 @@ public class ModelGateway {
     }
 
     private ChatModel providerModel(ModelTier tier) {
-        boolean useDeepseek = "deepseek".equalsIgnoreCase(configuration(tier).provider());
         requireAvailable(tier, false);
-        ChatModel model = useDeepseek ? deepseek.getIfAvailable() : compatibleModel(tier);
-        if (model == null) model = org.springframework.ai.deepseek.DeepSeekChatModel.builder()
-                .deepSeekApi(org.springframework.ai.deepseek.api.DeepSeekApi.builder()
-                        .baseUrl(baseUrl(tier)).apiKey(apiKey(tier)).build()).build();
-        log.debug("Resolved ChatModel for tier={} model={}", tier, modelName(tier));
-        return model;
+        return models.computeIfAbsent(tier, selected -> {
+            if (!"deepseek".equalsIgnoreCase(configuration(selected).provider())) return compatibleModel(selected);
+            var support = new DeepSeekRequestSupport(configuration(selected).thinking());
+            return DeepSeekChatModel.builder().retryTemplate(retryTemplate).observationRegistry(observations)
+                    .deepSeekApi(org.springframework.ai.deepseek.api.DeepSeekApi.builder()
+                            .baseUrl(baseUrl(selected)).apiKey(apiKey(selected))
+                            .completionsPath(completionsPath(selected))
+                            .restClientBuilder(support.restClient()).webClientBuilder(support.webClient()).build())
+                    .defaultOptions(DeepSeekChatOptions.builder().model(modelName(selected)).temperature(0.3)
+                            .maxTokens(configuration(selected).maxTokens()).build()).build();
+        });
     }
 
     public Flux<ChatResponse> stream(ModelTier tier, List<Message> messages) {
@@ -102,11 +130,14 @@ public class ModelGateway {
             requireAvailable(tier, hasImages);
             if (hasImages) {
                 return compatibleModel(tier).stream(new Prompt(messages,
-                        OpenAiChatOptions.builder().model(modelName(tier)).temperature(temperature).streamUsage(true).build()));
+                        OpenAiChatOptions.builder().model(modelName(tier)).temperature(temperature)
+                                .maxTokens(configuration(tier).maxTokens()).streamUsage(true).build()));
             }
             ChatOptions options = "deepseek".equalsIgnoreCase(configuration(tier).provider())
-                    ? DeepSeekChatOptions.builder().model(modelName(tier)).temperature(temperature).build()
-                    : OpenAiChatOptions.builder().model(modelName(tier)).temperature(temperature).streamUsage(true).build();
+                    ? DeepSeekChatOptions.builder().model(modelName(tier)).temperature(temperature)
+                            .maxTokens(configuration(tier).maxTokens()).build()
+                    : OpenAiChatOptions.builder().model(modelName(tier)).temperature(temperature)
+                            .maxTokens(configuration(tier).maxTokens()).streamUsage(true).build();
             return providerModel(tier).stream(new Prompt(messages, options));
         });
     }
@@ -156,7 +187,7 @@ public class ModelGateway {
     public List<ModelOption> catalog() {
         return java.util.Arrays.stream(ModelTier.values()).filter(tier -> properties.llm().tiers().containsKey(tier.name()))
                 .map(tier -> new ModelOption(tier.name(), switch (tier) {
-                    case FLASH -> "快捷模型"; case CHEAP -> "常用模型"; case PRO -> "高质量模型"; case VISION_ALT -> "视觉备选";
+                    case FLASH -> "快速"; case PRO -> "深度"; case VISION_ALT -> "视觉备选";
                 }, configuration(tier).provider(), modelName(tier), supportsVision(tier), configured(tier))).toList();
     }
 
@@ -186,11 +217,22 @@ public class ModelGateway {
     private String baseUrl(ModelTier tier) { return environment.getProperty(prefix(tier) + ".base-url", ""); }
 
     private OpenAiChatModel compatibleModel(ModelTier tier) {
-        return OpenAiChatModel.builder().openAiApi(org.springframework.ai.openai.api.OpenAiApi.builder()
-                .baseUrl(baseUrl(tier)).apiKey(apiKey(tier))
-                .completionsPath(environment.getProperty(prefix(tier) + ".completions-path",
-                        "deepseek".equalsIgnoreCase(configuration(tier).provider()) ? "/chat/completions" : "/v1/chat/completions"))
-                .build()).build();
+        return visionModels.computeIfAbsent(tier, selected -> {
+            var api = org.springframework.ai.openai.api.OpenAiApi.builder()
+                    .baseUrl(baseUrl(selected)).apiKey(apiKey(selected)).completionsPath(completionsPath(selected));
+            if ("deepseek".equalsIgnoreCase(configuration(selected).provider())) {
+                var support = new DeepSeekRequestSupport(configuration(selected).thinking());
+                api.restClientBuilder(support.restClient()).webClientBuilder(support.webClient());
+            }
+            return OpenAiChatModel.builder().openAiApi(api.build()).retryTemplate(retryTemplate).observationRegistry(observations)
+                    .defaultOptions(OpenAiChatOptions.builder().model(modelName(selected)).temperature(0.3)
+                            .maxTokens(configuration(selected).maxTokens()).streamUsage(true).build()).build();
+        });
+    }
+
+    private String completionsPath(ModelTier tier) {
+        return environment.getProperty(prefix(tier) + ".completions-path",
+                "deepseek".equalsIgnoreCase(configuration(tier).provider()) ? "/chat/completions" : "/v1/chat/completions");
     }
 
     public String modelName(ModelTier tier) {
@@ -199,9 +241,8 @@ public class ModelGateway {
             return configured.model();
         }
         return switch (tier) {
-            case FLASH -> "qwen3.8-flash";
-            case CHEAP -> "deepseek-flash";
-            case PRO -> "qwen3.8-max";
+            case FLASH -> "deepseek-flash";
+            case PRO -> "deepseek-v4-pro";
             case VISION_ALT -> "deepseek-flash";
         };
     }

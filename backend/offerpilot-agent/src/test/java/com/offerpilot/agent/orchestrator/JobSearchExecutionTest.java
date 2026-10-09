@@ -43,7 +43,7 @@ class JobSearchExecutionTest {
     }
 
     List<AgentEvent> run(AgentMode mode, Map<String,Object> selected) throws Exception {
-        return orchestrator().run(mode, "换成北京的 Java 校招", List.of(new UserMessage("找上海Java校招")), ModelTier.CHEAP,
+        return orchestrator().run(mode, "换成北京的 Java 校招", List.of(new UserMessage("找上海Java校招")), ModelTier.FLASH,
                 "run", new AtomicInteger(), reply, ignored -> {}, "owner", selected).collectList().block(Duration.ofSeconds(5));
     }
 
@@ -105,7 +105,7 @@ class JobSearchExecutionTest {
     @Test void cancellingParameterExtractionDoesNotCallTools() throws Exception {
         var cancelled = new java.util.concurrent.atomic.AtomicBoolean();
         when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.<ChatResponse>never().doOnCancel(() -> cancelled.set(true)));
-        var subscription = orchestrator().run(AgentMode.JOB, "找Java", List.of(), ModelTier.CHEAP, "run", new AtomicInteger(),
+        var subscription = orchestrator().run(AgentMode.JOB, "找Java", List.of(), ModelTier.FLASH, "run", new AtomicInteger(),
                 reply, ignored -> {}, "owner", context).subscribe();
         subscription.dispose();
         assertThat(cancelled).isTrue();

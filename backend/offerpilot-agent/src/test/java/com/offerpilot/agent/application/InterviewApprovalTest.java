@@ -56,7 +56,7 @@ class InterviewApprovalTest {
         var finished = new CompletableFuture<Void>();
         var events = new CopyOnWriteArrayList<AgentEvent>();
         var reply = new ArrayList<Message>();
-        new Orchestrator(planner, registry).run(AgentMode.AUTO, "我负责接口", List.of(), ModelTier.CHEAP, "run",
+        new Orchestrator(planner, registry).run(AgentMode.AUTO, "我负责接口", List.of(), ModelTier.FLASH, "run",
                 new AtomicInteger(), reply, u -> {}, "alice", Map.of("interviewAction", action, "interviewSessionId", "iv_1", "role", "Java工程师", "owner", "bob"))
                 .subscribe(e -> { events.add(e); if (e instanceof AgentEvent.ApprovalRequired a) required.complete(a); }, finished::completeExceptionally, () -> finished.complete(null));
         var approval = required.get(3, TimeUnit.SECONDS);
@@ -87,7 +87,7 @@ class InterviewApprovalTest {
         when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage("{\"kind\":\"single\",\"expert\":\"INTERVIEWER\",\"confidence\":1}"))))));
         var registry = registry();
         var planner = new IntentPlanner(gateway, new ObjectMapper(), registry, new ByteArrayResource("{experts}".getBytes()));
-        var events = new Orchestrator(planner, registry).run(AgentMode.AUTO, "评价刚才的面试", List.of(), ModelTier.CHEAP,
+        var events = new Orchestrator(planner, registry).run(AgentMode.AUTO, "评价刚才的面试", List.of(), ModelTier.FLASH,
                 "run", new AtomicInteger(), new ArrayList<>(), u -> {}, "alice", Map.of()).collectList().block(Duration.ofSeconds(3));
         assertThat(events).noneMatch(e -> e instanceof AgentEvent.ApprovalRequired);
         assertThat(events).anyMatch(e -> e instanceof AgentEvent.UiCard c && c.cardType().equals("interview_report"));

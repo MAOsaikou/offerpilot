@@ -26,8 +26,10 @@ docker compose version
 ```dotenv
 DEEPSEEK_API_KEY=你的真实Key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-LLM_MODEL_CHEAP=deepseek-flash
-DEEPSEEK_MODEL_PRO=deepseek-v4-pro
+LLM_MODEL_FLASH=deepseek-flash
+LLM_MODEL_PRO=deepseek-v4-pro
+LLM_THINKING_FLASH=disabled
+LLM_THINKING_PRO=enabled
 POSTGRES_HOST=localhost
 POSTGRES_DB=offerpilot
 POSTGRES_USER=offerpilot
@@ -40,7 +42,7 @@ Key 来自 [DeepSeek 控制台](https://platform.deepseek.com/api_keys)。文件
 
 默认 `dev` profile 从仓库根目录或 `backend` 工作目录读取此文件。Key 只在后端使用，不要放进前端 `.env` / `VITE_*`。修改后重启 Java 进程。根目录 `.env` 是完整 Docker 部署的配置，和本机 Java 使用的 `backend/.env.local` 区分。
 
-开发环境 FLASH 和 CHEAP 都映射到 DeepSeek Flash，PRO 映射到 DeepSeek Pro；文字聊天和文本简历解析可只配置 DeepSeek。图文简历默认共用 DEEPSEEK_API_KEY，模型名为 deepseek-flash；VISION_ALT 保留为视觉路由档位，默认也使用 DeepSeek。要改用百炼，显式设置 LLM_VISION_PROVIDER=bailian、LLM_MODEL_VISION_ALT 和 BAILIAN_API_KEY / BAILIAN_BASE_URL。旧环境中曾填写的视觉模型名需同步调整，不能把百炼模型名交给 DeepSeek。模式下拉框目前不代表已接入不同专家。
+开发环境 FLASH「快速」映射到 DeepSeek Flash，PRO「深度」映射到 DeepSeek Pro；文字聊天和文本简历解析可只配置 DeepSeek。图文简历默认共用 DEEPSEEK_API_KEY，模型名为 deepseek-flash；VISION_ALT 保留为视觉路由档位，默认也使用 DeepSeek。要改用百炼，显式设置 LLM_VISION_PROVIDER=bailian、LLM_MODEL_VISION_ALT 和 BAILIAN_API_KEY / BAILIAN_BASE_URL。旧环境中曾填写的视觉模型名需同步调整，不能把百炼模型名交给 DeepSeek。模式下拉框目前不代表已接入不同专家。
 
 简历上传还需要对象存储：`deploy/docker-compose.yml` 的 `minio` 服务运行 Adobe S3Mock，backend/.env.local 中的 MINIO_ENDPOINT / MINIO_ROOT_USER / MINIO_ROOT_PASSWORD / MINIO_BUCKET 必须与容器一致（见 .env.example）。S3Mock 不校验访问密钥，后端仍用这对密钥签名。上传支持 PDF、DOCX、PNG、JPG、UTF-8 TXT/Markdown，单文件≤10MB、PDF≤10页；DOCX 支持正文、页眉、页脚和 PNG/JPEG 嵌入图片（最多20张）；其他嵌入媒体需导出 PDF。PDF 每页同时提供文本与图像以避免混合内容遗漏。原有前端本地草稿仍保留，不会自动上传。
 
@@ -90,7 +92,7 @@ $token = $guest.data.accessToken
 中文参数也需按 UTF-8 写入文件，所以这里用「写文件 + `--data-binary`」：
 
 ```powershell
-$body = '{"content":"我是软件工程大三学生，帮我安排今天的求职准备","options":{"modelTier":"CHEAP"}}'
+$body = '{"content":"我是软件工程大三学生，帮我安排今天的求职准备","options":{"modelTier":"FLASH"}}'
 $file = Join-Path $env:TEMP 'offerpilot-chat.json'
 [IO.File]::WriteAllText($file, $body, (New-Object System.Text.UTF8Encoding($false)))
 curl.exe -N http://localhost:8081/api/v1/agent/chat -H "Content-Type: application/json" -H "Authorization: Bearer $token" --data-binary "@$file"
@@ -100,7 +102,7 @@ curl.exe -N http://localhost:8081/api/v1/agent/chat -H "Content-Type: applicatio
 
 ```bat
 set TOKEN=上一步返回的 accessToken
-curl.exe -N http://localhost:8081/api/v1/agent/chat -H "Content-Type: application/json" -H "Authorization: Bearer %TOKEN%" --data-raw "{\"content\":\"Hello OfferPilot\",\"options\":{\"modelTier\":\"CHEAP\"}}"
+curl.exe -N http://localhost:8081/api/v1/agent/chat -H "Content-Type: application/json" -H "Authorization: Bearer %TOKEN%" --data-raw "{\"content\":\"Hello OfferPilot\",\"options\":{\"modelTier\":\"FLASH\"}}"
 ```
 
 成功流：`run.started → text.delta* → usage（若上游提供）→ run.completed`。失败流以 `error(recoverable=false)` 结束，不伪造成功或回复。未填 Key 返回 `40009`；超时为 `40001`；其他模型错误为 `40010`。用量来自模型，费用 `0` 暂表示未估算，不代表免费。
@@ -128,8 +130,10 @@ curl.exe -N http://localhost:8081/api/v1/agent/chat -H "Content-Type: applicatio
 
 打开「设置 → 模型选择」（/settings/models），选择文字模型和图片/PDF模型；支持图片的模型可以勾选共用。点击保存后立即对当前访客后续上传或失败重试生效，无需重启；不影响聊天、其他访客、已排队或正在解析的任务。简历列表也有快捷入口。
 
-服务器配置四个可选择档位：FLASH、CHEAP、PRO、VISION_ALT。每个档位都可独立设置供应商、型号和图片能力，页面显示实际供应商/型号。未配置 Key 或地址的选项不可选；“已配置”只代表配置齐全，不代表联网或额度验证通过。新增或更改供应商配置后重启后端并刷新页面。
+聊天和文字模型只有 FLASH「快速」、PRO「深度」；VISION_ALT 仅用于内部视觉路由。每个档位都可独立设置供应商、型号和图片能力，页面显示实际供应商/型号。未配置 Key 或地址的选项不可选；“已配置”只代表配置齐全，不代表联网或额度验证通过。新增或更改供应商配置后重启后端并刷新页面。
 
-例如配置自定义 OpenAI 兼容服务：在 backend/.env.local 设置 LLM_PROVIDER_FLASH=custom、LLM_MODEL_FLASH=实际模型名、LLM_VISION_FLASH=true/false，并填写 CUSTOM_LLM_BASE_URL 与 CUSTOM_LLM_API_KEY；请求路径默认 /v1/chat/completions，可用 CUSTOM_LLM_COMPLETIONS_PATH 修改。不要将 /v1 同时填进 Base URL 和请求路径。百炼使用 provider=bailian 及 BAILIAN_API_KEY / BAILIAN_BASE_URL；DeepSeek 使用 provider=deepseek 及 DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL。PRO 在 dev 中的模型名使用 DEEPSEEK_MODEL_PRO 兼容旧配置，也支持 LLM_MODEL_PRO 覆盖。Key 只留在后端环境，网页不会读写密钥或任意接口地址。
+例如配置自定义 OpenAI 兼容服务：在 backend/.env.local 设置 LLM_PROVIDER_FLASH=custom、LLM_MODEL_FLASH=实际模型名、LLM_VISION_FLASH=true/false，并填写 CUSTOM_LLM_BASE_URL 与 CUSTOM_LLM_API_KEY；请求路径默认 /v1/chat/completions，可用 CUSTOM_LLM_COMPLETIONS_PATH 修改。不要将 /v1 同时填进 Base URL 和请求路径。百炼使用 provider=bailian 及 BAILIAN_API_KEY / BAILIAN_BASE_URL；DeepSeek 使用 provider=deepseek 及 DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL。PRO 模型名使用 LLM_MODEL_PRO；旧 DEEPSEEK_MODEL_PRO 请迁移到此变量。Key 只留在后端环境，网页不会读写密钥或任意接口地址。
 
 Flyway V7 新增当前访客的模型偏好及任务路由快照，V1–V6 不改写。
+
+旧 CHEAP / ECONOMY / 经济 / BALANCED 档位兼容为 FLASH；未知聊天档位使用服务器默认档位。V18 清理旧偏好和任务列，历史报告正文及模型名保留。深度默认思考开启，输出预算 32768；工具调用轮次关闭思考，以兼容 Spring AI 1.0 的工具循环。`reasoning_content` 不进入聊天正文或结构化 JSON。Embedding 仍接百炼，无 Key 时保留全文检索与规则回退。

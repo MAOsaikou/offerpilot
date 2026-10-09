@@ -39,24 +39,24 @@ class ResumeDiagnosisTest {
     }
     @Test void usesSelectedModelRedactsContactsAndLimitsRepairToOneAttempt() throws Exception {
         var gateway=mock(ModelGateway.class);
-        when(gateway.modelName(ModelTier.CHEAP)).thenReturn("fixture-model");
-        when(gateway.stream(eq(ModelTier.CHEAP),anyList(),eq(0.0))).thenReturn(response("bad"),response(REPORT));
+        when(gateway.modelName(ModelTier.FLASH)).thenReturn("fixture-model");
+        when(gateway.stream(eq(ModelTier.FLASH),anyList(),eq(0.0))).thenReturn(response("bad"),response(REPORT));
         var diagnoser=new ResumeDiagnoser(gateway,json,new ByteArrayResource("diagnose".getBytes(StandardCharsets.UTF_8)));
-        var report=diagnoser.diagnose(source(),ModelTier.CHEAP).block(Duration.ofSeconds(3));
+        var report=diagnoser.diagnose(source(),ModelTier.FLASH).block(Duration.ofSeconds(3));
         assertThat(report.path("schemaVersion").asInt()).isEqualTo(2);
         assertThat(report.has("overall")).isFalse();
         assertThat(report.path("findings").get(0).path("findingId").asText()).isEqualTo("f1");
-        verify(gateway,times(2)).stream(eq(ModelTier.CHEAP),argThat(messages -> !messages.toString().contains("13800138000") && !messages.toString().contains("private@example.test")),eq(0.0));
+        verify(gateway,times(2)).stream(eq(ModelTier.FLASH),argThat(messages -> !messages.toString().contains("13800138000") && !messages.toString().contains("private@example.test")),eq(0.0));
         reset(gateway);
         when(gateway.stream(any(),anyList(),eq(0.0))).thenReturn(response("bad"));
-        assertThatThrownBy(() -> diagnoser.diagnose(source(),ModelTier.CHEAP).block(Duration.ofSeconds(3))).hasMessageContaining("校验");
+        assertThatThrownBy(() -> diagnoser.diagnose(source(),ModelTier.FLASH).block(Duration.ofSeconds(3))).hasMessageContaining("校验");
         verify(gateway,times(2)).stream(any(),anyList(),eq(0.0));
     }
     @Test void providerErrorsAreSafeAndNotRetriedAsSchemaErrors() throws Exception {
         var gateway=mock(ModelGateway.class);
         when(gateway.stream(any(),anyList(),eq(0.0))).thenReturn(Flux.error(new RuntimeException("private-key-and-provider-body")));
         var diagnoser=new ResumeDiagnoser(gateway,json,new ByteArrayResource("diagnose".getBytes()));
-        assertThatThrownBy(() -> diagnoser.diagnose(source(),ModelTier.CHEAP).block(Duration.ofSeconds(3))).hasMessageNotContaining("private-key").hasMessageContaining("模型调用失败");
+        assertThatThrownBy(() -> diagnoser.diagnose(source(),ModelTier.FLASH).block(Duration.ofSeconds(3))).hasMessageNotContaining("private-key").hasMessageContaining("模型调用失败");
         verify(gateway).stream(any(),anyList(),eq(0.0));
     }
     private Flux<ChatResponse> response(String text) { return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(text))))); }

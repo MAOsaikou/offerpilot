@@ -43,7 +43,7 @@ class CoachApprovalTest {
     void orchestratorRequiresApprovalPinsSelectionsAndUsesTrustedOwner(String decision) throws Exception {
         var events = new CopyOnWriteArrayList<AgentEvent>(); var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
         var approved = new CompletableFuture<AgentEvent.ApprovalRequired>();
-        var completed = runner(registry()).run(AgentMode.AUTO,"同步成长任务",List.of(),ModelTier.CHEAP,"run",new AtomicInteger(),reply,u->{},"alice",
+        var completed = runner(registry()).run(AgentMode.AUTO,"同步成长任务",List.of(),ModelTier.FLASH,"run",new AtomicInteger(),reply,u->{},"alice",
                 Map.of("coachAction","adoptGrowthPlan","taskTitles",titles,"owner","attacker"))
                 .doOnNext(e->{ events.add(e); if(e instanceof AgentEvent.ApprovalRequired a) approved.complete(a); }).then().toFuture();
         var ticket = approved.get(3,TimeUnit.SECONDS);
@@ -82,7 +82,7 @@ class CoachApprovalTest {
         var roadmap = new CoachPlanForChat.RoadmapPayload(List.of(),List.of());
         when(coach.plan("alice","rs","rv",ExpertRegistry.requestId("run","s1"))).thenReturn(new CoachPlanForChat.Result("确定性建议未写入",gap,roadmap));
         var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
-        var events = runner(registry()).run(AgentMode.AUTO,phrase,List.of(),ModelTier.CHEAP,"run",new AtomicInteger(),reply,u->{},"alice",
+        var events = runner(registry()).run(AgentMode.AUTO,phrase,List.of(),ModelTier.FLASH,"run",new AtomicInteger(),reply,u->{},"alice",
                 Map.of("resumeId","rs","resumeVersionId","rv")).collectList().block(Duration.ofSeconds(3));
         assertThat(events.stream().filter(e->e instanceof AgentEvent.UiCard).map(e->((AgentEvent.UiCard)e).cardType()))
                 .containsExactly("skill_gap","roadmap");
@@ -96,7 +96,7 @@ class CoachApprovalTest {
         assertThat(new ExpertRegistry().execute("alice",Map.of(),"run",step,Map.of()).block().summary()).contains("暂不可用").doesNotContain("占位");
         when(coach.plan(anyString(),any(),any(),anyString())).thenReturn(new CoachPlanForChat.Result("请先设为目标",null,null));
         var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
-        var events = runner(registry()).run(AgentMode.COACH,"学习计划",List.of(),ModelTier.CHEAP,"run",new AtomicInteger(),reply,u->{},"alice",Map.of())
+        var events = runner(registry()).run(AgentMode.COACH,"学习计划",List.of(),ModelTier.FLASH,"run",new AtomicInteger(),reply,u->{},"alice",Map.of())
                 .collectList().block(Duration.ofSeconds(3));
         assertThat(events).noneMatch(e->e instanceof AgentEvent.UiCard);
         assertThat(reply.get(1).getText()).contains("设为目标");

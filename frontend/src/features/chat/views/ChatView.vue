@@ -8,6 +8,7 @@ import ChatWelcome from '../components/ChatWelcome.vue'
 import ChatToolbar from '../components/ChatToolbar.vue'
 import { useConversationChat } from '../composables/useConversationChat'
 import { optimizationContext } from '../optimizationContext'
+import { normalizeModelTier, type ModelTier } from '@/shared/types/model-tier'
 import type { AgentMode } from '@/shared/types/agent-events'
 import type { Conversation } from '@/shared/types/conversation'
 import type { PatchDecision } from '@/shared/types/optimization'
@@ -51,7 +52,14 @@ watch(
   },
   { immediate: true },
 )
-const tier = ref<'FLASH' | 'CHEAP' | 'PRO'>('FLASH')
+const tier = ref<ModelTier>('FLASH')
+watch(
+  () => route.query.modelTier ?? route.query.tier,
+  (value) => {
+    tier.value = normalizeModelTier(value)
+  },
+  { immediate: true },
+)
 const seed = ref('')
 const lastAttempt = ref('')
 const panelOpen = ref(false)
@@ -369,9 +377,8 @@ async function remove(id: string) {
                 <option v-for="m in modes" :key="m.value" :value="m.value">{{ m.label }}</option>
               </select>
               <select v-model="tier" class="tool-select" :disabled="busy" aria-label="模型档位">
-                <option value="FLASH">快速</option>
-                <option value="CHEAP">经济</option>
-                <option value="PRO">深入</option>
+                <option value="FLASH" title="DeepSeek Flash 响应快">快速</option>
+                <option value="PRO" title="DeepSeek Pro 推理更强">深度</option>
               </select>
             </template>
           </Composer>

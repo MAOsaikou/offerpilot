@@ -68,7 +68,7 @@ class ResumePatchApprovalTest {
         var required = new CompletableFuture<AgentEvent.ApprovalRequired>();
         var context = new LinkedHashMap<String, Object>(args());
         context.put("resumeAction", "applyPatches"); context.put("owner", "attacker");
-        var completed = new Orchestrator(planner(registry), registry).run(AgentMode.AUTO, "请采纳所选建议", List.of(), ModelTier.CHEAP,
+        var completed = new Orchestrator(planner(registry), registry).run(AgentMode.AUTO, "请采纳所选建议", List.of(), ModelTier.FLASH,
                 "run", new AtomicInteger(), reply, usage -> {}, "alice", context)
                 .doOnNext(event -> { events.add(event); if (event instanceof AgentEvent.ApprovalRequired a) required.complete(a); })
                 .then().toFuture();
@@ -131,7 +131,7 @@ class ResumePatchApprovalTest {
     @ParameterizedTest @ValueSource(strings = {"AUTO", "RESUME"})
     void missingContextClarifiesWithoutModelInventingSelections(String mode) throws Exception {
         var context = new LinkedHashMap<>(args()); context.remove("batchId"); context.put("resumeAction", "applyPatches");
-        var decision = planner(registry()).prepare(AgentMode.valueOf(mode), "请采纳 pb_model p_model", List.of(), ModelTier.CHEAP,
+        var decision = planner(registry()).prepare(AgentMode.valueOf(mode), "请采纳 pb_model p_model", List.of(), ModelTier.FLASH,
                 usage -> {}, context).block();
         assertThat(decision.needsClarification()).isTrue();
         assertThat(decision.plan()).isNull();

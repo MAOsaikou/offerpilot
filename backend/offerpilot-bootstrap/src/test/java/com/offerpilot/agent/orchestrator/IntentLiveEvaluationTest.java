@@ -10,14 +10,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.deepseek.DeepSeekChatModel;
-import org.springframework.ai.deepseek.api.DeepSeekApi;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.mock.env.MockEnvironment;
-import org.springframework.retry.support.RetryTemplate;
 import reactor.core.publisher.Flux;
+import org.springframework.retry.support.RetryTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -38,15 +34,11 @@ class IntentLiveEvaluationTest {
     void measuresRealKindAndExpertAccuracyAcrossAllSixtyMessages() throws Exception {
         String key = System.getenv("DEEPSEEK_API_KEY");
         String base = System.getenv().getOrDefault("DEEPSEEK_BASE_URL", "https://api.deepseek.com");
-        String model = System.getenv().getOrDefault("LLM_MODEL_CHEAP", "deepseek-flash");
+        String model = System.getenv().getOrDefault("LLM_MODEL_FLASH", "deepseek-flash");
         var tier = new OfferPilotProperties.Llm.Tier("deepseek", model, Duration.ofSeconds(60), false);
         var properties = new OfferPilotProperties(null, null, null, null, null,
-                new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier), Map.of()), null, null);
-        var beans = new DefaultListableBeanFactory();
-        beans.registerSingleton("deepseek", DeepSeekChatModel.builder()
-                .deepSeekApi(DeepSeekApi.builder().baseUrl(base).apiKey(key).build())
-                .retryTemplate(RetryTemplate.builder().maxAttempts(1).fixedBackoff(1).build()).build());
-        var gateway = new RecordingGateway(properties, beans,
+                new OfferPilotProperties.Llm("FLASH", Map.of("FLASH", tier), Map.of()), null, null);
+        var gateway = new RecordingGateway(properties,
                 new MockEnvironment().withProperty("spring.ai.deepseek.api-key", key).withProperty("spring.ai.deepseek.base-url", base));
         var planner = IntentBenchmark.planner(gateway);
         var dataset = IntentBenchmark.load();
@@ -55,7 +47,7 @@ class IntentLiveEvaluationTest {
         Files.createDirectories(directory);
         Path output = directory.resolve("results.json");
         ObjectNode result = IntentBenchmark.JSON.createObjectNode();
-        result.put("startedAt", Instant.now().toString()).put("model", model).put("tier", "CHEAP").put("temperature", 0.1)
+        result.put("startedAt", Instant.now().toString()).put("model", model).put("tier", "FLASH").put("temperature", 0.1)
                 .put("datasetVersion", dataset.path("version").asText()).put("datasetSha256", sha256(dataset.toString()))
                 .put("sourceRevision", System.getProperty("offerpilot.eval.revision", "UNRECORDED"))
                 .put("scope", "Live production IntentPlanner and action parsers; 60 fictional messages; no expert execution or database; kind AND expert accuracy; failures count as incorrect");
@@ -100,8 +92,8 @@ class IntentLiveEvaluationTest {
 
     private static final class RecordingGateway extends ModelGateway {
         private ArrayNode attempts;
-        RecordingGateway(OfferPilotProperties properties, DefaultListableBeanFactory beans, MockEnvironment environment) {
-            super(properties, beans.getBeanProvider(DeepSeekChatModel.class), beans.getBeanProvider(OpenAiChatModel.class), environment);
+        RecordingGateway(OfferPilotProperties properties, MockEnvironment environment) {
+            super(properties, environment, null, RetryTemplate.builder().maxAttempts(1).fixedBackoff(1).build());
         }
         @Override public Flux<ChatResponse> stream(ModelTier tier, List<Message> messages, double temperature) {
             var trace = attempts.addObject().put("completed", false);

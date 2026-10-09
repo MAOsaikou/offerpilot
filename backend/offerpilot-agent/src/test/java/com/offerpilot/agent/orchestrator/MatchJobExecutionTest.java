@@ -42,7 +42,7 @@ class MatchJobExecutionTest {
         Orchestrator orchestrator = new Orchestrator(new IntentPlanner(gateway, json, experts, new ByteArrayResource("{experts}".getBytes())), experts);
         Map<String, Object> context = Map.of("jobId", "job_1", "resumeId", "res_1", "resumeVersionId", "ver_1");
 
-        var matched = orchestrator.run(AgentMode.JOB, "对照这份简历", List.of(), ModelTier.CHEAP, "run_1", new AtomicInteger(),
+        var matched = orchestrator.run(AgentMode.JOB, "对照这份简历", List.of(), ModelTier.FLASH, "run_1", new AtomicInteger(),
                 reply, usage -> {}, "owner", context).collectList().block(Duration.ofSeconds(5));
 
         assertThat(calls).containsExactly("job_1");
@@ -59,7 +59,7 @@ class MatchJobExecutionTest {
         assertThat(reply.get(0).getText()).contains("结果已作为卡片展示").doesNotContain("未执行真实业务操作");
 
         reply.clear();
-        var placeholder = orchestrator.run(AgentMode.JOB, "没有标识", List.of(), ModelTier.CHEAP, "run_2", new AtomicInteger(),
+        var placeholder = orchestrator.run(AgentMode.JOB, "没有标识", List.of(), ModelTier.FLASH, "run_2", new AtomicInteger(),
                 reply, usage -> {}, "owner", Map.of("resumeId", "res_1")).collectList().block(Duration.ofSeconds(5));
         assertThat(calls).containsExactly("job_1");
         assertThat(placeholder).extracting(AgentEvent::type).doesNotContain("ui.card");
@@ -74,7 +74,7 @@ class MatchJobExecutionTest {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "简历版本不可用");
         });
         Orchestrator orchestrator = new Orchestrator(new IntentPlanner(gateway, json, experts, new ByteArrayResource("{experts}".getBytes())), experts);
-        var events = orchestrator.run(AgentMode.JOB, "匹配", List.of(), ModelTier.CHEAP, "run_1", new AtomicInteger(),
+        var events = orchestrator.run(AgentMode.JOB, "匹配", List.of(), ModelTier.FLASH, "run_1", new AtomicInteger(),
                 reply, usage -> {}, "owner", Map.of("jobId", "job_missing", "resumeId", "res_1", "resumeVersionId", "ver_1"))
                 .collectList().block(Duration.ofSeconds(5));
         assertThat(calls).containsExactly("job_missing");

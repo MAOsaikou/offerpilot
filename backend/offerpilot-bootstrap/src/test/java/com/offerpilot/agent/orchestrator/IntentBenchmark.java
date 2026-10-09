@@ -41,7 +41,7 @@ final class IntentBenchmark {
         Map<String, Object> context = sample.has("context")
                 ? JSON.convertValue(sample.get("context"), new com.fasterxml.jackson.core.type.TypeReference<>() {}) : Map.of();
         return planner.prepare(AgentMode.valueOf(sample.path("mode").asText("AUTO")), sample.path("message").asText(),
-                history, ModelTier.CHEAP, ignored -> {}, context).block(Duration.ofMinutes(10));
+                history, ModelTier.FLASH, ignored -> {}, context).block(Duration.ofMinutes(10));
     }
 
     static boolean correct(JsonNode sample, IntentPlanner.Decision decision) {

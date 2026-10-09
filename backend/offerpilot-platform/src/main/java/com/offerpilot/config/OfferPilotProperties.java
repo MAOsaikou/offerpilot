@@ -110,8 +110,19 @@ public record OfferPilotProperties(
                 String provider,
                 String model,
                 @DefaultValue("60s") Duration timeout,
-                @DefaultValue("false") boolean supportsVision
+                @DefaultValue("false") boolean supportsVision,
+                @DefaultValue("disabled") String thinking,
+                @DefaultValue("8192") int maxTokens
         ) {
+            public Tier(String provider, String model, Duration timeout, boolean supportsVision) {
+                this(provider, model, timeout, supportsVision, "disabled", 8192);
+            }
+            @org.springframework.boot.context.properties.bind.ConstructorBinding
+            public Tier {
+                if (!"enabled".equals(thinking) && !"disabled".equals(thinking))
+                    throw new IllegalArgumentException("LLM thinking must be enabled or disabled");
+                if (maxTokens < 1) throw new IllegalArgumentException("LLM maxTokens must be positive");
+            }
         }
     }
 

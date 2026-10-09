@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT, properties={
     "spring.ai.model.chat=deepseek", "spring.ai.model.embedding=none", "spring.ai.retry.max-attempts=1",
     "spring.ai.deepseek.api-key=test-only-key", "spring.ai.openai.api-key=test-only-vision-key",
-    "offerpilot.llm.default-tier=CHEAP", "spring.ai.mcp.server.enabled=false", "offerpilot.resume.worker-enabled=false"
+    "offerpilot.llm.default-tier=FLASH", "spring.ai.mcp.server.enabled=false", "offerpilot.resume.worker-enabled=false"
 })
 @ActiveProfiles("test")
 @Testcontainers
@@ -346,7 +346,7 @@ class ResumeHttpIntegrationTest {
     String chatBody(String mode, String conversationId, String content, Map<String,String> context) {
         var body = JSON.createObjectNode().put("mode", mode).put("content", content);
         if (conversationId != null) body.put("conversationId", conversationId);
-        body.putObject("options").put("modelTier", "CHEAP").set("context", JSON.valueToTree(context));
+        body.putObject("options").put("modelTier", "FLASH").set("context", JSON.valueToTree(context));
         return body.toString();
     }
     @Test void chatRewritePersistsReadOnlyCardAndDiscussionRestoresWithoutRegeneration() throws Exception {
@@ -532,22 +532,34 @@ class ResumeHttpIntegrationTest {
             assertThat(resumes.versions(owner(token), id)).isEmpty();
         }
     }
+    @Test void legacyResumeModelPreferencesRemainReadableAndWritable() throws Exception {
+        String token = identities.create().accessToken(), user = owner(token);
+        jdbc.update("INSERT INTO resume_model_preferences(user_id,text_tier,vision_tier) VALUES (?,?,?)", user, "CHEAP", "cheap");
+        var selection = data(request("GET", "/resume-model-settings", token, null)).path("selection");
+        assertThat(selection.path("textTier").asText()).isEqualTo("FLASH");
+        assertThat(selection.path("visionTier").asText()).isEqualTo("FLASH");
+        var saved = request("PUT", "/resume-model-settings", token, "{\"textTier\":\"CHEAP\",\"visionTier\":\"CHEAP\"}");
+        assertThat(saved.statusCode()).isEqualTo(200);
+        assertThat(data(saved).path("selection").path("textTier").asText()).isEqualTo("FLASH");
+        assertThat(jdbc.queryForObject("SELECT vision_tier FROM resume_model_preferences WHERE user_id=?", String.class, user)).isEqualTo("FLASH");
+    }
+
     @Test void modelSettingsArePrivateValidatedAndSnapshottedForEachJob() throws Exception {
         String token = identities.create().accessToken(), stranger = identities.create().accessToken();
         assertThat(request("GET", "/resume-model-settings", null, null).statusCode()).isEqualTo(401);
         var catalog = request("GET", "/resume-model-settings", token, null);
         assertThat(catalog.statusCode()).isEqualTo(200);
         assertThat(catalog.body()).doesNotContain("test-only-key", "test-only-vision-key", "apiKey", "baseUrl");
-        assertThat(data(catalog).path("selection").path("textTier").asText()).isEqualTo("CHEAP");
-        assertThat(request("PUT", "/resume-model-settings", token, "{\"textTier\":\"CHEAP\",\"visionTier\":\"PRO\"}").statusCode()).isEqualTo(400);
-        assertThat(request("PUT", "/resume-model-settings", token, "{\"textTier\":\"unknown\",\"visionTier\":\"CHEAP\"}").statusCode()).isEqualTo(400);
+        assertThat(data(catalog).path("selection").path("textTier").asText()).isEqualTo("FLASH");
+        assertThat(request("PUT", "/resume-model-settings", token, "{\"textTier\":\"FLASH\",\"visionTier\":\"PRO\"}").statusCode()).isEqualTo(400);
+        assertThat(request("PUT", "/resume-model-settings", token, "{\"textTier\":\"unknown\",\"visionTier\":\"FLASH\"}").statusCode()).isEqualTo(400);
         String id = data(upload(token, "before.txt", "测试简历".getBytes(StandardCharsets.UTF_8))).path("id").asText();
         assertThat(request("PUT", "/resume-model-settings", token, "{\"textTier\":\"VISION_ALT\",\"visionTier\":\"VISION_ALT\"}").statusCode()).isEqualTo(200);
         assertThat(data(request("GET", "/resume-model-settings", token, null)).path("selection").path("textTier").asText()).isEqualTo("VISION_ALT");
-        assertThat(data(request("GET", "/resume-model-settings", stranger, null)).path("selection").path("textTier").asText()).isEqualTo("CHEAP");
+        assertThat(data(request("GET", "/resume-model-settings", stranger, null)).path("selection").path("textTier").asText()).isEqualTo("FLASH");
         var queued = resumes.claim();
         assertThat(queued.id()).isEqualTo(id);
-        assertThat(queued.textTier()).isEqualTo("CHEAP");
+        assertThat(queued.textTier()).isEqualTo("FLASH");
         resumes.fail(queued, "模拟失败");
         resumes.retry(owner(token), id);
         var retried = resumes.claim();

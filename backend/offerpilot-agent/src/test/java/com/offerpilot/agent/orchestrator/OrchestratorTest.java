@@ -40,7 +40,7 @@ class OrchestratorTest {
     }
 
     private Flux<AgentEvent> run(AgentMode mode) {
-        return orchestrator.run(mode, "分析岗位并指导简历", List.of(), ModelTier.CHEAP, "run", new AtomicInteger(), reply, u -> {}, "owner", Map.of());
+        return orchestrator.run(mode, "分析岗位并指导简历", List.of(), ModelTier.FLASH, "run", new AtomicInteger(), reply, u -> {}, "owner", Map.of());
     }
 
     private String composite() {

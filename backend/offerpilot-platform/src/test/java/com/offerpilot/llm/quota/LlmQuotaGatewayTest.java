@@ -7,9 +7,6 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.*;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.deepseek.DeepSeekChatModel;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.*;
@@ -56,19 +53,24 @@ class LlmQuotaGatewayTest {
         var limits = new OfferPilotProperties.RateLimit(4, 2, 2, 100, 12, 15, 20, 20, 20, 20);
         var tier = new OfferPilotProperties.Llm.Tier("custom", "stub", Duration.ofSeconds(5), true);
         var properties = new OfferPilotProperties(null, null, null, null, limits,
-                new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier, "PRO", tier), Map.of()), null, null);
+                new OfferPilotProperties.Llm("FLASH", Map.of("FLASH", tier, "PRO", tier), Map.of()), null, null);
         Clock clock = Clock.fixed(Instant.parse("2026-10-09T12:00:30Z"), ZoneOffset.UTC);
         limiter = new LlmQuotaLimiter(owner -> new LlmQuotaIdentity.Policy(owner.startsWith("guest"), owner.startsWith("guest") ? 12 : 100),
                 new MemoryLlmUsageStore(clock), limits, clock);
-        var beans = new DefaultListableBeanFactory();
         var environment = new MockEnvironment().withProperty("offerpilot.llm.providers.custom.api-key", "isolated-stub-key")
                 .withProperty("offerpilot.llm.providers.custom.base-url", "http://127.0.0.1:" + provider.getAddress().getPort());
-        gateway = new ModelGateway(properties, beans.getBeanProvider(DeepSeekChatModel.class), beans.getBeanProvider(OpenAiChatModel.class), environment, limiter);
+        gateway = new ModelGateway(properties, environment, limiter);
     }
     @AfterEach void stop() { provider.stop(0); }
     void stream(String owner) {
-        gateway.stream(ModelTier.CHEAP, List.of(new UserMessage("hello")))
+        gateway.stream(ModelTier.FLASH, List.of(new UserMessage("hello")))
                 .contextWrite(context -> LlmUserContext.withUser(context, owner)).collectList().block(Duration.ofSeconds(5));
+    }
+    @Test void legacyCheapAndFlashShareTheSameOwnerQuota() {
+        limiter.check("guest", ModelTier.from("CHEAP"), true);
+        stream("guest");
+        assertThat(catchThrowableOfType(() -> stream("guest"), BusinessException.class).errorCode()).isEqualTo(ErrorCode.LLM_RATE_LIMITED);
+        assertThat(calls.get()).isEqualTo(1);
     }
     @Test void reactiveOwnerSurvivesSchedulingAndUsageIsCountedOnce() {
         stream("guest");
@@ -81,7 +83,7 @@ class LlmQuotaGatewayTest {
     }
     @Test void synchronousChatModelIsGuardedAndGuestProNeverCallsProvider() {
         LlmUserContext.asUser("guest", () -> {
-            var model = gateway.chatModel(ModelTier.CHEAP);
+            var model = gateway.chatModel(ModelTier.FLASH);
             model.call(new Prompt("hello"));
             model.call(new Prompt("hello"));
             assertThat(catchThrowableOfType(() -> model.call(new Prompt("hello")), BusinessException.class).errorCode())
@@ -106,7 +108,7 @@ class LlmQuotaGatewayTest {
         final ModelGateway gateway;
         Probe(ModelGateway gateway) { this.gateway = gateway; }
         @GetMapping("/quota-probe") String call() {
-            return LlmUserContext.asUser("guest", () -> gateway.chatModel(ModelTier.CHEAP).call(new Prompt("hello")).getResult().getOutput().getText());
+            return LlmUserContext.asUser("guest", () -> gateway.chatModel(ModelTier.FLASH).call(new Prompt("hello")).getResult().getOutput().getText());
         }
     }
     @Test void httpGatewayPathReturns429BusinessCodeAndRetryAfter() throws Exception {
@@ -119,8 +121,8 @@ class LlmQuotaGatewayTest {
     }
     @Test void httpRpmRejectionReturnsSpecificBusinessCodeAndMinuteRetryAfter() throws Exception {
         var http = MockMvcBuilders.standaloneSetup(new Probe(gateway)).setControllerAdvice(new GlobalExceptionHandler()).build();
-        limiter.check("guest", ModelTier.CHEAP, true);
-        limiter.check("guest", ModelTier.CHEAP, true);
+        limiter.check("guest", ModelTier.FLASH, true);
+        limiter.check("guest", ModelTier.FLASH, true);
         http.perform(get("/quota-probe")).andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("code").value(40011)).andExpect(header().string("Retry-After", "30"));
         assertThat(calls.get()).isZero();

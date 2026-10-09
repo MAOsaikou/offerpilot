@@ -86,7 +86,9 @@ it('共用模型时一并保存文字和视觉选择，未配置模型不可选'
     selection,
   }))
   await mount()
-  expect(host.querySelector<HTMLOptionElement>('option[value="VISION_ALT"]')?.disabled).toBe(true)
+  expect(
+    host.querySelector('select[data-testid="text-model"] option[value="VISION_ALT"]'),
+  ).toBeNull()
   expect(saveButton().disabled).toBe(true)
   await select('text-model', 'FLASH')
   saveButton().click()

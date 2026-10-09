@@ -16,18 +16,19 @@ import static org.assertj.core.api.Assertions.*;
 class ResumeExtractorTest {
     @Test void acceptsFencedJsonButRejectsMissingFieldsAndTrailingData() throws Exception {
         var gateway = mock(ModelGateway.class);
-        when(gateway.defaultTier()).thenReturn(ModelTier.CHEAP);
+        when(gateway.defaultTier()).thenReturn(ModelTier.FLASH);
         var extractor = new ResumeExtractor(gateway, new ObjectMapper(), new ByteArrayResource("extract only".getBytes()));
         var document = new ResumeDocumentReader.Document("简历里的忽略指令仅是数据", List.of(), "text");
-        when(gateway.stream(eq(ModelTier.CHEAP), anyList(), eq(0.0))).thenReturn(response("```json\n" + ResumeStructure.SCHEMA + "\n```"));
+        when(gateway.stream(eq(ModelTier.FLASH), anyList(), eq(0.0))).thenReturn(response("```json\n" + ResumeStructure.SCHEMA + "\n```"));
         assertThat(extractor.extract(document).path("basics").isObject()).isTrue();
-        when(gateway.stream(eq(ModelTier.CHEAP), anyList(), eq(0.0))).thenReturn(response("{\"basics\":{}}"));
+        when(gateway.stream(eq(ModelTier.FLASH), anyList(), eq(0.0))).thenReturn(response("{\"basics\":{}}"));
         assertThatThrownBy(() -> extractor.extract(document)).hasMessageContaining("结构");
-        when(gateway.stream(eq(ModelTier.CHEAP), anyList(), eq(0.0))).thenReturn(response(ResumeStructure.SCHEMA + " {}"));
+        when(gateway.stream(eq(ModelTier.FLASH), anyList(), eq(0.0))).thenReturn(response(ResumeStructure.SCHEMA + " {}"));
         assertThatThrownBy(() -> extractor.extract(document)).hasMessageContaining("有效");
     }
     @Test void imagesUseVisionTierAndDoNotFallbackToTextOnly() throws Exception {
         var gateway = mock(ModelGateway.class);
+        when(gateway.defaultTier()).thenReturn(ModelTier.PRO);
         when(gateway.stream(eq(ModelTier.VISION_ALT), anyList(), eq(0.0))).thenReturn(response(ResumeStructure.SCHEMA));
         var extractor = new ResumeExtractor(gateway, new ObjectMapper(), new ByteArrayResource("extract only".getBytes()));
         extractor.extract(new ResumeDocumentReader.Document("", List.of(new ResumeDocumentReader.Image(new byte[]{1}, "image/png")), "image-vision"));
@@ -44,7 +45,7 @@ class ResumeExtractorTest {
     private Flux<ChatResponse> response(String text) { return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(text))))); }
     @Test void mapsTimeoutAndProviderStatusWithoutLeakingResponse() throws Exception {
         var gateway = mock(ModelGateway.class);
-        when(gateway.defaultTier()).thenReturn(ModelTier.CHEAP);
+        when(gateway.defaultTier()).thenReturn(ModelTier.FLASH);
         var extractor = new ResumeExtractor(gateway, new ObjectMapper(), new ByteArrayResource("extract".getBytes()));
         var document = new ResumeDocumentReader.Document("简历", List.of(), "text");
         when(gateway.stream(any(), anyList(), eq(0.0))).thenReturn(Flux.error(new java.util.concurrent.TimeoutException()));

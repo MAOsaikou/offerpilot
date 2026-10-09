@@ -6,12 +6,8 @@ import com.offerpilot.llm.ModelGateway;
 import com.offerpilot.resume.application.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.mock.env.MockEnvironment;
-import org.springframework.ai.deepseek.DeepSeekChatModel;
-import org.springframework.ai.deepseek.api.DeepSeekApi;
-import org.springframework.ai.openai.OpenAiChatModel;
 import org.apache.pdfbox.pdmodel.*;
 import org.apache.pdfbox.pdmodel.font.*;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
@@ -35,11 +31,9 @@ class ResumeLiveEvaluationTest {
         String base = System.getenv().getOrDefault("DEEPSEEK_BASE_URL", "https://api.deepseek.com");
         var tier = new OfferPilotProperties.Llm.Tier("deepseek", "deepseek-flash", Duration.ofSeconds(90), true);
         var properties = new OfferPilotProperties(null, null, null, null, null,
-                new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier, "VISION_ALT", tier), Map.of()), null, null);
-        var beans = new DefaultListableBeanFactory();
-        beans.registerSingleton("deepseek", DeepSeekChatModel.builder().deepSeekApi(DeepSeekApi.builder().baseUrl(base).apiKey(key).build()).build());
+                new OfferPilotProperties.Llm("FLASH", Map.of("FLASH", tier, "VISION_ALT", tier), Map.of()), null, null);
         var environment = new MockEnvironment().withProperty("spring.ai.deepseek.api-key", key).withProperty("spring.ai.deepseek.base-url", base);
-        var gateway = new ModelGateway(properties, beans.getBeanProvider(DeepSeekChatModel.class), beans.getBeanProvider(OpenAiChatModel.class), environment);
+        var gateway = new ModelGateway(properties, environment);
         var json = new ObjectMapper();
         var extractor = new ResumeExtractor(gateway, json, new ClassPathResource("prompts/resume/extract.st"));
         var reader = new ResumeDocumentReader();

@@ -23,7 +23,8 @@ public class ResumeModelSettings {
     public Selection selection(String owner) {
         var rows = jdbc.query("SELECT text_tier,vision_tier FROM resume_model_preferences WHERE user_id=?",
                 (rs, n) -> new Selection(rs.getString(1), rs.getString(2)), owner);
-        if (!rows.isEmpty()) return rows.get(0);
+        if (!rows.isEmpty()) return new Selection(ModelTier.from(rows.get(0).textTier(), gateway.defaultTier()).name(),
+                ModelTier.from(rows.get(0).visionTier(), ModelTier.VISION_ALT).name());
         var text = gateway.defaultTier();
         return new Selection(text.name(), gateway.supportsVision(text) ? text.name() : ModelTier.VISION_ALT.name());
     }
@@ -38,7 +39,7 @@ public class ResumeModelSettings {
         return get(owner);
     }
     private ModelTier tier(String value) {
-        try { return ModelTier.valueOf(value); }
+        try { return "CHEAP".equals(value) ? ModelTier.FLASH : ModelTier.valueOf(value); }
         catch (RuntimeException ex) { throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请选择列表中的模型"); }
     }
 }

@@ -67,7 +67,7 @@ class McpServerHttpIntegrationTest {
 
     @BeforeEach
     void fixtures() throws Exception {
-        when(gateway.defaultTier()).thenReturn(ModelTier.CHEAP);
+        when(gateway.defaultTier()).thenReturn(ModelTier.FLASH);
         when(gateway.modelName(any())).thenReturn("offline-fixture");
         when(gateway.stream(any(), anyList(), anyDouble())).thenAnswer(invocation -> {
             List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(1);

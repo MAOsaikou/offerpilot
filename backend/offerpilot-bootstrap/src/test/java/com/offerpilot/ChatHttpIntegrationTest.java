@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.ai.model.chat=deepseek", "spring.ai.model.embedding=none",
         "spring.ai.retry.max-attempts=1", "spring.ai.deepseek.api-key=test-only-key",
-        "offerpilot.llm.default-tier=CHEAP", "spring.ai.mcp.server.enabled=false"
+        "offerpilot.llm.default-tier=FLASH", "spring.ai.mcp.server.enabled=false"
 })
 @ActiveProfiles("test")
 @Testcontainers
@@ -126,9 +126,21 @@ class ChatHttpIntegrationTest {
     private String owner(String token) { return identities.require("Bearer " + token); }
 
     @Test
+    void legacyAndUnknownChatTiersUseFlashInsteadOfReturning400() throws Exception {
+        for (String tier : java.util.List.of("CHEAP", "economy", "经济", "balanced", "unknown")) {
+            String token = identities.create().accessToken();
+            var response = request("POST", "/agent/chat", token,
+                    json.writeValueAsString(java.util.Map.of("content", "hello", "mode", "COACH", "options", java.util.Map.of("modelTier", tier))));
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(response.body()).contains("run.completed", "deepseek-flash");
+            assertThat(json.readTree(requestBody.get()).path("model").asText()).isEqualTo("deepseek-flash");
+        }
+    }
+
+    @Test
     void exhaustedGuestQuotaReturnsHttp429BeforeSseOrRunCreation() throws Exception {
         String token = identities.create().accessToken(), user = owner(token);
-        var admission = quotas.check(user, com.offerpilot.llm.ModelTier.CHEAP, true);
+        var admission = quotas.check(user, com.offerpilot.llm.ModelTier.FLASH, true);
         quotas.record(admission, 50000);
         var response = request("POST", "/agent/chat", token, "{\"content\":\"hello\"}");
         assertThat(response.statusCode()).isEqualTo(429);
@@ -143,7 +155,7 @@ class ChatHttpIntegrationTest {
         var forbidden = request("POST", "/agent/chat", token, "{\"content\":\"hello\",\"options\":{\"modelTier\":\"PRO\"}}");
         assertThat(forbidden.statusCode()).isEqualTo(403);
         assertThat(json.readTree(forbidden.body()).path("code").asInt()).isEqualTo(20004);
-        for (int i = 0; i < 20; i++) quotas.check(user, com.offerpilot.llm.ModelTier.CHEAP, true);
+        for (int i = 0; i < 20; i++) quotas.check(user, com.offerpilot.llm.ModelTier.FLASH, true);
         var limited = request("POST", "/agent/chat", token, "{\"content\":\"hello\"}");
         assertThat(limited.statusCode()).isEqualTo(429);
         assertThat(json.readTree(limited.body()).path("code").asInt()).isEqualTo(40011);

@@ -54,7 +54,7 @@ class ChatServiceTest {
                         com.offerpilot.agent.domain.AgentMode.AUTO, java.time.Instant.now(), List.of()));
         when(conversations.checkpoint(any(), anyString())).thenReturn(true);
         when(conversations.finish(any(), anyString(), anyString(), any(), any(), any())).thenAnswer(invocation -> invocation.getArgument(2));
-        when(gateway.defaultTier()).thenReturn(ModelTier.CHEAP);
+        when(gateway.defaultTier()).thenReturn(ModelTier.FLASH);
         when(gateway.modelName(any())).thenReturn("deepseek-v4-flash");
     }
 
@@ -68,7 +68,7 @@ class ChatServiceTest {
 
     @Test
     void streamsTextThenUsageThenCompletionWithIncreasingIds() {
-        when(gateway.stream(eq(ModelTier.CHEAP), anyList())).thenReturn(Flux.just(
+        when(gateway.stream(eq(ModelTier.FLASH), anyList())).thenReturn(Flux.just(
                 new ChatResponse(List.of(new Generation(new AssistantMessage("你好")))),
                 new ChatResponse(List.of(new Generation(new AssistantMessage("，同学"))),
                         ChatResponseMetadata.builder().usage(new DefaultUsage(12, 6)).build())));
@@ -78,7 +78,7 @@ class ChatServiceTest {
         assertThat(events).extracting(AgentEvent::id).containsExactly(1, 2, 3, 4, 5);
         assertThat((AgentEvent.Usage) events.get(3)).extracting(AgentEvent.Usage::promptTokens,
                 AgentEvent.Usage::completionTokens).containsExactly(12, 6);
-        verify(gateway).stream(eq(ModelTier.CHEAP), argThat(messages -> messages.size() == 2
+        verify(gateway).stream(eq(ModelTier.FLASH), argThat(messages -> messages.size() == 2
                 && messages.get(0).getText().equals("test system prompt") && messages.get(1).getText().equals("你好")));
     }
 
@@ -86,13 +86,13 @@ class ChatServiceTest {
     void systemPromptCarriesCurrentDate() throws Exception {
         var dated = new ChatService(gateway, conversations, new ByteArrayResource(
                 "今天是 {current_date}".getBytes(java.nio.charset.StandardCharsets.UTF_8)), orchestrator, new ObjectMapper());
-        when(gateway.stream(eq(ModelTier.CHEAP), anyList())).thenReturn(Flux.just(
+        when(gateway.stream(eq(ModelTier.FLASH), anyList())).thenReturn(Flux.just(
                 new ChatResponse(List.of(new Generation(new AssistantMessage("好"))))));
 
         dated.chat("owner", request()).collectList().block(Duration.ofSeconds(5));
 
         String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString();
-        verify(gateway).stream(eq(ModelTier.CHEAP),
+        verify(gateway).stream(eq(ModelTier.FLASH),
                 argThat(messages -> messages.get(0).getText().equals("今天是 " + today)));
     }
 
@@ -154,7 +154,7 @@ class ChatServiceTest {
                 new AgentEvent.UiCard("ui.card", 0, "run", java.time.Instant.now(), "s1", "card_job_1", "job_match", java.util.Map.of("score", 1)),
                 new AgentEvent.UiCard("ui.card", 0, "run", java.time.Instant.now(), "s1", "card_bad", "not_a_card", java.util.Map.of("score", 1))));
         var local = new ChatService(gateway, conversations, new ByteArrayResource("test system prompt".getBytes()), cards, new ObjectMapper());
-        when(gateway.stream(eq(ModelTier.CHEAP), anyList())).thenReturn(Flux.just(
+        when(gateway.stream(eq(ModelTier.FLASH), anyList())).thenReturn(Flux.just(
                 new ChatResponse(List.of(new Generation(new AssistantMessage("报告"))))));
 
         var events = local.chat("owner", request()).collectList().block(Duration.ofSeconds(5));
@@ -189,7 +189,7 @@ class ChatServiceTest {
         when(conversations.begin(anyString(), any(), anyString(), any(), anyString())).thenReturn(
                 new com.offerpilot.conversation.application.ConversationService.Turn("owner", "conv", "run", "msg",
                         AgentMode.JOB, java.time.Instant.now(), List.of()));
-        when(gateway.stream(eq(ModelTier.CHEAP), anyList())).thenReturn(Flux.just(
+        when(gateway.stream(eq(ModelTier.FLASH), anyList())).thenReturn(Flux.just(
                 new ChatResponse(List.of(new Generation(new AssistantMessage("报告已给出"))))));
 
         var request = new ChatRequest(null, "对照这份简历", null, AgentMode.JOB, new ChatRequest.Options(null, null, java.util.Map.of(
@@ -210,7 +210,7 @@ class ChatServiceTest {
             assertThat(card.payload().has("jobSnapshot")).isFalse();
             assertThat(card.payload().has("dimensions")).isFalse();
         });
-        verify(gateway).stream(eq(ModelTier.CHEAP), argThat(messages -> messages.stream()
+        verify(gateway).stream(eq(ModelTier.FLASH), argThat(messages -> messages.stream()
                 .anyMatch(message -> message.getText().contains("结果已作为卡片展示") && !message.getText().contains("未执行真实业务操作"))));
     }
 }

@@ -79,12 +79,12 @@ afterEach(() => {
   app?.unmount()
   document.body.innerHTML = ''
 })
-async function mount() {
+async function mount(path = '/chat') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/chat/:conversationId?', component: ChatPage }],
   })
-  await router.push('/chat')
+  await router.push(path)
   await router.isReady()
   const root = document.createElement('div')
   document.body.append(root)
@@ -94,6 +94,38 @@ async function mount() {
   return root
 }
 describe('coach roadmap chat confirmation path', () => {
+  it.each(['CHEAP', 'economy', '经济', 'BALANCED', 'unknown'])(
+    'offers exactly 快速 / 深度 and normalizes legacy URL tier %s',
+    async (tier) => {
+      const root = await mount(`/chat?modelTier=${encodeURIComponent(tier)}`)
+      const select = root.querySelector<HTMLSelectElement>('select[aria-label="模型档位"]')!
+      expect([...select.options].map((option) => [option.value, option.text])).toEqual([
+        ['FLASH', '快速'],
+        ['PRO', '深度'],
+      ])
+      expect(select.value).toBe('FLASH')
+      root.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click()
+      await nextTick()
+      ;[...root.querySelectorAll('button')]
+        .find((button) => button.textContent?.trim() === '同步到成长任务')!
+        .click()
+      await nextTick()
+      expect(send).toHaveBeenCalledWith(
+        expect.any(String),
+        'COACH',
+        'FLASH',
+        expect.any(Function),
+        expect.any(Object),
+      )
+    },
+  )
+  it('selects 深度 from the URL and disables model selection while busy', async () => {
+    busyControl.set(true)
+    const root = await mount('/chat?modelTier=pro')
+    const select = root.querySelector<HTMLSelectElement>('select[aria-label="模型档位"]')!
+    expect(select.value).toBe('PRO')
+    expect(select.disabled).toBe(true)
+  })
   it('sends selected completed catalog titles to a COACH approval turn and opens the existing panel', async () => {
     const root = await mount()
     root.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click()
