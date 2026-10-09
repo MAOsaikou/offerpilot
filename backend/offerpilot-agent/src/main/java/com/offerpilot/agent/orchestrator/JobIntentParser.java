@@ -42,10 +42,7 @@ public class JobIntentParser {
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(prompt));
         messages.addAll(history.subList(Math.max(0, history.size() - 12), history.size()));
-        var selections = new LinkedHashMap<String, Boolean>();
-        for (String key : List.of("jobId", "resumeId", "resumeVersionId", "applicationId"))
-            selections.put(key, context.get(key) instanceof String value && !value.isBlank() && value.length() <= 80);
-        messages.add(new UserMessage("调用方资源选择状态（true=已选择，标识由服务端绑定，不要求用户再粘贴）：" + selections
+        messages.add(new UserMessage(SelectedResources.describe(context)
                 + "\n本轮请求：" + content + "\n本步骤：" + step.title()));
         return attempt(messages, tier, onUsage).map(intent -> normalize(step, intent, context))
                 .onErrorResume(IllegalArgumentException.class, ex ->

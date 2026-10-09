@@ -90,7 +90,7 @@ public class IntentPlanner {
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(prompt.replace("{experts}", experts.capabilities())));
         messages.addAll(history.subList(Math.max(0, history.size() - 12), history.size()));
-        messages.add(new UserMessage(content));
+        messages.add(new UserMessage(SelectedResources.describe(safeContext) + "\n本轮请求：" + content));
         return attempt(messages, content, tier, onUsage, 0, safeContext)
                 .flatMap(decision -> resolveActions(decision, content, history, tier, onUsage, safeContext));
     }

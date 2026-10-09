@@ -65,4 +65,34 @@ class BoardIntentParserTest {
         var step = new PlanStep("s1", "岗位", ExpertType.JOB, Map.of(), List.of());
         assertThat(parser.prepare(step, "匹配这个岗位与我的简历", List.of(), ModelTier.PRO, u -> {}, context).block().inputs()).containsEntry("action", "match");
     }
+    @Test void autoPlanningReceivesTheSameBoundedSelectionsAsJobActionParsing() throws Exception {
+        var gateway = mock(ModelGateway.class);
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenAnswer(invocation -> {
+            List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(1);
+            String request = messages.get(messages.size() - 1).getText();
+            assertThat(request).contains("jobId=true", "resumeId=true", "resumeVersionId=false", "applicationId=false")
+                    .doesNotContain("private-selected-id", "x".repeat(81));
+            String output = messages.get(0).getText().equals("planner")
+                    ? "{\"kind\":\"single\",\"expert\":\"JOB\",\"confidence\":1,\"needsClarification\":false}"
+                    : "{\"action\":\"createApplication\"}";
+            return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(output)))));
+        });
+        var parser = new JobIntentParser(gateway, new ObjectMapper(), new ByteArrayResource("job actions".getBytes()));
+        var planner = new IntentPlanner(gateway, new ObjectMapper(), new com.offerpilot.agent.experts.ExpertRegistry(),
+                new ByteArrayResource("planner".getBytes()), parser, null);
+        for (var tier : List.of(ModelTier.FLASH, ModelTier.PRO)) {
+            var decision = planner.prepare(com.offerpilot.agent.domain.AgentMode.AUTO,
+                    "这个职位我打算申请，请帮我建一个求职跟踪记录，先设为待投递。", List.of(), tier, u -> {},
+                    Map.of("jobId", "private-selected-id", "resumeId", "resume-selected", "resumeVersionId", "x".repeat(81), "applicationId", List.of("invalid"))).block();
+            assertThat(decision.needsClarification()).isFalse();
+            assertThat(decision.plan().steps().get(0).inputs()).containsExactlyInAnyOrderEntriesOf(
+                    Map.of("action", "createApplication", "jobId", "private-selected-id"));
+        }
+    }
+    @Test void absentBlankAndNonStringResourcesAreNeverAdvertisedAsSelected() {
+        assertThat(SelectedResources.describe(Map.of())).contains("jobId=false", "resumeId=false", "resumeVersionId=false", "applicationId=false");
+        assertThat(SelectedResources.describe(Map.of("jobId", "  ", "resumeId", 12, "resumeVersionId", "x".repeat(81))))
+                .contains("jobId=false", "resumeId=false", "resumeVersionId=false");
+    }
+
 }
