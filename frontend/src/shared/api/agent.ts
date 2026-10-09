@@ -63,31 +63,6 @@ export async function streamAgentChat(
   return runId
 }
 
-/** 断线续传：GET /agent/runs/{runId}/events?after=&follow=true（docs/05 §1.6） */
-export async function resumeAgentRun(
-  runId: string,
-  afterId: number,
-  options: AgentStreamOptions = {},
-): Promise<void> {
-  const response = await fetchWithIdentity(
-    apiUrl(`/agent/runs/${encodeURIComponent(runId)}/events?after=${afterId}&follow=true`),
-    {
-      headers: await authenticatedHeaders({ Accept: 'text/event-stream' }),
-      signal: options.signal ?? null,
-    },
-  )
-
-  if (!response.ok || !response.body) throw await toApiError(response)
-
-  for await (const frame of parseSse(response.body)) {
-    assertResponseIdentity(response)
-    const event = decodeEvent(frame.data)
-    if (!event) continue
-    options.onEvent?.(event)
-    if (isTerminal(event)) break
-  }
-}
-
 /** 中断运行：POST /agent/runs/{runId}/cancel */
 export async function cancelAgentRun(runId: string): Promise<void> {
   const response = await fetchWithIdentity(
