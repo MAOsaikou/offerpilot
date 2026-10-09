@@ -61,7 +61,16 @@ watch(
   { immediate: true },
 )
 const seed = ref('')
+const matchingSelection = computed(
+  () => route.query.jobAction === 'match' && ['AUTO', 'JOB'].includes(mode.value),
+)
+async function clearMatchAction() {
+  const query = { ...route.query }
+  delete query.jobAction
+  await router.replace({ path: route.path, query })
+}
 const lastAttempt = ref('')
+const preparingSend = ref(false)
 const panelOpen = ref(false)
 watch(
   () => activeRun.value?.approvals.length,
@@ -122,38 +131,50 @@ async function select(id?: string) {
   else await router.push(id ? `/chat/${encodeURIComponent(id)}` : '/chat')
 }
 async function onSend(content: string) {
-  if (missingConversation.value) return
-  const submittedMode = mode.value
-  lastAttempt.value = content
-  seed.value = ''
-  let context: Record<string, string> = {}
-  for (const key of [
-    'jobId',
-    'resumeId',
-    'resumeVersionId',
-    'diagnosisReportId',
-    'optimizationReportId',
-  ]) {
-    if (typeof route.query[key] === 'string') context[key] = route.query[key]
+  if (preparingSend.value || busy.value || missingConversation.value) return
+  preparingSend.value = true
+  try {
+    const submittedMode = mode.value
+    const matchAction = matchingSelection.value
+    lastAttempt.value = content
+    seed.value = ''
+    let context: Record<string, string> = {}
+    for (const key of [
+      'jobId',
+      'resumeId',
+      'resumeVersionId',
+      'diagnosisReportId',
+      'optimizationReportId',
+    ]) {
+      if (typeof route.query[key] === 'string') context[key] = route.query[key]
+    }
+    context = optimizationContext(viewMessages.value, context)
+    // Consume the selected action once; keep resource IDs for ordinary follow-up questions.
+    if (route.query.jobAction === 'match') await clearMatchAction()
+    if (current.value && context.optimizationReportId)
+      await router.replace({
+        path: `/chat/${encodeURIComponent(current.value.id)}`,
+        query: { ...route.query, ...context, mode: submittedMode },
+      })
+    await chat.send(
+      content,
+      submittedMode,
+      tier.value,
+      (id) => {
+        const query = Object.keys(context).length ? { ...context, mode: submittedMode } : {}
+        void router.replace({ path: `/chat/${encodeURIComponent(id)}`, query })
+      },
+      matchAction
+        ? { ...context, jobAction: 'match' }
+        : Object.keys(context).length
+          ? context
+          : undefined,
+    )
+    await nextTick()
+    if (scrollArea.value) scrollArea.value.scrollTop = scrollArea.value.scrollHeight
+  } finally {
+    preparingSend.value = false
   }
-  context = optimizationContext(viewMessages.value, context)
-  if (current.value && context.optimizationReportId)
-    await router.replace({
-      path: `/chat/${encodeURIComponent(current.value.id)}`,
-      query: { ...route.query, ...context, mode: submittedMode },
-    })
-  await chat.send(
-    content,
-    submittedMode,
-    tier.value,
-    (id) => {
-      const query = Object.keys(context).length ? { ...context, mode: submittedMode } : {}
-      void router.replace({ path: `/chat/${encodeURIComponent(id)}`, query })
-    },
-    Object.keys(context).length ? context : undefined,
-  )
-  await nextTick()
-  if (scrollArea.value) scrollArea.value.scrollTop = scrollArea.value.scrollHeight
 }
 async function editLastQuestion() {
   const content = lastQuestion.value || ''
@@ -362,10 +383,23 @@ async function remove(id: string) {
           >
             重新编辑上条问题
           </button>
+          <div v-if="matchingSelection" class="helper-note">
+            本次发送将匹配所选岗位与简历。<button
+              class="btn text"
+              :disabled="busy"
+              @click="clearMatchAction"
+            >
+              改为普通提问
+            </button>
+          </div>
           <Composer
             :key="current?.id || 'new'"
             :disabled="
-              loading || needsReload || missingConversation || Boolean(remoteRunId && !sending)
+              preparingSend ||
+              loading ||
+              needsReload ||
+              missingConversation ||
+              Boolean(remoteRunId && !sending)
             "
             :streaming="sending"
             :initial-draft="seed"

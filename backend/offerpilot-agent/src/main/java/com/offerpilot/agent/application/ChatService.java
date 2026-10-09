@@ -128,6 +128,9 @@ public class ChatService {
                     turn.runId(), Instant.now(), turn.messageId(), status, (int) Duration.between(turn.startedAt(), Instant.now()).toMillis()))));
         });
         Flux<AgentEvent> streamed = Flux.just(first).concatWith(work).handle((AgentEvent event, SynchronousSink<AgentEvent> sink) -> {
+            if (event instanceof AgentEvent.UiCard card && "job_match".equals(card.cardType())
+                    && com.offerpilot.conversation.application.MessageCards.parse(card.cardId(), card.cardType(), card.payload(), json) == null)
+                throw new BusinessException(ErrorCode.STRUCTURED_OUTPUT_INVALID, "匹配报告未能展示：卡片内容无效或过长，请在岗位详情查看报告或重新分析。");
             if (event instanceof AgentEvent.UiCard card && !cards.accept(card.cardId(), card.cardType(), card.payload())) return;
             sink.next(event);
         });
