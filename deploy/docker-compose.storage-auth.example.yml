@@ -1,0 +1,43 @@
+# 可选的认证对象存储模板；默认启动和 CI 不加载此文件。
+# 适用于 MinIO server；换其他 S3 兼容服务时，须按其文档调整启动命令、认证变量和健康检查。
+# 用法（仓库根目录；先在忽略的 .env 或进程环境设置真实凭据与 STORAGE_AUTH_IMAGE）：
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.storage-auth.example.yml config
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.storage-auth.example.yml pull minio
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.storage-auth.example.yml up -d minio
+# 后续 up / 重建 / 运维也必须带上两个 -f，避免切回无认证 S3Mock。
+# 需要 Docker Compose >= 2.24.4（!override 完整替换服务，清除 S3Mock 环境、user 和健康检查）。
+# https://docs.docker.com/reference/compose-file/merge/#replace-value
+# 完整操作与数据迁移说明：docs/09-部署与运维.md §2.1。
+
+services:
+  minio: !override
+    # 占位镜像故意不可拉取：本模板没有提供经 docker pull 验证的 MinIO digest。
+    # 将 STORAGE_AUTH_IMAGE 设为可信、可拉取的 MinIO 镜像，格式 registry/repository@sha256:<digest>。
+    # 先执行 docker pull "$STORAGE_AUTH_IMAGE" 验证；不得用 latest 或把 S3Mock 填回来。
+    image: ${STORAGE_AUTH_IMAGE:-registry.invalid/replace-with-minio:pin-a-verified-digest}
+    restart: always
+    entrypoint: ["minio"]
+    command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
+    environment:
+      # MinIO 实际校验这对 root 凭据；与后端签名使用的值保持一致，不得沿用 .env.example 占位密码。
+      # ROOT_USER 至少 3 字符，ROOT_PASSWORD 至少 8 字符；请使用随机强密码并禁用 bucket 匿名访问。
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER for authenticated storage}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD for authenticated storage}
+    # 保留服务名 minio，后端容器继续使用 http://minio:9000；控制台 9001 不发布到宿主机。
+    # 保持回环绑定；远程浏览器的签名 URL 通过受控 HTTPS 入口访问，详见 §2.1。
+    ports: ["127.0.0.1:9000:9000"]
+    # S3Mock /data 格式不能直接作为 MinIO 数据卷；新卷不覆盖或删除原 minio_data。
+    # 启动后预建 MINIO_BUCKET 或授予后端建桶权限；旧对象通过 S3 API 迁移，保持 bucket / object key。
+    volumes: [minio_auth_data:/data]
+    healthcheck:
+      # 所选镜像必须包含 curl；否则改用镜像支持的探针。禁止沿用 S3Mock 对 / 的探针。
+      # 此探针仅检查存活，不验证访问密钥；上线前另验正确凭据成功、错误凭据与匿名请求被拒绝。
+      # https://github.com/minio/minio/blob/master/docs/metrics/healthcheck/README.md
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  minio_auth_data: {}
