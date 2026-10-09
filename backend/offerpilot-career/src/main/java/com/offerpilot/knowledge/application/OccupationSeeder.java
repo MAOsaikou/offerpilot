@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.io.Resource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -25,11 +26,12 @@ import java.util.List;
  * - 幂等：按 id upsert，重复启动既不报错也不产生重复行。
  * - 以文件为准：内置条目每次启动都会覆盖，直接在库里改的内容会被还原；
  *   将来若要支持人工编辑，需要加一列区分「内置」和「人工修订」。
- * - 不做向量化：embedding 与 tsv 留空，等 RAG 阶段由独立入库任务填充。
+ * - 不做向量化：embedding 与 tsv 由后置独立任务填充；文档变化时失效旧索引。
  *   职业推荐的规则层只用 holland_code / holland_scores / core_skills，不依赖向量。
  * - 多文件：人工维护的条目和脚本生成的条目分开存放，避免重新生成时覆盖手工内容。
  */
 @Component
+@Order(10)
 public class OccupationSeeder implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(OccupationSeeder.class);
     private static final String UPSERT = """
@@ -39,6 +41,16 @@ public class OccupationSeeder implements ApplicationRunner {
             VALUES (?,?,CAST(? AS text[]),?,?,?,CAST(? AS jsonb),CAST(? AS jsonb),CAST(? AS text[]),?,
                     CAST(? AS jsonb),?,CAST(? AS text[]),CAST(? AS text[]),?,now())
             ON CONFLICT (id) DO UPDATE SET
+                embedding=CASE WHEN (occupations.name, occupations.description, occupations.core_skills,
+                    occupations.growth_path, occupations.family, occupations.typical_titles)
+                    IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.description, EXCLUDED.core_skills,
+                    EXCLUDED.growth_path, EXCLUDED.family, EXCLUDED.typical_titles)
+                    THEN NULL ELSE occupations.embedding END,
+                tsv=CASE WHEN (occupations.name, occupations.description, occupations.core_skills,
+                    occupations.growth_path, occupations.family, occupations.typical_titles)
+                    IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.description, EXCLUDED.core_skills,
+                    EXCLUDED.growth_path, EXCLUDED.family, EXCLUDED.typical_titles)
+                    THEN NULL ELSE occupations.tsv END,
                 name=EXCLUDED.name, aliases=EXCLUDED.aliases, family=EXCLUDED.family,
                 description=EXCLUDED.description, holland_code=EXCLUDED.holland_code,
                 holland_scores=EXCLUDED.holland_scores, core_skills=EXCLUDED.core_skills,

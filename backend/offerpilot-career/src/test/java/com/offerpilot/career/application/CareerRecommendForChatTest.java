@@ -27,9 +27,11 @@ class CareerRecommendForChatTest {
 
     @Test void recommendationUsesOwnerProfileExistingRankingAndDeterministicReasons() {
         when(profiles.get("alice")).thenReturn(profile(List.of("技术研发", "数据分析", "未知")));
-        when(occupations.rank("IRC", 8)).thenReturn(List.of(
+        when(occupations.rankHybrid(eq("IRC"), anyString(), eq(8))).thenReturn(List.of(
                 new OccupationRecommender.Ranked("occ1", "工程师", "技术", "IRC", 6),
                 new OccupationRecommender.Ranked("occ2", "分析师", "数据", "ICR", 4.5)));
+        when(occupations.citations("occ1")).thenReturn(List.of(
+                new OccupationRecommender.Citation("occ1", "工程师", "开发 Java 服务")));
         var result = careers.recommend("alice");
         assertThat(result.guidance()).isNull();
         assertThat(result.payload().hollandCode()).isEqualTo("IRC");
@@ -37,6 +39,9 @@ class CareerRecommendForChatTest {
         assertThat(result.payload().recommendations()).extracting(CareerRecommendForChat.Recommendation::name)
                 .containsExactly("工程师", "分析师");
         assertThat(result.payload().recommendations().get(0).similarity()).isEqualTo(1);
+        assertThat(result.payload().recommendations().get(0).citations()).singleElement()
+                .satisfies(citation -> assertThat(citation.excerpt()).isEqualTo("开发 Java 服务"));
+        verify(occupations).rankHybrid("IRC", "技术研发 数据分析 Java 旧目标", 8);
         assertThat(result.payload().recommendations().get(1).similarity()).isEqualTo(.75);
         assertThat(result.payload().recommendations()).allSatisfy(item -> {
             assertThat(item.reasons()).hasSize(2);

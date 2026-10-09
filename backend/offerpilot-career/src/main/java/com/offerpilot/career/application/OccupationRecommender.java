@@ -2,16 +2,23 @@ package com.offerpilot.career.application;
 
 import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
+import com.offerpilot.knowledge.application.OccupationHybridRetriever;
+import com.offerpilot.knowledge.application.OccupationDocument;
+import com.offerpilot.knowledge.application.OccupationRrf;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.LinkedHashMap;
 
 /**
  * 规则层的职业推荐：按霍兰德兴趣码给 occupations 表打分并排序（docs/04 §2.3 的规则层）。
  *
- * 只做位置加权相似度，不做向量检索——检索层要在 RAG 接入后与本层结果做 RRF 融合。
+ * rank 保留位置加权相似度；rankHybrid 可选与职业检索结果做 RRF 融合。
  * 当前职业库是数百条量级，全表取出在内存里打分足够快；数据量再大时应先按
  * holland_code 精确命中构造候选集，再对候选集打分。
  */
@@ -19,13 +26,59 @@ import java.util.List;
 public class OccupationRecommender {
     private static final int MAX_LIMIT = 200;
 
+    private static final Logger log = LoggerFactory.getLogger(OccupationRecommender.class);
     private final JdbcTemplate jdbc;
+    private final OccupationHybridRetriever retriever;
 
     public OccupationRecommender(JdbcTemplate jdbc) {
+        this(jdbc, null);
+    }
+
+    @Autowired
+    public OccupationRecommender(JdbcTemplate jdbc, OccupationHybridRetriever retriever) {
         this.jdbc = jdbc;
+        this.retriever = retriever;
     }
 
     public record Ranked(String id, String name, String family, String hollandCode, double similarity) {
+    }
+
+    public record Citation(String occupationId, String title, String excerpt) {}
+
+    public List<Citation> citations(String occupationId) {
+        return jdbc.query("SELECT id,name,description,core_skills FROM occupations WHERE id=?",
+                (rs, row) -> new Citation(rs.getString("id"), rs.getString("name"),
+                        OccupationDocument.excerpt(rs.getString("description"), rs.getString("core_skills"))), occupationId);
+    }
+
+    public List<OccupationHybridRetriever.Hit> retrieve(String query, int limit) {
+        OccupationHybridRetriever.validateLimit(limit);
+        return retriever == null ? List.of() : retriever.retrieve(query, limit);
+    }
+
+    /** RRF changes order only: similarity remains the original Holland score for card explanations. */
+    public List<Ranked> rankHybrid(String hollandCode, String query, int limit) {
+        OccupationHybridRetriever.validateLimit(limit);
+        var rules = rank(hollandCode, Math.min(MAX_LIMIT, limit * 2));
+        if (retriever == null || query == null || query.isBlank()) return rules.stream().limit(limit).toList();
+        try {
+            var retrieval = retriever.search(query, Math.min(MAX_LIMIT, limit * 2));
+            // Direct retrieve still exposes FTS without vectors. Chat ranking degrades exactly to rules.
+            if (!retrieval.vectorAvailable() || retrieval.hits().isEmpty()) return rules.stream().limit(limit).toList();
+            var candidates = new LinkedHashMap<String, Ranked>();
+            rules.forEach(item -> candidates.put(item.id(), item));
+            retrieval.hits().stream().filter(item -> item.hollandCode() != null).forEach(item ->
+                    candidates.putIfAbsent(item.id(), new Ranked(item.id(), item.name(), item.family(), item.hollandCode(),
+                            HollandMatcher.score(HollandMatcher.normalize(hollandCode), item.hollandCode()))));
+            var scores = OccupationRrf.scores(rules.stream().map(Ranked::id).toList(),
+                    retrieval.hits().stream().map(OccupationHybridRetriever.Hit::id).toList());
+            return candidates.values().stream().filter(item -> item.similarity() > 0)
+                    .sorted(Comparator.<Ranked>comparingDouble(item -> scores.get(item.id())).reversed()
+                            .thenComparing(Ranked::name).thenComparing(Ranked::id)).limit(limit).toList();
+        } catch (Exception ex) {
+            log.warn("职业混合检索失败 ({})；回退 Holland 规则", ex.getClass().getSimpleName());
+            return rules.stream().limit(limit).toList();
+        }
     }
 
     public Ranked find(String occupationId, String name) {

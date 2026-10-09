@@ -15,6 +15,9 @@ const payload: CareerRecommendationPayload = {
       hollandCode: 'IRC',
       similarity: 1,
       reasons: ['共同兴趣 IRC', '位置加权相似度 100%'],
+      citations: [
+        { occupationId: 'occ1', title: '软件工程师', excerpt: '开发 Java 服务与数据库应用' },
+      ],
     },
     {
       occupationId: 'occ2',
@@ -64,6 +67,8 @@ describe('CareerRecommendationCard', () => {
     expect(root.textContent).toContain('1. 软件工程师')
     expect(root.textContent).toContain('2. 数据分析师')
     expect(root.textContent).toContain('共同兴趣 IRC')
+    expect(root.textContent).toContain('引用来源：软件工程师（occ1）· 开发 Java 服务与数据库应用')
+    expect(root.textContent?.match(/引用来源/g)).toHaveLength(1)
     expect(root.textContent).toContain('仍需批准')
     root.querySelectorAll('button')[1]!.click()
     expect(adopt).toHaveBeenCalledExactlyOnceWith({ occupationId: 'occ2', name: '数据分析师' })

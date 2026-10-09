@@ -14,10 +14,12 @@ public class DefaultCareerRecommendForChat implements CareerRecommendForChat {
         this.occupations = occupations;
     }
     @Override public Result recommend(String owner) {
-        var derived = InterestHollandMapping.derive(profiles.get(owner).interests());
+        var profile = profiles.get(owner);
+        var derived = InterestHollandMapping.derive(profile.interests());
         if (derived.code().isEmpty()) return new Result(
                 "请先在探索页勾选兴趣，或在对话里说明你对技术研发、产品策划、数据分析、创意设计、沟通协作或研究探索的偏好；保存兴趣后可获得职业推荐。", null);
-        var ranked = occupations.rank(derived.code(), 8).stream().map(item -> {
+        String query = String.join(" ", derived.interestsUsed()) + " " + profile.skills() + " " + profile.target();
+        var ranked = occupations.rankHybrid(derived.code(), query.strip(), 8).stream().map(item -> {
             String overlap = derived.code().chars().filter(c -> item.hollandCode().indexOf(c) >= 0)
                     .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
             // Existing rank scores are raw weighted points; expose a 0..1 fraction of attainable points.
@@ -25,7 +27,8 @@ public class DefaultCareerRecommendForChat implements CareerRecommendForChat {
             double similarity = item.similarity() / maximum;
             return new Recommendation(item.id(), item.name(), item.family(), item.hollandCode(), similarity,
                     List.of("兴趣码 " + derived.code() + " 与职业码 " + item.hollandCode() + " 共同包含 " + overlap,
-                            String.format(Locale.ROOT, "按兴趣码位置加权的相似度为 %.0f%%；仅作探索参考，不代表能力或录用概率", similarity * 100)));
+                            String.format(Locale.ROOT, "按兴趣码位置加权的相似度为 %.0f%%；仅作探索参考，不代表能力或录用概率", similarity * 100)),
+                    occupations.citations(item.id()));
         }).toList();
         return new Result(null, new Payload(derived.code(), derived.interestsUsed(), ranked));
     }

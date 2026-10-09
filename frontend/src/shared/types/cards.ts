@@ -57,6 +57,7 @@ export interface CareerRecommendationPayload {
     hollandCode: string
     similarity: number
     reasons: string[]
+    citations?: Array<{ occupationId: string; title: string; excerpt: string }>
   }>
 }
 
