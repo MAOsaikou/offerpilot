@@ -34,9 +34,11 @@ public class DemoResetService {
     private final TransactionTemplate transaction;
     private final ResumeObjectStore storage;
     private final JsonNode journey;
+    private final com.offerpilot.knowledge.application.KnowledgeNoteService notes;
 
     public DemoResetService(DemoAccountBootstrap accounts, JdbcTemplate jdbc, PlatformTransactionManager transactions,
-                            ResumeObjectStore storage, ObjectMapper json) throws Exception {
+                            ResumeObjectStore storage, ObjectMapper json, com.offerpilot.knowledge.application.KnowledgeNoteService notes) throws Exception {
+        this.notes = notes;
         this.accounts = accounts;
         this.jdbc = jdbc;
         transaction = new TransactionTemplate(transactions);
@@ -48,7 +50,7 @@ public class DemoResetService {
     }
 
     public record Summary(Instant resetAt, int resumeCount, int jobCount, int applicationCount,
-                          int interviewSessionCount, int careerProfileCount, int growthTaskCount) {}
+                          int interviewSessionCount, int careerProfileCount, int growthTaskCount, int knowledgeNoteCount) {}
     private record StoredFile(String bucket, String key) {}
 
     public Summary reset() {
@@ -75,7 +77,7 @@ public class DemoResetService {
             insertJobs();
             insertJourney(userId);
             return new Summary(Instant.now(), journey.path("resumes").size(), journey.path("jobs").size(),
-                    journey.path("applications").size(), journey.path("interviews").size(), 1, journey.path("growthTasks").size());
+                    journey.path("applications").size(), journey.path("interviews").size(), 1, journey.path("growthTasks").size(), journey.path("notes").size());
         });
         // Never remove source objects until the database replacement has committed.
         for (StoredFile file : obsolete) {
@@ -89,7 +91,7 @@ public class DemoResetService {
 
     private void clear(String userId) {
         // FK cascades remove answers, versions, messages, agent steps/calls/approvals/events.
-        for (String table : List.of("interview_sessions", "applications", "job_matches", "growth_task_completions",
+        for (String table : List.of("knowledge_note_imports", "knowledge_notes", "interview_sessions", "applications", "job_matches", "growth_task_completions",
                 "career_profiles", "resume_optimizations", "resume_patch_batches", "resume_diagnoses", "conversations")) {
             jdbc.update("DELETE FROM " + table + " WHERE user_id=?", userId);
         }
@@ -160,6 +162,9 @@ public class DemoResetService {
                         id, q++, answer.path("question").asText(), answer.path("answer").asText());
             }
         }
+        for (JsonNode note : journey.path("notes"))
+            notes.create(userId, new com.offerpilot.knowledge.application.KnowledgeNoteService.Draft(
+                    note.path("title").asText(), note.path("content").asText(), note.path("category").asText()));
         JsonNode career = journey.path("career");
         jdbc.update("INSERT INTO career_profiles(user_id,target,city,skills,interests) VALUES (?,?,?,?,?::jsonb)",
                 userId, career.path("target").asText(), career.path("city").asText(), career.path("skills").asText(), career.path("interests").toString());

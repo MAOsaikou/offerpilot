@@ -13,6 +13,8 @@ spring:
 
 offerpilot:
   knowledge:
+    notes-embed:
+      enabled: false
     occupation-embed:
       enabled: false
   resume:
