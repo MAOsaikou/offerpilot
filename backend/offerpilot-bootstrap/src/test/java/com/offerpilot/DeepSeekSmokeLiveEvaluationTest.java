@@ -275,7 +275,7 @@ class DeepSeekSmokeLiveEvaluationTest {
         assertThat(card.path("meta").path("source").asText()).isEqualTo("LOCAL_SNAPSHOT");
         assertThat(card.path("meta").path("snapshotDate").asText()).isNotBlank();
         assertThat(card.path("meta").path("fallbackReason").asText()).isNotBlank();
-        verify(liveJobs, atLeastOnce()).call(eq("jobs.search"), anyMap());
+        verify(liveJobs, atLeastOnce()).call(eq("search_jobs"), anyMap());
         String answer = narration(events);
         assertThat(List.of("离线", "快照", "非实时").stream().anyMatch(answer::contains)).isTrue();
         assertThat(List.of("实时查询到", "实时搜索到", "官网当前在招", "最新在招").stream().noneMatch(answer::contains)).isTrue();
