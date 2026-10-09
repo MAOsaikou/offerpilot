@@ -3,6 +3,7 @@ package com.offerpilot;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.offerpilot.auth.application.StaffAccountBootstrap;
+import com.offerpilot.common.error.ErrorCode;
 import com.offerpilot.config.OfferPilotProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -93,6 +94,21 @@ class StaffBootstrapIntegrationTest {
         var login = request("POST", "/auth/staff/login", null, Map.of("email", EMAIL, "password", PASSWORD));
         assertThat(login.statusCode()).isEqualTo(200);
         assertThat(json.readTree(login.body()).path("data").path("user").path("roles").get(0).asText()).isEqualTo("STAFF");
+    }
+
+    @Test
+    void staffDemotionImmediatelyRejectsExistingJwtOverHttp() throws Exception {
+        run(EMAIL, PASSWORD);
+        var login = request("POST", "/auth/staff/login", null, Map.of("email", EMAIL, "password", PASSWORD));
+        assertThat(login.statusCode()).isEqualTo(200);
+        String token = json.readTree(login.body()).path("data").path("accessToken").asText();
+        assertThat(request("GET", "/staff/users", token, null).statusCode()).isEqualTo(200);
+
+        assertThat(jdbc.update("UPDATE users SET roles = '{USER}' WHERE email = ?", EMAIL)).isEqualTo(1);
+        var rejected = request("GET", "/staff/users", token, null);
+        assertThat(rejected.statusCode()).isEqualTo(403);
+        assertThat(json.readTree(rejected.body()).path("code").asInt()).isEqualTo(ErrorCode.FORBIDDEN.code());
+        assertThat(json.readTree(rejected.body()).path("message").asText()).isEqualTo("需要客服账号权限");
     }
 
     @Test

@@ -2,9 +2,13 @@ package com.offerpilot.auth.application;
 
 import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
+import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -25,6 +29,86 @@ class PasswordLoginServiceTest {
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
     private final JwtTokenService tokens = mock(JwtTokenService.class);
     private final PasswordLoginService service = new PasswordLoginService(jdbc, encoder, tokens);
+
+    @ParameterizedTest
+    @ValueSource(strings = {"USER", "", "STAFF_ASSISTANT"})
+    void staffDemotionImmediatelyRejectsTokenStillClaimingStaff(String databaseRoles) throws Exception {
+        staffToken(List.of("STAFF"));
+        staffAccount("ACTIVE", databaseRoles);
+        assertThatThrownBy(() -> service.requireStaffId("Bearer staff-token"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ErrorCode.FORBIDDEN))
+                .hasMessage("需要客服账号权限");
+    }
+
+    @Test
+    void activeDatabaseStaffReturnsUserId() throws Exception {
+        staffToken(List.of("STAFF"));
+        staffAccount("ACTIVE", "USER,STAFF");
+        assertThat(service.requireStaffId("Bearer staff-token")).isEqualTo("usr_staff");
+        verify(jdbc).queryForObject(anyString(), org.mockito.ArgumentMatchers.<RowMapper<Object>>any(), eq("usr_staff"));
+    }
+
+    @Test
+    void databaseStaffRoleIsAuthoritativeEvenWithoutStaffClaim() throws Exception {
+        staffToken(List.of("USER"));
+        staffAccount("ACTIVE", "STAFF");
+        assertThat(service.requireStaffId("Bearer staff-token")).isEqualTo("usr_staff");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"STAFF", "USER"})
+    void disabledAccountReturnsTokenInvalidBeforeRoleCheck(String databaseRoles) throws Exception {
+        staffToken(List.of("STAFF"));
+        staffAccount("DISABLED", databaseRoles);
+        assertThatThrownBy(() -> service.requireStaffId("Bearer staff-token"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ErrorCode.TOKEN_INVALID))
+                .hasMessage("令牌对应的用户已停用");
+    }
+
+    @Test
+    void missingStaffAccountReturnsTokenInvalid() {
+        staffToken(List.of("STAFF"));
+        when(jdbc.queryForObject(anyString(), org.mockito.ArgumentMatchers.<RowMapper<Object>>any(), eq("usr_staff")))
+                .thenThrow(new EmptyResultDataAccessException(1));
+        assertThatThrownBy(() -> service.requireStaffId("Bearer staff-token"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ErrorCode.TOKEN_INVALID))
+                .hasMessage("令牌对应的用户不存在");
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "staff-token", "Basic staff-token", "bearer staff-token"})
+    void missingBearerRejectsStaffRequestBeforeTokenOrDatabaseAccess(String authorization) {
+        assertThatThrownBy(() -> service.requireStaffId(authorization))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(ErrorCode.UNAUTHENTICATED));
+        verifyNoInteractions(tokens, jdbc);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = ErrorCode.class, names = {"TOKEN_INVALID", "TOKEN_EXPIRED"})
+    void staffTokenParseFailuresPropagateBeforeDatabaseAccess(ErrorCode code) {
+        BusinessException failure = new BusinessException(code);
+        when(tokens.parseAndVerify("bad-token")).thenThrow(failure);
+        assertThatThrownBy(() -> service.requireStaffId("Bearer bad-token")).isSameAs(failure);
+        verifyNoInteractions(jdbc);
+    }
+
+    private void staffToken(List<String> roles) {
+        when(tokens.parseAndVerify("staff-token"))
+                .thenReturn(Jwts.claims().subject("usr_staff").add("roles", roles).build());
+    }
+
+    private void staffAccount(String status, String roles) throws Exception {
+        ResultSet row = mock(ResultSet.class);
+        when(row.getString("status")).thenReturn(status);
+        when(row.getString("roles_csv")).thenReturn(roles);
+        when(jdbc.queryForObject(anyString(), org.mockito.ArgumentMatchers.<RowMapper<Object>>any(), eq("usr_staff")))
+                .thenAnswer(call -> call.<RowMapper<Object>>getArgument(1).mapRow(row, 0));
+    }
 
     @ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
