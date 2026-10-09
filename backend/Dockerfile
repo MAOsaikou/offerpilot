@@ -22,6 +22,7 @@ RUN mvn -q -B -pl offerpilot-bootstrap -am -DskipTests package
 
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
+RUN apk add --no-cache fontconfig font-noto-cjk
 RUN addgroup -S app && adduser -S app -G app
 COPY --from=build /app/offerpilot-bootstrap/target/*.jar app.jar
 USER app

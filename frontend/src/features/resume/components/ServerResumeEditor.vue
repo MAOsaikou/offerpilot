@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
+  exportResumePdf,
   getResume,
   listResumeVersions,
   renameResume,
@@ -42,6 +43,7 @@ const title = ref('')
 const savedTitle = ref('')
 const baseVersion = ref('')
 const busy = ref(false)
+const exporting = ref(false)
 const error = ref('')
 const message = ref('')
 const tab = ref(route.query.tab === 'optimize' ? '改写' : '内容')
@@ -128,6 +130,25 @@ async function save() {
     success = true
   })
   return success
+}
+async function exportPdf() {
+  if (
+    busy.value ||
+    exporting.value ||
+    resume.value?.parseStatus !== 'READY' ||
+    !resume.value.currentVersion
+  )
+    return
+  exporting.value = true
+  error.value = ''
+  try {
+    await exportResumePdf(props.id)
+    message.value = '已导出服务端当前保存版本的 PDF。'
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'PDF 导出失败，请重试。'
+  } finally {
+    exporting.value = false
+  }
 }
 async function retry() {
   await run(async () => {
@@ -234,6 +255,15 @@ const basics = [
       description="核对每一段经历，让真实的优势清晰可见。"
     >
       <RouterLink class="btn" to="/resumes">返回简历中心</RouterLink>
+      <button
+        class="btn"
+        :disabled="busy || exporting || resume?.parseStatus !== 'READY' || !resume?.currentVersion"
+        :aria-busy="exporting"
+        title="导出服务端当前保存版本，未保存的编辑不会包含在 PDF 中"
+        @click="exportPdf"
+      >
+        {{ exporting ? '导出中…' : '导出 PDF' }}
+      </button>
       <button class="btn" :disabled="busy || query.isFetching.value" @click="reload">
         重新加载
       </button>
@@ -270,7 +300,8 @@ const basics = [
           </p>
         </template>
         <p v-if="resume.parseStatus === 'READY'" class="subtle">
-          解析结果可能存在遗漏，请对照原文件核对。手动保存后会生成新版本。
+          解析结果可能存在遗漏，请对照原文件核对。手动保存后会生成新版本。PDF
+          导出使用当前已保存版本。
         </p>
       </div>
       <template v-if="resume.parseStatus === 'READY' && draft">

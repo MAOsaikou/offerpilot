@@ -1,11 +1,13 @@
 import {
   apiRequest,
+  assertResponseIdentity,
   apiUrl,
   authenticatedHeaders,
   fetchWithIdentity,
   readApiData,
   toApiError,
 } from './client'
+import { downloadBlob } from '@/shared/utils/download'
 import type {
   ResumePage,
   ResumeStructure,
@@ -54,3 +56,29 @@ export const saveResume = (id: string, version: string, structured: ResumeStruct
     `/resumes/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}/structured`,
     { method: 'PUT', body: JSON.stringify(structured) },
   )
+
+/** Downloads the server's saved current version, including applied patches. */
+export async function exportResumePdf(id: string, template = 'classic'): Promise<void> {
+  const response = await fetchWithIdentity(
+    apiUrl(
+      `/resumes/${encodeURIComponent(id)}/export.pdf?template=${encodeURIComponent(template)}`,
+    ),
+    { headers: await authenticatedHeaders({ Accept: 'application/pdf' }) },
+  )
+  if (!response.ok) throw await toApiError(response)
+  const blob = await response.blob()
+  assertResponseIdentity(response)
+  if (!response.headers.get('Content-Type')?.toLowerCase().startsWith('application/pdf'))
+    throw new Error('PDF 导出响应格式错误，请重试。')
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const utf8Name = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]
+  let filename = /filename="([^";]+)"/i.exec(disposition)?.[1] ?? '简历.pdf'
+  if (utf8Name) {
+    try {
+      filename = decodeURIComponent(utf8Name)
+    } catch {
+      // Malformed optional filename must not prevent downloading a valid PDF.
+    }
+  }
+  downloadBlob(filename, blob)
+}
