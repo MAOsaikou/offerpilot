@@ -12,6 +12,9 @@ spring:
       - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
 
 offerpilot:
+  knowledge:
+    occupation-embed:
+      enabled: false
   resume:
     # Avoid scheduled claim()/stale-parse cleanup racing with integration-test TRUNCATE.
     worker-enabled: false

@@ -85,6 +85,10 @@ springdoc:
     path: /v3/api-docs
 
 offerpilot:
+  knowledge:
+    occupation-embed:
+      enabled: ${OCCUPATION_EMBED_ENABLED:true}
+      force: ${OCCUPATION_EMBED_FORCE:false}
   staff-bootstrap:
     email: ${STAFF_BOOTSTRAP_EMAIL:}
     password: ${STAFF_BOOTSTRAP_PASSWORD:}

@@ -13,9 +13,7 @@ const emit = defineEmits<{ adoptTarget: [selection: CareerTargetSelection] }>()
   <section class="min-w-0 rounded-xl border border-border bg-card p-4" aria-label="职业推荐">
     <h3 class="font-semibold">职业兴趣推荐 · {{ payload.hollandCode }}</h3>
     <p class="mt-1 text-sm text-muted-foreground">
-      依据已保存兴趣：{{
-        payload.interestsUsed.join('、')
-      }}。规则推荐供探索参考，设为目标后仍需批准。
+      依据已保存兴趣：{{ payload.interestsUsed.join('、') }}。推荐供探索参考，设为目标后仍需批准。
     </p>
     <p v-if="!payload.recommendations.length" class="mt-3 text-sm" role="status">
       暂无匹配职业，请调整探索页兴趣后重试。
@@ -35,6 +33,13 @@ const emit = defineEmits<{ adoptTarget: [selection: CareerTargetSelection] }>()
         <ul class="mt-2 space-y-1 text-sm text-muted-foreground">
           <li v-for="reason in item.reasons" :key="reason" class="break-words">{{ reason }}</li>
         </ul>
+        <p
+          v-for="citation in item.citations ?? []"
+          :key="citation.occupationId"
+          class="mt-2 break-words text-xs text-muted-foreground"
+        >
+          引用来源：{{ citation.title }}（{{ citation.occupationId }}）· {{ citation.excerpt }}
+        </p>
         <button
           v-if="interactive"
           type="button"
