@@ -36,6 +36,12 @@ import com.github.dockerjava.api.model.PortBinding;
 import com.github.dockerjava.api.model.Ports;
 
 import java.net.URI;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.text.PDFTextStripper;
+import com.offerpilot.resume.application.ResumeOptimizationValidator;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -118,7 +124,7 @@ class DeepSeekSmokeLiveEvaluationTest {
         verifyNoInteractions(liveJobs);
         System.out.println("LIVE_SMOKE " + tier + " demo-expired REST-match PASS verified=" + report.path("requirements").size());
         var chat = chat(tier, "JOB", "请匹配这个岗位与我的简历", Map.of("jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
-        assertThat(cards(chat, "job_match")).as(tier + " chat matching; events=" + chat).hasSize(1);
+        assertThat(cards(chat, "job_match").size()).as(tier + " chat matching").isEqualTo(1);
         verifyNoInteractions(liveJobs);
         System.out.println("LIVE_SMOKE " + tier + " demo-expired chat-match PASS");
 
@@ -137,12 +143,12 @@ class DeepSeekSmokeLiveEvaluationTest {
     @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
     void coachNarratesTheGapsAndFourWeekRoadmap(ModelTier tier) throws Exception {
         var events = chat(tier, "COACH", "请分析技能差距并给出四周学习路线，概括卡片里的重点", Map.of("resumeId", resumeId, "resumeVersionId", versionId));
-        assertThat(cards(events, "skill_gap")).as(tier + " coach; events=" + events).hasSize(1);
+        assertThat(cards(events, "skill_gap").size()).as(tier + " coach").isEqualTo(1);
         var gap = cards(events, "skill_gap").get(0);
         assertThat(cards(events, "roadmap").get(0).path("weeks")).hasSize(4);
         String answer = narration(events);
-        assertThat(answer).doesNotContain("只有一段报告摘要", "没有包含具体的差距", "仅收到摘要");
-        assertThat(gap.path("skills")).anySatisfy(skill -> assertThat(answer).contains(skill.path("name").asText()));
+        assertThat(List.of("只有一段报告摘要", "没有包含具体的差距", "仅收到摘要").stream().noneMatch(answer::contains)).isTrue();
+        assertThat(gap.path("skills").findValuesAsText("name").stream().anyMatch(answer::contains)).isTrue();
         System.out.println("LIVE_SMOKE " + tier + " COACH digest-narration PASS");
     }
 
@@ -153,7 +159,8 @@ class DeepSeekSmokeLiveEvaluationTest {
         assertThat(recommendations.path(0).path("family").asText()).isIn("软件研发", "算法与人工智能", "测试与质量", "运维与安全", "数据", "计算机与数学");
         assertThat(recommendations.path(0).path("reasons").toString()).contains("六维 RIASEC", "职业库文本中匹配");
         assertThat(recommendations.findValuesAsText("name").stream().limit(3)).doesNotContain("假肢与矫形器师", "兽医", "口腔修复科医生");
-        assertThat(narration(events)).contains(recommendations.path(0).path("name").asText()).doesNotContain("仅收到摘要");
+        assertThat(narration(events).contains(recommendations.path(0).path("name").asText())).isTrue();
+        assertThat(narration(events).contains("仅收到摘要")).isFalse();
         System.out.println("LIVE_SMOKE " + tier + " CAREER RIS profile-lexical-narration PASS top5=" + recommendations.findValuesAsText("name").stream().limit(5).toList());
     }
 
@@ -161,9 +168,155 @@ class DeepSeekSmokeLiveEvaluationTest {
     void interviewerNarratesStarAndRubricCard(ModelTier tier) throws Exception {
         String session = jdbc.queryForObject("SELECT id FROM interview_sessions WHERE user_id=? AND completed=true LIMIT 1", String.class, owner);
         var events = chat(tier, "INTERVIEWER", "请评价面试，概括评分卡的STAR和改进建议", Map.of("interviewAction", "scoreInterview", "interviewSessionId", session));
-        assertThat(cards(events, "interview_report")).hasSize(1);
-        assertThat(narration(events)).containsAnyOf("STAR", "背景", "结果").doesNotContain("只有一段报告摘要", "仅收到摘要");
+        assertThat(cards(events, "interview_report").size()).isEqualTo(1);
+        assertThat(List.of("STAR", "背景", "结果").stream().anyMatch(narration(events)::contains)).isTrue();
+        assertThat(List.of("只有一段报告摘要", "仅收到摘要").stream().noneMatch(narration(events)::contains)).isTrue();
         System.out.println("LIVE_SMOKE " + tier + " INTERVIEW STAR-digest-narration PASS");
+    }
+
+    @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
+    void resumeRewriteApprovalAndPdfContainAppliedText(ModelTier tier) throws Exception {
+        int initialVersions = versionCount();
+        var source = data(request("GET", "/api/v1/resumes/" + resumeId + "/versions/" + versionId, null)).path("structured");
+        var events = chat(tier, "RESUME", "请针对选中的岗位生成简历改写建议，保留已有事实，突出项目里的后端开发职责。",
+                Map.of("jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
+        assertThat(cards(events, "resume_diff").size()).isEqualTo(1);
+        var report = cards(events, "resume_diff").get(0);
+        assertThat(report.path("patches").isEmpty()).as(tier + " actionable rewrite").isFalse();
+        var validated = json.createObjectNode();
+        validated.set("summary", report.path("summary")); validated.set("patches", report.path("patches"));
+        ResumeOptimizationValidator.validate(validated, source, JobService.evidenceText(jobs.get("job_demo_1")));
+        assertThat(versionCount()).isEqualTo(initialVersions);
+        var accepted = new ArrayList<String>(); var confirmed = new ArrayList<String>();
+        for (var patch : report.path("patches")) {
+            accepted.add(patch.path("id").asText());
+            if (patch.path("needsUserConfirmation").asBoolean()) confirmed.add(patch.path("id").asText());
+        }
+        var context = Map.<String, Object>of("resumeAction", "applyPatches", "resumeId", resumeId,
+                "resumeVersionId", versionId, "batchId", report.path("batchId").asText(),
+                "accepted", accepted, "edited", Map.of(), "confirmed", confirmed);
+        for (String decision : List.of("REJECT", "APPROVE")) {
+            approvalChat(tier, conversation(events), "RESUME", "请采纳所选的简历改写建议", context, decision,
+                    () -> assertThat(versionCount()).isEqualTo(initialVersions));
+            assertThat(versionCount()).isEqualTo(initialVersions + (decision.equals("APPROVE") ? 1 : 0));
+        }
+        String newVersion = jdbc.queryForObject("SELECT current_version_id FROM resumes WHERE id=?", String.class, resumeId);
+        assertThat(newVersion).isNotEqualTo(versionId);
+        var saved = data(request("GET", "/api/v1/resumes/" + resumeId + "/versions/" + newVersion, null));
+        assertThat(saved.path("parentVersionId").asText()).isEqualTo(versionId);
+        assertThat(data(request("GET", "/api/v1/resumes/" + resumeId + "/versions/" + versionId, null)).path("structured")).isEqualTo(source);
+        var pdf = HttpClient.newHttpClient().send(requestBuilder("GET", "/api/v1/resumes/" + resumeId + "/export.pdf?template=classic", null).build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(pdf.statusCode()).isEqualTo(200);
+        assertThat(pdf.headers().firstValue("Content-Type").orElse("")).contains("application/pdf");
+        assertThat(new String(pdf.body(), 0, 4, StandardCharsets.US_ASCII)).isEqualTo("%PDF");
+        try (var document = Loader.loadPDF(pdf.body())) {
+            assertThat(document.getNumberOfPages()).isGreaterThan(0);
+            String extracted = new PDFTextStripper().getText(document).replaceAll("\\s+", "");
+            for (var patch : report.path("patches")) {
+                assertThat(saved.path("structured").at(patch.path("path").asText()).equals(patch.path("value"))).as("saved patch equals selected value").isTrue();
+                assertThat(extracted.contains(patch.path("value").asText().replaceAll("\\s+", ""))).as("PDF contains patched text").isTrue();
+            }
+        }
+        System.out.println("LIVE_SMOKE " + tier + " A rewrite/reject/approve/saved-version/PDF PASS patches=" + accepted.size());
+    }
+
+    @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
+    void boardExplicitAndModelInferredApprovalThroughHttp(ModelTier tier) throws Exception {
+        var matched = chat(tier, "JOB", "请匹配这个岗位与我的简历", Map.of("jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
+        assertThat(cards(matched, "job_match").size()).isEqualTo(1);
+        String conversation = conversation(matched);
+        for (String decision : List.of("REJECT", "APPROVE")) {
+            clearBoardJob();
+            approvalChat(tier, conversation, "AUTO", "把这个岗位加入求职看板",
+                    Map.of("jobId", "job_demo_1", "boardAction", "createApplication"), decision,
+                    () -> assertThat(boardCount()).isZero());
+            verifyBoard(decision);
+        }
+        // The exact UI sentence is deterministic even without boardAction (#47).
+        clearBoardJob();
+        approvalChat(tier, conversation, "AUTO", "把这个岗位加入求职看板", Map.of("jobId", "job_demo_1"), "REJECT",
+                () -> assertThat(boardCount()).isZero());
+        verifyBoard("REJECT");
+        // All three requests bypass BoardIntent's narrow whole-sentence pattern.
+        var requests = List.of("我想跟进当前选中的职位，请在我的看板里新建一条待投递记录。",
+                "这个职位我打算申请，请帮我建一个求职跟踪记录，先设为待投递。",
+                "把当前选择的职位记录到求职看板，我之后再投递。");
+        int passed = 0;
+        for (int i = 0; i < requests.size(); i++) {
+            clearBoardJob();
+            String decision = i == 2 ? "REJECT" : "APPROVE";
+            approvalChat(tier, conversation, "AUTO", requests.get(i), Map.of("jobId", "job_demo_1"), decision,
+                    () -> assertThat(boardCount()).isZero());
+            verifyBoard(decision); passed++;
+            System.out.println("LIVE_SMOKE " + tier + " B inferred attempt=" + (i + 1) + " PASS decision=" + decision);
+        }
+        System.out.println("LIVE_SMOKE " + tier + " B explicit/exact-text PASS inferred=" + passed + "/3");
+    }
+
+    @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
+    void autoChatSearchFallsBackAndNarratesOfflineSource(ModelTier tier) throws Exception {
+        var events = chat(tier, "AUTO", "请找 Java 后端实习岗位，不限城市，说明数据来源。", Map.of());
+        assertThat(cards(events, "job_card").size()).isEqualTo(1);
+        var card = cards(events, "job_card").get(0);
+        assertThat(card.path("items").isEmpty()).isFalse();
+        assertThat(card.path("meta").path("source").asText()).isEqualTo("LOCAL_SNAPSHOT");
+        assertThat(card.path("meta").path("snapshotDate").asText()).isNotBlank();
+        assertThat(card.path("meta").path("fallbackReason").asText()).isNotBlank();
+        verify(liveJobs, atLeastOnce()).call(eq("jobs.search"), anyMap());
+        String answer = narration(events);
+        assertThat(List.of("离线", "快照", "非实时").stream().anyMatch(answer::contains)).isTrue();
+        assertThat(List.of("实时查询到", "实时搜索到", "官网当前在招", "最新在招").stream().noneMatch(answer::contains)).isTrue();
+        System.out.println("LIVE_SMOKE " + tier + " C AUTO offline-job-card/source/narration PASS count=" + card.path("items").size());
+    }
+
+    private int versionCount() {
+        return jdbc.queryForObject("SELECT count(*) FROM resume_versions WHERE resume_id=?", Integer.class, resumeId);
+    }
+    private void clearBoardJob() {
+        jdbc.update("DELETE FROM applications WHERE user_id=? AND job_id='job_demo_1'", owner);
+    }
+    private int boardCount() {
+        return jdbc.queryForObject("SELECT count(*) FROM applications WHERE user_id=? AND job_id='job_demo_1'", Integer.class, owner);
+    }
+    private void verifyBoard(String decision) throws Exception {
+        int expected = decision.equals("APPROVE") ? 1 : 0;
+        assertThat(boardCount()).isEqualTo(expected);
+        var applications = data(request("GET", "/api/v1/applications", null));
+        assertThat(applications.findValuesAsText("jobId").stream().filter("job_demo_1"::equals).count()).isEqualTo(expected);
+    }
+    private String conversation(List<JsonNode> events) {
+        return events.stream().filter(e -> e.path("type").asText().equals("run.started")).findFirst().orElseThrow().path("conversationId").asText();
+    }
+    private List<JsonNode> approvalChat(ModelTier tier, String conversation, String mode, String content,
+                                       Map<String, Object> context, String decision, Runnable beforeApproval) throws Exception {
+        var body = Map.of("conversationId", conversation, "content", content, "mode", mode,
+                "options", Map.of("modelTier", tier.name(), "context", context));
+        var response = HttpClient.newHttpClient().send(requestBuilder("POST", "/api/v1/agent/chat", body).build(), HttpResponse.BodyHandlers.ofInputStream());
+        assertThat(response.statusCode()).isEqualTo(200);
+        var events = new ArrayList<JsonNode>();
+        try (var reader = new BufferedReader(new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+            JsonNode approval = null;
+            for (String line; (line = reader.readLine()) != null;) {
+                if (!line.startsWith("data:")) continue;
+                var event = json.readTree(line.substring(5).strip()); events.add(event);
+                if (event.path("type").asText().equals("approval.required")) { approval = event; break; }
+            }
+            assertThat(approval != null).as(tier + " approval required for " + content).isTrue();
+            assertThat(events.stream().anyMatch(e -> e.path("type").asText().equals("tool.call") && e.path("access").asText().equals("WRITE"))).isTrue();
+            beforeApproval.run();
+            assertThat(request("POST", "/api/v1/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText(),
+                    Map.of("decision", decision)).statusCode()).isEqualTo(200);
+            for (String line; (line = reader.readLine()) != null;) if (line.startsWith("data:")) events.add(json.readTree(line.substring(5).strip()));
+        }
+        verifyCompleted(events);
+        assertThat(events.stream().anyMatch(e -> e.path("type").asText().equals("approval.resolved") && e.path("decision").asText().equals(decision))).isTrue();
+        assertThat(events.stream().anyMatch(e -> e.path("type").asText().equals("tool.result") && e.path("ok").asBoolean() == decision.equals("APPROVE"))).isTrue();
+        return events;
+    }
+    private void verifyCompleted(List<JsonNode> events) {
+        assertThat(events.stream().filter(e -> e.path("type").asText().equals("error")).map(e -> e.path("code").asText()).toList()).isEmpty();
+        assertThat(events.stream().anyMatch(e -> e.path("type").asText().equals("run.completed"))).isTrue();
     }
 
     private void verifyReport(JsonNode report) {
@@ -187,8 +340,7 @@ class DeepSeekSmokeLiveEvaluationTest {
         assertThat(response.statusCode()).isEqualTo(200);
         var events = new ArrayList<JsonNode>();
         for (String line : response.body().split("\\R")) if (line.startsWith("data:")) events.add(json.readTree(line.substring(5).strip()));
-        assertThat(events).noneSatisfy(event -> assertThat(event.path("type").asText()).isEqualTo("error"));
-        assertThat(events).anySatisfy(event -> assertThat(event.path("type").asText()).isEqualTo("run.completed"));
+        verifyCompleted(events);
         return events;
     }
     private List<JsonNode> cards(List<JsonNode> events, String type) {
@@ -202,9 +354,12 @@ class DeepSeekSmokeLiveEvaluationTest {
         return json.readTree(response.body()).path("data");
     }
     private HttpResponse<String> request(String method, String path, Object body) throws Exception {
+        return HttpClient.newHttpClient().send(requestBuilder(method, path, body).build(), HttpResponse.BodyHandlers.ofString());
+    }
+    private HttpRequest.Builder requestBuilder(String method, String path, Object body) throws Exception {
         var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(240))
                 .header("Authorization", "Bearer " + token).header("Content-Type", "application/json");
         builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));
-        return HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.ofString());
+        return builder;
     }
 }
