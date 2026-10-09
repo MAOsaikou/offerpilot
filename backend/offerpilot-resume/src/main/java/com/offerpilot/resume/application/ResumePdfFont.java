@@ -35,6 +35,7 @@ final class ResumePdfFont implements AutoCloseable {
         String weight = bold ? "Bold" : "Regular";
         List<String> paths = configured.isBlank() ? List.of(
             "/usr/share/fonts/opentype/noto/NotoSansCJK-" + weight + ".ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJKsc-" + weight + ".otf",
             "/usr/share/fonts/noto/NotoSansCJK-" + weight + ".ttc",
             "/usr/share/fonts/noto-cjk/NotoSansCJK-" + weight + ".ttc",
             "/usr/share/fonts/noto-cjk/NotoSansCJKsc-" + weight + ".otf"
