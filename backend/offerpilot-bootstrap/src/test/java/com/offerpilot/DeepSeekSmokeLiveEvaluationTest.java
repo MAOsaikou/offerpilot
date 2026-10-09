@@ -314,6 +314,8 @@ class DeepSeekSmokeLiveEvaluationTest {
                 var event = json.readTree(line.substring(5).strip()); events.add(event);
                 if (event.path("type").asText().equals("approval.required")) { approval = event; break; }
             }
+            if (approval == null) java.nio.file.Files.writeString(java.nio.file.Path.of(
+                    "/tmp/offerpilot-deepseek-missing-approval-" + tier + ".json"), json.writeValueAsString(events));
             assertThat(approval != null).as(tier + " approval required for " + content).isTrue();
             assertThat(events.stream().anyMatch(e -> e.path("type").asText().equals("tool.call") && e.path("access").asText().equals("WRITE"))).isTrue();
             beforeApproval.run();
