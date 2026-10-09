@@ -125,8 +125,6 @@ class DeepSeekSmokeLiveEvaluationTest {
         verifyNoInteractions(liveJobs);
         System.out.println("LIVE_SMOKE " + tier + " demo-expired REST-match PASS verified=" + report.path("requirements").size());
         var chat = chat(tier, "JOB", "请匹配这个岗位与我的简历", Map.of("jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
-        if (cards(chat, "job_match").isEmpty()) java.nio.file.Files.writeString(java.nio.file.Path.of(
-                "/tmp/offerpilot-deepseek-missing-match-" + tier + ".json"), json.writeValueAsString(chat));
         assertThat(cards(chat, "job_match").size()).as(tier + " chat matching").isEqualTo(1);
         verifyNoInteractions(liveJobs);
         System.out.println("LIVE_SMOKE " + tier + " demo-expired chat-match PASS");
@@ -357,6 +355,10 @@ class DeepSeekSmokeLiveEvaluationTest {
         assertThat(response.statusCode()).isEqualTo(200);
         var events = new ArrayList<JsonNode>();
         for (String line : response.body().split("\\R")) if (line.startsWith("data:")) events.add(json.readTree(line.substring(5).strip()));
+        if ("JOB".equals(mode) && context.containsKey("resumeVersionId")) {
+            var capture = java.nio.file.Files.createTempFile("offerpilot-deepseek-match-" + tier + "-", ".json");
+            java.nio.file.Files.writeString(capture, json.writeValueAsString(events));
+        }
         verifyCompleted(events);
         return events;
     }
