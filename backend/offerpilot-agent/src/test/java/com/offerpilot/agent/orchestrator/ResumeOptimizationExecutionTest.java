@@ -64,7 +64,8 @@ class ResumeOptimizationExecutionTest {
                 assertThat(((AgentEvent.ToolCall)e).name()).isEqualTo("optimizeResumeForJob");
                 assertThat(((AgentEvent.ToolCall)e).access()).isEqualTo(AgentEvent.ToolAccess.READ);
             });
-            assertThat(reply.get(reply.size()-1).getText()).contains("本轮未执行采纳", "逐条核对");
+            assertThat(reply.get(reply.size()-2)).isInstanceOfSatisfying(SystemMessage.class,
+                    message -> assertThat(message.getText()).contains("本轮未执行采纳", "逐条核对"));
         }
         verify(optimizations, times(3)).generate(eq("owner"), eq("res_1"), eq("ver_1"), eq("岗位JD"), matches("[a-z0-9-]{36}"));
         verifyNoInteractions(diagnoses, matches, searches);
@@ -92,7 +93,8 @@ class ResumeOptimizationExecutionTest {
         verify(optimizations, never()).generate(any(), any(), any(), any(), any());
         action.set("advice");
         assertThat(run(orchestrator, AgentMode.RESUME, context).collectList().block()).noneMatch(AgentEvent.UiCard.class::isInstance);
-        assertThat(reply.get(reply.size()-1).getText()).contains("只提供简历文字指导");
+        assertThat(reply.get(reply.size()-2)).isInstanceOfSatisfying(SystemMessage.class,
+                message -> assertThat(message.getText()).contains("只提供简历文字指导"));
         verifyNoInteractions(descriptions, diagnoses, matches, searches);
     }
     @Test void failuresAreSanitizedAndCancellationPropagatesToRewrite() throws Exception {

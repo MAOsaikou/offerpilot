@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { cancelAgentRun, resumeAgentRun, streamAgentChat } from '@/shared/api/agent'
+import { cancelAgentRun, streamAgentChat } from '@/shared/api/agent'
 import { useAgentRunStore } from '@/shared/stores/agentRun'
 import type { AgentEvent, ChatRequest } from '@/shared/types/agent-events'
 
@@ -87,15 +87,5 @@ export function useAgentStream() {
     if (running) await cancelAgentRun(runId)
   }
 
-  /** 断线续传，事件 id 从 store 里取 */
-  async function resume(runId: string, afterId?: number): Promise<void> {
-    const after = afterId ?? store.getRun(runId)?.lastEventId ?? 0
-    controller = new AbortController()
-    await resumeAgentRun(runId, after, {
-      signal: controller.signal,
-      onEvent: handleEvent,
-    })
-  }
-
-  return { start, stop, resume, streaming }
+  return { start, stop, streaming }
 }
