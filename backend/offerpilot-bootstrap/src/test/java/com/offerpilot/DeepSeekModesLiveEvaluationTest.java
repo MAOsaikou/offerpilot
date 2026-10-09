@@ -42,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "offerpilot.security.jwt-secret=live-modes-isolated-signing-key-not-for-production-0123456789abcdef0123456789abcdef",
         "offerpilot.demo.enabled=false", "offerpilot.resume.worker-enabled=false",
         "spring.ai.mcp.server.enabled=false", "offerpilot.knowledge.occupation-embed.enabled=false",
-        "spring.ai.model.chat=deepseek", "spring.ai.retry.max-attempts=1"
+        "spring.ai.retry.max-attempts=1"
 })
 @ActiveProfiles("prod")
 @Testcontainers
