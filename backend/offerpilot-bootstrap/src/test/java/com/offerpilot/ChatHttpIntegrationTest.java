@@ -49,6 +49,7 @@ class ChatHttpIntegrationTest {
     @Autowired GuestIdentityService identities;
     @Autowired ConversationService conversations;
     @Autowired JdbcTemplate jdbc;
+    @Autowired com.offerpilot.llm.quota.LlmQuotaLimiter quotas;
     @Autowired org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     private static final AtomicReference<String> requestBody = new AtomicReference<>();
     private static final HttpServer provider = provider();
@@ -106,6 +107,31 @@ class ChatHttpIntegrationTest {
     }
 
     private String owner(String token) { return identities.require("Bearer " + token); }
+
+    @Test
+    void exhaustedGuestQuotaReturnsHttp429BeforeSseOrRunCreation() throws Exception {
+        String token = identities.create().accessToken(), user = owner(token);
+        var admission = quotas.check(user, com.offerpilot.llm.ModelTier.CHEAP, true);
+        quotas.record(admission, 50000);
+        var response = request("POST", "/agent/chat", token, "{\"content\":\"hello\"}");
+        assertThat(response.statusCode()).isEqualTo(429);
+        assertThat(json.readTree(response.body()).path("code").asInt()).isEqualTo(40008);
+        assertThat(response.headers().firstValue("Retry-After")).hasValueSatisfying(value -> assertThat(Long.parseLong(value)).isBetween(1L, 86400L));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM agent_runs WHERE user_id=?", Integer.class, user)).isZero();
+    }
+
+    @Test
+    void guestRpmAndProPolicyAreOrdinaryHttpErrors() throws Exception {
+        String token = identities.create().accessToken(), user = owner(token);
+        var forbidden = request("POST", "/agent/chat", token, "{\"content\":\"hello\",\"options\":{\"modelTier\":\"PRO\"}}");
+        assertThat(forbidden.statusCode()).isEqualTo(403);
+        assertThat(json.readTree(forbidden.body()).path("code").asInt()).isEqualTo(20004);
+        for (int i = 0; i < 20; i++) quotas.check(user, com.offerpilot.llm.ModelTier.CHEAP, true);
+        var limited = request("POST", "/agent/chat", token, "{\"content\":\"hello\"}");
+        assertThat(limited.statusCode()).isEqualTo(429);
+        assertThat(json.readTree(limited.body()).path("code").asInt()).isEqualTo(40011);
+        assertThat(limited.headers().firstValue("Retry-After")).hasValueSatisfying(value -> assertThat(Long.parseLong(value)).isBetween(1L, 60L));
+    }
 
     @Test
     void passwordValidationEnforcesUtf8LimitWithoutTruncation() throws Exception {
