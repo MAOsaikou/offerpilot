@@ -1,4 +1,6 @@
 import { ref, watch } from 'vue'
+import { questions } from '@/shared/utils/interviewQuestions'
+export { questions } from '@/shared/utils/interviewQuestions'
 import { defineStore } from 'pinia'
 import type { Job, Workspace, Stage } from '@/shared/types/workspace'
 
@@ -74,13 +76,6 @@ export const jobs: Job[] = [
     description: '负责数字产品的交互与视觉体验，参与设计系统建设，通过原型与用户测试验证方案。',
     color: '#b35685',
   },
-]
-export const questions = [
-  '请用两分钟介绍你自己，以及你为什么选择这个岗位。',
-  '分享一个你最有代表性的项目：你负责什么，解决了什么问题？',
-  '项目里遇到的最大技术或协作困难是什么？你如何处理？',
-  '如果重新做这个项目，你会优先改进什么？为什么？',
-  '你希望在未来一年掌握哪些能力？会如何安排学习？',
 ]
 export const learningTasks = [
   '梳理目标岗位的核心技能',

@@ -1,0 +1,158 @@
+package com.offerpilot.interview;
+
+import com.offerpilot.auth.application.CurrentUser;
+import com.offerpilot.common.error.BusinessException;
+import com.offerpilot.common.error.ErrorCode;
+import com.offerpilot.common.error.GlobalExceptionHandler;
+import com.offerpilot.interview.application.InterviewService;
+import com.offerpilot.interview.web.InterviewController;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+/** Service SQL boundaries and real MVC/advice without database, sockets or Docker. */
+class InterviewServiceTest {
+    final JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    final InterviewService service = new InterviewService(jdbc);
+    final String owner = "owner-a";
+    final String id = "iv_1";
+    final InterviewService.Summary summary = new InterviewService.Summary(id, "工程师", "项目与经历", 0, false, "2026-10-09T00:00:00Z", "2026-10-09T00:00:00Z");
+    final List<InterviewService.Answer> answers = java.util.stream.IntStream.range(0, 5)
+            .mapToObj(index -> new InterviewService.Answer(index, InterviewService.QUESTIONS.get(index), "")).toList();
+    MockMvc mvc;
+
+    @BeforeEach
+    void setup() {
+        CurrentUser users = mock(CurrentUser.class);
+        when(users.require("Bearer b")).thenReturn("owner-b");
+        when(users.require(null)).thenThrow(new BusinessException(ErrorCode.UNAUTHENTICATED));
+        mvc = MockMvcBuilders.standaloneSetup(new InterviewController(service, users))
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
+    }
+
+    @SuppressWarnings("unchecked")
+    void stubDetail() {
+        doReturn(List.of(summary)).when(jdbc).query(eq("SELECT * FROM interview_sessions WHERE id=? AND user_id=?"),
+                any(RowMapper.class), eq(id), eq(owner));
+        doReturn(answers).when(jdbc).query(contains("JOIN interview_sessions s"), any(RowMapper.class), eq(id), eq(owner));
+        when(jdbc.queryForList(contains("FOR UPDATE"), eq(String.class), eq(id), eq(owner))).thenReturn(List.of(id));
+    }
+
+    @Test
+    void createInsertsSessionAndExactlyFiveEmptyQuestionSnapshots() {
+        var spy = spy(service);
+        doReturn(new InterviewService.Session(id, "工程师", summary.kind(), 0, false, summary.createdAt(), summary.updatedAt(), answers))
+                .when(spy).get(eq(owner), anyString());
+        var created = spy.create(owner, "  工程师  ", "项目与经历");
+        assertThat(created.answers()).hasSize(5);
+        var inserted = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(jdbc).update(eq("INSERT INTO interview_sessions(id,user_id,role,kind) VALUES (?,?,?,?)"),
+                inserted.capture(), eq(owner), eq("工程师"), eq("项目与经历"));
+        for (int index = 0; index < 5; index++) {
+            verify(jdbc).update("INSERT INTO interview_answers(session_id,question_index,question_text) VALUES (?,?,?)",
+                    inserted.getValue(), index, InterviewService.QUESTIONS.get(index));
+        }
+        verify(spy).get(owner, inserted.getValue());
+        verify(jdbc, times(6)).update(anyString(), any(Object[].class));
+    }
+
+    @Test @SuppressWarnings("unchecked")
+    void listAndGetFilterOwnerAndReturnOrderedStoredSnapshots() {
+        stubDetail();
+        doReturn(List.of(summary)).when(jdbc).query(contains("ORDER BY created_at DESC,id"), any(RowMapper.class), eq(owner));
+        assertThat(service.list(owner)).containsExactly(summary);
+        assertThat(service.get(owner, id).answers()).containsExactlyElementsOf(answers);
+        verify(jdbc).query(contains("WHERE user_id=? ORDER BY"), any(RowMapper.class), eq(owner));
+        verify(jdbc).query(contains("WHERE s.id=? AND s.user_id=? ORDER BY a.question_index"),
+                any(RowMapper.class), eq(id), eq(owner));
+    }
+
+    @Test
+    void answerWritesTrimAllowEmptyAndLockOwnedSessionBeforeTouchingProgress() {
+        stubDetail();
+        for (String answer : List.of("  第一行\n第二行  ", "", "中".repeat(12000))) {
+            service.saveAnswer(owner, id, 0, answer);
+            verify(jdbc).update(contains("AND EXISTS (SELECT 1 FROM interview_sessions WHERE id=? AND user_id=?)"),
+                    eq(answer.strip()), eq(id), eq(0), eq(id), eq(owner));
+        }
+        var order = inOrder(jdbc);
+        order.verify(jdbc).queryForList(contains("WHERE id=? AND user_id=? FOR UPDATE"), eq(String.class), eq(id), eq(owner));
+        order.verify(jdbc).update(contains("UPDATE interview_answers"), eq("第一行\n第二行"), eq(id), eq(0), eq(id), eq(owner));
+        order.verify(jdbc).update("UPDATE interview_sessions SET updated_at=now() WHERE id=? AND user_id=?", id, owner);
+    }
+
+    @Test
+    void progressUpdatesOnlyProvidedFields() {
+        stubDetail();
+        service.update(owner, id, 4, null);
+        service.update(owner, id, null, true);
+        verify(jdbc).update(contains("completed=COALESCE(?,completed),updated_at=now() WHERE id=? AND user_id=?"),
+                eq(4), isNull(), eq(id), eq(owner));
+        verify(jdbc).update(contains("question_index=COALESCE(?,question_index)"), isNull(), eq(true), eq(id), eq(owner));
+    }
+
+    @Test
+    void missingOrOtherOwnerIs404ForGetProgressAndAnswersWithoutWrites() throws Exception {
+        for (String target : List.of(id, "missing")) {
+            mvc.perform(get("/api/v1/interviews/" + target).header("Authorization", "Bearer b"))
+                    .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value(30701));
+            mvc.perform(patch("/api/v1/interviews/" + target).header("Authorization", "Bearer b")
+                    .contentType("application/json").content("{\"completed\":true}"))
+                    .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value(30701));
+            mvc.perform(put("/api/v1/interviews/" + target + "/answers/0").header("Authorization", "Bearer b")
+                    .contentType("application/json").content("{\"answerText\":\"越权\"}"))
+                    .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value(30701));
+        }
+        verify(jdbc, never()).update(anyString(), any(Object[].class));
+    }
+
+    @Test
+    void validatesServiceInputsBeforeAnyDatabaseAccess() {
+        assertInvalid(() -> service.create(owner, "a".repeat(101), "项目与经历"));
+        assertInvalid(() -> service.create(owner, " ", "项目与经历"));
+        assertInvalid(() -> service.create(owner, "工程师", "其他"));
+        assertInvalid(() -> service.saveAnswer(owner, id, 0, "😀".repeat(12001)));
+        assertInvalid(() -> service.saveAnswer(owner, id, 0, null));
+        for (int index : new int[] {-1, 5}) {
+            assertInvalid(() -> service.saveAnswer(owner, id, index, ""));
+            assertInvalid(() -> service.update(owner, id, index, null));
+        }
+        assertInvalid(() -> service.update(owner, id, null, null));
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    void rejectsInvalidAnswerIndexAndEmptyProgressAs400OverHttp() throws Exception {
+        for (String index : new String[] {"-1", "5", "abc", "2147483648"}) {
+            mvc.perform(put("/api/v1/interviews/iv_1/answers/" + index).header("Authorization", "Bearer b")
+                    .contentType("application/json").content("{\"answerText\":\"\"}"))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(10001));
+        }
+        mvc.perform(patch("/api/v1/interviews/iv_1").header("Authorization", "Bearer b")
+                .contentType("application/json").content("{}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(10001));
+        verifyNoInteractions(jdbc);
+    }
+
+    @Test
+    void authenticationIsRequiredBeforeDatabaseAccess() throws Exception {
+        mvc.perform(get("/api/v1/interviews")).andExpect(status().isUnauthorized());
+        verifyNoInteractions(jdbc);
+    }
+
+    private void assertInvalid(org.assertj.core.api.ThrowableAssert.ThrowingCallable call) {
+        assertThatThrownBy(call).isInstanceOfSatisfying(BusinessException.class,
+                e -> assertThat(e.errorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+    }
+}
