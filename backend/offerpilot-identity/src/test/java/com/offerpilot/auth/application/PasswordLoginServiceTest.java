@@ -8,6 +8,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.sql.ResultSet;
 import java.time.Duration;
@@ -24,6 +25,46 @@ class PasswordLoginServiceTest {
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
     private final JwtTokenService tokens = mock(JwtTokenService.class);
     private final PasswordLoginService service = new PasswordLoginService(jdbc, encoder, tokens);
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void missingAccountStillChecksCost12DummyHash(boolean staff) {
+        PasswordEncoder checked = mock(PasswordEncoder.class);
+        PasswordLoginService login = new PasswordLoginService(jdbc, checked, tokens);
+        when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<Object>>any(), anyString()))
+                .thenReturn(List.of());
+        // Even if the supplied password matches the dummy, a missing account must always fail.
+        when(checked.matches(anyString(), anyString())).thenReturn(true);
+        assertBadCredentials(login, staff, "offerpilot-dummy-password");
+        var hash = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(checked).matches(eq("offerpilot-dummy-password"), hash.capture());
+        assertThat(hash.getValue()).startsWith("$2a$12$").hasSize(60);
+        assertThat(encoder.matches("offerpilot-dummy-password", hash.getValue())).isTrue();
+        verifyNoInteractions(tokens);
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void wrongPasswordChecksStoredHashAndReturnsSameError(boolean staff) throws Exception {
+        PasswordEncoder checked = mock(PasswordEncoder.class);
+        PasswordLoginService login = new PasswordLoginService(jdbc, checked, tokens);
+        ResultSet row = mock(ResultSet.class);
+        when(row.getString("password_hash")).thenReturn("stored-hash");
+        when(row.getString("roles_csv")).thenReturn("USER,STAFF");
+        when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<Object>>any(), anyString()))
+                .thenAnswer(call -> List.of(call.<RowMapper<Object>>getArgument(1).mapRow(row, 0)));
+        assertBadCredentials(login, staff, "wrong-password");
+        verify(checked).matches("wrong-password", "stored-hash");
+        verifyNoInteractions(tokens);
+    }
+
+    private void assertBadCredentials(PasswordLoginService login, boolean staff, String password) {
+        assertThatThrownBy(() -> {
+            if (staff) login.staffLogin("person@example.com", password);
+            else login.login("person@example.com", password);
+        }).isInstanceOfSatisfying(BusinessException.class,
+                error -> assertThat(error.errorCode()).isEqualTo(ErrorCode.BAD_CREDENTIALS));
+    }
 
     static Stream<String> invalidRegistrationPasswords() {
         return Stream.of(null, "", "short", "      ", "\u2003".repeat(6),

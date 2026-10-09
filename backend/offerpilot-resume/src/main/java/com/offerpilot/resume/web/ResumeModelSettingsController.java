@@ -5,6 +5,7 @@ import com.offerpilot.common.api.ApiResponse;
 import com.offerpilot.common.web.TraceIdFilter;
 import com.offerpilot.resume.application.ResumeModelSettings;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -18,7 +19,7 @@ public class ResumeModelSettingsController {
         return ApiResponse.ok(settings.get(users.require(request.getHeader("Authorization"))), TraceIdFilter.current(request));
     }
     @PutMapping
-    public ApiResponse<?> save(@RequestBody ResumeModelSettings.Selection selection, HttpServletRequest request) {
+    public ApiResponse<?> save(@Valid @RequestBody ResumeModelSettings.Selection selection, HttpServletRequest request) {
         return ApiResponse.ok(settings.save(users.require(request.getHeader("Authorization")), selection), TraceIdFilter.current(request));
     }
 }

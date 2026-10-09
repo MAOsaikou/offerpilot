@@ -67,6 +67,7 @@ public class ChatService {
         if (request.attachments() != null && !request.attachments().isEmpty())
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "当前仅支持文字聊天，附件解析尚未接入");
         // Ownership and concurrency errors remain ordinary HTTP errors before SSE starts.
+        gateway.checkQuota(owner, tier);
         String model = gateway.modelName(tier);
         var turn = conversations.begin(owner, request.conversationId(), request.content(), request.mode(), model);
         var cancel = Sinks.<Void>empty();
@@ -150,7 +151,7 @@ public class ChatService {
                             org.slf4j.LoggerFactory.getLogger(ChatService.class).warn("Unable to save interrupted run {}", turn.runId());
                         }
                     }
-                });
+                }).contextWrite(quotaContext -> com.offerpilot.llm.quota.LlmUserContext.withUser(quotaContext, owner));
     }
 
     public void cancel(String owner, String runId) {

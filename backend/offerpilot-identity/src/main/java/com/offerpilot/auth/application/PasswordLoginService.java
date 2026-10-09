@@ -25,6 +25,9 @@ import java.util.List;
 public class PasswordLoginService {
     private static final String ROLE_USER = "USER";
     private static final String ROLE_STAFF = "STAFF";
+    // Precomputed BCrypt("offerpilot-dummy-password", cost 12), matching SecurityConfig's strength.
+    private static final String DUMMY_PASSWORD_HASH =
+            "$2a$12$HteSvTS9Mw3helF6SR5xWeOTRijyFRRUzt16VEfrmjF7BYcZSYE3S";
 
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
@@ -147,7 +150,9 @@ public class PasswordLoginService {
                 rs.getString("password_hash"), rs.getString("nickname"),
                 Arrays.stream(rs.getString("roles_csv").split(",")).filter(s -> !s.isBlank()).toList(),
                 rs.getString("status")), email.trim());
-        if (found.isEmpty() || !passwordEncoder.matches(password, found.get(0).passwordHash())) {
+        String hash = found.isEmpty() ? DUMMY_PASSWORD_HASH : found.get(0).passwordHash();
+        boolean passwordMatches = passwordEncoder.matches(password, hash);
+        if (found.isEmpty() || !passwordMatches) {
             throw new BusinessException(ErrorCode.BAD_CREDENTIALS);
         }
         Account account = found.get(0);
