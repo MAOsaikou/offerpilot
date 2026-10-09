@@ -45,7 +45,7 @@ class ResumeOptimizationLiveEvaluationTest {
         String model = System.getenv().getOrDefault("LLM_MODEL_CHEAP", "deepseek-flash");
         var tier = new OfferPilotProperties.Llm.Tier("deepseek", model, Duration.ofSeconds(90), false);
         var properties = new OfferPilotProperties(null, null, null, null, null,
-                new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier), Map.of()), null);
+                new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier), Map.of()), null, null);
         var beans = new DefaultListableBeanFactory();
         beans.registerSingleton("deepseek", DeepSeekChatModel.builder()
                 .deepSeekApi(DeepSeekApi.builder().baseUrl(base).apiKey(key).build())

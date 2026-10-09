@@ -17,8 +17,16 @@ public record OfferPilotProperties(
         Encryption encryption,
         RateLimit rateLimit,
         Llm llm,
-        Mcp mcp
+        Mcp mcp,
+        @DefaultValue StaffBootstrap staffBootstrap
 ) {
+
+    public record StaffBootstrap(@DefaultValue("") String email, @DefaultValue("") String password) {
+        public StaffBootstrap {
+            email = email == null ? "" : email;
+            password = password == null ? "" : password;
+        }
+    }
 
     public record Security(
             String jwtSecret,

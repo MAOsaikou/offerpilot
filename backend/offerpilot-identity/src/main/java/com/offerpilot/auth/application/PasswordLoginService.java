@@ -118,13 +118,8 @@ public class PasswordLoginService {
     /** 用户端注册：仅需邮箱 + 密码，成功后直接签发令牌（自动登录）。 */
     @Transactional
     public LoginResponse register(String email, String password) {
-        String normalized = email == null ? "" : email.trim();
-        if (!normalized.matches("[^@\\s]+@[^@\\s]+\\.[^@\\s]+") || normalized.length() > 200) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "邮箱格式不正确");
-        }
-        validatePassword(password);
-        if (password.length() < 6)
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "密码至少 6 位，UTF-8 编码不超过 72 字节");
+        String normalized = normalizeRegistrationEmail(email);
+        validateRegistrationPassword(password);
         String userId = IdGenerator.next("usr");
         String nickname = normalized.substring(0, normalized.indexOf('@'));
         String passwordHash = passwordEncoder.encode(password);
@@ -166,6 +161,21 @@ public class PasswordLoginService {
         if (!account.roles().contains(role)) {
             throw new BusinessException(ErrorCode.FORBIDDEN,
                     ROLE_STAFF.equals(role) ? "该账号不是客服账号" : "该账号不是用户账号");
+        }
+    }
+
+    static String normalizeRegistrationEmail(String email) {
+        String normalized = email == null ? "" : email.trim();
+        if (!normalized.matches("[^@\\s]+@[^@\\s]+\\.[^@\\s]+") || normalized.length() > 200) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "邮箱格式不正确");
+        }
+        return normalized;
+    }
+
+    static void validateRegistrationPassword(String password) {
+        validatePassword(password);
+        if (password.length() < 6) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "密码至少 6 位，UTF-8 编码不超过 72 字节");
         }
     }
 

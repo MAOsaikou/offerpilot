@@ -49,15 +49,32 @@ export interface StaffUserRow {
   createdAt: string
 }
 
-/** 列出所有用户端账号（不含客服账号），要求 STAFF 令牌。 */
-export async function listStaffUsers(): Promise<StaffUserRow[]> {
+export interface StaffUserPage {
+  items: StaffUserRow[]
+  total: number
+  page: number
+  size: number
+}
+
+export interface StaffUserListParams {
+  page?: number
+  size?: number
+  hideGuests?: boolean
+}
+
+/** 分页列出用户端账号（不含客服账号），要求 STAFF 令牌。 */
+export async function listStaffUsers(params: StaffUserListParams = {}): Promise<StaffUserPage> {
   const token = getStoredToken()
   if (!token) throw new Error('尚未登录，请先登录客服端')
-  const response = await fetchWithIdentity(apiUrl('/staff/users'), {
+  const query = new URLSearchParams()
+  if (params.page !== undefined) query.set('page', String(params.page))
+  if (params.size !== undefined) query.set('size', String(params.size))
+  if (params.hideGuests !== undefined) query.set('hideGuests', String(params.hideGuests))
+  const response = await fetchWithIdentity(apiUrl(`/staff/users${query.size ? `?${query}` : ''}`), {
     headers: authHeaders({ Authorization: `Bearer ${token}` }),
   })
   if (!response.ok) throw await toApiError(response)
-  return readApiData<StaffUserRow[]>(response)
+  return readApiData<StaffUserPage>(response)
 }
 
 /** 启用/禁用用户端账号，要求 STAFF 令牌。 */

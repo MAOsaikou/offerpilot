@@ -184,10 +184,10 @@ class ChatHttpIntegrationTest {
         assertThat(request("GET", "/staff/users", guest, null).statusCode()).isEqualTo(401);
         assertThat(request("PATCH", "/staff/users/" + userId + "/status", token,
                 "{\"status\":\"DISABLED\"}").statusCode()).isEqualTo(403);
-        var list = request("GET", "/staff/users", staff, null);
+        var list = request("GET", "/staff/users?size=100", staff, null);
         assertThat(list.statusCode()).isEqualTo(200);
         assertThat(list.headers().firstValue("cache-control")).contains("no-store");
-        assertThat(json.readTree(list.body()).path("data").findValuesAsText("id"))
+        assertThat(json.readTree(list.body()).path("data").path("items").findValuesAsText("id"))
                 .contains(userId, guestId).doesNotContain(staffId);
         assertThat(request("PATCH", "/staff/users/" + staffId + "/status", staff,
                 "{\"status\":\"DISABLED\"}").statusCode()).isEqualTo(403);
