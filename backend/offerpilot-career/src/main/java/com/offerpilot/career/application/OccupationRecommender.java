@@ -3,7 +3,7 @@ package com.offerpilot.career.application;
 import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
 import com.offerpilot.knowledge.application.OccupationHybridRetriever;
-import com.offerpilot.knowledge.application.OccupationDocument;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.offerpilot.knowledge.application.OccupationRrf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,13 +15,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.LinkedHashMap;
 
-/**
- * 规则层的职业推荐：按霍兰德兴趣码给 occupations 表打分并排序（docs/04 §2.3 的规则层）。
- *
- * rank 保留位置加权相似度；rankHybrid 可选与职业检索结果做 RRF 融合。
- * 当前职业库是数百条量级，全表取出在内存里打分足够快；数据量再大时应先按
- * holland_code 精确命中构造候选集，再对候选集打分。
- */
+/** Interest-profile ranking with optional occupation-only lexical/vector RRF retrieval. */
 @Service
 public class OccupationRecommender {
     private static final int MAX_LIMIT = 200;
@@ -40,58 +34,86 @@ public class OccupationRecommender {
         this.retriever = retriever;
     }
 
-    public record Ranked(String id, String name, String family, String hollandCode, double similarity) {
+    public record Ranked(String id, String name, String family, String hollandCode, double similarity,
+                         List<Citation> citations, String retrievalReason) {
+        public Ranked(String id, String name, String family, String hollandCode, double similarity) {
+            this(id, name, family, hollandCode, similarity, List.of(), "");
+        }
     }
 
     public record Citation(String occupationId, String title, String excerpt) {}
-
-    public List<Citation> citations(String occupationId) {
-        return jdbc.query("SELECT id,name,description,core_skills FROM occupations WHERE id=?",
-                (rs, row) -> new Citation(rs.getString("id"), rs.getString("name"),
-                        OccupationDocument.excerpt(rs.getString("description"), rs.getString("core_skills"))), occupationId);
-    }
 
     public List<OccupationHybridRetriever.Hit> retrieve(String query, int limit) {
         OccupationHybridRetriever.validateLimit(limit);
         return retriever == null ? List.of() : retriever.retrieve(query, limit);
     }
 
-    /** RRF changes order only: similarity remains the original Holland score for card explanations. */
+    public List<Ranked> rank(RiasecProfile profile, int limit) {
+        OccupationHybridRetriever.validateLimit(limit);
+        return profileMatches(profile).stream().limit(limit).toList();
+    }
+
+    public List<Ranked> rankHybrid(RiasecProfile profile, String query, int limit) {
+        OccupationHybridRetriever.validateLimit(limit);
+        return fuse(profileMatches(profile), query, limit);
+    }
+
+    /** Compatibility for code-only callers; chat always passes the original six-dimensional profile. */
     public List<Ranked> rankHybrid(String hollandCode, String query, int limit) {
         OccupationHybridRetriever.validateLimit(limit);
-        var rules = rankContext(hollandCode, query, Math.min(MAX_LIMIT, limit * 2));
+        String code = HollandMatcher.normalize(hollandCode);
+        if (!code.matches("[RIASEC]{1,3}"))
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "兴趣码必须是 1-3 个 RIASEC 字母");
+        var rules = allMatches(code).stream()
+                .sorted(Comparator.comparingDouble(Ranked::similarity).reversed()
+                        .thenComparing(Ranked::name).thenComparing(Ranked::id)).toList();
+        return fuse(rules, query, limit);
+    }
+
+    private List<Ranked> fuse(List<Ranked> rules, String query, int limit) {
         if (retriever == null || query == null || query.isBlank()) return rules.stream().limit(limit).toList();
         try {
             var retrieval = retriever.search(query, Math.min(MAX_LIMIT, limit * 2));
-            // Without vectors, use deterministic Holland + explicit field relevance rules.
-            if (!retrieval.vectorAvailable() || retrieval.hits().isEmpty()) return rules.stream().limit(limit).toList();
-            var candidates = new LinkedHashMap<String, Ranked>();
-            rules.forEach(item -> candidates.put(item.id(), item));
-            retrieval.hits().stream().filter(item -> item.hollandCode() != null).forEach(item ->
-                    candidates.putIfAbsent(item.id(), new Ranked(item.id(), item.name(), item.family(), item.hollandCode(),
-                            HollandMatcher.score(HollandMatcher.normalize(hollandCode), item.hollandCode()))));
+            // Lexical retrieval is valid evidence even without embeddings. Keep the full profile
+            // list until fusion: an interest-only top-K would discard relevant text candidates.
+            if (retrieval.hits().isEmpty()) return rules.stream().limit(limit).toList();
+            var hits = new LinkedHashMap<String, OccupationHybridRetriever.Hit>();
+            retrieval.hits().forEach(item -> hits.put(item.id(), item));
             var scores = OccupationRrf.scores(rules.stream().map(Ranked::id).toList(),
                     retrieval.hits().stream().map(OccupationHybridRetriever.Hit::id).toList());
-            return candidates.values().stream().filter(item -> item.similarity() > 0)
+            return rules.stream()
                     .sorted(Comparator.<Ranked>comparingDouble(item -> scores.get(item.id())).reversed()
-                            .thenComparing(Ranked::name).thenComparing(Ranked::id)).limit(limit).toList();
+                            .thenComparing(Ranked::name).thenComparing(Ranked::id))
+                    .limit(limit).map(item -> {
+                        var hit = hits.get(item.id());
+                        if (hit == null) return item;
+                        String reason = hit.lexicalMatch()
+                                ? "与你的描述/目标及已保存兴趣、技能在职业库文本中匹配；参与全文检索 RRF 排序"
+                                : "与你的描述/目标及已保存兴趣、技能在职业库向量检索中匹配；参与 RRF 排序";
+                        return new Ranked(item.id(), item.name(), item.family(), item.hollandCode(), item.similarity(),
+                                List.of(new Citation(hit.id(), hit.name(), hit.excerpt())), reason);
+                    }).toList();
         } catch (Exception ex) {
-            log.warn("职业混合检索失败 ({})；回退 Holland 规则", ex.getClass().getSimpleName());
+            log.warn("职业混合检索失败 ({})；回退 RIASEC 兴趣排序", ex.getClass().getSimpleName());
             return rules.stream().limit(limit).toList();
         }
     }
 
-    /** Similarity stays the raw Holland score; field relevance affects order, never the displayed score. */
-    public List<Ranked> rankContext(String hollandCode, String query, int limit) {
-        String code = HollandMatcher.normalize(hollandCode);
-        if (!code.matches("[RIASEC]{1,3}")) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
-        double maximum = switch (HollandMatcher.normalize(hollandCode).length()) { case 1 -> 3; case 2 -> 5; default -> 6; };
-        if (limit < 1 || limit > MAX_LIMIT) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
-        // Query all positive matches before limiting: broad interests must not exclude the student's field.
-        var candidates = allMatches(code);
-        return candidates.stream().sorted(Comparator.<Ranked>comparingDouble(item ->
-                        0.45 * item.similarity() / maximum + 0.55 * OccupationRelevance.score(query, item)).reversed()
-                .thenComparing(Ranked::name).thenComparing(Ranked::id)).limit(limit).toList();
+    private List<Ranked> profileMatches(RiasecProfile profile) {
+        var json = new ObjectMapper();
+        return jdbc.query("SELECT id,name,family,holland_code,holland_scores FROM occupations WHERE holland_scores IS NOT NULL",
+                (rs, row) -> {
+                    try {
+                        var occupation = RiasecProfile.fromJson(json.readTree(rs.getString("holland_scores")));
+                        // Preserve the existing card's 0..1 numeric contract; explanations expose r.
+                        double similarity = (profile.correlation(occupation) + 1) / 2;
+                        return new Ranked(rs.getString("id"), rs.getString("name"), rs.getString("family"),
+                                rs.getString("holland_code"), similarity);
+                    } catch (Exception ex) {
+                        throw new IllegalStateException("Invalid occupation RIASEC profile: " + rs.getString("id"), ex);
+                    }
+                }).stream().sorted(Comparator.comparingDouble(Ranked::similarity).reversed()
+                        .thenComparing(Ranked::name).thenComparing(Ranked::id)).toList();
     }
 
     public Ranked find(String occupationId, String name) {

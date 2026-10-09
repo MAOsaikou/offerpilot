@@ -51,7 +51,8 @@ public class OccupationEmbeddingJob implements ApplicationRunner {
             fulltext += jdbc.update("""
                     UPDATE occupations SET tsv=to_tsvector('simple', ?), embedding=NULL
                     WHERE id=? AND updated_at=? AND (tsv IS DISTINCT FROM to_tsvector('simple', ?) OR ?)
-                    """, entry.document(), entry.id(), entry.version(), entry.document(), forceAll);
+                    """, OccupationDocument.fulltext(entry.document()), entry.id(), entry.version(),
+                    OccupationDocument.fulltext(entry.document()), forceAll);
             if (Boolean.TRUE.equals(jdbc.queryForObject(
                     "SELECT embedding IS NULL FROM occupations WHERE id=?", Boolean.class, entry.id()))) pending.add(entry);
         }

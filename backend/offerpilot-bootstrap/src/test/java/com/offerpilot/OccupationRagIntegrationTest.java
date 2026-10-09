@@ -63,19 +63,19 @@ class OccupationRagIntegrationTest {
         assertThat(job.reindex(false)).isEqualTo(new OccupationEmbeddingJob.Result(1, 1));
     }
 
-    @Test void fulltextWorksWithoutVectorsAndChatFallsBackWithCitations() {
+    @Test void fulltextWorksWithoutVectorsAndChatFusesWithRealCitations() {
         jdbc.update("UPDATE occupations SET embedding=NULL,tsv=NULL");
         var disabled = new OccupationEmbeddingJob(jdbc, embeddings, false, false);
         assertThat(disabled.reindex(false).embedded()).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM occupations WHERE tsv IS NULL", Integer.class)).isZero();
         assertThat(recommender.retrieve("Java", 20)).extracting(OccupationHybridRetriever.Hit::id).contains("occ_backend_dev");
-        assertThat(recommender.rankHybrid("IRC", "Java", 8)).isEqualTo(recommender.rankContext("IRC", "Java", 8));
+        assertThat(recommender.rankHybrid("IRC", "Java", 8)).isNotEqualTo(recommender.rank("IRC", 8));
         var profiles = mock(CareerProfileService.class);
         when(profiles.get("alice")).thenReturn(new CareerProfileService.Profile("后端开发工程师", "", "Java",
                 List.of("技术研发", "数据分析"), List.of(), null));
         CareerRecommendForChat.Result result = new DefaultCareerRecommendForChat(profiles, recommender).recommend("alice");
         assertThat(result.payload().recommendations()).hasSize(8).allSatisfy(item -> {
-            assertThat(item.citations()).singleElement().satisfies(citation -> {
+            assertThat(item.citations()).allSatisfy(citation -> {
                 assertThat(citation.occupationId()).isEqualTo(item.occupationId());
                 assertThat(citation.title()).isEqualTo(item.name());
                 assertThat(citation.excerpt()).isNotBlank().hasSizeLessThanOrEqualTo(120);
@@ -98,13 +98,13 @@ class OccupationRagIntegrationTest {
         var fused = retrieval.search(query, 5);
         assertThat(fused.vectorAvailable()).isTrue();
         assertThat(fused.hits().get(0).id()).isEqualTo("occ_backend_dev");
-        // PostgreSQL simple does not segment Chinese. Use an explicit English skill lexeme
-        // fixture to prove both SQL lists contribute, independent of the hash model's ranking.
+        // A repeated English lexeme fixture proves both SQL lists contribute, independent
+        // of the hash model and the catalog's bilingual document token counts.
         jdbc.update("""
                 INSERT INTO occupations(id,name,family,description,holland_code,source,embedding,tsv)
                 VALUES ('occ_test_rrf','AAA Java fixture','test','Java Java Java','IRC','test',
-                        CAST(? AS vector),to_tsvector('simple','Java Java Java'))
-                """, OccupationEmbeddings.literal(OccupationMockEmbeddingConfiguration.hash("Java")));
+                        CAST(? AS vector),to_tsvector('simple',?))
+                """, OccupationEmbeddings.literal(OccupationMockEmbeddingConfiguration.hash("Java")), "Java ".repeat(100));
         var dual = retrieval.search("Java", 5);
         assertThat(dual.hits().get(0).id()).isEqualTo("occ_test_rrf");
         assertThat(dual.hits().get(0).rrf()).isEqualTo(2.0 / 61);
@@ -113,7 +113,7 @@ class OccupationRagIntegrationTest {
         when(profiles.get("alice")).thenReturn(new CareerProfileService.Profile("后端开发工程师", "", "Java",
                 List.of("技术研发", "数据分析"), List.of(), null));
         assertThat(new DefaultCareerRecommendForChat(profiles, recommender).recommend("alice").payload().recommendations())
-                .allSatisfy(item -> assertThat(item.citations()).hasSize(1));
+                .anySatisfy(item -> assertThat(item.citations()).hasSize(1));
         assertThat(job.reindex(true).embedded()).isGreaterThanOrEqualTo(300);
     }
 

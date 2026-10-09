@@ -116,7 +116,7 @@ class CareerApprovalTest {
     @Test void explicitRecommendationEmitsCardAndMissingInterestsEmitGuidanceWithoutPlaceholder() throws Exception {
         var registry = registry();
         when(profiles.get("alice")).thenReturn(new CareerProfileService.Profile("", "", "", List.of("技术研发", "数据分析"), List.of(), null));
-        when(occupations.rankHybrid(eq("IRC"), anyString(), eq(8))).thenReturn(List.of(new OccupationRecommender.Ranked("occ1", "工程师", "技术", "IRC", 6)));
+        when(occupations.rankHybrid(eq(new com.offerpilot.career.application.RiasecProfile(1, 2, 0, 0, 0, 1)), anyString(), eq(8))).thenReturn(List.of(new OccupationRecommender.Ranked("occ1", "工程师", "技术", "IRC", 1)));
         var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
         var runner = new Orchestrator(planner(registry), registry);
         var events = runner.run(AgentMode.CAREER_DISCOVERY, "不知道适合什么", List.of(), ModelTier.FLASH, "run",

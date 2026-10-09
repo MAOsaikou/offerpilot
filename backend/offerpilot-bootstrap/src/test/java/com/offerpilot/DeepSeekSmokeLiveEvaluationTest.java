@@ -151,9 +151,10 @@ class DeepSeekSmokeLiveEvaluationTest {
         var events = chat(tier, "CAREER_DISCOVERY", "我喜欢研究技术和动手搭建系统，请推荐适合我的职业，概括卡片里的前三项", Map.of());
         var recommendations = cards(events, "career_recommendation").get(0).path("recommendations");
         assertThat(recommendations.path(0).path("family").asText()).isIn("软件研发", "算法与人工智能", "测试与质量", "运维与安全", "数据", "计算机与数学");
-        assertThat(recommendations.path(0).path("reasons").toString()).contains("软件技术方向信号");
+        assertThat(recommendations.path(0).path("reasons").toString()).contains("六维 RIASEC", "职业库文本中匹配");
+        assertThat(recommendations.findValuesAsText("name").stream().limit(3)).doesNotContain("假肢与矫形器师", "兽医", "口腔修复科医生");
         assertThat(narration(events)).contains(recommendations.path(0).path("name").asText()).doesNotContain("仅收到摘要");
-        System.out.println("LIVE_SMOKE " + tier + " CAREER RIS rule-context-narration PASS top=" + recommendations.path(0).path("name").asText());
+        System.out.println("LIVE_SMOKE " + tier + " CAREER RIS profile-lexical-narration PASS top5=" + recommendations.findValuesAsText("name").stream().limit(5).toList());
     }
 
     @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
