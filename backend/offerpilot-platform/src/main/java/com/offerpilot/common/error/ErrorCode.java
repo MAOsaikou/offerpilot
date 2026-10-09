@@ -18,6 +18,7 @@ public enum ErrorCode {
     EMAIL_TAKEN(20006, HttpStatus.CONFLICT, "邮箱已注册"),
     DEMO_NOT_ALLOWED(20007, HttpStatus.FORBIDDEN, "体验账号不允许该操作"),
     USER_NOT_FOUND(20008, HttpStatus.NOT_FOUND, "用户不存在"),
+    RATE_LIMITED(20009, HttpStatus.TOO_MANY_REQUESTS, "请求过于频繁，请稍后再试"),
 
     CONVERSATION_NOT_FOUND(30101, HttpStatus.NOT_FOUND, "会话不存在"),
     RUN_NOT_FOUND(30201, HttpStatus.NOT_FOUND, "运行不存在"),

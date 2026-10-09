@@ -28,6 +28,8 @@
         <bucket4j.version>8.14.0</bucket4j.version>
         <resilience4j.version>2.3.0</resilience4j.version>
         <testcontainers.version>1.21.3</testcontainers.version>
+        <!-- JDK 25 local toolchain: Mockito/Byte Buddy needs experimental until upgraded -->
+        <argLine>-Dnet.bytebuddy.experimental=true</argLine>
     </properties>
 
     <dependencyManagement>
