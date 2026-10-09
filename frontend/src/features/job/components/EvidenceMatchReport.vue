@@ -3,15 +3,31 @@ import { computed, ref, nextTick } from 'vue'
 import type { EvidenceMatch, MatchRequirement } from '@/shared/types/jobs'
 const props = defineProps<{ payload: unknown }>()
 const data = computed(() => props.payload as EvidenceMatch)
-const selected = ref<{ title: string; text: string; quote: string }>()
+const selected = ref<{
+  title: string
+  text: string
+  quote: string
+  status: MatchRequirement['status']
+}>()
 const evidencePanel = ref<HTMLElement>()
 const labels = { MET: '有明确证据', PARTIAL: '部分体现', MISSING: '简历未体现' }
+const statuses = [
+  { status: 'MET', label: '明确' },
+  { status: 'PARTIAL', label: '部分' },
+  { status: 'MISSING', label: '未体现' },
+] as const
+const coverage = computed(() => {
+  const counts = { MET: 0, PARTIAL: 0, MISSING: 0 }
+  for (const item of data.value.requirements) counts[item.status]++
+  return statuses.map((item) => ({ ...item, count: counts[item.status] }))
+})
 function evidence(item: MatchRequirement, side: 'jd' | 'resume') {
   if (side === 'jd')
     selected.value = {
       title: '分析时的岗位原文',
       text: `岗位：${data.value.jobSnapshot.title}\n职责：\n${data.value.jobSnapshot.description}\n要求：\n${data.value.jobSnapshot.requirement}`,
       quote: item.jdQuote,
+      status: item.status,
     }
   else {
     let value: unknown = data.value.resumeSnapshot
@@ -24,6 +40,7 @@ function evidence(item: MatchRequirement, side: 'jd' | 'resume') {
       title: '分析时的简历原文',
       text: typeof value === 'string' ? value : item.resumeQuote,
       quote: item.resumeQuote,
+      status: item.status,
     }
   }
   void nextTick(() => evidencePanel.value?.focus())
@@ -55,17 +72,38 @@ const excerpt = computed(() => {
       此分数按本报告提取的要求计算：明确体现计 1，部分体现计 0.5，未体现计
       0。它不是录用概率，也不能证明实际能力；请结合官网完整要求判断。
     </p>
-    <article v-for="(item, index) in data.requirements" :key="index" class="requirement-row">
+    <section class="coverage-summary" aria-label="岗位要求证据覆盖概览">
+      <div class="coverage-counts">
+        <span v-for="item in coverage" :key="item.status" :data-status="item.status">
+          {{ item.label }} <strong>{{ item.count }}</strong> 项
+        </span>
+      </div>
+      <div v-if="data.requirements.length" class="coverage-bar" aria-hidden="true">
+        <span
+          v-for="item in coverage.filter((item) => item.count > 0)"
+          :key="item.status"
+          :data-status="item.status"
+          :style="{ flexGrow: item.count }"
+        ></span>
+      </div>
+      <p v-else class="subtle">本报告暂无可展示的要求证据。</p>
+    </section>
+    <article
+      v-for="(item, index) in data.requirements"
+      :key="index"
+      class="requirement-row"
+      :data-status="item.status"
+    >
       <div class="section-heading">
         <h3>{{ index + 1 }}. {{ item.requirement }}</h3>
-        <span class="tag">{{ labels[item.status] }}</span>
+        <span class="tag status-chip">{{ labels[item.status] }}</span>
       </div>
       <p>{{ item.reason }}</p>
       <button class="evidence-link" @click="evidence(item, 'jd')">
-        岗位依据：{{ item.jdQuote }}
+        岗位依据：<span class="evidence-quote">{{ item.jdQuote }}</span>
       </button>
       <button v-if="item.resumeQuote" class="evidence-link" @click="evidence(item, 'resume')">
-        简历依据：{{ item.resumeQuote }}
+        简历依据：<span class="evidence-quote">{{ item.resumeQuote }}</span>
       </button>
       <p v-else class="subtle">所选简历中未找到可引用的证据。</p>
       <p><strong>准备建议：</strong>{{ item.suggestion }}</p>
@@ -75,6 +113,7 @@ const excerpt = computed(() => {
       ref="evidencePanel"
       tabindex="-1"
       class="helper-note"
+      :data-status="selected.status"
       aria-live="polite"
     >
       <div class="section-heading">
@@ -82,7 +121,10 @@ const excerpt = computed(() => {
         <button class="btn" @click="selected = undefined">收起原文</button>
       </div>
       <p class="prose-content">
-        {{ excerpt.before }}<mark>{{ excerpt.quote }}</mark
+        {{ excerpt.before
+        }}<mark v-if="excerpt.quote" class="evidence-mark" :data-status="selected.status">{{
+          excerpt.quote
+        }}</mark
         >{{ excerpt.after }}
       </p>
     </section>
@@ -97,20 +139,97 @@ const excerpt = computed(() => {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+[data-status='MET'] {
+  --evidence-color: var(--success);
+}
+[data-status='PARTIAL'] {
+  --evidence-color: var(--warning);
+}
+[data-status='MISSING'] {
+  --evidence-color: var(--danger);
+}
+.evidence-report .section-heading {
+  flex-wrap: wrap;
+}
+.coverage-summary {
+  display: grid;
+  gap: 8px;
+}
+.coverage-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 13px;
+}
+.coverage-counts > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.coverage-counts > span::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--evidence-color);
+}
+.coverage-counts strong {
+  font-variant-numeric: tabular-nums;
+}
+.coverage-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-tag);
+}
+.coverage-bar > span {
+  flex-basis: 0;
+  background: var(--evidence-color);
+}
 .requirement-row {
   display: grid;
   gap: 12px;
-  padding: 20px 0;
-  border-top: 1px solid var(--color-border, #e2e8f0);
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--evidence-color);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--evidence-color) 5%, var(--card));
+}
+.requirement-row .section-heading {
+  margin-bottom: 0;
+}
+.requirement-row h3 {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.status-chip {
+  color: var(--evidence-color);
+  background: var(--card);
+  border: 1px solid color-mix(in srgb, var(--evidence-color) 35%, var(--border));
+  font-weight: 600;
 }
 .evidence-link {
+  min-height: 44px;
   text-align: left;
-  color: var(--color-primary, #315de8);
+  color: var(--foreground);
   background: transparent;
   border: 0;
   padding: 0;
   cursor: pointer;
   text-decoration: underline;
   overflow-wrap: anywhere;
+}
+.evidence-quote,
+.evidence-mark {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--evidence-color) 16%, var(--card));
+  border-radius: var(--radius-tag);
+  padding: 2px 4px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.evidence-link:hover .evidence-quote {
+  background: color-mix(in srgb, var(--evidence-color) 24%, var(--card));
 }
 </style>
