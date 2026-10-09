@@ -1,11 +1,13 @@
-param([string]$NginxDirectory = '', [switch]$SkipBuild)
+param([string]$NginxDirectory = '', [switch]$SkipBuild, [string]$RuntimeRoot)
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$runtimeRoot = 'D:\OfferPilot'
+. (Join-Path $PSScriptRoot 'runtime-root.ps1')
+$runtimeRoot = Resolve-OfferPilotRuntimeRoot $RuntimeRoot
 if (-not $NginxDirectory) { $NginxDirectory = Join-Path $runtimeRoot 'nginx-1.31.5' }
 $NginxDirectory = [IO.Path]::GetFullPath($NginxDirectory)
-if (-not $NginxDirectory.StartsWith($runtimeRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
-    throw 'NginxDirectory must be inside D:\OfferPilot.'
+$runtimePrefix = $runtimeRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+if (-not $NginxDirectory.StartsWith($runtimePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "NginxDirectory must be inside $runtimeRoot."
 }
 if (-not $SkipBuild) {
     Push-Location (Join-Path $projectRoot 'frontend')
