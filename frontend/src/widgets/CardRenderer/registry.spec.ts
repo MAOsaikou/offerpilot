@@ -8,6 +8,7 @@ describe('cardRegistry', () => {
       'job_evidence_match',
       'resume_diff',
       'board_update',
+      'career_recommendation',
     ] as const) {
       expect(cardRegistry[type]).toBeTypeOf('function')
       expect(resolveCardComponent(type)).not.toBeNull()

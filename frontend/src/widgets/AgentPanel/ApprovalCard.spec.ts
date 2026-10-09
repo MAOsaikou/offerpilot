@@ -78,6 +78,27 @@ it('批准编辑后的状态和备注，通过真实 API helper 提交并刷新�
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ['applications'] })
 })
 
+it('职业目标审批显示确定职业，不允许编辑并通过同一审批 API 批准', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+  vi.stubGlobal('fetch', fetch)
+  const { root, approval } = mount()
+  approval.value = {
+    ...approval.value,
+    name: 'setCareerTarget',
+    args: { occupationId: 'occ1', name: '软件工程师' },
+    editableFields: [],
+    reason: '此操作将把职业档案目标设为「软件工程师」，请确认后批准。',
+  }
+  await nextTick()
+  expect(root.textContent).toContain('软件工程师')
+  expect(root.querySelector('select')).toBeNull()
+  expect(root.querySelector('textarea')).toBeNull()
+  root.querySelector('button')!.click()
+  await settle()
+  expect(fetch.mock.calls[0]?.[0]).toBe('/api/v1/agent/runs/run1/approvals/approval1')
+  expect(JSON.parse(fetch.mock.calls[0]?.[1].body)).toEqual({ decision: 'APPROVE', args: {} })
+})
+
 it('拒绝不发送编辑参数，显示已拒绝且不刷新看板', async () => {
   const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
   vi.stubGlobal('fetch', fetch)

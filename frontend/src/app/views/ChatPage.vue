@@ -6,12 +6,15 @@ import CardRenderer from '@/widgets/CardRenderer/CardRenderer.vue'
 <template>
   <ChatView>
     <template #agent="{ run }"><AgentPanel :run="run" /></template>
-    <template #cards="{ cards }">
+    <template #cards="{ cards, adoptTarget, disabled }">
       <CardRenderer
         v-for="card in cards"
         :key="card.cardId"
         :card-type="card.cardType"
         :payload="card.payload"
+        :interactive="card.cardType === 'career_recommendation'"
+        :disabled="disabled"
+        @adopt-target="adoptTarget"
       />
     </template>
   </ChatView>

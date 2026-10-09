@@ -28,6 +28,18 @@ public class OccupationRecommender {
     public record Ranked(String id, String name, String family, String hollandCode, double similarity) {
     }
 
+    public Ranked find(String occupationId, String name) {
+        if ((occupationId == null || occupationId.isBlank()) && (name == null || name.isBlank()))
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请选择目标职业");
+        var rows = jdbc.query("SELECT id,name,family,holland_code FROM occupations WHERE "
+                        + (occupationId != null ? "id=?" : "name=?"),
+                (rs, row) -> new Ranked(rs.getString("id"), rs.getString("name"), rs.getString("family"),
+                        rs.getString("holland_code"), 0), occupationId != null ? occupationId : name);
+        if (rows.size() != 1 || name != null && !name.equals(rows.get(0).name()))
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "目标职业不存在或名称与标识不一致");
+        return rows.get(0);
+    }
+
     /**
      * @param hollandCode 用户的霍兰德兴趣码，1-3 个 RIASEC 字母（大小写与分隔符不敏感）
      * @return 按相似度降序排列的职业；相似度为 0 的不返回

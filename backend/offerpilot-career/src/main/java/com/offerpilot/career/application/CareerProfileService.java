@@ -52,6 +52,15 @@ public class CareerProfileService {
     }
 
     @Transactional
+    public Profile saveTarget(String owner, String target) {
+        // Read current fields under the row lock: edits during the approval wait must survive.
+        jdbc.update("INSERT INTO career_profiles(user_id) VALUES (?) ON CONFLICT(user_id) DO NOTHING", owner);
+        jdbc.queryForObject("SELECT user_id FROM career_profiles WHERE user_id=? FOR UPDATE", String.class, owner);
+        var current = get(owner);
+        return save(owner, target, current.city(), current.skills(), current.interests());
+    }
+
+    @Transactional
     public Profile replaceTasks(String owner, List<String> completed) {
         if (!GrowthTaskCatalog.TITLES.containsAll(completed))
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);

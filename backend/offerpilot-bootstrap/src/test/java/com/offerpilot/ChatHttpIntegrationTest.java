@@ -80,7 +80,9 @@ class ChatHttpIntegrationTest {
                             : body.contains("非法状态") ? "{\"action\":\"updateApplicationStatus\",\"status\":\"WRITTEN_TEST\"}"
                             : "{\"action\":\"updateApplicationStatus\",\"status\":\"INTERVIEW\"}") : body.contains("改写刷新验收") ? (planning
                             ? "{\"kind\":\"single\",\"expert\":\"RESUME\",\"confidence\":1}"
-                            : "{\"action\":\"optimize\",\"question\":\"\"}") : body.contains("复合验收") ? """
+                            : "{\"action\":\"optimize\",\"question\":\"\"}") : body.contains("职业推荐验收")
+                            ? "{\"kind\":\"single\",\"expert\":\"CAREER_DISCOVERY\",\"confidence\":1}"
+                            : body.contains("复合验收") ? """
                             {"kind":"composite","confidence":1,"plan":{"goal":"岗位与简历准备","steps":[
                             {"id":"s1","title":"职业探索","agent":"CAREER_DISCOVERY","inputs":{},"dependsOn":[]},
                             {"id":"s2","title":"成长指导","agent":"COACH","inputs":{"jobFrom":"s1"},"dependsOn":["s1"]}]}}
@@ -518,6 +520,99 @@ class ChatHttpIntegrationTest {
     }
 
     @Autowired com.offerpilot.board.application.ApplicationService applications;
+
+    @Test
+    void careerChatRecommendationUsesSavedInterestsAndPersistsCardForRefresh() throws Exception {
+        String token = identities.create().accessToken();
+        var interests = java.util.List.of("技术研发", "数据分析");
+        assertThat(request("PUT", "/career/profile", token, json.writeValueAsString(java.util.Map.of(
+                "target", "原目标", "city", "上海", "skills", "Java", "interests", interests))).statusCode()).isEqualTo(200);
+        var response = request("POST", "/agent/chat", token, "{\"content\":\"职业推荐验收：我不知道适合什么\"}");
+        assertThat(response.statusCode()).isEqualTo(200);
+        var events = response.body().lines().filter(line -> line.startsWith("data:")).map(line -> {
+            try { return json.readTree(line.substring(5).trim()); }
+            catch (IOException ex) { throw new IllegalStateException(ex); }
+        }).toList();
+        var card = events.stream().filter(e -> e.path("type").asText().equals("ui.card")).findFirst().orElseThrow();
+        assertThat(card.path("cardType").asText()).isEqualTo("career_recommendation");
+        assertThat(card.path("payload").path("hollandCode").asText()).isEqualTo("IRC");
+        assertThat(card.path("payload").path("interestsUsed")).isEqualTo(json.valueToTree(interests));
+        assertThat(card.path("payload").path("recommendations")).hasSize(8);
+        card.path("payload").path("recommendations").forEach(item -> {
+            assertThat(item.path("reasons")).hasSize(2);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM occupations WHERE id=? AND name=?", Integer.class,
+                    item.path("occupationId").asText(), item.path("name").asText())).isEqualTo(1);
+        });
+        assertThat(response.body()).doesNotContain("占位专家", "placeholder.CAREER");
+        var saved = conversations.messages(owner(token), events.get(0).path("conversationId").asText(), null, 30).items().get(1);
+        assertThat(saved.parts().get(1).path("payload")).isEqualTo(card.path("payload"));
+        assertThat(json.readTree(request("GET", "/career/profile", token, null).body()).path("data").path("target").asText()).isEqualTo("原目标");
+    }
+
+    @Test
+    void careerTargetApprovalWritesProfileOnlyAfterApprovalAndRejectPreservesItWithOwnerIsolation() throws Exception {
+        String token = identities.create().accessToken(), stranger = identities.create().accessToken();
+        String occupationId = "occ_backend_dev";
+        String occupationName = jdbc.queryForObject("SELECT name FROM occupations WHERE id=?", String.class, occupationId);
+        var initial = java.util.Map.of("target", "原目标", "city", "上海", "skills", "Java",
+                "interests", java.util.List.of("技术研发", "数据分析"));
+        assertThat(request("PUT", "/career/profile", token, json.writeValueAsString(initial)).statusCode()).isEqualTo(200);
+        assertThat(request("PUT", "/career/tasks", token, json.writeValueAsString(java.util.Map.of("completed",
+                java.util.List.of(com.offerpilot.career.application.GrowthTaskCatalog.TITLES.get(0))))).statusCode()).isEqualTo(200);
+        for (String decision : java.util.List.of("REJECT", "APPROVE")) {
+            var body = json.writeValueAsString(java.util.Map.of("content", "请设置目标职业", "options", java.util.Map.of(
+                    "context", java.util.Map.of("careerAction", "setCareerTarget", "occupationId", occupationId,
+                            "name", occupationName, "owner", owner(stranger)))));
+            var chatRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/chat"))
+                    .timeout(Duration.ofSeconds(20)).header("Authorization", "Bearer " + token)
+                    .header("Content-Type", "application/json").header("Accept", "text/event-stream")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            var response = HttpClient.newHttpClient().send(chatRequest, HttpResponse.BodyHandlers.ofInputStream());
+            assertThat(response.statusCode()).isEqualTo(200);
+            try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                com.fasterxml.jackson.databind.JsonNode approval = null;
+                for (String line; (line = reader.readLine()) != null;) {
+                    if (!line.startsWith("data:")) continue;
+                    var event = json.readTree(line.substring(5).trim());
+                    if (event.path("type").asText().equals("approval.required")) { approval = event; break; }
+                }
+                assertThat(approval).isNotNull();
+                assertThat(approval.path("name").asText()).isEqualTo("setCareerTarget");
+                assertThat(approval.path("args").path("name").asText()).isEqualTo(occupationName);
+                assertThat(approval.path("editableFields")).isEmpty();
+                var before = json.readTree(request("GET", "/career/profile", token, null).body()).path("data");
+                assertThat(before.path("target").asText()).isEqualTo("原目标");
+                String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
+                assertThat(request("POST", path, stranger, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
+                assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\",\"args\":{\"name\":\"其他职业\"}}").statusCode()).isEqualTo(400);
+                if (decision.equals("APPROVE")) {
+                    // Edits made while approval is pending must survive target adoption.
+                    assertThat(request("PUT", "/career/profile", token, json.writeValueAsString(java.util.Map.of(
+                            "target", "原目标", "city", "杭州", "skills", "Java、SQL",
+                            "interests", java.util.List.of("研究探索")))).statusCode()).isEqualTo(200);
+                    before = json.readTree(request("GET", "/career/profile", token, null).body()).path("data");
+                }
+                String approvalBody = json.writeValueAsString(java.util.Map.of("decision", decision));
+                assertThat(request("POST", path, token, approvalBody).statusCode()).isEqualTo(200);
+                assertThat(request("POST", path, token, approvalBody).statusCode()).isEqualTo(409);
+                var rest = reader.lines().filter(line -> line.startsWith("data:")).map(line -> {
+                    try { return json.readTree(line.substring(5).trim()); }
+                    catch (IOException ex) { throw new IllegalStateException(ex); }
+                }).toList();
+                assertThat(rest).anySatisfy(event -> {
+                    assertThat(event.path("type").asText()).isEqualTo("approval.resolved");
+                    assertThat(event.path("decision").asText()).isEqualTo(decision);
+                });
+                var result = rest.stream().filter(event -> event.path("type").asText().equals("tool.result")).findFirst().orElseThrow();
+                assertThat(result.path("ok").asBoolean()).isEqualTo(decision.equals("APPROVE"));
+                var after = json.readTree(request("GET", "/career/profile", token, null).body()).path("data");
+                assertThat(after.path("target").asText()).isEqualTo(decision.equals("APPROVE") ? occupationName : "原目标");
+                for (String key : java.util.List.of("city", "skills", "interests", "completedTasks"))
+                    assertThat(after.path(key)).isEqualTo(before.path(key));
+                assertThat(json.readTree(request("GET", "/career/profile", stranger, null).body()).path("data").path("target").asText()).isEmpty();
+            }
+        }
+    }
 
     private void boardJobFixture() {
         jdbc.update("""
