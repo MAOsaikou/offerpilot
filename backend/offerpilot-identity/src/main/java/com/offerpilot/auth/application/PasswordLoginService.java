@@ -48,6 +48,8 @@ public class PasswordLoginService {
 
     private record Account(String id, String email, String passwordHash, String nickname, List<String> roles, String status) {}
 
+    private record StaffAuthorization(String status, List<String> roles) {}
+
     /** 用户端登录。 */
     @Transactional(readOnly = true)
     public LoginResponse login(String email, String password) {
@@ -89,7 +91,7 @@ public class PasswordLoginService {
     }
 
     /**
-     * 解析 Bearer 令牌并要求其属于有效的 STAFF 账号：验签、有效期、角色、账号状态四重比对。
+     * 解析 Bearer 令牌并要求其属于有效的 STAFF 账号：验签、有效期，以及数据库中的账号状态和角色。
      * 返回客服用户 ID；不满足条件分别抛 20001/20002/20003/20004。
      */
     @Transactional(readOnly = true)
@@ -98,19 +100,21 @@ public class PasswordLoginService {
             throw new BusinessException(ErrorCode.UNAUTHENTICATED);
         }
         Claims claims = tokens.parseAndVerify(authorization.substring(7).trim());
-        List<String> roles = readRoles(claims);
-        if (!roles.contains(ROLE_STAFF)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "需要客服账号权限");
-        }
         String userId = claims.getSubject();
-        String status;
+        StaffAuthorization account;
         try {
-            status = jdbc.queryForObject("SELECT status FROM users WHERE id = ?", String.class, userId);
+            account = jdbc.queryForObject("""
+                    SELECT status, array_to_string(roles, ',') AS roles_csv FROM users WHERE id = ?
+                    """, (rs, i) -> new StaffAuthorization(rs.getString("status"),
+                    Arrays.stream(rs.getString("roles_csv").split(",")).filter(s -> !s.isBlank()).toList()), userId);
         } catch (EmptyResultDataAccessException ex) {
             throw new BusinessException(ErrorCode.TOKEN_INVALID, "令牌对应的用户不存在");
         }
-        if (!"ACTIVE".equals(status)) {
+        if (!"ACTIVE".equals(account.status())) {
             throw new BusinessException(ErrorCode.TOKEN_INVALID, "令牌对应的用户已停用");
+        }
+        if (!account.roles().contains(ROLE_STAFF)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "需要客服账号权限");
         }
         return userId;
     }
