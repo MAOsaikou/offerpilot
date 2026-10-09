@@ -22,7 +22,10 @@ public class InterviewController {
         this.users = users;
     }
 
-    private String owner(HttpServletRequest request) { return users.require(request.getHeader("Authorization")); }
+    private String owner(HttpServletRequest request) {
+        return users.require(request.getHeader("Authorization"));
+    }
+
     private <T> ApiResponse<T> ok(T data, HttpServletRequest request) {
         return ApiResponse.ok(data, TraceIdFilter.current(request));
     }
@@ -35,7 +38,9 @@ public class InterviewController {
     public record AnswerRequest(@NotNull @Pattern(regexp = "(?s).{0,12000}") String answerText) {}
 
     @GetMapping
-    public ApiResponse<?> list(HttpServletRequest request) { return ok(interviews.list(owner(request)), request); }
+    public ApiResponse<?> list(HttpServletRequest request) {
+        return ok(interviews.list(owner(request)), request);
+    }
 
     @PostMapping
     public ApiResponse<?> create(@Valid @RequestBody CreateRequest body, HttpServletRequest request) {
