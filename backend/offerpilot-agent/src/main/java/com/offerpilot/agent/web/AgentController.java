@@ -1,6 +1,7 @@
 package com.offerpilot.agent.web;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.offerpilot.common.web.SseStreams;
+import com.offerpilot.agent.event.AgentEvent;
 import com.offerpilot.agent.application.ChatService;
 import com.offerpilot.auth.application.CurrentUser;
 import com.offerpilot.common.api.ApiResponse;
@@ -15,19 +16,17 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import jakarta.servlet.http.HttpServletResponse;
-import reactor.core.Disposables;
-import reactor.core.scheduler.Schedulers;
 
 @RestController
 @RequestMapping("/api/v1/agent")
 public class AgentController {
 
-    private final ObjectMapper objectMapper;
+    private final SseStreams streams;
     private final ChatService chatService;
     private final CurrentUser users;
 
-    public AgentController(ObjectMapper objectMapper, ChatService chatService, CurrentUser users) {
-        this.objectMapper = objectMapper;
+    public AgentController(SseStreams streams, ChatService chatService, CurrentUser users) {
+        this.streams = streams;
         this.chatService = chatService;
         this.users = users;
     }
@@ -38,31 +37,11 @@ public class AgentController {
     @PostMapping(path = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chat(@Valid @RequestBody ChatRequest request, HttpServletRequest http, HttpServletResponse response) {
         var events = chatService.chat(users.require(http.getHeader("Authorization")), request);
-        response.setHeader("Cache-Control", "no-cache");
-        response.setHeader("X-Accel-Buffering", "no");
-        response.setCharacterEncoding("UTF-8");
-        SseEmitter emitter = new SseEmitter(100 * 60_000L);
-        var subscription = Disposables.swap();
-        var heartbeat = Disposables.swap();
-        var resources = Disposables.composite(subscription, heartbeat);
-        emitter.onCompletion(resources::dispose);
-        emitter.onTimeout(resources::dispose);
-        emitter.onError(ignored -> resources.dispose());
-        heartbeat.update(reactor.core.publisher.Flux.interval(java.time.Duration.ofSeconds(15))
-                .publishOn(Schedulers.boundedElastic()).subscribe(ignored -> {
-                    try { emitter.send(SseEmitter.event().comment("ping")); }
-                    catch (java.io.IOException ex) { resources.dispose(); emitter.complete(); }
-                }));
-        subscription.update(events.subscribeOn(Schedulers.boundedElastic()).publishOn(Schedulers.boundedElastic())
-                .doOnNext(event -> {
-                    try {
-                        emitter.send(SseEmitter.event().id(String.valueOf(event.id())).name(event.type())
-                                .data(objectMapper.writeValueAsString(event), MediaType.APPLICATION_JSON));
-                    } catch (java.io.IOException ex) {
-                        throw new java.io.UncheckedIOException(ex);
-                    }
-                }).subscribe(ignored -> {}, emitter::completeWithError, emitter::complete));
-        return emitter;
+        var writer = streams.open(response, 100 * 60_000L, "run_stream", "回复暂时失败，请重试", () -> {});
+        writer.subscribe(events, event -> writer.send(event.id(), event.type(), event.runId(), event,
+                event instanceof AgentEvent.RunCompleted
+                        || event instanceof AgentEvent.ErrorEvent error && !error.recoverable()));
+        return writer.emitter();
     }
 
     @PostMapping("/runs/{id}/cancel")

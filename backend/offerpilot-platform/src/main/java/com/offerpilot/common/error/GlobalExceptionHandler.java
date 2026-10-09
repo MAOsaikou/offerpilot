@@ -21,6 +21,11 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(org.springframework.web.context.request.async.AsyncRequestNotUsableException.class)
+    public void handleDisconnectedAsyncResponse() {
+        // The container already owns a failed/completed response. Do not write JSON or headers to it.
+    }
+
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleUploadSize(HttpServletRequest request) {
         return ResponseEntity.status(413).body(ApiResponse.fail(ErrorCode.FILE_TOO_LARGE.code(),
@@ -97,6 +102,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnknown(Exception ex, HttpServletRequest request) {
+        if (request.getDispatcherType() == jakarta.servlet.DispatcherType.ASYNC
+                && org.springframework.web.util.DisconnectedClientHelper.isClientDisconnectedException(ex)) {
+            // Tomcat can dispatch the original broken-pipe IOException rather than the async wrapper.
+            return null;
+        }
         log.error("Unhandled exception traceId={}", TraceIdFilter.current(request), ex);
         return ResponseEntity.internalServerError().contentType(MediaType.APPLICATION_JSON).body(ApiResponse.fail(
                 ErrorCode.UNKNOWN.code(),

@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(controllers = AgentController.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import({JacksonConfig.class, AgentController.class})
+@Import({JacksonConfig.class, AgentController.class, com.offerpilot.common.web.SseStreams.class})
 @ActiveProfiles("test")
 class AgentControllerTest {
 
