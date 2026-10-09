@@ -35,7 +35,7 @@ class ResumeLiveEvaluationTest {
         String base = System.getenv().getOrDefault("DEEPSEEK_BASE_URL", "https://api.deepseek.com");
         var tier = new OfferPilotProperties.Llm.Tier("deepseek", "deepseek-flash", Duration.ofSeconds(90), true);
         var properties = new OfferPilotProperties(null, null, null, null, null,
-                new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier, "VISION_ALT", tier), Map.of()), null);
+                new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier, "VISION_ALT", tier), Map.of()), null, null);
         var beans = new DefaultListableBeanFactory();
         beans.registerSingleton("deepseek", DeepSeekChatModel.builder().deepSeekApi(DeepSeekApi.builder().baseUrl(base).apiKey(key).build()).build());
         var environment = new MockEnvironment().withProperty("spring.ai.deepseek.api-key", key).withProperty("spring.ai.deepseek.base-url", base);

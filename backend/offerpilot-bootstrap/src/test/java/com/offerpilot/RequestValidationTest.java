@@ -120,6 +120,27 @@ class RequestValidationTest {
         }
     }
 
+    @Test
+    void staffListBindsDefaultsAndReturnsPageObject() throws Exception {
+        when(admin.listUsers("Bearer fixture", 1, 20, false))
+                .thenReturn(new StaffUserAdminService.UserPage(List.of(), 0, 1, 20));
+        mvc.perform(get("/api/v1/staff/users").header("Authorization", "Bearer fixture"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.total").value(0)).andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.size").value(20));
+        mvc.perform(get("/api/v1/staff/users?page=3&size=7&hideGuests=true")
+                .header("Authorization", "Bearer fixture")).andExpect(status().isOk());
+        verify(admin).listUsers("Bearer fixture", 3, 7, true);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"page=abc", "size=abc", "hideGuests=abc", "page=2147483648"})
+    void malformedStaffQueryReturnsValidationError(String query) throws Exception {
+        mvc.perform(get("/api/v1/staff/users?" + query)).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(10001));
+        verifyNoInteractions(admin);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"ACTIVE", "DISABLED"})
     void acceptsValidStaffStatus(String status) throws Exception {

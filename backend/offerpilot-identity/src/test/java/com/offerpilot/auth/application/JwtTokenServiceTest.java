@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class JwtTokenServiceTest {
     private OfferPilotProperties properties(String secret) {
         return new OfferPilotProperties(new OfferPilotProperties.Security(secret, Duration.ofHours(12),
-                Duration.ofDays(7), ""), null, null, null, null, null, null);
+                Duration.ofDays(7), ""), null, null, null, null, null, null, null);
     }
 
     @Test

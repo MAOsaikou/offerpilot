@@ -28,21 +28,31 @@ public class StaffUserAdminService {
     public record UserRow(String id, String email, String nickname, List<String> roles,
                           String status, Instant createdAt) {}
 
+    public record UserPage(List<UserRow> items, long total, int page, int size) {}
+
     private record Target(String id, String status, String rolesCsv) {}
 
-    /** 列出所有用户端账号（角色不含 STAFF），按创建时间倒序。 */
+    /** 分页列出用户端账号（角色不含 STAFF），可隐藏有访客会话的账号。 */
     @Transactional(readOnly = true)
-    public List<UserRow> listUsers(String authorization) {
+    public UserPage listUsers(String authorization, int page, int size, boolean hideGuests) {
         logins.requireStaffId(authorization);
-        return jdbc.query("""
+        if (page < 1 || size < 1) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "page 和 size 必须大于等于 1");
+        }
+        int pageSize = Math.min(size, 100);
+        String filter = "NOT ('STAFF' = ANY(roles))"
+                + (hideGuests ? " AND NOT EXISTS (SELECT 1 FROM guest_sessions g WHERE g.user_id = users.id)" : "");
+        long total = jdbc.queryForObject("SELECT count(*) FROM users WHERE " + filter, Long.class);
+        List<UserRow> items = jdbc.query("""
                 SELECT id, email, nickname, array_to_string(roles, ',') AS roles_csv, status, created_at
-                FROM users WHERE NOT ('STAFF' = ANY(roles))
-                ORDER BY created_at DESC
-                """, (rs, i) -> new UserRow(rs.getString("id"), rs.getString("email"),
+                FROM users WHERE %s
+                ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?
+                """.formatted(filter), (rs, i) -> new UserRow(rs.getString("id"), rs.getString("email"),
                 rs.getString("nickname"),
                 Arrays.stream(rs.getString("roles_csv").split(",")).filter(s -> !s.isBlank()).toList(),
                 rs.getString("status"),
-                rs.getTimestamp("created_at").toInstant()));
+                rs.getTimestamp("created_at").toInstant()), pageSize, ((long) page - 1) * pageSize);
+        return new UserPage(items, total, page, pageSize);
     }
 
     /** 启用/禁用用户端账号；target 必须是 USER 角色账号。 */

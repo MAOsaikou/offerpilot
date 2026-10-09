@@ -1,8 +1,57 @@
-import { ref, watch } from 'vue'
-import { questions } from '@/shared/utils/interviewQuestions'
-export { questions } from '@/shared/utils/interviewQuestions'
+import { onScopeDispose, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { Job, Workspace, Stage } from '@/shared/types/workspace'
+import {
+  getStoredGuest,
+  getStoredToken,
+  guestAvailable,
+  loginRequired,
+  readStoredUser,
+  sessionRevision,
+} from '@/shared/utils/authSession'
+import { questions } from '@/shared/utils/interviewQuestions'
+
+export { questions } from '@/shared/utils/interviewQuestions'
+
+const LEGACY_KEY = 'offerpilot-workspace-v1'
+const MIGRATION_OWNER_KEY = 'offerpilot-workspace-migration-v1'
+
+// Only used when a JWT has no readable user summary; never expose the token in a storage key.
+function tokenFingerprint(token: string): string {
+  let hash = 0xcbf29ce484222325n
+  for (const character of token) {
+    hash = BigInt.asUintN(64, (hash ^ BigInt(character.charCodeAt(0))) * 0x100000001b3n)
+  }
+  return hash.toString(16).padStart(16, '0')
+}
+
+function workspaceBinding(): { identity: string; key: string } {
+  const token = getStoredToken()
+  const guest = !loginRequired() && guestAvailable() ? getStoredGuest() : null
+  let userId = token ? readStoredUser()?.id : null
+  if (token && userId) {
+    // Cross-tab writes can leave the previous summary beside a new JWT until USER_KEY arrives.
+    try {
+      const part = token.split('.')[1]
+      const payload: unknown = part
+        ? JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')))
+        : null
+      if (isRecord(payload) && typeof payload.sub === 'string' && payload.sub !== userId)
+        userId = null
+    } catch {
+      // Opaque credentials still use the stored summary; server-side authentication is unchanged.
+    }
+  }
+  const identity = token || guest || 'anonymous'
+  const suffix = token
+    ? userId
+      ? `user:${encodeURIComponent(userId)}`
+      : `token:${tokenFingerprint(token)}`
+    : guest
+      ? `guest:${encodeURIComponent(guest)}`
+      : 'anonymous'
+  return { identity, key: `${LEGACY_KEY}:${suffix}` }
+}
 
 export const stages: Stage[] = ['收藏', '已投递', '面试中', 'Offer', '已结束']
 export const jobs: Job[] = [
@@ -104,29 +153,71 @@ export function createWorkspace(): Workspace {
 export const useWorkspace = defineStore('workspace', () => {
   const storageError = ref('')
   const state = ref<Workspace>(createWorkspace())
-  try {
-    const raw = localStorage.getItem('offerpilot-workspace-v1')
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw)
-      if (isWorkspace(parsed)) state.value = parsed
-      else storageError.value = '本地数据格式不兼容，已打开临时工作区；原数据未覆盖。'
-    }
-  } catch {
-    storageError.value = '无法读取本地数据，本次修改可能无法在刷新后保留。'
-  }
-  const blocked = Boolean(storageError.value)
+  let boundIdentity: string | undefined
+  let boundKey = ''
+  let stopPersistence: (() => void) | undefined
+  onScopeDispose(() => stopPersistence?.())
   watch(
-    state,
-    (value) => {
-      if (blocked) return
+    sessionRevision,
+    () => {
       try {
-        localStorage.setItem('offerpilot-workspace-v1', JSON.stringify(value))
+        const binding = workspaceBinding()
+        if (binding.identity === boundIdentity && binding.key === boundKey) return
+        stopPersistence?.()
+        boundIdentity = binding.identity
+        boundKey = binding.key
+        state.value = createWorkspace()
         storageError.value = ''
+
+        let raw = localStorage.getItem(boundKey)
+        const legacy = localStorage.getItem(LEGACY_KEY)
+        if (legacy !== null) {
+          // Claim even corrupt legacy data or an existing destination, so later identities
+          // cannot inherit it. Keep the original payload intact until a successful copy.
+          let owner = localStorage.getItem(MIGRATION_OWNER_KEY)
+          if (owner === null) {
+            localStorage.setItem(MIGRATION_OWNER_KEY, boundKey)
+            owner = boundKey
+          }
+          if (owner === boundKey && raw === null) {
+            const parsed: unknown = JSON.parse(legacy)
+            if (isWorkspace(parsed)) {
+              localStorage.setItem(boundKey, legacy)
+              localStorage.removeItem(LEGACY_KEY)
+              raw = legacy
+            } else {
+              storageError.value = '本地数据格式不兼容，已打开临时工作区；原数据未覆盖。'
+            }
+          }
+        }
+        if (raw !== null) {
+          const parsed: unknown = JSON.parse(raw)
+          if (isWorkspace(parsed)) state.value = parsed
+          else storageError.value = '本地数据格式不兼容，已打开临时工作区；原数据未覆盖。'
+        }
       } catch {
-        storageError.value = '浏览器存储空间不足或不可用，请导出重要内容。'
+        stopPersistence?.()
+        state.value = createWorkspace()
+        storageError.value = '无法读取本地数据，本次修改可能无法在刷新后保留。'
       }
+
+      const blocked = Boolean(storageError.value)
+      const key = boundKey
+      stopPersistence = watch(
+        state,
+        (value) => {
+          if (blocked) return
+          try {
+            localStorage.setItem(key, JSON.stringify(value))
+            storageError.value = ''
+          } catch {
+            storageError.value = '浏览器存储空间不足或不可用，请导出重要内容。'
+          }
+        },
+        { deep: true },
+      )
     },
-    { deep: true },
+    { immediate: true, flush: 'sync' },
   )
   function notify(text: string) {
     state.value.notices.unshift({

@@ -17,7 +17,9 @@ docker compose version
 
 ## 2. 填 DeepSeek Key
 
-先配置认证密钥：JWT_SECRET 必须为至少 64 字节随机串，例如用 `openssl rand -base64 64` 生成后写入忽略的 backend/.env.local。缺失、短值或 change-me 占位值会拒绝启动；不要把生成值提交到仓库。测试使用独立 test profile，不读取本机凭据。V12 会停用未轮换公开密码的旧测试账号并保留数据；用户可自行注册，正式客服需受控创建和设置密码。
+先配置认证密钥：JWT_SECRET 必须为至少 64 字节随机串，例如用 `openssl rand -base64 64` 生成后写入忽略的 backend/.env.local。缺失、短值或 change-me 占位值会拒绝启动；不要把生成值提交到仓库。测试使用独立 test profile，不读取本机凭据。V12 会停用未轮换公开密码的旧测试账号并保留数据；用户可自行注册。正式客服首次创建可在后端进程环境（或本机忽略的 `backend/.env.local`）同时设置 `STAFF_BOOTSTRAP_EMAIL` 和 `STAFF_BOOTSTRAP_PASSWORD` 后启动，再用该账号访问前端 `/staff/login`。两项均为空时静默跳过；只配置一项、邮箱/密码不符合注册规则或邮箱已被其他账号使用时记录告警并跳过，不阻止启动、不自动提升角色。仅当 `users` 中不存在任何 STAFF（包括已停用账号）时创建一个 ACTIVE 客服；重复启动不新增账号、不重置密码。邮箱去掉两端空格，昵称取邮箱前缀，密码使用现有 BCrypt(12)，至少 6 位且 UTF-8 最多 72 字节。共享环境首启后移除或留空这两项，真实凭据不得提交到仓库。
+
+当前 V11/V12 在全新迁移库中仍保留一条 DISABLED STAFF 测试账号，因此会触发上述跳过规则；此变更不改动 V11/V12，也不自动清除其角色。解决这条遗留行需要另外确认迁移方案，不能把仅停用账号误认为数据库已无 STAFF。
 
 编辑 `backend/.env.local`（本轮已创建占位模板；新克隆时从 `backend/.env.example` 复制），将 `sk-not-configured` 替换为真实 Key：
 

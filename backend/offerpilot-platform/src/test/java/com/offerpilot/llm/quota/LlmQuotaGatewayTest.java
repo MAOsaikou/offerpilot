@@ -56,7 +56,7 @@ class LlmQuotaGatewayTest {
         var limits = new OfferPilotProperties.RateLimit(4, 2, 2, 100, 12, 15, 20, 20, 20);
         var tier = new OfferPilotProperties.Llm.Tier("custom", "stub", Duration.ofSeconds(5), true);
         var properties = new OfferPilotProperties(null, null, null, null, limits,
-                new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier, "PRO", tier), Map.of()), null);
+                new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier, "PRO", tier), Map.of()), null, null);
         Clock clock = Clock.fixed(Instant.parse("2026-10-09T12:00:30Z"), ZoneOffset.UTC);
         limiter = new LlmQuotaLimiter(owner -> new LlmQuotaIdentity.Policy(owner.startsWith("guest"), owner.startsWith("guest") ? 12 : 100),
                 new MemoryLlmUsageStore(clock), limits, clock);
