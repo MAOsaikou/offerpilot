@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.*;
 
 class LlmQuotaLimiterTest {
-    static final OfferPilotProperties.RateLimit LIMITS = new OfferPilotProperties.RateLimit(4, 2, 2, 100, 20);
+    static final OfferPilotProperties.RateLimit LIMITS = new OfferPilotProperties.RateLimit(4, 2, 2, 100, 20, 15, 20, 20, 20);
     static class MutableClock extends Clock {
         Instant now = Instant.parse("2026-10-09T23:59:30Z");
         @Override public Instant instant() { return now; }
@@ -25,7 +25,7 @@ class LlmQuotaLimiterTest {
     @Test void guestHasLowerRpmAndRequestsAreConsumedAtEntry() {
         for (int i = 0; i < 2; i++) limiter.check("guest", ModelTier.CHEAP, true);
         var failure = catchThrowableOfType(() -> limiter.check("guest", ModelTier.CHEAP, true), LlmQuotaException.class);
-        assertThat(failure.errorCode()).isEqualTo(ErrorCode.RATE_LIMITED);
+        assertThat(failure.errorCode()).isEqualTo(ErrorCode.LLM_RATE_LIMITED);
         assertThat(failure.retryAfterSeconds()).isEqualTo(30);
         for (int i = 0; i < 4; i++) limiter.check("user", ModelTier.PRO, true);
         assertThatThrownBy(() -> limiter.check("user", ModelTier.PRO, true)).isInstanceOf(LlmQuotaException.class);

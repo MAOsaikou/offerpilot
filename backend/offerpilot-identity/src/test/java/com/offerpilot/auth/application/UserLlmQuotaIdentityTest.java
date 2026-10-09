@@ -30,7 +30,7 @@ class UserLlmQuotaIdentityTest {
             }
         };
         var config = new OfferPilotProperties(null, null, null, null,
-                new OfferPilotProperties.RateLimit(60, 2, 20, 200000, 50000), null, null);
+                new OfferPilotProperties.RateLimit(60, 2, 20, 200000, 50000, 15, 20, 20, 20), null, null);
         return new UserLlmQuotaIdentity(jdbc, config);
     }
     @Test void guestWithoutPreferencesGetsGuestQuota() {

@@ -37,7 +37,7 @@ public class LlmQuotaLimiter {
         Instant dayReset = day.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
         int rpm = policy.guest() ? limits.guestPerUserPerMinute() : limits.perUserPerMinute();
         int result = store.check(owner, minute, day.toString(), rpm, Math.max(0, policy.dailyTokenLimit()), minuteReset, dayReset, consume);
-        if (result != 0) throw new LlmQuotaException(result == 2 ? ErrorCode.DAILY_QUOTA_EXCEEDED : ErrorCode.RATE_LIMITED,
+        if (result != 0) throw new LlmQuotaException(result == 2 ? ErrorCode.DAILY_QUOTA_EXCEEDED : ErrorCode.LLM_RATE_LIMITED,
                 Math.max(1, (result == 2 ? dayReset : minuteReset).getEpochSecond() - now.getEpochSecond()));
         return new Admission(owner, day.toString(), dayReset);
     }

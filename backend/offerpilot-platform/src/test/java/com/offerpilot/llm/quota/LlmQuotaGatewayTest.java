@@ -53,7 +53,7 @@ class LlmQuotaGatewayTest {
             }
         });
         provider.start();
-        var limits = new OfferPilotProperties.RateLimit(4, 2, 2, 100, 12);
+        var limits = new OfferPilotProperties.RateLimit(4, 2, 2, 100, 12, 15, 20, 20, 20);
         var tier = new OfferPilotProperties.Llm.Tier("custom", "stub", Duration.ofSeconds(5), true);
         var properties = new OfferPilotProperties(null, null, null, null, limits,
                 new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier, "PRO", tier), Map.of()), null);
@@ -96,7 +96,7 @@ class LlmQuotaGatewayTest {
         reportUsage.set(false);
         stream("guest");
         stream("guest");
-        assertThat(catchThrowableOfType(() -> stream("guest"), BusinessException.class).errorCode()).isEqualTo(ErrorCode.RATE_LIMITED);
+        assertThat(catchThrowableOfType(() -> stream("guest"), BusinessException.class).errorCode()).isEqualTo(ErrorCode.LLM_RATE_LIMITED);
         assertThat(calls.get()).isEqualTo(2);
         for (int i = 0; i < 3; i++) gateway.stream(ModelTier.PRO, List.of(new UserMessage("eval"))).collectList().block();
         gateway.chatModel(ModelTier.PRO).call(new Prompt("eval"));

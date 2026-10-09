@@ -18,6 +18,7 @@ public enum ErrorCode {
     EMAIL_TAKEN(20006, HttpStatus.CONFLICT, "邮箱已注册"),
     DEMO_NOT_ALLOWED(20007, HttpStatus.FORBIDDEN, "体验账号不允许该操作"),
     USER_NOT_FOUND(20008, HttpStatus.NOT_FOUND, "用户不存在"),
+    RATE_LIMITED(20009, HttpStatus.TOO_MANY_REQUESTS, "请求过于频繁，请稍后再试"),
 
     CONVERSATION_NOT_FOUND(30101, HttpStatus.NOT_FOUND, "会话不存在"),
     RUN_NOT_FOUND(30201, HttpStatus.NOT_FOUND, "运行不存在"),
@@ -43,7 +44,7 @@ public enum ErrorCode {
     DAILY_QUOTA_EXCEEDED(40008, HttpStatus.TOO_MANY_REQUESTS, "今日模型额度已用尽，请明天再试"),
     MODEL_NOT_CONFIGURED(40009, HttpStatus.SERVICE_UNAVAILABLE, "模型未配置，请配置 API Key 后重启后端"),
     MODEL_UNAVAILABLE(40010, HttpStatus.BAD_GATEWAY, "模型调用失败，请检查 API Key、账户余额、模型名和网络后重试"),
-    RATE_LIMITED(40011, HttpStatus.TOO_MANY_REQUESTS, "模型请求过于频繁，请稍后再试"),
+    LLM_RATE_LIMITED(40011, HttpStatus.TOO_MANY_REQUESTS, "模型请求过于频繁，请稍后再试"),
 
     UNKNOWN(50000, HttpStatus.INTERNAL_SERVER_ERROR, "未知错误"),
     DATABASE_UNAVAILABLE(50001, HttpStatus.SERVICE_UNAVAILABLE, "数据库不可用"),
