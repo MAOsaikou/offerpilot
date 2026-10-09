@@ -48,6 +48,7 @@ public class ResumeDiagnosisService {
             if (jdbc.queryForObject("SELECT count(*) FROM resume_diagnoses WHERE user_id=? AND status='RUNNING'", Integer.class, owner) > 0)
                 throw new BusinessException(ErrorCode.CONCURRENT_RUN_LIMIT, "已有简历诊断进行中，请等待完成或取消");
             gateway.requireAvailable(tier, false);
+            gateway.checkQuota(owner, tier);
             String id=IdGenerator.next("diag");
             jdbc.update("INSERT INTO resume_diagnoses(id,user_id,resume_id,version_id,request_id,status,model_tier) VALUES (?,?,?,?,?,'RUNNING',?)", id, owner, resumeId, versionId, requestId, tier.name());
             return new Work(id, owner, resumeId, version, tier, null);
@@ -76,7 +77,8 @@ public class ResumeDiagnosisService {
                     cancellations.remove(work.id(), cancellation);
                     if (signal == SignalType.CANCEL) cancel(work.owner(), work.id());
                 });
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(Schedulers.boundedElastic())
+                .contextWrite(context -> com.offerpilot.llm.quota.LlmUserContext.withUser(context, work.owner()));
     }
     public Mono<JsonNode> analyze(String owner, String resumeId, String versionId, String requestId) {
         return Mono.fromCallable(() -> begin(owner, resumeId, versionId, requestId)).subscribeOn(Schedulers.boundedElastic()).flatMap(this::execute);

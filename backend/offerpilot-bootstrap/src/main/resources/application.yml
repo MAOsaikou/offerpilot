@@ -104,8 +104,11 @@ offerpilot:
   encryption:
     key: ${DATA_ENCRYPTION_KEY:change-me-generate-with-openssl-rand-base64-32}
   rate-limit:
-    # Existing user/run knobs are not auth IP limits; this slice adds no LLM usage quota.
-    per-user-per-minute: 60
+    # Per-user LLM request (RPM) and daily token quotas, enforced at ModelGateway entry.
+    per-user-per-minute: ${LLM_PER_USER_PER_MINUTE:60}
+    guest-per-user-per-minute: ${LLM_GUEST_PER_USER_PER_MINUTE:20}
+    default-daily-token-limit: ${LLM_DEFAULT_DAILY_TOKEN_LIMIT:200000}
+    guest-daily-token-limit: ${LLM_GUEST_DAILY_TOKEN_LIMIT:50000}
     concurrent-runs-per-user: 2
     # All POST attempts (success, failure, invalid body), independent buckets per client IP.
     # Fixed 60s window starts at the first attempt; rejected requests do not extend it.

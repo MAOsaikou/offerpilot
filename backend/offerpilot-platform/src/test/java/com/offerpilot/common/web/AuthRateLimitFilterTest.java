@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class AuthRateLimitFilterTest {
     private final ObjectMapper json = new ObjectMapper();
-    private final OfferPilotProperties.RateLimit limits = new OfferPilotProperties.RateLimit(60, 2, 1, 2, 3, 4);
+    private final OfferPilotProperties.RateLimit limits = new OfferPilotProperties.RateLimit(60, 2, 20, 200000, 50000, 1, 2, 3, 4);
 
     @Test
     void onlyExactAuthPostsAreLimitedAndRawHeadersAreNotRead() throws Exception {

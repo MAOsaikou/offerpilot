@@ -44,7 +44,9 @@ public class JobMatchService {
         if(existing!=null) return get(owner,existing);
         try {
             job=jobs.detail(jobId,false);
-            ObjectNode report=(ObjectNode)matcher.match(job,resume.structured());
+            JsonNode selectedJob = job;
+            ObjectNode report=(ObjectNode)com.offerpilot.llm.quota.LlmUserContext.asUser(owner,
+                    () -> matcher.match(selectedJob,resume.structured()));
             report.put("id",id).put("jobId",jobId).put("resumeId",resumeId).put("resumeTitle",resume.title())
                 .put("resumeVersionId",versionId).put("resumeVersionNo",resume.versionNo()).put("createdAt",Instant.now().toString());
             report.set("jobSnapshot",job); report.set("resumeSnapshot",resume.structured());
