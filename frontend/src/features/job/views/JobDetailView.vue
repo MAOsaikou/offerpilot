@@ -292,6 +292,7 @@ async function openReport(reportId: string) {
                 path: '/chat',
                 query: {
                   mode: 'JOB',
+                  jobAction: 'match',
                   jobId: id,
                   resumeId,
                   resumeVersionId: versionId,

@@ -3,6 +3,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { getJob, refreshJob } from '@/shared/api/jobs'
+import { listResumes, listResumeVersions } from '@/shared/api/resumes'
 import type { RealJob } from '@/shared/types/jobs'
 import JobDetailView from './JobDetailView.vue'
 
@@ -47,6 +48,8 @@ const snapshot: RealJob = {
 beforeEach(() => {
   vi.mocked(getJob).mockReset().mockResolvedValue(snapshot)
   vi.mocked(refreshJob).mockReset()
+  vi.mocked(listResumes).mockReset().mockResolvedValue({ items: [], total: 0, page: 1, size: 20 })
+  vi.mocked(listResumeVersions).mockReset()
 })
 async function mountDetail() {
   const router = createRouter({
@@ -78,6 +81,74 @@ it('snapshot detail keeps the date tooltip and does not offer a live refresh or 
     expect(root.textContent).not.toContain('更新完整详情')
     expect(root.textContent).not.toContain('尚未获取完整详情')
     expect(root.querySelector('a[target="_blank"]')).toBeNull()
+  } finally {
+    cleanup()
+  }
+})
+it('the chat match entry carries the selected job, resume version and structured action', async () => {
+  vi.mocked(listResumes).mockResolvedValue({
+    items: [
+      {
+        id: 'resume_selected',
+        title: '已保存简历',
+        parseStatus: 'READY',
+        parseProgress: 100,
+        parseError: null,
+        currentVersionId: 'version_selected',
+        currentVersion: null,
+        fileName: 'resume.txt',
+        createdAt: '',
+        updatedAt: '',
+      },
+    ],
+    total: 1,
+    page: 1,
+    size: 20,
+  })
+  vi.mocked(listResumeVersions).mockResolvedValue([
+    {
+      id: 'version_selected',
+      versionNo: 1,
+      parentVersionId: null,
+      source: 'UPLOAD',
+      plainText: '',
+      parseMeta: {},
+      createdAt: '',
+      structured: {
+        basics: { name: '', phone: '', email: '', city: '', links: [] },
+        education: [],
+        experience: [],
+        projects: [],
+        skills: [],
+        certificates: [],
+        summary: '',
+      },
+    },
+  ])
+  const { root, cleanup } = await mountDetail()
+  try {
+    await vi.waitFor(() =>
+      expect(root.querySelector('option[value="resume_selected"]')).not.toBeNull(),
+    )
+    const select = root.querySelector<HTMLSelectElement>('select')!
+    select.value = 'resume_selected'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    await vi.waitFor(() =>
+      expect(
+        [...root.querySelectorAll('a')].find((a) => a.textContent?.trim() === '在聊天中匹配'),
+      ).toBeDefined(),
+    )
+    const link = [...root.querySelectorAll('a')].find(
+      (a) => a.textContent?.trim() === '在聊天中匹配',
+    )!
+    const url = new URL(link.getAttribute('href')!, 'http://localhost')
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      mode: 'JOB',
+      jobAction: 'match',
+      jobId: 'job_snapshot',
+      resumeId: 'resume_selected',
+      resumeVersionId: 'version_selected',
+    })
   } finally {
     cleanup()
   }

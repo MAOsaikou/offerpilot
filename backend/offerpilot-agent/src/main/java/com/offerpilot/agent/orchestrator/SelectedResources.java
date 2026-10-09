@@ -8,6 +8,11 @@ import java.util.Map;
 final class SelectedResources {
     private SelectedResources() {}
 
+    static boolean matchReady(Map<String, Object> context) {
+        return List.of("jobId", "resumeId", "resumeVersionId").stream()
+                .allMatch(key -> context.get(key) instanceof String value && !value.isBlank() && value.length() <= 80);
+    }
+
     static String describe(Map<String, Object> context) {
         var selected = new LinkedHashMap<String, Boolean>();
         for (String key : List.of("jobId", "resumeId", "resumeVersionId", "applicationId"))

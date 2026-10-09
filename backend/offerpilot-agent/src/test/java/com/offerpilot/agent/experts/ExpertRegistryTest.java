@@ -77,7 +77,7 @@ class ExpertRegistryTest {
     }
 
     @Test
-    void usesACompleteTripleFromOneSourceAndDoesNotMergePartialSources() {
+    void bindsOnlyCallerContextAndNeverUsesModelInputIds() {
         ExpertRegistry registry = registry();
         Map<String, Object> context = ids("job_ctx", "res_ctx", "ver_ctx");
 
@@ -85,13 +85,14 @@ class ExpertRegistryTest {
         ExpertResult fromInputs = run(registry, context, job(Map.of(
                 "jobId", " job_step ", "resumeId", "res_step", "resumeVersionId", "ver_step")));
         run(registry, context, job(Map.of("jobId", "job_only")));
+        run(registry, Map.of(), job(ids("job_guessed", "res_guessed", "ver_guessed")));
         run(registry, Map.of("jobId", "job_ctx", "resumeId", "res_ctx"), job(Map.of("resumeVersionId", "ver_only")));
         ExpertResult resume = run(registry, context, new PlanStep("s1", "简历", ExpertType.RESUME, Map.of(), List.of()));
         run(registry, Map.of("jobId", 1, "resumeId", "res_ctx", "resumeVersionId", "ver_ctx"), job(Map.of()));
 
         assertThat(calls).containsExactly(
                 List.of("owner", "job_ctx", "res_ctx", "ver_ctx"),
-                List.of("owner", "job_step", "res_step", "ver_step"),
+                List.of("owner", "job_ctx", "res_ctx", "ver_ctx"),
                 List.of("owner", "job_ctx", "res_ctx", "ver_ctx"));
         assertThat(fromContext.card().cardId()).isEqualTo("match_01abc");
         assertThat(fromContext.card().payload().toString()).doesNotContain("快照");

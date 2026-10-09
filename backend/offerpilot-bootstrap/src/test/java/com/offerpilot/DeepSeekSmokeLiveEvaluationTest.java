@@ -124,7 +124,7 @@ class DeepSeekSmokeLiveEvaluationTest {
         assertThat(report.path("model").asText()).isEqualTo(gateway.modelName(tier));
         verifyNoInteractions(liveJobs);
         System.out.println("LIVE_SMOKE " + tier + " demo-expired REST-match PASS verified=" + report.path("requirements").size());
-        var chat = chat(tier, "JOB", "请匹配这个岗位与我的简历", Map.of("jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
+        var chat = chat(tier, "JOB", "请匹配这个岗位与我的简历", Map.of("jobAction", "match", "jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
         assertThat(cards(chat, "job_match").size()).as(tier + " chat matching").isEqualTo(1);
         verifyNoInteractions(liveJobs);
         System.out.println("LIVE_SMOKE " + tier + " demo-expired chat-match PASS");
@@ -236,7 +236,7 @@ class DeepSeekSmokeLiveEvaluationTest {
 
     @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
     void boardExplicitAndModelInferredApprovalThroughHttp(ModelTier tier) throws Exception {
-        var matched = chat(tier, "JOB", "请匹配这个岗位与我的简历", Map.of("jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
+        var matched = chat(tier, "JOB", "请匹配这个岗位与我的简历", Map.of("jobAction", "match", "jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
         assertThat(cards(matched, "job_match").size()).isEqualTo(1);
         String conversation = conversation(matched);
         for (String decision : List.of("REJECT", "APPROVE")) {
