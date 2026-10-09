@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { queryClient } from '@/shared/api/queryClient'
 import { cancelAgentRun, streamAgentChat } from '@/shared/api/agent'
 import { useAgentRunStore } from '@/shared/stores/agentRun'
 import type { AgentEvent, ChatRequest } from '@/shared/types/agent-events'
@@ -18,6 +19,8 @@ export function useAgentStream() {
   function handleEvent(event: AgentEvent): void {
     currentRunId ||= event.runId
     store.apply(event)
+    if (event.type === 'ui.card' && event.cardType === 'board_update')
+      void queryClient.invalidateQueries({ queryKey: ['applications'] })
   }
 
   async function start(body: ChatRequest): Promise<string> {
@@ -29,7 +32,7 @@ export function useAgentStream() {
 
     try {
       const runId = await streamAgentChat(body, {
-        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(600_000)]),
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(6_000_000)]),
         onEvent: (event) => {
           if (version === generation) handleEvent(event)
         },

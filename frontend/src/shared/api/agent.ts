@@ -6,6 +6,7 @@ import {
   toApiError,
 } from './client'
 import { parseSse } from './sse'
+import type { ApplicationStatus } from '@/shared/types/board'
 import type { AgentEvent, ChatRequest } from '@/shared/types/agent-events'
 
 export interface AgentStreamOptions {
@@ -73,4 +74,27 @@ export async function cancelAgentRun(runId: string): Promise<void> {
     },
   )
   if (!response.ok) throw await toApiError(response)
+}
+
+export interface ApprovalDecision {
+  decision: 'APPROVE' | 'REJECT'
+  args?: { status?: ApplicationStatus; note?: string }
+  reason?: string
+}
+
+export async function submitApproval(
+  runId: string,
+  approvalId: string,
+  body: ApprovalDecision,
+): Promise<void> {
+  const response = await fetchWithIdentity(
+    apiUrl(`/agent/runs/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(approvalId)}`),
+    {
+      method: 'POST',
+      headers: await authenticatedHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+    },
+  )
+  if (!response.ok) throw await toApiError(response)
+  assertResponseIdentity(response)
 }
