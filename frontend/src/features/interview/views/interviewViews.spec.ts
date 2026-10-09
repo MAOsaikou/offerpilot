@@ -17,6 +17,7 @@ import type { InterviewSession } from '@/shared/types/interview'
 import { questions } from '@/shared/utils/interviewQuestions'
 import { downloadText } from '@/shared/utils/download'
 import { useWorkspace } from '@/shared/stores/workspace'
+import { installSpeechMocks } from '@/test/speech'
 
 vi.mock('@/shared/api/interviews', () => ({
   createInterview: vi.fn(),
@@ -89,6 +90,9 @@ function submit() {
 beforeEach(() => {
   localStorage.clear()
   vi.resetAllMocks()
+  vi.stubGlobal('SpeechRecognition', undefined)
+  vi.stubGlobal('webkitSpeechRecognition', undefined)
+  vi.stubGlobal('speechSynthesis', undefined)
   server = fixture()
   vi.mocked(listInterviews).mockImplementation(async () => [structuredClone(server)])
   vi.mocked(createInterview).mockImplementation(async () => structuredClone(server))
@@ -102,7 +106,113 @@ beforeEach(() => {
     return structuredClone(server)
   })
 })
-afterEach(unmount)
+afterEach(() => {
+  unmount()
+  vi.unstubAllGlobals()
+})
+
+it('mounts without speech APIs and submits through the existing text answer path', async () => {
+  await mount()
+  await loaded()
+  expect(button('开始口述')).toBeUndefined()
+  expect(button('朗读题目')).toBeUndefined()
+  expect(root.textContent).toContain('Chrome / Edge')
+  await typeAnswer('文字回答')
+  submit()
+  await vi.waitFor(() => expect(server.questionIndex).toBe(1))
+  expect(saveInterviewAnswer).toHaveBeenCalledWith('iv_1', 0, '文字回答', expect.any(AbortSignal))
+})
+
+it('appends finals to typed answers and saves the last recognition result before advancing', async () => {
+  const mock = installSpeechMocks()
+  await mount()
+  await loaded()
+  expect(mock.synthesis.speak).not.toHaveBeenCalled()
+  await typeAnswer('手动背景')
+  button('开始口述').click()
+  mock.latest().result([{ text: '正在说', final: false }])
+  await nextTick()
+  expect(root.textContent).toContain('正在说')
+  expect(root.querySelector('textarea')!.value).toBe('手动背景')
+  mock.latest().result([{ text: '语音行动', final: true }])
+  await nextTick()
+  expect(root.querySelector('textarea')!.value).toBe('手动背景\n语音行动')
+  const active = mock.latest()
+  active.stop.mockImplementation(() => {})
+  submit()
+  await nextTick()
+  expect(saveInterviewAnswer).not.toHaveBeenCalled()
+  active.result(
+    [
+      { text: '语音行动', final: true },
+      { text: '最后的结果', final: true },
+    ],
+    1,
+  )
+  active.onend?.()
+  await vi.waitFor(() => expect(server.questionIndex).toBe(1))
+  expect(server.answers[0]!.answerText).toBe('手动背景\n语音行动\n最后的结果')
+  active.result([{ text: '迟到的文本', final: true }])
+  await nextTick()
+  expect(root.querySelector('textarea')!.value).toBe('')
+})
+
+it('keeps text entry and save usable after microphone permission is denied', async () => {
+  const mock = installSpeechMocks()
+  await mount()
+  await loaded()
+  button('开始口述').click()
+  mock.latest().onerror?.({ error: 'not-allowed' })
+  await nextTick()
+  expect(root.textContent).toContain('权限被拒绝')
+  expect(button('开始口述').disabled).toBe(true)
+  expect(root.querySelector('textarea')!.disabled).toBe(false)
+  button('朗读题目').click()
+  await nextTick()
+  expect(root.textContent).toContain('权限被拒绝')
+  await typeAnswer('拒绝权限后文字回答')
+  button('保存草稿').click()
+  await vi.waitFor(() => expect(server.answers[0]!.answerText).toBe('拒绝权限后文字回答'))
+})
+
+it('enforces the textarea limit for dictation and releases the microphone on leave', async () => {
+  const mock = installSpeechMocks()
+  await mount()
+  await loaded()
+  await typeAnswer('字'.repeat(11997))
+  button('开始口述').click()
+  mock.latest().result([{ text: '结果很多字', final: true }])
+  await nextTick()
+  expect(root.querySelector('textarea')!.value).toBe('字'.repeat(11997) + '\n结果')
+  expect(root.querySelector('textarea')!.value.length).toBe(12000)
+  expect(button('开始口述').disabled).toBe(true)
+  await router.push('/interviews')
+  expect(server.answers[0]!.answerText.length).toBe(12000)
+  expect(mock.synthesis.cancel).toHaveBeenCalled()
+})
+
+it('persists opt-in autoplay, reads changed questions and cleans up on unmount', async () => {
+  const mock = installSpeechMocks()
+  await mount()
+  await loaded()
+  button('朗读题目').click()
+  expect(mock.synthesis.speak.mock.calls[0]![0].text).toBe('服务端题目快照')
+  const checkbox = root.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+  checkbox.checked = true
+  checkbox.dispatchEvent(new Event('change', { bubbles: true }))
+  await nextTick()
+  expect(localStorage.getItem('offerpilot.voiceAutoPlay')).toBe('true')
+  await typeAnswer('第一题')
+  submit()
+  await vi.waitFor(() => expect(mock.synthesis.speak).toHaveBeenCalledTimes(2))
+  expect(mock.synthesis.speak.mock.calls[1]![0].text).toBe(server.answers[1]!.questionText)
+  button('停止朗读').click()
+  button('开始口述').click()
+  const active = mock.latest()
+  unmount()
+  expect(active.abort).toHaveBeenCalledOnce()
+  expect(mock.synthesis.cancel).toHaveBeenCalled()
+})
 
 it('creates only server sessions and exports unchanged legacy records', async () => {
   await mount('/interviews')

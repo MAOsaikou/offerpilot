@@ -8,6 +8,7 @@ import { getInterview, saveInterviewAnswer, updateInterview } from '@/shared/api
 import { ApiError } from '@/shared/api/client'
 import type { InterviewSession } from '@/shared/types/interview'
 import { exportInterview } from '@/shared/utils/interviewExport'
+import { useSpeech } from '@/shared/composables/useSpeech'
 
 const route = useRoute()
 const cache = useQueryClient()
@@ -22,10 +23,59 @@ const current = computed(() =>
   session.value?.answers.find((a) => a.questionIndex === session.value?.questionIndex),
 )
 const dirty = computed(() => Boolean(session.value) && answer.value !== current.value?.answerText)
+const voiceAutoPlay = ref(false)
+try {
+  voiceAutoPlay.value = localStorage.getItem('offerpilot.voiceAutoPlay') === 'true'
+} catch {
+  /* Text entry works with storage disabled. */
+}
+watch(voiceAutoPlay, (enabled) => {
+  try {
+    localStorage.setItem('offerpilot.voiceAutoPlay', String(enabled))
+  } catch {
+    /* Session preference only. */
+  }
+})
+const speech = useSpeech({
+  onFinal(text) {
+    if (!session.value || session.value.completed || loading.value) return
+    const separator = answer.value && !/\s$/.test(answer.value) ? '\n' : ''
+    let addition = ''
+    for (const character of separator + text) {
+      if (answer.value.length + addition.length + character.length > 12000) break
+      addition += character
+    }
+    answer.value += addition
+    if (answer.value.length >= 12000 || addition.length < separator.length + text.length)
+      void speech.stopListening()
+  },
+})
+const {
+  supported,
+  unsupportedReason,
+  canListen,
+  listening,
+  listenRequested,
+  speaking,
+  interimText,
+  error: speechError,
+} = speech
+watch(
+  () =>
+    session.value && !session.value.completed
+      ? `${session.value.id}:${session.value.questionIndex}:${current.value?.questionText}`
+      : '',
+  (question) => {
+    speech.cancelAll()
+    if (question && voiceAutoPlay.value && supported.value)
+      speech.speak(current.value?.questionText ?? '')
+  },
+)
 let controller = new AbortController()
 let revision = 0
 
 async function load() {
+  speech.cancelAll()
   controller.abort()
   controller = new AbortController()
   const requestRevision = ++revision
@@ -49,6 +99,7 @@ async function load() {
 }
 watch(() => route.params.id, load, { immediate: true })
 onBeforeUnmount(() => {
+  speech.cancelAll()
   revision++
   controller.abort()
 })
@@ -60,6 +111,9 @@ async function persist(questionIndex?: number, completed?: boolean): Promise<boo
   const requestRevision = revision
   const id = session.value.id
   try {
+    speech.stopSpeaking(false)
+    await speech.stopListening()
+    if (requestRevision !== revision) return false
     if (dirty.value) {
       const saved = await saveInterviewAnswer(
         id,
@@ -99,7 +153,13 @@ async function submit() {
 
 async function saveBeforeLeave() {
   if (busy.value) return false
-  return !dirty.value || (await persist())
+  if (!session.value) {
+    speech.cancelAll()
+    return true
+  }
+  const saved = await persist()
+  speech.cancelAll()
+  return saved
 }
 onBeforeRouteLeave(saveBeforeLeave)
 onBeforeRouteUpdate(saveBeforeLeave)
@@ -114,7 +174,7 @@ onBeforeRouteUpdate(saveBeforeLeave)
   </div>
   <section v-else-if="session" class="page-stack">
     <PageHeading
-      :title="session.completed ? '一次练习，一份积累' : session.role + ' · 文字练习'"
+      :title="session.completed ? '一次练习，一份积累' : session.role + ' · 面试练习'"
       :description="session.kind + ' · 固定题库自练'"
     >
       <RouterLink to="/interviews" class="btn">返回练习列表</RouterLink>
@@ -135,8 +195,42 @@ onBeforeRouteUpdate(saveBeforeLeave)
         <div class="interview-avatar"><AppIcon name="interviews" :size="38" /></div>
         <h2>{{ current?.questionText }}</h2>
         <p class="subtle">不急着给出完美答案。先把你的真实经历讲清楚。</p>
+        <div v-if="supported" class="voice-controls">
+          <button
+            type="button"
+            class="btn"
+            :disabled="busy"
+            @click="speaking ? speech.stopSpeaking() : speech.speak(current?.questionText ?? '')"
+          >
+            {{ speaking ? '停止朗读' : '朗读题目' }}
+          </button>
+          <label class="voice-preference"
+            ><input v-model="voiceAutoPlay" type="checkbox" :disabled="busy" />自动朗读</label
+          >
+          <span class="tag" role="status">{{
+            busy ? '正在保存' : speaking ? '提问中' : listening ? '倾听中' : '等待回答'
+          }}</span>
+        </div>
       </section>
       <form class="panel form-stack" @submit.prevent="submit">
+        <div v-if="supported" class="voice-controls">
+          <button
+            type="button"
+            class="btn"
+            :aria-pressed="listenRequested"
+            :disabled="busy || !canListen || answer.length >= 12000"
+            @click="speech.toggleListening"
+          >
+            {{ listenRequested ? '停止口述' : '开始口述' }}
+          </button>
+          <span class="subtle">{{
+            speaking && listenRequested
+              ? '朗读后继续倾听'
+              : listenRequested && !listening
+                ? '正在启动麦克风…'
+                : '口述结束后可编辑，再保存回答。'
+          }}</span>
+        </div>
         <label class="field"
           >你的回答<textarea
             v-model="answer"
@@ -147,6 +241,12 @@ onBeforeRouteUpdate(saveBeforeLeave)
             placeholder="可以从背景、任务、行动、结果四个角度展开…"
           />
         </label>
+        <p v-if="interimText" class="subtle speech-subtitle" role="status" aria-live="polite">
+          {{ interimText }}
+        </p>
+        <p v-if="!supported" class="helper-note">{{ unsupportedReason }}</p>
+        <p v-if="speechError" class="helper-note" role="status">{{ speechError }}</p>
+        <p v-if="answer.length >= 12000" class="helper-note">回答已达到长度上限，请编辑后继续。</p>
         <div class="card-footer">
           <span class="subtle" role="status"
             >{{ [...answer].length }} 字 ·
@@ -205,3 +305,24 @@ onBeforeRouteUpdate(saveBeforeLeave)
     </template>
   </section>
 </template>
+
+<style scoped>
+.voice-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.voice-preference {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.voice-preference input {
+  width: auto;
+  accent-color: var(--primary);
+}
+.speech-subtitle {
+  overflow-wrap: anywhere;
+}
+</style>
