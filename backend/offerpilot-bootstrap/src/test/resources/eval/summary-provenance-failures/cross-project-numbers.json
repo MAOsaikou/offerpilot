@@ -1,0 +1,85 @@
+{
+  "id": "cross-project-numbers",
+  "label": "不同项目的数据不能借用",
+  "source": {
+    "basics": {
+      "name": "",
+      "phone": "",
+      "email": "",
+      "city": "",
+      "links": []
+    },
+    "education": [],
+    "experience": [],
+    "projects": [
+      {
+        "name": "社团问卷整理",
+        "role": "数据参与者",
+        "start": "2026-03",
+        "end": "2026-04",
+        "tech": [
+          "Python"
+        ],
+        "bullets": [
+          "用Python整理20条问卷记录，检查了重复填写情况。"
+        ]
+      },
+      {
+        "name": "课程表格分析",
+        "role": "课程学生",
+        "start": "2026-05",
+        "end": "2026-06",
+        "tech": [
+          "SQL",
+          "Python"
+        ],
+        "bullets": [
+          "在课程提供的1000行虚构销售表上练习SQL查询，用折线图展示按月汇总结果。"
+        ]
+      }
+    ],
+    "skills": [],
+    "certificates": [],
+    "summary": "做过数据整理和课程可视化作业。",
+    "confidence": {}
+  },
+  "jobDescription": "数据分析实习：清洗数据，使用Python与SQL处理表格，对结果进行可视化并说明依据。",
+  "firstAttemptOutput": {
+    "summary": "原文只有一条summary和两条项目bullet可改。与JD最相关的可用事实是：Python处理20条问卷记录并检查重复（可对应“清洗数据”）、SQL查询1000行虚构销售表并用折线图展示按月汇总（可对应“使用Python与SQL处理表格”和“对结果进行可视化”）。因此做了三处表达调整：summary把两项实践与JD的关键动作对齐；问卷bullet把“整理+查重”明确表述为清洗类操作；表格bullet把“展示结果”改为“可视化”，与JD用词一致。JD中的“说明依据”在原简历中无对应事实，未补写；原文也无数据规模、工具熟练度、成果指标等可借用的数字，故不新增任何量化内容、技能或经历。",
+    "patches": [
+      {
+        "id": "p1",
+        "op": "replace",
+        "path": "/summary",
+        "from": "做过数据整理和课程可视化作业。",
+        "value": "做过数据整理与课程可视化练习：用Python整理20条问卷记录并检查重复填写情况；在课程提供的1000行虚构销售表上练习SQL查询，并用折线图展示按月汇总结果。",
+        "reason": "原summary过于笼统，未点出与JD直接相关的Python、SQL和可视化要素；改为把原文已有的两项实践按JD动作（处理表格数据、可视化结果）重新组织，不新增事实。",
+        "jdEvidence": "清洗数据，使用Python与SQL处理表格，对结果进行可视化并说明依据。",
+        "needsUserConfirmation": false
+      },
+      {
+        "id": "p2",
+        "op": "replace",
+        "path": "/projects/0/bullets/0",
+        "from": "用Python整理20条问卷记录，检查了重复填写情况。",
+        "value": "用Python清洗并整理20条问卷记录，检查了重复填写情况。",
+        "reason": "JD开篇要求“清洗数据”，原句的“整理+检查重复”本质属于该类操作，用JD用词加以明确，便于筛选者快速匹配，不改变工作范围与数量。",
+        "jdEvidence": "清洗数据",
+        "needsUserConfirmation": true,
+        "confirmationHint": "请确认“清洗”是否准确涵盖你对这20条记录的Python操作（原描述为整理并检查重复填写）；若实际只是录入归整、未做去重等处理，请保留“整理”的表述。"
+      },
+      {
+        "id": "p3",
+        "op": "replace",
+        "path": "/projects/1/bullets/0",
+        "from": "在课程提供的1000行虚构销售表上练习SQL查询，用折线图展示按月汇总结果。",
+        "value": "在课程提供的1000行虚构销售表上练习SQL查询，并用折线图可视化按月汇总的结果。",
+        "reason": "JD明确要求“对结果进行可视化”，把“展示”改为“可视化”并点明所汇总的是查询结果，使表达与岗位用词一致，事实、工具和数据规模均保持不变。",
+        "jdEvidence": "对结果进行可视化并说明依据。",
+        "needsUserConfirmation": false
+      }
+    ]
+  },
+  "failureKind": "summary-borrowed-numbers-from-other-entries",
+  "baselineRunId": "2026-10-09T03-52-35.281582500Z-b4009597-4571-481a-b164-15e518e2ca0a"
+}

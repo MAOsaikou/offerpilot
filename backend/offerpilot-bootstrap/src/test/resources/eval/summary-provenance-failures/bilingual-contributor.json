@@ -1,0 +1,61 @@
+{
+  "id": "bilingual-contributor",
+  "label": "双语表达保持贡献边界",
+  "source": {
+    "basics": {
+      "name": "",
+      "phone": "",
+      "email": "",
+      "city": "",
+      "links": []
+    },
+    "education": [],
+    "experience": [],
+    "projects": [
+      {
+        "name": "Campus catalog",
+        "role": "Contributor",
+        "start": "2026-03",
+        "end": "2026-06",
+        "tech": [
+          "Java"
+        ],
+        "bullets": [
+          "Contributed to 2 catalog APIs with a teammate and wrote unit tests for input validation."
+        ]
+      }
+    ],
+    "skills": [],
+    "certificates": [],
+    "summary": "Computer science student with a Java course project.",
+    "confidence": {}
+  },
+  "jobDescription": "Backend intern: contribute to Java API development and write unit tests. Describe individual contributions accurately. 团队协作开发，不要求管理经验。",
+  "firstAttemptOutput": {
+    "summary": "原简历已有 Java 课程项目、2 个 catalog API 和输入校验单元测试等与JD直接相关的事实。仅对 summary 和项目 bullet 做措辞调整：把 Java、API 开发和单元测试放到更明确的位置，保持“Contributor/Contributed”的贡献边界与原有数字不变；其余内容岗位相关度或事实不足，不建议改动。",
+    "patches": [
+      {
+        "id": "p1",
+        "op": "replace",
+        "path": "/summary",
+        "from": "Computer science student with a Java course project.",
+        "value": "Computer science student with a Java course project involving 2 catalog APIs and unit tests for input validation.",
+        "reason": "JD关注 Java API 开发和单元测试；用原简历已有事实把项目中的 API 数量和单元测试内容放入 summary，使求职方向更明确。",
+        "jdEvidence": "Java API development and write unit tests",
+        "needsUserConfirmation": false
+      },
+      {
+        "id": "p2",
+        "op": "replace",
+        "path": "/projects/0/bullets/0",
+        "from": "Contributed to 2 catalog APIs with a teammate and wrote unit tests for input validation.",
+        "value": "Contributed to 2 catalog APIs in Java with a teammate and wrote unit tests for input validation.",
+        "reason": "补充项目技术栈中已有的 Java，并与JD的 Java API 方向对齐；保留 Contributed 和 teammate，准确体现个人贡献与团队协作。",
+        "jdEvidence": "contribute to Java API development and write unit tests",
+        "needsUserConfirmation": false
+      }
+    ]
+  },
+  "failureKind": "summary-borrowed-numbers-from-other-entries",
+  "baselineRunId": "2026-10-09T03-52-35.281582500Z-b4009597-4571-481a-b164-15e518e2ca0a"
+}
