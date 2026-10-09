@@ -64,5 +64,37 @@ class ResumeOptimizerTest {
             .isInstanceOf(BusinessException.class).hasMessageNotContaining("private-provider-diagnostic");
         verify(gateway).stream(any(),anyList(),eq(0.3));
     }
+    @Test void filtersValidatedOutputAndReturnsMetadataWithoutRepairingTrivialChanges() throws Exception {
+        var gateway=mock(ModelGateway.class);
+        when(gateway.stream(any(),anyList(),eq(0.3))).thenReturn(response(REPORT.replace("参与后端服务开发", " 负责后端开发 ")));
+        var optimizer=new ResumeOptimizer(gateway,json,new ByteArrayResource("fixture".getBytes(StandardCharsets.UTF_8)));
+        var report=optimizer.optimize(source(),JD,ModelTier.CHEAP).block(Duration.ofSeconds(3));
+        assertThat(report.path("patches")).isEmpty();
+        assertThat(report.path("filteredPatches").get(0).path("reason").asText()).isEqualTo("NORMALIZED_EQUAL");
+        verify(gateway).stream(any(),anyList(),eq(0.3));
+
+        reset(gateway);
+        when(gateway.stream(any(),anyList(),eq(0.3))).thenReturn(response("{\"summary\":\"无需改写\",\"patches\":[]}"));
+        var empty=optimizer.optimize(source(),JD,ModelTier.CHEAP).block(Duration.ofSeconds(3));
+        assertThat(empty.path("patches")).isEmpty();
+        assertThat(empty.path("filteredPatches").isArray()).isTrue();
+        assertThat(empty.path("filteredPatches")).isEmpty();
+        verify(gateway).stream(any(),anyList(),eq(0.3));
+    }
+    @Test void validatesNumbersBeforeTinyEditFilterAndNeverHidesInvalidOutput() throws Exception {
+        String from="参与后端服务开发，使用Java与Redis优化10个接口的缓存策略。";
+        var source=source(); source.put("summary",from);
+        ObjectNode invalid=(ObjectNode)json.readTree(REPORT);
+        ((ObjectNode)invalid.path("patches").get(0)).put("from",from).put("value",from.replace("10", "11"));
+        // A one-character invented number would be dropped lexically, but must fail validation first.
+        assertThat(ResumeOptimizationValueFilter.filter(invalid).path("patches")).isEmpty();
+        var gateway=mock(ModelGateway.class);
+        when(gateway.stream(any(),anyList(),eq(0.3))).thenReturn(response(invalid.toString()));
+        var optimizer=new ResumeOptimizer(gateway,json,new ByteArrayResource("fixture".getBytes(StandardCharsets.UTF_8)));
+        assertThatThrownBy(() -> optimizer.optimize(source,JD,ModelTier.CHEAP).block(Duration.ofSeconds(3)))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.errorCode()).isEqualTo(ErrorCode.STRUCTURED_OUTPUT_INVALID));
+        verify(gateway,times(2)).stream(any(),anyList(),eq(0.3));
+    }
     Flux<ChatResponse> response(String text) {return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(text)))));}
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.resume.application.ResumeOptimizationValidator;
+import com.offerpilot.resume.application.ResumeOptimizationValueFilter;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
@@ -25,6 +26,8 @@ class ResumeOptimizationEvidenceReplayTest {
             assertThat(sample.path("status").asText()).isEqualTo("COMPLETED");
             ObjectNode report = sample.path("report").deepCopy();
             report.remove(java.util.List.of("promptVersion", "model", "modelTier", "durationMs", "inputTokens", "outputTokens"));
+            boolean valueFiltered = report.has("filteredPatches");
+            var filteredMetadata = report.remove("filteredPatches");
             ResumeOptimizationValidator.validate(report, sample.path("source"), jd);
             int in = 0, out = 0;
             expectedRejected += sample.path("modelAttempts").asInt() - 1;
@@ -40,7 +43,11 @@ class ResumeOptimizationEvidenceReplayTest {
                 } else {
                     var raw = json.readTree(text);
                     ResumeOptimizationValidator.validate(raw, sample.path("source"), jd);
-                    assertThat(raw).isEqualTo(report);
+                    if (valueFiltered) {
+                        var filtered = ResumeOptimizationValueFilter.filter((ObjectNode) raw);
+                        assertThat(filtered.remove("filteredPatches")).isEqualTo(filteredMetadata);
+                        assertThat(filtered).isEqualTo(report);
+                    } else assertThat(raw).isEqualTo(report);
                 }
                 in += attempt.path("inputTokens").asInt(); out += attempt.path("outputTokens").asInt();
             }
