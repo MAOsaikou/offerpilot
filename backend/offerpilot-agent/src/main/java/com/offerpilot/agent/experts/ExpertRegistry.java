@@ -45,6 +45,15 @@ public class ExpertRegistry {
     private com.offerpilot.career.application.CoachPlanForChat coach;
     private com.offerpilot.agent.application.CoachWriteTools coachWrites;
     private ResumePatchWriteTools patchWrites;
+    private KnowledgeNoteContext noteContext;
+
+    @Autowired
+    public void setNoteContext(KnowledgeNoteContext noteContext) { this.noteContext = noteContext; }
+
+    private Mono<ExpertResult> withNotes(String owner, PlanStep step, Mono<ExpertResult> work) {
+        if (noteContext == null) return work;
+        return work.flatMap(result -> noteContext.attach(owner, text(step.inputs().get("noteQuery")), result));
+    }
 
     public ExpertRegistry() {
         this.matches = null;
@@ -154,7 +163,7 @@ public class ExpertRegistry {
         return interviewWrites.request(owner, runId, step);
     }
     public Mono<ExpertResult> executeInterview(String owner, String runId, PlanStep step, ApprovalService.Decision decision) {
-        return interviewWrites.execute(owner, runId, step, decision);
+        return withNotes(owner, step, interviewWrites.execute(owner, runId, step, decision));
     }
 
     public boolean recommending(PlanStep step) {
@@ -222,6 +231,14 @@ public class ExpertRegistry {
     public Mono<ExpertResult> execute(String owner, Map<String, Object> context, String runId, PlanStep step,
                                       Map<String, String> upstreamOutputs) {
         if (writingBoard(step) || writingCareer(step) || writingInterview(step) || writingCoach(step) || writingPatches(step)) return Mono.error(new IllegalStateException("写入必须先审批"));
+        var work = executeRead(owner, context, runId, step, upstreamOutputs);
+        return step.agent() == ExpertType.COACH || step.agent() == ExpertType.INTERVIEWER
+                || (step.agent() == ExpertType.RESUME && "advice".equals(step.inputs().get("action")))
+                ? withNotes(owner, step, work) : work;
+    }
+
+    private Mono<ExpertResult> executeRead(String owner, Map<String, Object> context, String runId, PlanStep step,
+                                         Map<String, String> upstreamOutputs) {
         if (step.agent() == ExpertType.COACH) {
             if (coach == null) return Mono.just(ExpertResult.text("成长教练服务暂不可用，请稍后重试。"));
             return Mono.fromCallable(() -> {

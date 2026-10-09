@@ -66,6 +66,7 @@ class DemoJourneyIntegrationTest {
     @Autowired PlatformTransactionManager transactions;
     @Autowired ResumeObjectStore storage;
     @Autowired ResumeDocumentReader reader;
+    @Autowired com.offerpilot.knowledge.application.KnowledgeNoteService notes;
     @LocalServerPort int port;
 
     @TestConfiguration static class StorageConfig {
@@ -124,6 +125,8 @@ class DemoJourneyIntegrationTest {
         }
         assertThat(json.readTree(request("GET", "/applications", token, null).body()).path("data").size()).isEqualTo(6);
         assertThat(json.readTree(request("GET", "/interviews", token, null).body()).path("data").size()).isEqualTo(2);
+        assertThat(json.readTree(request("GET", "/knowledge/notes", token, null).body()).path("data").path("total").asInt()).isEqualTo(3);
+        assertThat(json.readTree(request("GET", "/knowledge/notes/search?q=缓存", token, null).body()).path("data").path("items")).isNotEmpty();
         assertThat(json.readTree(request("GET", "/career/profile", token, null).body()).path("data").path("target").asText()).isEqualTo("后端开发工程师");
     }
 
@@ -134,6 +137,9 @@ class DemoJourneyIntegrationTest {
         jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES ('job_real','real-site','real-1','intern','{}')");
         jdbc.update("INSERT INTO applications(id,user_id,job_id) VALUES ('app_demo_added',?,'job_real')", owner());
         jdbc.update("INSERT INTO conversations(id,user_id,title) VALUES ('conv_demo',?,'待清理')", owner());
+        var draft = new com.offerpilot.knowledge.application.KnowledgeNoteService.Draft("其他用户笔记", "保留其他用户的原文", "技术积累");
+        String otherNote = notes.create("usr_other", draft).id();
+        notes.importNotes(owner(), java.util.List.of(new com.offerpilot.knowledge.application.KnowledgeNoteService.ImportEntry("old-demo", draft)));
         int occupations = jdbc.queryForObject("SELECT count(*) FROM occupations", Integer.class);
         String id = owner();
         var first = resets.reset();
@@ -141,6 +147,10 @@ class DemoJourneyIntegrationTest {
         assertThat(first.resumeCount()).isEqualTo(2);
         assertThat(second.applicationCount()).isEqualTo(6);
         assertThat(second.jobCount()).isEqualTo(10);
+        assertThat(second.knowledgeNoteCount()).isEqualTo(3);
+        assertThat(notes.get("usr_other", otherNote).content()).isEqualTo(draft.content());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM knowledge_note_imports WHERE user_id=?", Integer.class, id)).isZero();
+        assertThat(notes.list(id,1,20).total()).isEqualTo(3);
         for (var entry : Map.of("resumes", 2, "resume_versions", 2, "files", 2, "applications", 6,
                 "interview_sessions", 2, "career_profiles", 1, "growth_task_completions", 3).entrySet()) {
             assertThat(jdbc.queryForObject("SELECT count(*) FROM " + entry.getKey() + " WHERE user_id=?", Integer.class, id))

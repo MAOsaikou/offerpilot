@@ -22,11 +22,15 @@ public class OccupationEmbeddings {
         this.env = env;
     }
 
-    public List<float[]> embed(List<String> documents) {
+    public boolean configured() {
         boolean mock = Arrays.asList(env.getActiveProfiles()).contains("mock-llm");
         String key = env.getProperty("spring.ai.openai.api-key", "");
-        if (!mock && ("none".equals(env.getProperty("spring.ai.model.embedding"))
-                || key.isBlank() || "sk-not-configured".equals(key))) {
+        return mock || !("none".equals(env.getProperty("spring.ai.model.embedding"))
+                || key.isBlank() || "sk-not-configured".equals(key));
+    }
+
+    public List<float[]> embed(List<String> documents) {
+        if (!configured()) {
             log.warn("职业向量不可用：embedding 已关闭或未配置 Bailian Key；保留全文索引与规则推荐");
             return List.of();
         }

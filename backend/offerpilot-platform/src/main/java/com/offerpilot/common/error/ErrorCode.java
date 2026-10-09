@@ -37,6 +37,9 @@ public enum ErrorCode {
 
     INTERVIEW_NOT_FOUND(30701, HttpStatus.NOT_FOUND, "面试练习不存在或无权访问"),
 
+    KNOWLEDGE_NOTE_NOT_FOUND(30801, HttpStatus.NOT_FOUND, "笔记不存在或无权访问"),
+    KNOWLEDGE_IMPORT_CONFLICT(30802, HttpStatus.CONFLICT, "该本地笔记已导入且原内容发生变化，请保留本地副本并另存为新笔记"),
+
     MODEL_TIMEOUT(40001, HttpStatus.GATEWAY_TIMEOUT, "模型调用超时"),
     MODEL_RATE_LIMITED(40002, HttpStatus.BAD_GATEWAY, "模型限流"),
     STRUCTURED_OUTPUT_INVALID(40003, HttpStatus.UNPROCESSABLE_ENTITY, "结构化输出校验失败"),
