@@ -67,6 +67,121 @@ class ChatServiceTest {
     }
 
     @Test
+    void explicitMatchingIgnoresClarificationVariantAndEmptyModelPlansForBothTiers() throws Exception {
+        var json = new ObjectMapper();
+        var matches = mock(com.offerpilot.job.application.JobMatchForChat.class);
+        var report = json.createObjectNode().put("id", "match_selected").put("score", 80).put("summary", "已核实");
+        report.putArray("requirements");
+        when(matches.match(eq("owner"), eq("job_selected"), eq("resume_selected"), eq("version_selected"), anyString()))
+                .thenReturn(JobMatchCards.fromReport(report));
+        var experts = new ExpertRegistry(matches);
+        var parser = new com.offerpilot.agent.orchestrator.JobIntentParser(gateway, json, new ByteArrayResource("job actions".getBytes()));
+        var planner = new IntentPlanner(gateway, json, experts, new ByteArrayResource("planner".getBytes()), parser);
+        var local = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()), new Orchestrator(planner, experts), json);
+        for (var tier : List.of(ModelTier.FLASH, ModelTier.PRO)) {
+            for (var mode : List.of(com.offerpilot.agent.domain.AgentMode.AUTO, com.offerpilot.agent.domain.AgentMode.JOB)) {
+                for (String output : List.of(
+                        "{\"kind\":\"single\",\"expert\":\"JOB\",\"confidence\":1,\"needsClarification\":true,\"clarifyingQuestion\":\"请提供简历\"}",
+                        "{\"kind\":\"composite\",\"confidence\":1,\"plan\":{\"goal\":\"匹配\",\"steps\":[{\"id\":\"s1\",\"title\":\"匹配\",\"agent\":\"JOB\",\"inputs\":{\"action\":\"match_resume_to_job\",\"jobId\":\"model_guessed\"},\"dependsOn\":[]}]}}",
+                        "{\"kind\":\"composite\",\"confidence\":1,\"plan\":{\"goal\":\"匹配\",\"steps\":[]}}")) {
+                    clearInvocations(gateway, conversations, matches);
+                    when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(output))))));
+                    when(gateway.stream(eq(tier), anyList())).thenReturn(Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage("匹配卡已展示"))))));
+                    when(conversations.begin(anyString(), any(), anyString(), any(), anyString())).thenReturn(
+                            new com.offerpilot.conversation.application.ConversationService.Turn("owner", "conv", "run", "msg", mode, java.time.Instant.now(), List.of()));
+                    var context = java.util.Map.<String, Object>of("jobAction", "match", "jobId", "job_selected",
+                            "resumeId", "resume_selected", "resumeVersionId", "version_selected");
+                    var events = local.chat("owner", new ChatRequest(null, "请匹配这个岗位与我的简历", null, mode,
+                            new ChatRequest.Options(tier.name(), null, context))).collectList().block(Duration.ofSeconds(5));
+                    assertThat(events).filteredOn(AgentEvent.UiCard.class::isInstance).singleElement()
+                            .isInstanceOfSatisfying(AgentEvent.UiCard.class, card -> assertThat(card.cardType()).isEqualTo("job_match"));
+                    assertThat(events).extracting(AgentEvent::type).contains("run.completed").doesNotContain("error", "approval.required");
+                    verify(gateway, never()).stream(any(), anyList(), eq(0.1));
+                    verify(matches).match("owner", "job_selected", "resume_selected", "version_selected", ExpertRegistry.requestId("run", "s1"));
+                    verify(conversations).finish(any(), eq("匹配卡已展示"), eq("COMPLETED"), any(), isNull(), argThat(cards -> cards.size() == 1));
+                }
+            }
+        }
+    }
+
+    @Test
+    void oversizedMatchCardIsVisibleErrorInsteadOfSilentCompletion() throws Exception {
+        var cards = mock(Orchestrator.class);
+        when(cards.run(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(Flux.just(
+                new AgentEvent.UiCard("ui.card", 2, "run", java.time.Instant.now(), "s1", "match_large", "job_match",
+                        java.util.Map.of("summary", "证".repeat(32768)))));
+        var local = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()), cards, new ObjectMapper());
+        var events = local.chat("owner", request()).collectList().block(Duration.ofSeconds(5));
+        assertThat(events).extracting(AgentEvent::type).containsExactly("run.started", "error");
+        assertThat(((AgentEvent.ErrorEvent) events.get(1)).message()).contains("匹配报告", "展示");
+        verify(gateway, never()).stream(any(), anyList());
+        verify(conversations).finish(any(), anyString(), eq("FAILED"), any(), anyString(), argThat(saved -> saved.isEmpty()));
+    }
+
+    @Test
+    void selectedResourcesWithModelClarificationOrFallbackCannotCompleteSilently() throws Exception {
+        var json = new ObjectMapper();
+        var parser = new com.offerpilot.agent.orchestrator.JobIntentParser(gateway, json, new ByteArrayResource("actions".getBytes()));
+        var experts = new ExpertRegistry();
+        var local = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()),
+                new Orchestrator(new IntentPlanner(gateway, json, experts, new ByteArrayResource("planner".getBytes()), parser), experts), json);
+        for (var mode : List.of(com.offerpilot.agent.domain.AgentMode.AUTO, com.offerpilot.agent.domain.AgentMode.JOB)) {
+            for (String output : List.of("not JSON", mode == com.offerpilot.agent.domain.AgentMode.JOB
+                    ? "{\"action\":\"clarify\",\"question\":\"请选择岗位与简历\"}"
+                    : "{\"kind\":\"single\",\"expert\":\"JOB\",\"confidence\":1,\"needsClarification\":true,\"clarifyingQuestion\":\"请选择岗位与简历\"}")) {
+                when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(output))))));
+                when(conversations.begin(anyString(), any(), anyString(), any(), anyString())).thenReturn(
+                        new com.offerpilot.conversation.application.ConversationService.Turn("owner", "conv", "run", "msg", mode, java.time.Instant.now(), List.of()));
+                var context = java.util.Map.<String, Object>of("jobId", "job1", "resumeId", "resume1", "resumeVersionId", "version1");
+                var events = local.chat("owner", new ChatRequest(null, "请匹配这个岗位与我的简历", null, mode,
+                        new ChatRequest.Options("PRO", null, context))).collectList().block(Duration.ofSeconds(5));
+                assertThat(events).extracting(AgentEvent::type).containsExactly("run.started", "error");
+                assertThat(((AgentEvent.ErrorEvent) events.get(1)).message()).contains("未执行任务", "在聊天中匹配");
+            }
+        }
+        verify(gateway, never()).stream(any(), anyList());
+    }
+
+    @Test
+    void incompleteOrConflictingExplicitMatchingShowsErrorWithoutCallingAnyModel() {
+        for (var context : List.of(
+                java.util.Map.<String, Object>of("jobAction", "match", "jobId", "job1", "resumeId", "resume1"),
+                java.util.Map.<String, Object>of("jobAction", "match", "jobId", "job1", "resumeId", "resume1", "resumeVersionId", " "),
+                java.util.Map.<String, Object>of("jobAction", "match", "jobId", 42, "resumeId", "resume1", "resumeVersionId", "version1"),
+                java.util.Map.<String, Object>of("jobAction", "match", "jobId", "x".repeat(81), "resumeId", "resume1", "resumeVersionId", "version1"),
+                java.util.Map.<String, Object>of("jobAction", "match", "boardAction", "createApplication"),
+                java.util.Map.<String, Object>of("jobAction", "match_job"))) {
+            var events = service.chat("owner", new ChatRequest(null, "匹配", null, null,
+                    new ChatRequest.Options("FLASH", null, context))).collectList().block(Duration.ofSeconds(5));
+            assertThat(events).extracting(AgentEvent::type).containsExactly("run.started", "error");
+            assertThat(((AgentEvent.ErrorEvent) events.get(1)).message()).contains("匹配");
+        }
+        verify(gateway, never()).stream(any(), anyList(), anyDouble());
+        verify(gateway, never()).stream(any(), anyList());
+    }
+
+    @Test
+    void unavailableOrRejectedExplicitMatchHasFailedToolAndVisibleErrorWithoutNarration() throws Exception {
+        var denied = new ExpertRegistry((owner, jobId, resumeId, versionId, requestId) -> {
+            throw new BusinessException(ErrorCode.RESUME_NOT_FOUND, "简历版本不可用");
+        });
+        for (var experts : List.of(new ExpertRegistry(), denied)) {
+            var local = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()),
+                    new Orchestrator(new IntentPlanner(gateway, new ObjectMapper(), experts, new ByteArrayResource("planner".getBytes())), experts), new ObjectMapper());
+            var context = java.util.Map.<String, Object>of("jobAction", "match", "jobId", "job1", "resumeId", "resume1", "resumeVersionId", "version1");
+            var events = local.chat("owner", new ChatRequest(null, "请匹配", null, null,
+                    new ChatRequest.Options("PRO", null, context))).collectList().block(Duration.ofSeconds(5));
+            assertThat(events).extracting(AgentEvent::type).contains("error").doesNotContain("run.completed", "ui.card", "text.delta");
+            assertThat(events).filteredOn(AgentEvent.ToolResult.class::isInstance).singleElement()
+                    .isInstanceOfSatisfying(AgentEvent.ToolResult.class, result -> assertThat(result.ok()).isFalse());
+            assertThat(((AgentEvent.ErrorEvent) events.get(events.size() - 1)).message()).contains("匹配未完成")
+                    .contains(experts == denied ? "简历版本不可用" : "匹配服务暂不可用");
+        }
+        verify(gateway, never()).stream(any(), anyList(), anyDouble());
+        verify(gateway, never()).stream(any(), anyList());
+    }
+
+    @Test
     void streamsTextThenUsageThenCompletionWithIncreasingIds() {
         when(gateway.stream(eq(ModelTier.FLASH), anyList())).thenReturn(Flux.just(
                 new ChatResponse(List.of(new Generation(new AssistantMessage("你好")))),

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.offerpilot.agent.domain.*;
 import com.offerpilot.agent.experts.ExpertRegistry;
+import com.offerpilot.common.error.BusinessException;
+import com.offerpilot.common.error.ErrorCode;
 import com.offerpilot.llm.ModelGateway;
 import com.offerpilot.llm.ModelTier;
 import org.springframework.ai.chat.messages.*;
@@ -58,6 +60,21 @@ public class IntentPlanner {
     public Mono<Decision> prepare(AgentMode mode, String content, List<Message> history, ModelTier tier,
                                   Consumer<Usage> onUsage, Map<String, Object> context) {
         Map<String, Object> safeContext = context == null ? Map.of() : context;
+        if (safeContext.containsKey("jobAction")) {
+            if (!"match".equals(safeContext.get("jobAction"))
+                    || mode != null && mode != AgentMode.AUTO && mode != AgentMode.JOB
+                    || List.of("boardAction", "resumeAction", "careerAction", "interviewAction", "coachAction")
+                            .stream().anyMatch(safeContext::containsKey))
+                return Mono.error(new BusinessException(ErrorCode.VALIDATION_FAILED,
+                        "匹配动作无效：请在岗位分析或智能助手中单独发起匹配。"));
+            if (!SelectedResources.matchReady(safeContext))
+                return Mono.error(new BusinessException(ErrorCode.VALIDATION_FAILED,
+                        "未执行匹配：请先选择岗位、已保存的简历和简历版本。"));
+            // A caller action is authoritative. Do not ask either planning model to classify it again.
+            return Mono.just(new Decision("single", ExpertType.JOB, 1.0, false, null,
+                    PlanValidator.validate(new Plan(content, List.of(new PlanStep("s1", "岗位与简历匹配",
+                            ExpertType.JOB, Map.of("action", "match"), List.of()))))));
+        }
         if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.JOB) && BoardIntent.matches(content, safeContext)) {
             return resolveActions(new Decision("single", ExpertType.JOB, 1.0, false, null,
                     single(content, ExpertType.JOB, safeContext)), content, history, tier, onUsage, safeContext);

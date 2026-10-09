@@ -13,6 +13,8 @@ import com.offerpilot.job.application.JobMatchCards;
 import com.offerpilot.job.application.JobMatchForChat;
 import com.offerpilot.job.application.JobSearchForChat;
 import com.offerpilot.job.application.JobDescriptionForChat;
+import com.offerpilot.common.error.BusinessException;
+import com.offerpilot.common.error.ErrorCode;
 import com.offerpilot.resume.application.ResumeOptimizationForChat;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -220,10 +222,10 @@ public class ExpertRegistry {
                 .map(type -> type.name() + ": " + label(type)).collect(java.util.stream.Collectors.joining("\n"));
     }
 
-    /** 岗位步骤是否会调用已有匹配。标识不齐或匹配服务不存在时保持占位。 */
+    /** 显式 match 必须执行或明确失败；旧无动作步骤仅在服务和所选资源齐全时匹配。 */
     public boolean matching(PlanStep step, Map<String, Object> context) {
-        return matches != null && step.agent() == ExpertType.JOB && !writingBoard(step) && !"search".equals(step.inputs().get("action"))
-                && target(step, context) != null;
+        return step.agent() == ExpertType.JOB && !writingBoard(step) && !"search".equals(step.inputs().get("action"))
+                && ("match".equals(step.inputs().get("action")) || matches != null && read(context) != null);
     }
 
     public Mono<ExpertResult> execute(String owner, Map<String, Object> context, String runId, PlanStep step,
@@ -298,7 +300,13 @@ public class ExpertRegistry {
         if (step.agent() == ExpertType.RESUME) {
             return Mono.just(ExpertResult.text("未选择已保存的简历版本。请从简历详情点击 AI 诊断或继续讨论；不能读取或猜测用户未提供的简历。"));
         }
-        Target target = matching(step, context) ? target(step, context) : null;
+        if (step.agent() == ExpertType.JOB && "match".equals(step.inputs().get("action"))) {
+            if (read(context) == null) return Mono.error(new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "未执行匹配：请先选择岗位、已保存的简历和简历版本。"));
+            if (matches == null) return Mono.error(new BusinessException(ErrorCode.MODEL_UNAVAILABLE,
+                    "岗位匹配服务暂不可用，请稍后重试。"));
+        }
+        Target target = matching(step, context) ? read(context) : null;
         if (target != null && matches != null) {
             String requestId = requestId(runId, step.id());
             return Mono.fromCallable(() -> {
@@ -308,12 +316,6 @@ public class ExpertRegistry {
         }
         return Mono.fromSupplier(() -> ExpertResult.text(label(step.agent()) + "占位专家已接收任务；收到 "
                 + upstreamOutputs.size() + " 项上游结果。仅验证编排链路，未执行搜索、修改或创建业务记录。"));
-    }
-
-    private Target target(PlanStep step, Map<String, Object> context) {
-        Target fromInputs = read(step.inputs());
-        if (fromInputs != null) return fromInputs;
-        return read(context);
     }
 
     private static Target read(Map<String, Object> source) {
