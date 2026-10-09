@@ -17,6 +17,15 @@ export const register = (email: string, password: string) =>
 export const staffLogin = (email: string, password: string) =>
   postAuth('/auth/staff/login', email, password)
 
+export async function demoLogin(): Promise<LoginResult> {
+  const response = await fetchWithIdentity(apiUrl('/auth/demo-login'), {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  if (!response.ok) throw await toApiError(response)
+  return readApiData<LoginResult>(response)
+}
+
 export async function createGuest(): Promise<string> {
   const response = await fetchWithIdentity(apiUrl('/auth/guest'), {
     method: 'POST',

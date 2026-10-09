@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class AuthRateLimitFilterTest {
     private final ObjectMapper json = new ObjectMapper();
-    private final OfferPilotProperties.RateLimit limits = new OfferPilotProperties.RateLimit(60, 2, 20, 200000, 50000, 1, 2, 3, 4);
+    private final OfferPilotProperties.RateLimit limits = new OfferPilotProperties.RateLimit(60, 2, 20, 200000, 50000, 1, 2, 3, 4, 5);
 
     @Test
     void onlyExactAuthPostsAreLimitedAndRawHeadersAreNotRead() throws Exception {
@@ -28,8 +28,8 @@ class AuthRateLimitFilterTest {
             return new AuthRateLimiter.Result(true, 0, 60);
         });
         var filter = new AuthRateLimitFilter(limiter, limits, json);
-        var paths = List.of("guest", "login", "register", "staff/login");
-        var buckets = List.of("guest", "login", "register", "staff-login");
+        var paths = List.of("guest", "login", "register", "staff/login", "demo-login");
+        var buckets = List.of("guest", "login", "register", "staff-login", "demo-login");
         for (int i = 0; i < paths.size(); i++) {
             var request = request("POST", "/api/v1/auth/" + paths.get(i));
             request.addHeader("X-Forwarded-For", "untrusted-input");
@@ -39,7 +39,7 @@ class AuthRateLimitFilterTest {
             assertThat(calls.get(i)).isEqualTo("192.0.2.10|" + buckets.get(i) + "|" + (i + 1));
         }
         int afterLimited = calls.size();
-        for (String path : List.of("/api/v1/auth/verify", "/api/v1/auth/refresh", "/api/v1/auth/demo-login", "/api/v1/agent/chat")) {
+        for (String path : List.of("/api/v1/auth/verify", "/api/v1/auth/refresh", "/api/v1/agent/chat")) {
             filter.doFilter(request("POST", path), new MockHttpServletResponse(), (req, res) -> {});
         }
         for (String method : List.of("GET", "OPTIONS")) {

@@ -49,7 +49,8 @@ public class SecurityConfig {
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/guest",
-                                "/api/v1/auth/staff/login"
+                                "/api/v1/auth/staff/login",
+                                "/api/v1/auth/demo-login"
                         ).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // Spring Security leaves API routing open; CurrentUser/JWT staff gates protect resources.

@@ -53,7 +53,7 @@ class LlmQuotaGatewayTest {
             }
         });
         provider.start();
-        var limits = new OfferPilotProperties.RateLimit(4, 2, 2, 100, 12, 15, 20, 20, 20);
+        var limits = new OfferPilotProperties.RateLimit(4, 2, 2, 100, 12, 15, 20, 20, 20, 20);
         var tier = new OfferPilotProperties.Llm.Tier("custom", "stub", Duration.ofSeconds(5), true);
         var properties = new OfferPilotProperties(null, null, null, null, limits,
                 new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier, "PRO", tier), Map.of()), null, null);

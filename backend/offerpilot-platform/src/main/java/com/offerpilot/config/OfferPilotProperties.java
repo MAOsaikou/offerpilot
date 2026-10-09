@@ -78,14 +78,15 @@ public record OfferPilotProperties(
             @DefaultValue("15") int authGuestPerMinute,
             @DefaultValue("20") int authLoginPerMinute,
             @DefaultValue("20") int authRegisterPerMinute,
-            @DefaultValue("20") int authStaffLoginPerMinute
+            @DefaultValue("20") int authStaffLoginPerMinute,
+            @DefaultValue("20") int authDemoLoginPerMinute
     ) {
         public RateLimit {
             if (perUserPerMinute < 1 || guestPerUserPerMinute < 1 || defaultDailyTokenLimit < 0 || guestDailyTokenLimit < 0) {
                 throw new IllegalArgumentException("LLM request limits must be positive and token limits non-negative");
             }
             if (authGuestPerMinute < 1 || authLoginPerMinute < 1
-                    || authRegisterPerMinute < 1 || authStaffLoginPerMinute < 1) {
+                    || authRegisterPerMinute < 1 || authStaffLoginPerMinute < 1 || authDemoLoginPerMinute < 1) {
                 throw new IllegalArgumentException("Auth rate limits must be positive");
             }
         }

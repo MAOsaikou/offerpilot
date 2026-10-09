@@ -1,0 +1,407 @@
+{
+  "resumes": [
+    {
+      "title": "林同学-后端实习",
+      "structured": {
+        "basics": {
+          "name": "林同学",
+          "phone": "000-0000-0000",
+          "email": "lin@example.edu.cn",
+          "city": "上海",
+          "links": []
+        },
+        "education": [
+          {
+            "school": "星河大学（虚构）",
+            "degree": "本科",
+            "major": "计算机科学与技术",
+            "start": "2023-09",
+            "end": "2027-06",
+            "gpa": "3.6/4.0"
+          }
+        ],
+        "experience": [
+          {
+            "org": "星河大学信息中心（虚构）",
+            "title": "学生开发助理",
+            "start": "2026-03",
+            "end": "2026-07",
+            "bullets": [
+              "协助维护校园活动报名服务，整理接口文档与测试用例。",
+              "为报名列表增加分页查询，使用慢查询日志定位索引缺失。"
+            ]
+          }
+        ],
+        "projects": [
+          {
+            "name": "校园活动报名平台",
+            "role": "后端开发",
+            "start": "2025-10",
+            "end": "2026-02",
+            "tech": [
+              "Java",
+              "Spring Boot",
+              "MySQL",
+              "Redis"
+            ],
+            "bullets": [
+              "与三名同学协作完成登录、预约与通知模块，负责 REST API 和数据表设计。",
+              "通过数据库唯一约束和事务控制避免重复预约，编写并发场景测试。",
+              "使用 Redis 缓存活动详情，通过接口测试记录改动前后的响应时间。"
+            ]
+          }
+        ],
+        "skills": [
+          {
+            "category": "后端开发",
+            "items": [
+              "Java 集合与并发基础",
+              "Spring Boot",
+              "REST API",
+              "JUnit"
+            ]
+          },
+          {
+            "category": "数据与协作",
+            "items": [
+              "MySQL 索引与事务",
+              "Redis 缓存",
+              "Git",
+              "Docker 基础"
+            ]
+          }
+        ],
+        "certificates": [
+          "大学英语六级（虚构经历）"
+        ],
+        "summary": "2027 届计算机专业学生，关注后端开发与可靠的数据服务。希望在实习中参与真实业务、学习代码评审与工程实践。以上全部为演示虚构内容。",
+        "confidence": {}
+      }
+    },
+    {
+      "title": "小北-Java校招",
+      "structured": {
+        "basics": {
+          "name": "小北",
+          "phone": "000-0000-0000",
+          "email": "xiaobei@example.edu.cn",
+          "city": "上海",
+          "links": []
+        },
+        "education": [
+          {
+            "school": "星河大学（虚构）",
+            "degree": "本科",
+            "major": "计算机科学与技术",
+            "start": "2023-09",
+            "end": "2027-06",
+            "gpa": "3.6/4.0"
+          }
+        ],
+        "experience": [
+          {
+            "org": "星河大学信息中心（虚构）",
+            "title": "学生开发助理",
+            "start": "2026-03",
+            "end": "2026-07",
+            "bullets": [
+              "协助维护校园活动报名服务，整理接口文档与测试用例。",
+              "为报名列表增加分页查询，使用慢查询日志定位索引缺失。"
+            ]
+          }
+        ],
+        "projects": [
+          {
+            "name": "实验室设备预约系统",
+            "role": "后端开发",
+            "start": "2025-10",
+            "end": "2026-02",
+            "tech": [
+              "Java",
+              "Spring Boot",
+              "MySQL",
+              "Redis"
+            ],
+            "bullets": [
+              "与三名同学协作完成登录、预约与通知模块，负责 REST API 和数据表设计。",
+              "通过数据库唯一约束和事务控制避免重复预约，编写并发场景测试。",
+              "使用 Redis 缓存活动详情，通过接口测试记录改动前后的响应时间。"
+            ]
+          }
+        ],
+        "skills": [
+          {
+            "category": "后端开发",
+            "items": [
+              "Java 集合与并发基础",
+              "Spring Boot",
+              "REST API",
+              "JUnit"
+            ]
+          },
+          {
+            "category": "数据与协作",
+            "items": [
+              "MySQL 索引与事务",
+              "Redis 缓存",
+              "Git",
+              "Docker 基础"
+            ]
+          }
+        ],
+        "certificates": [
+          "大学英语六级（虚构经历）"
+        ],
+        "summary": "2027 届计算机专业学生，关注后端开发与可靠的数据服务。希望在实习中参与真实业务、学习代码评审与工程实践。以上全部为演示虚构内容。",
+        "confidence": {}
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "externalId": "demo-1",
+      "site": "demo",
+      "nature": "intern",
+      "title": "Java 后端实习生",
+      "company": "星河科技（虚构）",
+      "locations": "上海 / 杭州",
+      "category": "技术",
+      "department": "研发团队",
+      "description": "参与校园服务平台的后端接口开发、单元测试和代码评审；配合团队排查线上问题。本岗位为虚构演示数据，不接受实际投递。",
+      "requirement": "计算机相关专业；掌握 Java 与 Spring Boot，理解 MySQL 索引和事务；了解 Redis、Git，能清晰说明项目中的个人贡献。",
+      "url": "",
+      "source": "demo"
+    },
+    {
+      "externalId": "demo-2",
+      "site": "demo",
+      "nature": "campus",
+      "title": "后端开发工程师（校招）",
+      "company": "北辰软件（虚构）",
+      "locations": "上海",
+      "category": "技术",
+      "department": "研发团队",
+      "description": "参与校园服务平台的后端接口开发、单元测试和代码评审；配合团队排查线上问题。本岗位为虚构演示数据，不接受实际投递。",
+      "requirement": "计算机相关专业；掌握 Java 与 Spring Boot，理解 MySQL 索引和事务；了解 Redis、Git，能清晰说明项目中的个人贡献。",
+      "url": "",
+      "source": "demo"
+    },
+    {
+      "externalId": "demo-3",
+      "site": "demo",
+      "nature": "intern",
+      "title": "平台研发实习生",
+      "company": "青禾云（虚构）",
+      "locations": "上海",
+      "category": "技术",
+      "department": "研发团队",
+      "description": "参与校园服务平台的后端接口开发、单元测试和代码评审；配合团队排查线上问题。本岗位为虚构演示数据，不接受实际投递。",
+      "requirement": "计算机相关专业；掌握 Java 与 Spring Boot，理解 MySQL 索引和事务；了解 Redis、Git，能清晰说明项目中的个人贡献。",
+      "url": "",
+      "source": "demo"
+    },
+    {
+      "externalId": "demo-4",
+      "site": "demo",
+      "nature": "intern",
+      "title": "Java 开发实习生",
+      "company": "纸飞机网络（虚构）",
+      "locations": "上海 / 杭州",
+      "category": "技术",
+      "department": "研发团队",
+      "description": "参与校园服务平台的后端接口开发、单元测试和代码评审；配合团队排查线上问题。本岗位为虚构演示数据，不接受实际投递。",
+      "requirement": "计算机相关专业；掌握 Java 与 Spring Boot，理解 MySQL 索引和事务；了解 Redis、Git，能清晰说明项目中的个人贡献。",
+      "url": "",
+      "source": "demo"
+    },
+    {
+      "externalId": "demo-5",
+      "site": "demo",
+      "nature": "social",
+      "title": "后端开发工程师",
+      "company": "远帆数字（虚构）",
+      "locations": "上海",
+      "category": "技术",
+      "department": "研发团队",
+      "description": "参与校园服务平台的后端接口开发、单元测试和代码评审；配合团队排查线上问题。本岗位为虚构演示数据，不接受实际投递。",
+      "requirement": "计算机相关专业；掌握 Java 与 Spring Boot，理解 MySQL 索引和事务；了解 Redis、Git，能清晰说明项目中的个人贡献。",
+      "url": "",
+      "source": "demo"
+    },
+    {
+      "externalId": "demo-6",
+      "site": "demo",
+      "nature": "campus",
+      "title": "测试开发工程师（校招）",
+      "company": "小岛科技（虚构）",
+      "locations": "上海",
+      "category": "技术",
+      "department": "研发团队",
+      "description": "参与校园服务平台的后端接口开发、单元测试和代码评审；配合团队排查线上问题。本岗位为虚构演示数据，不接受实际投递。",
+      "requirement": "计算机相关专业；掌握 Java 与 Spring Boot，理解 MySQL 索引和事务；了解 Redis、Git，能清晰说明项目中的个人贡献。",
+      "url": "",
+      "source": "demo"
+    },
+    {
+      "externalId": "demo-7",
+      "site": "demo",
+      "nature": "intern",
+      "title": "数据开发实习生",
+      "company": "知行数据（虚构）",
+      "locations": "上海 / 杭州",
+      "category": "技术",
+      "department": "研发团队",
+      "description": "参与校园服务平台的后端接口开发、单元测试和代码评审；配合团队排查线上问题。本岗位为虚构演示数据，不接受实际投递。",
+      "requirement": "计算机相关专业；掌握 Java 与 Spring Boot，理解 MySQL 索引和事务；了解 Redis、Git，能清晰说明项目中的个人贡献。",
+      "url": "",
+      "source": "demo"
+    },
+    {
+      "externalId": "demo-8",
+      "site": "demo",
+      "nature": "campus",
+      "title": "云平台开发工程师（校招）",
+      "company": "云朵实验室（虚构）",
+      "locations": "上海",
+      "category": "技术",
+      "department": "研发团队",
+      "description": "参与校园服务平台的后端接口开发、单元测试和代码评审；配合团队排查线上问题。本岗位为虚构演示数据，不接受实际投递。",
+      "requirement": "计算机相关专业；掌握 Java 与 Spring Boot，理解 MySQL 索引和事务；了解 Redis、Git，能清晰说明项目中的个人贡献。",
+      "url": "",
+      "source": "demo"
+    },
+    {
+      "externalId": "demo-9",
+      "site": "demo",
+      "nature": "intern",
+      "title": "业务研发实习生",
+      "company": "鹿鸣信息（虚构）",
+      "locations": "上海",
+      "category": "技术",
+      "department": "研发团队",
+      "description": "参与校园服务平台的后端接口开发、单元测试和代码评审；配合团队排查线上问题。本岗位为虚构演示数据，不接受实际投递。",
+      "requirement": "计算机相关专业；掌握 Java 与 Spring Boot，理解 MySQL 索引和事务；了解 Redis、Git，能清晰说明项目中的个人贡献。",
+      "url": "",
+      "source": "demo"
+    },
+    {
+      "externalId": "demo-10",
+      "site": "demo",
+      "nature": "campus",
+      "title": "软件开发工程师（校招）",
+      "company": "拾光软件（虚构）",
+      "locations": "上海 / 杭州",
+      "category": "技术",
+      "department": "研发团队",
+      "description": "参与校园服务平台的后端接口开发、单元测试和代码评审；配合团队排查线上问题。本岗位为虚构演示数据，不接受实际投递。",
+      "requirement": "计算机相关专业；掌握 Java 与 Spring Boot，理解 MySQL 索引和事务；了解 Redis、Git，能清晰说明项目中的个人贡献。",
+      "url": "",
+      "source": "demo"
+    }
+  ],
+  "applications": [
+    {
+      "jobIndex": 0,
+      "status": "TODO",
+      "note": "准备核对岗位要求并调整简历"
+    },
+    {
+      "jobIndex": 1,
+      "status": "TODO",
+      "note": "补充项目测试记录后再投递"
+    },
+    {
+      "jobIndex": 2,
+      "status": "APPLIED",
+      "note": "已提交简历，等待反馈"
+    },
+    {
+      "jobIndex": 3,
+      "status": "INTERVIEW",
+      "note": "已约技术面，准备项目 STAR 故事"
+    },
+    {
+      "jobIndex": 4,
+      "status": "OFFER",
+      "note": "收到虚构录用意向，练习比较岗位"
+    },
+    {
+      "jobIndex": 5,
+      "status": "CLOSED",
+      "note": "岗位方向不匹配，记录复盘"
+    }
+  ],
+  "interviews": [
+    {
+      "role": "Java 后端实习生",
+      "kind": "项目与经历",
+      "completed": true,
+      "questionIndex": 4,
+      "answers": [
+        {
+          "question": "请介绍一次你参与的项目，以及你负责的部分。",
+          "answer": "我与三名同学开发校园预约系统，负责预约接口和数据表设计。开始时先画流程图，与前端约定请求字段。"
+        },
+        {
+          "question": "项目中最困难的问题是什么？你是如何解决的？",
+          "answer": "并发预约可能重复写入。我先复现问题，再用唯一约束与事务保证一致性，并返回可理解的错误提示。"
+        },
+        {
+          "question": "你如何验证改动有效，结果有哪些证据？",
+          "answer": "我编写了并发提交和重复预约测试，核对数据库只保留一条预约。也通过接口日志检查失败原因。"
+        },
+        {
+          "question": "如果重新做这个项目，你会调整哪些设计？",
+          "answer": "我会更早补充接口契约和自动化测试，把容量与故障恢复纳入设计。"
+        },
+        {
+          "question": "你从这段经历中学到了什么？",
+          "answer": "我学会先给出可复现的证据，再讨论技术方案；也认识到沟通和可维护性与功能同样重要。"
+        }
+      ]
+    },
+    {
+      "role": "后端开发工程师（校招）",
+      "kind": "表达与结构",
+      "completed": false,
+      "questionIndex": 1,
+      "answers": [
+        {
+          "question": "请用一分钟介绍自己。",
+          "answer": "我与三名同学开发校园预约系统，负责预约接口和数据表设计。开始时先画流程图，与前端约定请求字段。"
+        },
+        {
+          "question": "请按背景、行动、结果介绍一个项目。",
+          "answer": ""
+        },
+        {
+          "question": "你会如何向非技术同学解释一个技术问题？",
+          "answer": ""
+        },
+        {
+          "question": "遇到追问时，你如何组织回答？",
+          "answer": ""
+        },
+        {
+          "question": "请总结你的优势以及需要继续提高的能力。",
+          "answer": ""
+        }
+      ]
+    }
+  ],
+  "career": {
+    "target": "后端开发",
+    "city": "上海",
+    "skills": "Java、Spring Boot、MySQL、Redis、Git；已完成校园预约项目，希望补强并发与自动化测试。",
+    "interests": [
+      "技术研发",
+      "研究探索",
+      "沟通协作"
+    ]
+  },
+  "growthTasks": [
+    "梳理目标岗位的核心技能",
+    "整理一个项目的 STAR 故事",
+    "完成一场文字模拟面试"
+  ]
+}

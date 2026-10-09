@@ -18,7 +18,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-/** Runs after CORS, before controllers/body parsing, only for the four password/guest POSTs. */
+/** Runs after CORS, before controllers/body parsing, only for the five authentication POSTs. */
 public class AuthRateLimitFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(AuthRateLimitFilter.class);
     private final AuthRateLimiter limiter;
@@ -45,6 +45,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             case "login" -> limits.authLoginPerMinute();
             case "register" -> limits.authRegisterPerMinute();
             case "staff-login" -> limits.authStaffLoginPerMinute();
+            case "demo-login" -> limits.authDemoLoginPerMinute();
             default -> throw new IllegalStateException("Unknown auth rate-limit bucket");
         };
         AuthRateLimiter.Result result;
@@ -73,6 +74,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             case "/api/v1/auth/login" -> "login";
             case "/api/v1/auth/register" -> "register";
             case "/api/v1/auth/staff/login" -> "staff-login";
+            case "/api/v1/auth/demo-login" -> "demo-login";
             default -> null;
         };
     }

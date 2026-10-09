@@ -16,6 +16,7 @@ const password = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
 const error = ref('')
+const demoLoading = ref(false)
 
 const features = [
   { icon: 'chat', label: 'AI 求职对话' },
@@ -44,6 +45,22 @@ async function continueGuest() {
     error.value = ex instanceof Error ? ex.message : '无法进入访客体验，请重试'
   } finally {
     loading.value = false
+  }
+}
+
+async function enterDemo() {
+  if (loading.value) return
+  loading.value = true
+  demoLoading.value = true
+  error.value = ''
+  try {
+    await auth.demoLogin()
+    returnToWorkspace()
+  } catch (ex) {
+    error.value = ex instanceof Error ? ex.message : '无法进入体验账号，请重试'
+  } finally {
+    loading.value = false
+    demoLoading.value = false
   }
 }
 
@@ -106,6 +123,22 @@ function switchMode() {
           </p>
         </header>
 
+        <div v-if="mode === 'login'" class="demo-entry">
+          <button
+            type="button"
+            class="btn primary submit-btn"
+            :disabled="loading"
+            :aria-busy="demoLoading"
+            @click="enterDemo"
+          >
+            <span v-if="demoLoading" class="spinner" aria-hidden="true" />
+            {{ demoLoading ? '正在进入体验账号…' : '体验账号一键登录' }}
+          </button>
+          <p class="subtle">
+            共享虚构求职旅程，已备好简历、投递与面试记录。数据会定期重置，请勿填写个人信息。
+          </p>
+        </div>
+
         <form class="auth-form" :aria-busy="loading" novalidate @submit.prevent="submit">
           <label class="field">
             <span class="field-label">邮箱</span>
@@ -147,7 +180,7 @@ function switchMode() {
           <button class="btn primary submit-btn" type="submit" :disabled="loading">
             <span v-if="loading" class="spinner" aria-hidden="true" />
             {{
-              loading
+              loading && !demoLoading
                 ? mode === 'register'
                   ? '注册中…'
                   : '登录中…'
