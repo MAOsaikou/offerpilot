@@ -48,11 +48,12 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
-                                "/api/v1/auth/demo-login",
-                                "/api/v1/auth/refresh"
+                                "/api/v1/auth/guest",
+                                "/api/v1/auth/staff/login"
                         ).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        // M0：先放行业务接口，M1 接入 JWT 后再收紧
+                        // Spring Security leaves API routing open; CurrentUser/JWT staff gates protect resources.
+                        // Public auth endpoints are listed explicitly above for clarity.
                         .requestMatchers("/api/v1/**").permitAll()
                         .anyRequest().authenticated()
                 );

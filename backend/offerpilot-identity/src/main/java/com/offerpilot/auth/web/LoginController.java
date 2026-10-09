@@ -5,6 +5,7 @@ import com.offerpilot.common.api.ApiResponse;
 import com.offerpilot.common.web.TraceIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,7 +25,7 @@ public class LoginController {
 
     /** 用户端登录。 */
     @PostMapping("/login")
-    public ApiResponse<PasswordLoginService.LoginResponse> login(@RequestBody LoginRequest body,
+    public ApiResponse<PasswordLoginService.LoginResponse> login(@Valid @RequestBody LoginRequest body,
                                                                  HttpServletRequest request, HttpServletResponse response) {
         response.setHeader("Cache-Control", "no-store");
         return ApiResponse.ok(logins.login(body.email(), body.password()), TraceIdFilter.current(request));
@@ -32,7 +33,7 @@ public class LoginController {
 
     /** 用户端注册：仅需邮箱 + 密码，成功后自动签发令牌（即注册即登录）。 */
     @PostMapping("/register")
-    public ApiResponse<PasswordLoginService.LoginResponse> register(@RequestBody LoginRequest body,
+    public ApiResponse<PasswordLoginService.LoginResponse> register(@Valid @RequestBody LoginRequest body,
                                                                     HttpServletRequest request, HttpServletResponse response) {
         response.setHeader("Cache-Control", "no-store");
         return ApiResponse.ok(logins.register(body.email(), body.password()), TraceIdFilter.current(request));
@@ -40,7 +41,7 @@ public class LoginController {
 
     /** 客服端登录（要求 STAFF 角色）。 */
     @PostMapping("/staff/login")
-    public ApiResponse<PasswordLoginService.LoginResponse> staffLogin(@RequestBody LoginRequest body,
+    public ApiResponse<PasswordLoginService.LoginResponse> staffLogin(@Valid @RequestBody LoginRequest body,
                                                                       HttpServletRequest request, HttpServletResponse response) {
         response.setHeader("Cache-Control", "no-store");
         return ApiResponse.ok(logins.staffLogin(body.email(), body.password()), TraceIdFilter.current(request));
