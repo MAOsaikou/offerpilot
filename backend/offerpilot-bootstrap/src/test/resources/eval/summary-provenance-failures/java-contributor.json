@@ -1,0 +1,81 @@
+{
+  "id": "java-contributor",
+  "label": "Java参与者与数字保真",
+  "source": {
+    "basics": {
+      "name": "",
+      "phone": "",
+      "email": "",
+      "city": "",
+      "links": []
+    },
+    "education": [],
+    "experience": [],
+    "projects": [
+      {
+        "name": "校园借阅",
+        "role": "后端参与者",
+        "start": "2026-03",
+        "end": "2026-06",
+        "tech": [
+          "Java",
+          "Spring Boot",
+          "MySQL"
+        ],
+        "bullets": [
+          "在同学指导下参与借阅模块，写了3个查询接口，使用MySQL存借阅记录。",
+          "给自己参与的接口补了异常输入测试。"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "category": "后端",
+        "items": [
+          "使用Java和Spring Boot完成课程项目，了解MySQL基础查询。"
+        ]
+      }
+    ],
+    "certificates": [],
+    "summary": "软件工程本科生，做过校园借阅项目，主要参与后端。",
+    "confidence": {}
+  },
+  "jobDescription": "Java后端实习生：参与Spring Boot接口开发，使用MySQL维护业务数据，编写接口测试；能够清楚说明个人贡献。",
+  "firstAttemptOutput": {
+    "summary": "按JD方向做了少量表达调整：摘要突出Spring Boot/MySQL接口与个人测试贡献；项目第一条点明项目与技术栈，第二条明确为自己参与的接口补充异常输入测试。均基于原简历已有事实，未新增技能、数字或成果，保留“在同学指导下参与”的责任边界。",
+    "patches": [
+      {
+        "id": "p1",
+        "op": "replace",
+        "path": "/summary",
+        "from": "软件工程本科生，做过校园借阅项目，主要参与后端。",
+        "value": "软件工程本科生，在校园借阅项目中主要参与后端，使用Java、Spring Boot和MySQL编写了借阅模块的3个查询接口，并为自己参与的接口补充了异常输入测试。",
+        "reason": "原摘要只笼统说明参与后端，未体现JD关注的Spring Boot接口、MySQL和接口测试；用简历已有事实补充具体技术栈与个人贡献，便于说明个人贡献。",
+        "jdEvidence": "参与Spring Boot接口开发，使用MySQL维护业务数据，编写接口测试",
+        "needsUserConfirmation": false
+      },
+      {
+        "id": "p2",
+        "op": "replace",
+        "path": "/projects/0/bullets/0",
+        "from": "在同学指导下参与借阅模块，写了3个查询接口，使用MySQL存借阅记录。",
+        "value": "在同学指导下参与校园借阅项目的借阅模块，结合项目使用的Java与Spring Boot编写了3个查询接口，并使用MySQL存储借阅记录。",
+        "reason": "将项目名称、技术栈和具体产出写清楚，直接对应JD的Spring Boot接口开发与MySQL数据维护方向；保留“在同学指导下参与”的真实责任边界。",
+        "jdEvidence": "参与Spring Boot接口开发，使用MySQL维护业务数据",
+        "needsUserConfirmation": false
+      },
+      {
+        "id": "p3",
+        "op": "replace",
+        "path": "/projects/0/bullets/1",
+        "from": "给自己参与的接口补了异常输入测试。",
+        "value": "为自己参与的接口补充了异常输入测试，以检查接口对异常输入的处理。",
+        "reason": "原句已涉及接口测试，改写后明确测试对象和目的，贴近JD对编写接口测试的要求；未增加测试范围或结果。",
+        "jdEvidence": "编写接口测试",
+        "needsUserConfirmation": false
+      }
+    ]
+  },
+  "failureKind": "summary-borrowed-numbers-from-other-entries",
+  "baselineRunId": "2026-10-09T03-52-35.281582500Z-b4009597-4571-481a-b164-15e518e2ca0a"
+}
