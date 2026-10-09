@@ -113,6 +113,7 @@ class DeepSeekSmokeLiveEvaluationTest {
 
     @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
     void matchesDemoAndStoredJobsWithVerifiedEvidenceThroughRestAndChat(ModelTier tier) throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(System.getProperty("offerpilot.smoke.tier", tier.name()).equals(tier.name()));
         doReturn(tier).when(gateway).defaultTier(); // REST has no tier parameter; exercise each deployment default.
         jdbc.update("UPDATE jobs SET detail_fetched_at=now()-interval '1 hour' WHERE site='demo'");
         assertThat(data(request("GET", "/api/v1/jobs/job_demo_1", null)).path("source").asText()).isEqualTo("demo");
@@ -124,6 +125,8 @@ class DeepSeekSmokeLiveEvaluationTest {
         verifyNoInteractions(liveJobs);
         System.out.println("LIVE_SMOKE " + tier + " demo-expired REST-match PASS verified=" + report.path("requirements").size());
         var chat = chat(tier, "JOB", "请匹配这个岗位与我的简历", Map.of("jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
+        if (cards(chat, "job_match").isEmpty()) java.nio.file.Files.writeString(java.nio.file.Path.of(
+                "/tmp/offerpilot-deepseek-missing-match-" + tier + ".json"), json.writeValueAsString(chat));
         assertThat(cards(chat, "job_match").size()).as(tier + " chat matching").isEqualTo(1);
         verifyNoInteractions(liveJobs);
         System.out.println("LIVE_SMOKE " + tier + " demo-expired chat-match PASS");
