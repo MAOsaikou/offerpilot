@@ -59,6 +59,7 @@ class ChatHttpIntegrationTest {
     @Autowired org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     private static final AtomicReference<String> requestBody = new AtomicReference<>();
     private static final HttpServer provider = provider();
+    @Autowired com.offerpilot.resume.application.ResumePatchService patchService;
     @LocalServerPort
     private int port;
 
@@ -822,6 +823,88 @@ class ChatHttpIntegrationTest {
                 assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(409);
             }
         }
+    }
+
+    @Test
+    void resumePatchChatApprovalCreatesVersionOnlyAfterApprovalAndRejectDoesNotWrite() throws Exception {
+        String token = identities.create().accessToken(), stranger = identities.create().accessToken(), user = owner(token);
+        String resumeId = "rs_patch_" + user, versionId = "rv_patch_" + user, fileId = "file_patch_" + user;
+        var source = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(com.offerpilot.resume.application.ResumeStructure.SCHEMA);
+        source.put("summary", "参与后端开发");
+        ((com.fasterxml.jackson.databind.node.ArrayNode) source.at("/skills/0/items")).add("SQL");
+        jdbc.update("""
+                INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256)
+                VALUES (?,?,'RESUME','fixture',?,'patch.txt','text/plain',1,'fixture')
+                """, fileId, user, fileId);
+        jdbc.update("INSERT INTO resumes(id,user_id,title,source_file_id,parse_status) VALUES (?,?,'Patch fixture',?,'READY')", resumeId, user, fileId);
+        jdbc.update("""
+                INSERT INTO resume_versions(id,resume_id,user_id,version_no,source,structured,plain_text)
+                VALUES (?,?,?,1,'UPLOAD',?::jsonb,'参与后端开发 SQL')
+                """, versionId, resumeId, user, source.toString());
+        jdbc.update("UPDATE resumes SET current_version_id=? WHERE id=?", versionId, resumeId);
+        var suggestions = json.createArrayNode();
+        suggestions.addObject().put("id", "p1").put("op", "replace").put("path", "/summary").put("from", "参与后端开发")
+                .put("value", "参与后端接口开发").put("reason", "明确职责").put("needsUserConfirmation", false);
+        suggestions.addObject().put("id", "p2").put("op", "replace").put("path", "/skills/0/items/0").put("from", "SQL")
+                .put("value", "SQL 与接口测试").put("reason", "核对技能").put("needsUserConfirmation", true).put("confirmationHint", "请核对技能范围");
+        var batch = patchService.store(user, resumeId, versionId, suggestions);
+        for (String decision : java.util.List.of("REJECT", "APPROVE")) {
+            var context = java.util.Map.of("resumeAction", "applyPatches", "resumeId", resumeId, "resumeVersionId", versionId,
+                    "batchId", batch.batchId(), "accepted", java.util.List.of("p1"), "edited", java.util.Map.of("p2", java.util.Map.of("value", "SQL 查询")),
+                    "confirmed", java.util.List.of("p2"), "owner", owner(stranger));
+            var body = json.writeValueAsString(java.util.Map.of("content", "请采纳所选的简历改写建议", "mode", "RESUME",
+                    "options", java.util.Map.of("context", context)));
+            var chatRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/chat"))
+                    .timeout(Duration.ofSeconds(20)).header("Authorization", "Bearer " + token).header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            var response = HttpClient.newHttpClient().send(chatRequest, HttpResponse.BodyHandlers.ofInputStream());
+            assertThat(response.statusCode()).isEqualTo(200);
+            try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                com.fasterxml.jackson.databind.JsonNode approval = null;
+                boolean writeCalled = false;
+                for (String line; (line = reader.readLine()) != null;) {
+                    if (!line.startsWith("data:")) continue;
+                    var event = json.readTree(line.substring(5).trim());
+                    if (event.path("type").asText().equals("tool.call")) {
+                        assertThat(event.path("name").asText()).isEqualTo("applyPatches");
+                        assertThat(event.path("access").asText()).isEqualTo("WRITE"); writeCalled = true;
+                    }
+                    if (event.path("type").asText().equals("approval.required")) { approval = event; break; }
+                }
+                assertThat(writeCalled).isTrue();
+                assertThat(approval).isNotNull();
+                assertThat(approval.path("editableFields")).isEmpty();
+                assertThat(approval.path("args").path("owner").isMissingNode()).isTrue();
+                assertThat(patchService.get(user, resumeId, versionId, batch.batchId()).appliedVersionId()).isNull();
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM resume_versions WHERE resume_id=?", Integer.class, resumeId)).isEqualTo(1);
+                String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
+                assertThat(request("POST", path, stranger, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
+                assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\",\"args\":{\"accepted\":[]}}").statusCode()).isEqualTo(400);
+                assertThat(request("POST", path, token, json.writeValueAsString(java.util.Map.of("decision", decision))).statusCode()).isEqualTo(200);
+                var rest = sseEvents(reader.lines().collect(java.util.stream.Collectors.joining("\n")));
+                assertThat(rest).anySatisfy(event -> {
+                    assertThat(event.path("type").asText()).isEqualTo("approval.resolved");
+                    assertThat(event.path("decision").asText()).isEqualTo(decision);
+                });
+                var result = rest.stream().filter(e -> e.path("type").asText().equals("tool.result")).findFirst().orElseThrow();
+                assertThat(result.path("ok").asBoolean()).isEqualTo(decision.equals("APPROVE"));
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM resume_versions WHERE resume_id=?", Integer.class, resumeId))
+                        .isEqualTo(decision.equals("APPROVE") ? 2 : 1);
+                if (decision.equals("APPROVE")) {
+                    var savedBatch = patchService.get(user, resumeId, versionId, batch.batchId());
+                    assertThat(savedBatch.appliedVersionId()).isNotNull();
+                    var version = json.readTree(request("GET", "/resumes/" + resumeId + "/versions/" + savedBatch.appliedVersionId(), token, null).body()).path("data");
+                    assertThat(version.path("structured").path("summary").asText()).isEqualTo("参与后端接口开发");
+                    assertThat(version.path("structured").at("/skills/0/items/0").asText()).isEqualTo("SQL 查询");
+                    assertThat(version.path("versionNo").asInt()).isEqualTo(2);
+                    assertThat(version.path("parentVersionId").asText()).isEqualTo(versionId);
+                    assertThat(result.path("resultPreview").asText()).contains(savedBatch.appliedVersionId(), "V2");
+                }
+                assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(409);
+            }
+        }
+        assertThat(json.readTree(jdbc.queryForObject("SELECT structured::text FROM resume_versions WHERE id=?", String.class, versionId)))
+                .isEqualTo(source);
     }
 
     private void boardJobFixture() {

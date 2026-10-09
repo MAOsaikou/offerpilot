@@ -10,6 +10,7 @@ import { useConversationChat } from '../composables/useConversationChat'
 import { optimizationContext } from '../optimizationContext'
 import type { AgentMode } from '@/shared/types/agent-events'
 import type { Conversation } from '@/shared/types/conversation'
+import type { PatchDecision } from '@/shared/types/optimization'
 import type { CareerTargetSelection } from '@/shared/types/cards'
 const route = useRoute()
 const router = useRouter()
@@ -183,6 +184,44 @@ async function adoptGrowth(taskTitles: string[]) {
     { coachAction: 'adoptGrowthPlan', taskTitles },
   )
 }
+async function applyPatches(decision: PatchDecision, payload: unknown) {
+  if (busy.value || missingConversation.value) return
+  const card = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+  const selected: Record<string, string> = {}
+  for (const key of ['resumeId', 'resumeVersionId']) {
+    const value = card[key] ?? route.query[key]
+    if (typeof value === 'string') selected[key] = value
+  }
+  const context = optimizationContext(viewMessages.value, selected)
+  if (
+    !['resumeId', 'resumeVersionId'].every((key) =>
+      /^[A-Za-z0-9_-]{1,80}$/.test(context[key] || ''),
+    ) ||
+    typeof card.batchId !== 'string' ||
+    card.batchId !== decision.batchId ||
+    !/^[A-Za-z0-9_-]{1,100}$/.test(decision.batchId)
+  ) {
+    error.value = '无法关联这批建议的简历、版本或批次，请从对应简历重新打开改写建议。'
+    return
+  }
+  panelOpen.value = true
+  const content = '请采纳所选的简历改写建议'
+  lastAttempt.value = content
+  await chat.send(
+    content,
+    'RESUME',
+    tier.value,
+    (id) => {
+      void router.replace({ path: `/chat/${encodeURIComponent(id)}`, query: route.query })
+    },
+    {
+      resumeAction: 'applyPatches',
+      resumeId: context.resumeId,
+      resumeVersionId: context.resumeVersionId,
+      ...decision,
+    },
+  )
+}
 async function older() {
   const el = scrollArea.value
   const height = el?.scrollHeight || 0
@@ -236,7 +275,7 @@ async function remove(id: string) {
               >
             </p>
             <p v-if="route.query.optimizationReportId" class="helper-note">
-              已关联这批改写建议。讨论会读取保存结果；明确要求重新生成时才调用改写模型，采纳需到简历页确认。
+              已关联这批改写建议。讨论会读取保存结果；明确要求重新生成时才调用改写模型，可在卡片选择建议并批准审批后采纳，也可到简历页确认。
               <RouterLink
                 v-if="typeof route.query.resumeId === 'string'"
                 :to="{
@@ -275,6 +314,7 @@ async function remove(id: string) {
                     cards,
                     adoptTarget,
                     adoptGrowth,
+                    applyPatches,
                     disabled: busy || missingConversation,
                   }" /></template
             ></MessageList>

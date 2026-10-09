@@ -62,7 +62,7 @@ public class ApprovalService {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "审批决策无效");
             var finalArgs = new java.util.LinkedHashMap<>(args);
             if (body.args() != null) {
-                var editable = (CareerWriteTools.action(action) || InterviewWriteTools.action(action) || CoachWriteTools.action(action)) ? java.util.Set.<String>of() : java.util.Set.of("status", "note");
+                var editable = (CareerWriteTools.action(action) || InterviewWriteTools.action(action) || CoachWriteTools.action(action) || ResumePatchWriteTools.action(action)) ? java.util.Set.<String>of() : java.util.Set.of("status", "note");
                 if (!editable.containsAll(body.args().keySet()))
                     throw new BusinessException(ErrorCode.VALIDATION_FAILED, "审批包含不允许编辑的参数");
                 finalArgs.putAll(body.args());
@@ -101,6 +101,7 @@ public class ApprovalService {
         if (CareerWriteTools.action(action)) CareerWriteTools.validate(args);
         else if (InterviewWriteTools.action(action)) InterviewWriteTools.validate(action, args);
         else if (CoachWriteTools.action(action)) CoachWriteTools.validate(args);
+        else if (ResumePatchWriteTools.action(action)) ResumePatchWriteTools.validate(args);
         else BoardWriteTools.validate(action, args);
     }
 }

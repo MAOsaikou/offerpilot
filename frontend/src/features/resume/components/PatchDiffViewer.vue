@@ -7,6 +7,7 @@ import type { PatchDecision } from '@/shared/types/optimization'
 
 const props = defineProps<{
   payload: unknown
+  applyLabel?: string
   interactive?: boolean
   disabled?: boolean
   appliedVersionId?: string | null
@@ -213,7 +214,7 @@ function apply() {
           :disabled="locked || !acceptedCount || pendingConfirmation || noChange"
           @click="apply"
         >
-          采纳所选并保存新版本
+          {{ applyLabel || '采纳所选并保存新版本' }}
         </button>
       </template>
       <template v-else>

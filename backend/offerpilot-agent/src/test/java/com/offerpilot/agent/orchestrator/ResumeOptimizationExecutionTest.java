@@ -65,7 +65,7 @@ class ResumeOptimizationExecutionTest {
                 assertThat(((AgentEvent.ToolCall)e).access()).isEqualTo(AgentEvent.ToolAccess.READ);
             });
             assertThat(reply.get(reply.size()-2)).isInstanceOfSatisfying(SystemMessage.class,
-                    message -> assertThat(message.getText()).contains("本轮未执行采纳", "逐条核对"));
+                    message -> assertThat(message.getText()).contains("只读动作未执行采纳", "逐条核对"));
         }
         verify(optimizations, times(3)).generate(eq("owner"), eq("res_1"), eq("ver_1"), eq("岗位JD"), matches("[a-z0-9-]{36}"));
         verifyNoInteractions(diagnoses, matches, searches);

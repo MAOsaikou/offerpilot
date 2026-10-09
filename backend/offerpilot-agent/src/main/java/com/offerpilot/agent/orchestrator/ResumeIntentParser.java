@@ -34,6 +34,18 @@ public class ResumeIntentParser {
     }
     public Mono<PlanStep> prepare(PlanStep step, String content, List<Message> history, ModelTier tier,
                                  Consumer<Usage> onUsage, Map<String, Object> context) {
+        if (context != null && "applyPatches".equals(context.get("resumeAction"))) {
+            var args = new LinkedHashMap<String, Object>();
+            for (String key : List.of("resumeId", "resumeVersionId", "batchId", "accepted", "edited", "confirmed"))
+                if (context.containsKey(key)) args.put(key, context.get(key));
+            try {
+                com.offerpilot.agent.application.ResumePatchWriteTools.validate(args);
+                args.put("action", "applyPatches");
+                return Mono.just(new PlanStep(step.id(), "采纳所选简历改写", ExpertType.RESUME, Map.copyOf(args), step.dependsOn()));
+            } catch (com.offerpilot.common.error.BusinessException ex) {
+                return Mono.just(clarify(step, "请在改写卡片上选择补丁、核对编辑与确认项后重新采纳；需关联简历、版本和批次。"));
+            }
+        }
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(prompt));
         messages.addAll(history.subList(Math.max(0, history.size() - 12), history.size()));
