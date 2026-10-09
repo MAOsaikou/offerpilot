@@ -3,6 +3,8 @@ package com.offerpilot.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.offerpilot.common.web.AuthRateLimitFilter;
 import com.offerpilot.ratelimit.AuthRateLimiter;
+import com.offerpilot.mcp.McpApiKeyFilter;
+import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -31,10 +33,12 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, AuthRateLimiter limiter, ObjectMapper json) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, AuthRateLimiter limiter, ObjectMapper json, Environment environment) throws Exception {
+        var mcpAuth = new McpApiKeyFilter(properties.mcp().serverApiKey(), json, environment);
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
+                .addFilterBefore(mcpAuth, CorsFilter.class)
                 // Construct here only: no servlet auto-registration or duplicate counting.
                 .addFilterAfter(new AuthRateLimitFilter(limiter, properties.rateLimit(), json), CorsFilter.class)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -52,6 +56,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/staff/login",
                                 "/api/v1/auth/demo-login"
                         ).permitAll()
+                        .requestMatchers(mcpAuth::isMcpRequest).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         // Spring Security leaves API routing open; CurrentUser/JWT staff gates protect resources.
                         // Public auth endpoints are listed explicitly above for clarity.

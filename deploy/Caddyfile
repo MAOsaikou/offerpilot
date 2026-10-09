@@ -1,7 +1,7 @@
 {$DOMAIN} {
     encode zstd gzip
 
-    @sse path /api/v1/agent/chat /api/v1/agent/runs/* /api/v1/*/analyze /api/v1/*/optimize /api/v1/interviews/* /api/v1/discovery/recommendations /api/v1/career/*
+    @sse path /sse /api/v1/agent/chat /api/v1/agent/runs/* /api/v1/*/analyze /api/v1/*/optimize /api/v1/interviews/* /api/v1/discovery/recommendations /api/v1/career/*
     handle @sse {
         reverse_proxy backend:8081 {
             flush_interval -1
@@ -16,7 +16,9 @@
         reverse_proxy backend:8081
     }
     handle /mcp* {
-        reverse_proxy backend:8081 { flush_interval -1 }
+        reverse_proxy backend:8081 {
+            flush_interval -1
+        }
     }
     handle /actuator/health {
         reverse_proxy backend:8081
