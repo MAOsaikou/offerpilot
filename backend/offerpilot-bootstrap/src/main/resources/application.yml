@@ -96,7 +96,7 @@ offerpilot:
   demo:
     enabled: ${DEMO_ACCOUNT_ENABLED:true}
     email: ${DEMO_ACCOUNT_EMAIL:demo@offerpilot.local}
-    password: ${DEMO_ACCOUNT_PASSWORD:change-me-demo}
+    password: ${DEMO_ACCOUNT_PASSWORD:}
     reset-cron: ${DEMO_RESET_CRON:0 0 4 * * *}
   storage:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
@@ -121,6 +121,7 @@ offerpilot:
     auth-login-per-minute: ${AUTH_LOGIN_PER_MINUTE:20}
     auth-register-per-minute: ${AUTH_REGISTER_PER_MINUTE:20}
     auth-staff-login-per-minute: ${AUTH_STAFF_LOGIN_PER_MINUTE:20}
+    auth-demo-login-per-minute: ${AUTH_DEMO_LOGIN_PER_MINUTE:20}
   llm:
     default-tier: ${LLM_DEFAULT_TIER:FLASH}
     tiers:

@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.*;
 
 class LlmQuotaLimiterTest {
-    static final OfferPilotProperties.RateLimit LIMITS = new OfferPilotProperties.RateLimit(4, 2, 2, 100, 20, 15, 20, 20, 20);
+    static final OfferPilotProperties.RateLimit LIMITS = new OfferPilotProperties.RateLimit(4, 2, 2, 100, 20, 15, 20, 20, 20, 20);
     static class MutableClock extends Clock {
         Instant now = Instant.parse("2026-10-09T23:59:30Z");
         @Override public Instant instant() { return now; }

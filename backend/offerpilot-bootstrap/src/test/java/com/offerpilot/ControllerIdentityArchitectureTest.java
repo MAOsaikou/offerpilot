@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ControllerIdentityArchitectureTest {
     private static final Set<String> PUBLIC_AUTH = Set.of(
             "POST /api/v1/auth/login", "POST /api/v1/auth/register",
-            "POST /api/v1/auth/guest", "POST /api/v1/auth/staff/login");
+            "POST /api/v1/auth/guest", "POST /api/v1/auth/staff/login", "POST /api/v1/auth/demo-login");
     private final Map<Class<?>, GateSource> sources = new HashMap<>();
 
     @Test

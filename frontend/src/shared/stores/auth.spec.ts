@@ -516,3 +516,33 @@ it('其他标签直接切换账号时销毁页面中的旧私有状态', async (
     root.remove()
   }
 })
+
+it('体验登录复用身份切换并清除原账号查询缓存', async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(loginResponse('A'))
+    .mockResolvedValueOnce(loginResponse('demo'))
+  vi.stubGlobal('fetch', fetch)
+  const auth = useAuthStore()
+  await auth.login('A@example.com', 'password')
+  queryClient.setQueryData(['resumes'], ['A-private'])
+  await auth.demoLogin()
+  expect(auth.user?.id).toBe('demo')
+  expect(auth.isStaff).toBe(false)
+  expect(queryClient.getQueryData(['resumes'])).toBeUndefined()
+  expect(fetch.mock.calls[1]![0]).toContain('/auth/demo-login')
+})
+
+it('体验账号未启用时保留当前身份并交付 403 错误', async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(loginResponse('A'))
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: 20007, message: '体验账号未启用' }), { status: 403 }),
+    )
+  vi.stubGlobal('fetch', fetch)
+  const auth = useAuthStore()
+  await auth.login('A@example.com', 'password')
+  await expect(auth.demoLogin()).rejects.toMatchObject({ code: 20007, message: '体验账号未启用' })
+  expect(auth.user?.id).toBe('A')
+})

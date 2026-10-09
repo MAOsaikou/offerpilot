@@ -153,8 +153,7 @@ git clone <repo-url> offerpilot && cd offerpilot
 cp .env.example .env            # 填入模型 API Key 等
 docker compose -f deploy/docker-compose.yml up -d
 # 前端: https://localhost（Caddy，本地为自签名证书）   后端 Swagger: https://localhost/swagger-ui.html
-# 首次启动后灌入种子数据（职业库、问卷、面经、体验账号）：
-docker compose -f deploy/docker-compose.yml exec backend java -jar app.jar --seed=all
+# 职业库启动时自动灌入；体验旅程按下方 DEMO_ACCOUNT_* 配置自动初始化。
 ```
 
 ### 6.2 本地开发
@@ -176,7 +175,17 @@ cd frontend && pnpm install && pnpm dev
 
 ### 6.3 评审体验账号
 
-在线演示地址与体验账号将在提交材料中提供；本地启动后可通过登录页「体验账号一键登录」进入（由 `DEMO_ACCOUNT_ENABLED=true` 控制）。
+登录页点击「体验账号一键登录」，无需填写邮箱或密码即可进入共享的虚构 USER 旅程：2 份 READY 简历（附 DOCX 原件）、10 个虚构岗位、6 条投递看板记录、2 场文字面试、1 份职业画像和 3 项已完成成长任务。岗位仅供演示，不能实际投递；请勿填入个人信息。
+
+在部署环境或未提交的 `.env` 中设置 `DEMO_ACCOUNT_ENABLED=true`、`DEMO_ACCOUNT_EMAIL=demo@offerpilot.local` 和 `DEMO_ACCOUNT_PASSWORD`（至少 6 位、UTF-8 最多 72 字节）。密码默认空白，空白或无效配置会跳过初始化，体验登录返回 403/20007。`DemoAccountBootstrap` 启动时创建或更新体验账号的 BCrypt 密码；同邮箱的真实账号不会被改为体验账号。共享体验密码应定期轮换，不能复用用户或客服密码；仓库不保存体验凭据。
+
+首次启动无简历时自动灌入旅程；已有试用改动保留到重置。`DEMO_RESET_CRON` 默认 `0 0 4 * * *`（后端服务器时区；`-` 禁用定时重置）。手动重置先通过 `/api/v1/auth/staff/login` 获取有效 STAFF JWT，在环境中设置 `STAFF_TOKEN` 后运行：
+
+```bash
+API_BASE_URL=https://<domain>/api/v1 bash deploy/scripts/reset-demo.sh
+```
+
+脚本调用 `POST /api/v1/admin/demo/reset`，返回时间与各类种子数量。重置只清理配置的 `is_demo=true` 用户，保留其他用户、职业库和真实岗位缓存；其他用户引用的虚构岗位也保留。模型档位与删除操作仍沿用现有用户规则，未新增锁定。
 
 ## 7. 环境变量
 

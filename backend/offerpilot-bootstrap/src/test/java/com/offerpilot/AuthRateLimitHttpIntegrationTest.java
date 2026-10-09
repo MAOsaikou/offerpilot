@@ -30,7 +30,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.ai.model.chat=none", "spring.ai.model.embedding=none", "spring.ai.mcp.server.enabled=false",
         "offerpilot.rate-limit.auth-guest-per-minute=3", "offerpilot.rate-limit.auth-login-per-minute=3",
-        "offerpilot.rate-limit.auth-register-per-minute=3", "offerpilot.rate-limit.auth-staff-login-per-minute=3"
+        "offerpilot.rate-limit.auth-register-per-minute=3", "offerpilot.rate-limit.auth-staff-login-per-minute=3",
+        "offerpilot.rate-limit.auth-demo-login-per-minute=3", "offerpilot.demo.enabled=false"
 })
 @ActiveProfiles("test")
 @Testcontainers
@@ -86,6 +87,13 @@ class AuthRateLimitHttpIntegrationTest {
         for (int i = 0; i < 3; i++) assertThat(post("staff/login", "192.0.2.4", body).statusCode()).isEqualTo(401);
         assertLimited(post("staff/login", "192.0.2.4", body));
         assertThat(post("login", "192.0.2.4", body).statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void demoLoginHasItsOwnBucketEvenWhenDisabled() throws Exception {
+        for (int i = 0; i < 3; i++) assertThat(post("demo-login", "192.0.2.7", "{}").statusCode()).isEqualTo(403);
+        assertLimited(post("demo-login", "192.0.2.7", "{}"));
+        assertThat(post("login", "192.0.2.7", credentials("missing@example.com", "wrong-password")).statusCode()).isEqualTo(401);
     }
 
     @Test

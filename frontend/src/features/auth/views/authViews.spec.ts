@@ -247,3 +247,45 @@ it('翻页加载失败保留当前页并支持重试', async () => {
   await vi.waitFor(() => expect(root.textContent).toContain('第 2 / 2 页'))
   expect(root.textContent).not.toContain('网络暂时不可用')
 })
+
+it('体验账号无需填写密码，等待中禁止重复点击并返回原业务页面', async () => {
+  let finish!: (response: Response) => void
+  const fetch = vi.fn().mockImplementation(
+    () =>
+      new Promise<Response>((resolve) => {
+        finish = resolve
+      }),
+  )
+  vi.stubGlobal('fetch', fetch)
+  const router = await mount('/login?redirect=/resumes')
+  button('体验账号一键登录').click()
+  await nextTick()
+  expect(button('正在进入体验账号').disabled).toBe(true)
+  expect(root.querySelector<HTMLInputElement>('input[name="password"]')!.value).toBe('')
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+  finish(loginResponse('demo'))
+  await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/resumes'))
+  expect(useAuthStore().user?.id).toBe('demo')
+  expect(fetch.mock.calls[0]![0]).toContain('/auth/demo-login')
+})
+
+it('体验账号关闭时显示中文错误并允许重试，注册模式不显示体验入口', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ code: 20007, message: '体验账号未启用' }), { status: 403 }),
+      ),
+  )
+  const router = await mount()
+  button('体验账号一键登录').click()
+  await vi.waitFor(() =>
+    expect(root.querySelector('[role="alert"]')?.textContent).toBe('体验账号未启用'),
+  )
+  expect(router.currentRoute.value.path).toBe('/login')
+  expect(button('体验账号一键登录').disabled).toBe(false)
+  button('立即注册').click()
+  await nextTick()
+  expect(root.textContent).not.toContain('体验账号一键登录')
+})

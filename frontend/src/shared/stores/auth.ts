@@ -4,6 +4,7 @@ import {
   login as loginApi,
   register as registerApi,
   staffLogin as staffLoginApi,
+  demoLogin as demoLoginApi,
   createGuest,
 } from '@/shared/api/auth'
 import {
@@ -83,6 +84,10 @@ export const useAuthStore = defineStore('auth', () => {
     return signIn(staffLoginApi(email, password))
   }
 
+  async function demoLogin(): Promise<AuthUser> {
+    return signIn(demoLoginApi())
+  }
+
   async function signIn(pending: Promise<LoginResult>): Promise<AuthUser> {
     const session = identitySignal()
     const result = await pending
@@ -132,6 +137,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     register,
     staffLogin,
+    demoLogin,
     logout,
     resumeGuest,
     enterGuest,
