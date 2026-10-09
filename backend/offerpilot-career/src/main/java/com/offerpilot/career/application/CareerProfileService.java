@@ -84,6 +84,18 @@ public class CareerProfileService {
         return get(owner);
     }
 
+    /** Add completions under the same profile-row lock as checklist replacement; preserve concurrent edits. */
+    @Transactional
+    public Profile mergeTasks(String owner, List<String> titles) {
+        if (titles == null || titles.isEmpty() || titles.size() > GrowthTaskCatalog.TITLES.size()
+                || !GrowthTaskCatalog.TITLES.containsAll(titles))
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        jdbc.update("INSERT INTO career_profiles(user_id) VALUES (?) ON CONFLICT(user_id) DO UPDATE SET updated_at=now()", owner);
+        var merged = new java.util.LinkedHashSet<>(get(owner).completedTasks());
+        merged.addAll(titles);
+        return replaceTasks(owner, List.copyOf(merged));
+    }
+
     private List<String> strings(String value) {
         try {
             return json.readValue(value, new TypeReference<List<String>>() {});

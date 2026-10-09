@@ -67,6 +67,15 @@ public class ResumeService {
         Long total = jdbc.queryForObject("SELECT count(*) FROM resumes WHERE user_id=?", Long.class, owner);
         return new Page(items, total == null ? 0 : total, page, size);
     }
+    /** Latest saved current version of an owner-owned READY resume; no parsing or external calls. */
+    public Resume latestReady(String owner) {
+        var ids = jdbc.queryForList("""
+                SELECT r.id FROM resumes r JOIN resume_versions v ON v.id=r.current_version_id
+                WHERE r.user_id=? AND v.user_id=? AND r.parse_status='READY'
+                ORDER BY v.created_at DESC,v.id DESC LIMIT 1
+                """, String.class, owner, owner);
+        return ids.isEmpty() ? null : get(owner, ids.get(0));
+    }
     public Resume get(String owner, String id) {
         var result = jdbc.query("SELECT r.*,f.name AS file_name FROM resumes r JOIN files f ON f.id=r.source_file_id WHERE r.id=? AND r.user_id=?",
             (rs, n) -> row(rs, null), id, owner);

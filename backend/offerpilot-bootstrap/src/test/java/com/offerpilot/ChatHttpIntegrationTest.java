@@ -441,7 +441,7 @@ class ChatHttpIntegrationTest {
         assertThat(messages.get(1).status()).isEqualTo("COMPLETED");
         assertThat(messages.get(1).parts()).hasSize(1);
         assertThat(messages.get(1).parts().get(0).path("type").asText()).isEqualTo("text");
-        assertThat(requestBody.get()).contains("指导摘要", "探索页勾选兴趣").doesNotContain("未执行真实业务操作");
+        assertThat(requestBody.get()).contains("成长摘要", "设为目标").doesNotContain("未执行真实业务操作");
         java.nio.file.Files.writeString(java.nio.file.Path.of("target", "orchestrator-sse.json"), json.writeValueAsString(events));
     }
 
@@ -703,6 +703,123 @@ class ChatHttpIntegrationTest {
                 for (String key : java.util.List.of("city", "skills", "interests", "completedTasks"))
                     assertThat(after.path(key)).isEqualTo(before.path(key));
                 assertThat(json.readTree(request("GET", "/career/profile", stranger, null).body()).path("data").path("target").asText()).isEmpty();
+            }
+        }
+    }
+
+    @Test
+    void coachChatGuidesWithoutTargetThenPersistsBothDeterministicCardsAndReadsOnlyOwnedSkills() throws Exception {
+        String token = identities.create().accessToken(), user = owner(token);
+        var noTarget = request("POST", "/agent/chat", token, "{\"content\":\"帮我制定学习计划\"}");
+        assertThat(noTarget.body()).contains("设为目标").doesNotContain("event:ui.card", "占位", "placeholder.COACH");
+        jdbc.update("""
+                INSERT INTO occupations(id,name,family,description,core_skills,source) VALUES
+                ('occ_coach_fixture','教练测试工程师','技术','fixture',?::jsonb,'fixture')
+                ON CONFLICT(id) DO NOTHING
+                """, "[{\"name\":\"Java\",\"level\":4},{\"name\":\"SQL\",\"level\":4}]");
+        var profile = java.util.Map.of("target", "教练测试工程师", "city", "上海", "skills", "Java", "interests", java.util.List.of("技术研发"));
+        assertThat(request("PUT", "/career/profile", token, json.writeValueAsString(profile)).statusCode()).isEqualTo(200);
+        String resumeId = "rs_coach_" + user, versionId = "rv_coach_" + user, fileId = "file_coach_" + user;
+        var structure = json.readTree(com.offerpilot.resume.application.ResumeStructure.SCHEMA);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) structure.path("basics")).put("phone", "private-phone-fixture");
+        ((com.fasterxml.jackson.databind.node.ArrayNode) structure.path("skills")).addObject().put("category", "技术").putArray("items").add("SQL");
+        com.offerpilot.resume.application.ResumeStructure.validate(structure);
+        jdbc.update("""
+                INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256)
+                VALUES (?,?,'RESUME','fixture',?,'coach.txt','text/plain',1,'fixture')
+                """, fileId, user, fileId);
+        jdbc.update("INSERT INTO resumes(id,user_id,title,source_file_id,parse_status) VALUES (?,?,'Coach fixture',?,'READY')", resumeId, user, fileId);
+        jdbc.update("""
+                INSERT INTO resume_versions(id,resume_id,user_id,version_no,source,structured,plain_text)
+                VALUES (?,?,?,1,'UPLOAD',?::jsonb,'SQL')
+                """, versionId, resumeId, user, structure.toString());
+        jdbc.update("UPDATE resumes SET current_version_id=? WHERE id=?", versionId, resumeId);
+        // No explicit selection: reads the user's latest saved READY current version.
+        var response = request("POST", "/agent/chat", token, "{\"content\":\"我该补什么\"}");
+        assertThat(response.statusCode()).isEqualTo(200);
+        var events = sseEvents(response.body());
+        var cards = events.stream().filter(e -> e.path("type").asText().equals("ui.card")).toList();
+        assertThat(cards).extracting(e -> e.path("cardType").asText()).containsExactly("skill_gap", "roadmap");
+        assertThat(cards.get(0).path("payload").path("skills").get(0).path("name").asText()).isEqualTo("Java");
+        assertThat(cards.get(0).path("payload").path("skills").get(1).path("current").asInt()).isEqualTo(3);
+        assertThat(cards.get(0).path("payload").path("citations")).isEmpty();
+        assertThat(response.body()).doesNotContain("private-phone-fixture", "占位", "approval.required", "placeholder.COACH");
+        var persisted = json.readTree(jdbc.queryForObject("SELECT parts::text FROM messages WHERE conversation_id=? AND role='ASSISTANT'",
+                String.class, events.get(0).path("conversationId").asText()));
+        assertThat(persisted).hasSize(3);
+        assertThat(persisted.get(1).path("payload")).isEqualTo(cards.get(0).path("payload"));
+        assertThat(persisted.get(2).path("payload")).isEqualTo(cards.get(1).path("payload"));
+        var restored = json.readTree(request("GET", "/conversations/" + events.get(0).path("conversationId").asText() + "/messages", token, null).body());
+        assertThat(restored.path("data").path("items").get(1).path("parts")).isEqualTo(persisted);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM growth_task_completions WHERE user_id=?", Integer.class, user)).isZero();
+        String stranger = identities.create().accessToken();
+        assertThat(request("PUT", "/career/profile", stranger, json.writeValueAsString(profile)).statusCode()).isEqualTo(200);
+        var foreign = request("POST", "/agent/chat", stranger, json.writeValueAsString(java.util.Map.of("content", "技能差距", "options",
+                java.util.Map.of("context", java.util.Map.of("resumeId", resumeId, "resumeVersionId", versionId)))));
+        var foreignGap = sseEvents(foreign.body()).stream().filter(e -> e.path("cardType").asText().equals("skill_gap")).findFirst().orElseThrow();
+        assertThat(foreignGap.path("payload").path("summary").asText()).contains("仅参考档案技能");
+        assertThat(foreignGap.path("payload").path("skills").get(0).path("name").asText()).isEqualTo("SQL");
+        assertThat(foreignGap.path("payload").path("skills").get(0).path("current").asInt()).isZero();
+    }
+
+    private java.util.List<com.fasterxml.jackson.databind.JsonNode> sseEvents(String body) {
+        return body.lines().filter(line -> line.startsWith("data:")).map(line -> {
+            try { return json.readTree(line.substring(5).trim()); }
+            catch (IOException ex) { throw new IllegalStateException(ex); }
+        }).toList();
+    }
+
+    @Test
+    void coachGrowthApprovalMergesCompletionsOnlyAfterApprovalAndRejectDoesNotWrite() throws Exception {
+        String token = identities.create().accessToken(), stranger = identities.create().accessToken(), user = owner(token);
+        var titles = com.offerpilot.career.application.GrowthTaskCatalog.TITLES;
+        var initial = java.util.Map.of("target", "原目标", "city", "上海", "skills", "Java", "interests", java.util.List.of("技术研发"));
+        assertThat(request("PUT", "/career/profile", token, json.writeValueAsString(initial)).statusCode()).isEqualTo(200);
+        assertThat(request("PUT", "/career/tasks", token, json.writeValueAsString(java.util.Map.of("completed", java.util.List.of(titles.get(0))))).statusCode()).isEqualTo(200);
+        var originalTime = jdbc.queryForObject("SELECT completed_at::text FROM growth_task_completions WHERE user_id=? AND task_title=?", String.class, user, titles.get(0));
+        for (String decision : java.util.List.of("REJECT", "APPROVE")) {
+            var body = json.writeValueAsString(java.util.Map.of("content", "同步成长任务", "options", java.util.Map.of("context",
+                    java.util.Map.of("coachAction", "adoptGrowthPlan", "taskTitles", java.util.List.of(titles.get(1)), "owner", owner(stranger)))));
+            var chatRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/chat"))
+                    .timeout(Duration.ofSeconds(20)).header("Authorization", "Bearer " + token).header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            var response = HttpClient.newHttpClient().send(chatRequest, HttpResponse.BodyHandlers.ofInputStream());
+            assertThat(response.statusCode()).isEqualTo(200);
+            try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                com.fasterxml.jackson.databind.JsonNode approval = null;
+                for (String line; (line = reader.readLine()) != null;) {
+                    if (!line.startsWith("data:")) continue;
+                    var event = json.readTree(line.substring(5).trim());
+                    if (event.path("type").asText().equals("approval.required")) { approval = event; break; }
+                }
+                assertThat(approval).isNotNull();
+                assertThat(approval.path("name").asText()).isEqualTo("adoptGrowthPlan");
+                assertThat(approval.path("editableFields")).isEmpty();
+                assertThat(approval.path("args").path("taskTitles")).isEqualTo(json.valueToTree(java.util.List.of(titles.get(1))));
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM growth_task_completions WHERE user_id=?", Integer.class, user)).isEqualTo(1);
+                String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
+                assertThat(request("POST", path, stranger, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
+                assertThat(request("POST", path, token, json.writeValueAsString(java.util.Map.of("decision", "APPROVE", "args", java.util.Map.of("taskTitles", java.util.List.of(titles.get(2)))))).statusCode()).isEqualTo(400);
+                if (decision.equals("APPROVE")) {
+                    // A checklist change made while waiting must be preserved by the eventual merge.
+                    assertThat(request("PUT", "/career/tasks", token, json.writeValueAsString(java.util.Map.of("completed", java.util.List.of(titles.get(0), titles.get(2))))).statusCode()).isEqualTo(200);
+                }
+                assertThat(request("POST", path, token, json.writeValueAsString(java.util.Map.of("decision", decision))).statusCode()).isEqualTo(200);
+                var rest = sseEvents(reader.lines().collect(java.util.stream.Collectors.joining("\n")));
+                assertThat(rest).anySatisfy(event -> {
+                    assertThat(event.path("type").asText()).isEqualTo("approval.resolved");
+                    assertThat(event.path("decision").asText()).isEqualTo(decision);
+                });
+                var result = rest.stream().filter(e -> e.path("type").asText().equals("tool.result")).findFirst().orElseThrow();
+                assertThat(result.path("ok").asBoolean()).isEqualTo(decision.equals("APPROVE"));
+                var completed = jdbc.queryForList("SELECT task_title FROM growth_task_completions WHERE user_id=?", String.class, user);
+                assertThat(completed).containsExactlyInAnyOrderElementsOf(decision.equals("APPROVE")
+                        ? java.util.List.of(titles.get(0), titles.get(1), titles.get(2)) : java.util.List.of(titles.get(0)));
+                assertThat(jdbc.queryForObject("SELECT completed_at::text FROM growth_task_completions WHERE user_id=? AND task_title=?", String.class, user, titles.get(0))).isEqualTo(originalTime);
+                var profile = json.readTree(request("GET", "/career/profile", token, null).body()).path("data");
+                for (String key : initial.keySet()) assertThat(profile.path(key)).isEqualTo(json.valueToTree(initial.get(key)));
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM growth_task_completions WHERE user_id=?", Integer.class, owner(stranger))).isZero();
+                assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(409);
             }
         }
     }

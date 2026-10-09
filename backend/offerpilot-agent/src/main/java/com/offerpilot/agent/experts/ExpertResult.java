@@ -1,15 +1,20 @@
 package com.offerpilot.agent.experts;
 
-/** 一步专家的文字结果。card 仅在真实业务调用成功时存在。 */
-public record ExpertResult(String summary, Card card) {
-    public record Card(String cardId, String cardType, Object payload) {
-    }
+import java.util.List;
 
-    public static ExpertResult text(String summary) {
-        return new ExpertResult(summary, null);
-    }
-
-    public static ExpertResult card(String summary, String cardId, String cardType, Object payload) {
-        return new ExpertResult(summary, new Card(cardId, cardType, payload));
-    }
+/** Cards exist only after successful business reads/writes. */
+public final class ExpertResult {
+    public record Card(String cardId, String cardType, Object payload) {}
+    private final String summary;
+    private final List<Card> cards;
+    public ExpertResult(String summary, Card card) { this(card == null ? List.of() : List.of(card), summary); }
+    private ExpertResult(List<Card> cards, String summary) { this.summary = summary; this.cards = List.copyOf(cards); }
+    public String summary() { return summary; }
+    /** Compatibility accessor for existing single-card callers. */
+    public Card card() { return cards.isEmpty() ? null : cards.get(0); }
+    public List<Card> cards() { return cards; }
+    public static ExpertResult text(String summary) { return cards(summary, List.of()); }
+    public static ExpertResult card(String summary, String id, String type, Object payload) { return cards(summary, new Card(id, type, payload)); }
+    public static ExpertResult cards(String summary, Card... cards) { return cards(summary, List.of(cards)); }
+    public static ExpertResult cards(String summary, List<Card> cards) { return new ExpertResult(cards, summary); }
 }

@@ -11,6 +11,8 @@ describe('cardRegistry', () => {
       'resume_diff',
       'board_update',
       'career_recommendation',
+      'skill_gap',
+      'roadmap',
     ] as const) {
       expect(cardRegistry[type]).toBeTypeOf('function')
       expect(resolveCardComponent(type)).not.toBeNull()
