@@ -55,7 +55,7 @@
 
 ## 二、快速验证（不用装 MCP 客户端）
 
-服务跑起来后，直接用 curl 就能确认拿到的是真实岗位：
+服务跑起来后，用 curl 检查 `_meta.source`：company-career-site 为官网结果，LOCAL_SNAPSHOT 为非实时示例；需要仅验证官网时设 JOBS_SOURCE_MODE=LIVE。
 
 ```bash
 # 健康检查
@@ -172,8 +172,24 @@ Agent 拿到的是「部分结果 + 明确的缺失说明」，比整次失败�
 | `CACHE_TTL_SECONDS` | `600` | 缓存有效期 |
 | `MAX_PARALLEL_SITES` | `6` | 跨站点并发上限 |
 | `SITE_TIMEOUT_MS` | `8000` | 单站点超时 |
+| `JOBS_SOURCE_MODE` | `AUTO` | LIVE / LOCAL / AUTO，旧 ALL/未知值 WARN 后按 AUTO |
+| `JOBS_LIVE_TIMEOUT_MS` | `10000` | 整次多站查询预算，含排队 |
 
-`deploy/docker-compose.yml` 已配置前三个，无需手工设置。
+`deploy/docker-compose.yml` 向后端和本服务同时透传模式与整次查询预算。
+
+### 离线快照与构建
+
+默认 AUTO 优先官网，抛错/超时/全部失败/空结果伴随失败站点时回退；健康空结果不回退，有岗位的部分成功保留官网结果。LIVE 保留原行为（失败站点在 skipped，全部失败仍返回元数据供后端报错）；LOCAL 在 search_jobs/list_sites/get_job_detail 路径不调用网络。预算到期停止后续排队站点，jobhunt-cli 公共接口不能取消已发出的底层 fetch，调用方仍按预算返回。仅官网成功且无 skipped 的查询进入10分钟缓存，避免缓存故障阻止恢复。
+
+唯一数据文件：`backend/offerpilot-job/src/main/resources/jobs/snapshot.json`（相对仓库根），2026-10-10，40 条/8 企业，人工整理的示例岗位快照，非实时数据。ID=snapshot-*，url 为空。`_meta.source=LOCAL_SNAPSHOT`，含 snapshotDate/sourceDescription；AUTO 另有 fallbackReason。关键词按空白分词后要求每个词命中标题/企业/类别/职责/要求/skills，标题权重较高，稳定 ID 次序；site/sites、nature、location、category 和 limit 生效。快照默认搜索全部8家；显式 site/sites 严格保留。limit 最多50，不新增分页。
+
+刷新唯一 JSON 并同步顶层/条目 snapshotDate，保留声明与稳定 ID，运行 `npm test` 和后端 JobSourceTest/JobsSnapshotHttpIntegrationTest，重建两个服务镜像。Docker 从仓库根构建，复制同一资源，无第二份维护数据：
+
+```bash
+# 仓库根
+docker build -f mcp-servers/jobs-mcp/Dockerfile -t offerpilot/jobs-mcp .
+docker compose -f deploy/docker-compose.yml build jobs-mcp
+```
 
 ## 六、JS 语法速查（给 Java 背景的读者）
 
@@ -205,7 +221,7 @@ Agent 拿到的是「部分结果 + 明确的缺失说明」，比整次失败�
 
 ## 七、数据来源与合规
 
-- 岗位数据仅来自**企业官网公开招聘接口**，经 `jobhunt-cli` 适配器访问。
+- LIVE 数据来自**企业官网公开招聘接口**，经 `jobhunt-cli` 适配器访问；LOCAL/AUTO 回退为人工整理示例快照，非实时数据。
 - 不做登录态操作，不抓取需要授权或明确禁止抓取的内容。
 - 跨站点并发上限 6、单站超时 8 秒、结果缓存 10 分钟，均为减少对目标站点的压力。
 
@@ -213,5 +229,5 @@ Agent 拿到的是「部分结果 + 明确的缺失说明」，比整次失败�
 
 - 腾讯 / 美团 / 网易 / 华为的校招关键词匹配为**本地过滤**（见设计决定 2）。
 - 单元测试覆盖纯逻辑与错误判定；**真实站点查询未纳入自动化**（依赖外部接口，不适合放进测试套件）。
-- dev profile 下 `spring.ai.mcp.client.enabled: false`，后端尚未接入本服务（计划在 M1）。
+- 后端通过专用 JobsMcpClient 调用 /mcp，通用 Spring AI MCP 自动装配仍关闭。
 - 上游 `jobhunt-cli` 或企业接口变更可能导致部分站点失效，此时会在 `_meta.skipped` 里体现。

@@ -66,7 +66,7 @@ public class OfferPilotMcpTools {
         return result;
     }
 
-    @Tool(name = "jobs.search", description = "Read-only search of public company career-site jobs. Returns items and upstream source metadata. May refresh the public job cache; never writes applications or private user data.")
+    @Tool(name = "jobs.search", description = "Read-only search of public company career-site jobs or explicitly marked offline sample snapshots. Returns items and source metadata. May refresh the public job cache; never writes applications or private user data.")
     public ObjectNode searchJobs(
             @ToolParam(description = "Required search query, 1–100 characters") String query,
             @ToolParam(description = "Optional company site ID, at most 60 characters", required = false) String site,

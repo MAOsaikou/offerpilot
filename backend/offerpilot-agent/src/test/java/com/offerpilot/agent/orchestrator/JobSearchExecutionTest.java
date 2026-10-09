@@ -67,6 +67,19 @@ class JobSearchExecutionTest {
         verify(gateway, atLeastOnce()).stream(any(), argThat(messages -> messages.stream().anyMatch(m -> m.getText().contains("找上海Java校招"))), eq(0.1));
     }
 
+    @Test void localSnapshotIsDescribedHonestlyInExpertOutputAndReplyPolicy() throws Exception {
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(response("{\"action\":\"search\",\"query\":\"Java\",\"nature\":\"all\"}"));
+        var card = json.createObjectNode().put("schemaVersion", 2);
+        card.putArray("items");
+        card.putObject("meta").put("source", "LOCAL_SNAPSHOT").put("snapshotDate", "2026-10-10");
+        when(searches.search(anyString(), anyString(), anyString(), anyString())).thenReturn(card);
+        var events = run(AgentMode.JOB, Map.of());
+        assertThat(events).filteredOn(AgentEvent.UiCard.class::isInstance).hasSize(1);
+        assertThat(reply.stream().map(Message::getText).toList().toString())
+                .contains("离线示例岗位快照", "非实时数据", "不能声称是官网当前在招岗位")
+                .doesNotContain("真实岗位搜索快照");
+    }
+
     @Test void missingKeywordsInvalidFieldsAndMissingMatchSelectionClarifyWithoutTools() throws Exception {
         for (String extract : List.of("{\"action\":\"search\",\"query\":\"\",\"nature\":\"all\"}",
                 "{\"action\":\"search\",\"query\":\"Java\",\"nature\":\"invalid\"}",

@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
 import com.offerpilot.common.id.IdGenerator;
-import com.offerpilot.mcp.JobsMcpClient;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import java.time.Instant;
@@ -14,11 +13,11 @@ import java.util.*;
 
 @Service
 public class JobService implements JobDescriptionForChat {
-    private final JobsMcpClient mcp;
+    private final JobSource source;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
-    public JobService(JobsMcpClient mcp, JdbcTemplate jdbc, ObjectMapper json) { this.mcp=mcp; this.jdbc=jdbc; this.json=json; }
-    public JsonNode sites() { return mcp.call("list_sites", Map.of()); }
+    public JobService(JobSource source, JdbcTemplate jdbc, ObjectMapper json) { this.source=source; this.jdbc=jdbc; this.json=json; }
+    public JsonNode sites() { return source.sites(); }
     public JsonNode search(String query, String site, String nature, String location) {
         if (query == null || query.isBlank() || query.length()>100 || site.length()>60 || location.length()>60
                 || !Set.of("campus","intern","social","all").contains(nature)) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
@@ -26,10 +25,7 @@ public class JobService implements JobDescriptionForChat {
         args.put("query",query.strip()); args.put("nature",nature); args.put("limit",30);
         if (!site.isBlank()) args.put("site",site);
         if (!location.isBlank()) args.put("location",location.strip());
-        JsonNode result = mcp.call("search_jobs",args);
-        if (!result.path("jobs").isArray() || !result.path("_meta").isObject()) throw new BusinessException(ErrorCode.TOOL_FAILED);
-        if (result.path("_meta").path("sites").size()>0 && result.path("_meta").path("skipped").size()==result.path("_meta").path("sites").size())
-            throw new BusinessException(ErrorCode.TOOL_FAILED,"本次查询的企业站点均不可用，请稍后重试或选择其他企业");
+        JsonNode result = source.search(args);
         var output=json.createObjectNode(); var items=output.putArray("items"); Set<String> seen=new HashSet<>();
         for (var raw:result.path("jobs")) {
             if (raw.path("id").asText().isBlank() || raw.path("site").asText().isBlank() || raw.path("title").asText().isBlank()) continue;
@@ -55,9 +51,10 @@ public class JobService implements JobDescriptionForChat {
     public JsonNode detail(String id,boolean force) {
         var existing=get(id);
         if(!force && !existing.path("detailFetchedAt").isNull() && Instant.parse(existing.path("detailFetchedAt").asText()).isAfter(Instant.now().minusSeconds(600))) return existing;
-        var result=mcp.call("get_job_detail",Map.of("site",existing.path("site").asText(),"jobId",existing.path("externalId").asText(),"nature",existing.path("nature").asText()));
-        if(!result.path("job").isObject()) throw new BusinessException(ErrorCode.TOOL_FAILED);
-        var raw=(ObjectNode)result.path("job").deepCopy();
+        if(source.localOnly() || "LOCAL_SNAPSHOT".equals(existing.path("source").asText())) return existing;
+        var result=source.detail(existing.path("site").asText(),existing.path("externalId").asText(),existing.path("nature").asText());
+        if(!result.isObject()) throw new BusinessException(ErrorCode.TOOL_FAILED);
+        var raw=(ObjectNode)result.deepCopy();
         raw.put("id",existing.path("externalId").asText()); raw.put("site",existing.path("site").asText());
         var data=normalize(raw,existing.path("nature").asText());
         for(String field:List.of("title","company","locations","category","department","url","updatedAt"))
@@ -76,7 +73,12 @@ public class JobService implements JobDescriptionForChat {
         String url=raw.path("url").asText("");
         try { var uri=java.net.URI.create(url); if(!Set.of("https","http").contains(uri.getScheme()) || uri.getHost()==null || uri.getUserInfo()!=null) url=""; }
         catch(Exception ex) { url=""; }
-        data.put("url",url); data.put("source","company-career-site"); return data;
+        data.put("url",url);
+        boolean local = "LOCAL_SNAPSHOT".equals(raw.path("source").asText());
+        data.put("source",local ? "LOCAL_SNAPSHOT" : "company-career-site");
+        if(local) data.put("snapshotDate",raw.path("snapshotDate").asText());
+        if(raw.path("skills").isArray()) data.set("skills",raw.path("skills").deepCopy());
+        return data;
     }
     private JsonNode view(String id,String payload,java.sql.Timestamp fetched) {
         try { var node=(ObjectNode)json.readTree(payload); node.put("id",id); if(fetched==null) node.putNull("detailFetchedAt"); else node.put("detailFetchedAt",fetched.toInstant().toString()); return node; }

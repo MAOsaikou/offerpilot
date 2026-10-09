@@ -68,7 +68,9 @@ services:
       start_period: 20s
 
   jobs-mcp:
-    build: ../mcp-servers/jobs-mcp
+    build:
+      context: ..
+      dockerfile: mcp-servers/jobs-mcp/Dockerfile
     image: offerpilot/jobs-mcp:${TAG:-latest}
     restart: always
     logging: *service-logging
@@ -76,6 +78,8 @@ services:
       PORT: 7001
       CACHE_TTL_SECONDS: 600
       MAX_PARALLEL_SITES: 6
+      JOBS_SOURCE_MODE: ${JOBS_SOURCE_MODE:-AUTO}
+      JOBS_LIVE_TIMEOUT_MS: ${JOBS_LIVE_TIMEOUT_MS:-10000}
     ports: ["127.0.0.1:${JOBS_MCP_HOST_PORT:-7001}:7001"]
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -91,6 +95,8 @@ services:
     env_file: [../.env]
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      JOBS_SOURCE_MODE: ${JOBS_SOURCE_MODE:-AUTO}
+      JOBS_LIVE_TIMEOUT_MS: ${JOBS_LIVE_TIMEOUT_MS:-10000}
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}

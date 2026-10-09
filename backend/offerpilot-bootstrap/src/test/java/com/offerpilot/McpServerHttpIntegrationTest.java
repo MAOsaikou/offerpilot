@@ -42,7 +42,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "spring.ai.model.chat=none", "spring.ai.model.embedding=none",
+        "offerpilot.jobs.source-mode=AUTO", "spring.ai.model.chat=none", "spring.ai.model.embedding=none",
         "spring.ai.mcp.server.enabled=true", "offerpilot.mcp.server-api-key=mcp-integration-test-only",
         "offerpilot.resume.worker-enabled=false", "offerpilot.demo.enabled=false"})
 @ActiveProfiles({"test", "mock-llm"})
@@ -157,6 +157,22 @@ class McpServerHttpIntegrationTest {
         verify(upstream).call("search_jobs", Map.of("query", "Java", "nature", "all", "limit", 30));
         assertThat(businessCounts()).isEqualTo(before);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM jobs WHERE site='fixture'", Integer.class)).isEqualTo(3);
+    }
+
+    @Test
+    void realMcpSearchAutoFallsBackWhenUpstreamIsUnavailable() throws Exception {
+        when(upstream.call(eq("search_jobs"), anyMap())).thenThrow(
+                new com.offerpilot.common.error.BusinessException(com.offerpilot.common.error.ErrorCode.TOOL_FAILED));
+        var transport = HttpClientSseClientTransport.builder(base())
+                .customizeRequest(request -> request.header("X-API-Key", "mcp-integration-test-only")).build();
+        try (var client = McpClient.sync(transport).requestTimeout(Duration.ofSeconds(15)).build()) {
+            client.initialize();
+            var result = call(client, "jobs.search", Map.of("query", "Java", "site", "bytedance", "limit", 1));
+            assertThat(result.path("items")).hasSize(1);
+            assertThat(result.at("/meta/source").asText()).isEqualTo("LOCAL_SNAPSHOT");
+            assertThat(result.at("/meta/fallbackReason").asText()).isEqualTo("LIVE_UNAVAILABLE");
+            assertThat(result.at("/meta/snapshotDate").asText()).isEqualTo("2026-10-10");
+        }
     }
 
     private JsonNode call(io.modelcontextprotocol.client.McpSyncClient client, String name, Map<String, Object> args) throws Exception {

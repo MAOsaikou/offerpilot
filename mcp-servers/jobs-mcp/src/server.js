@@ -22,13 +22,14 @@ import {
   hasSite,
   listSites,
   normalizeNature,
-  searchAcrossSites,
 } from './jobhunt.js';
 
+import { createSearchHandler, resolveMode, snapshotSites, snapshotDetail, SearchInputError } from './source.js';
+import { pathToFileURL } from 'node:url';
+
+const MODE = resolveMode(process.env.JOBS_SOURCE_MODE ?? 'AUTO');
 const PORT = Number(process.env.PORT || 7001);
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_SECONDS || 600) * 1000;
-const MAX_PARALLEL_SITES = Number(process.env.MAX_PARALLEL_SITES || 6);
-const SITE_TIMEOUT_MS = Number(process.env.SITE_TIMEOUT_MS || 8000);
 
 /** 告诉下游数据来自企业官网，前端据此标注来源。 */
 const SOURCE = 'company-career-site';
@@ -57,43 +58,24 @@ function failure(message) {
   return { isError: true, content: [{ type: 'text', text: message }] };
 }
 
-async function handleSearch({ query, site, sites, nature, location, category, limit }) {
-  const resolvedNature = normalizeNature(nature);
-  const max = Math.min(Number(limit) || 20, 50);
-  const keyword = String(query).trim();
+const search = createSearchHandler({ mode: MODE, live: async (targets, options, controls) => {
+  const { searchAcrossSites } = await import('./jobhunt.js');
+  const key = JSON.stringify({ targets, options });
+  const { value, cached } = await withCache(key, () => searchAcrossSites(targets, options, controls),
+    CACHE_TTL_MS, result => !controls.signal.aborted && result.skipped.length === 0);
+  return { ...value, cached };
+} });
 
-  const targets = sites?.length ? sites : (site ? [site] : DEFAULT_SITES);
-  const unknown = targets.filter((id) => !hasSite(id));
-  if (unknown.length) {
-    return failure(`未知站点：${unknown.join(', ')}。可用站点见 list_sites 工具。`);
+export async function handleSearch(args) {
+  try { return json(await search(args)); }
+  catch (error) {
+    if (error instanceof SearchInputError) return failure(error.message);
+    throw error;
   }
-
-  const cacheKey = JSON.stringify({ targets, keyword, resolvedNature, location, category, max });
-  const { value, cached } = await withCache(cacheKey, async () => {
-    return searchAcrossSites(targets, { query: keyword, nature: resolvedNature, location, category, limit: max }, {
-      concurrency: MAX_PARALLEL_SITES,
-      timeoutMs: SITE_TIMEOUT_MS,
-    });
-  }, CACHE_TTL_MS, (result) => result.skipped.length < targets.length);
-
-  const jobs = value.jobs.slice(0, max);
-  return json({
-    jobs,
-    _meta: {
-      source: SOURCE,
-      query: keyword,
-      nature: resolvedNature,
-      sites: targets,
-      total: jobs.length,
-      truncated: value.jobs.length > jobs.length,
-      cached,
-      skipped: value.skipped,
-      degradedSites: value.degradedSites,
-    },
-  });
 }
 
 async function handleDetail({ site, jobId, nature }) {
+  if (jobId.startsWith('snapshot-') || MODE === 'LOCAL') return json(snapshotDetail(site, jobId));
   if (!hasSite(site)) {
     return failure(`未知站点：${site}。可用站点见 list_sites 工具。`);
   }
@@ -106,7 +88,7 @@ async function handleDetail({ site, jobId, nature }) {
   return json({ job: value, _meta: { source: SOURCE, cached } });
 }
 
-function createMcpServer() {
+export function createMcpServer() {
   const server = new McpServer({ name: 'offerpilot-jobs', version: '0.2.0' });
 
   server.registerTool('list_sites', {
@@ -115,6 +97,7 @@ function createMcpServer() {
       + '调用 search_jobs 前如果不确定站点 id，先用这个工具。',
     inputSchema: {},
   }, async () => {
+    if (MODE === 'LOCAL') return json(snapshotSites());
     const sites = listSites();
     return json({ sites, _meta: { source: SOURCE, total: sites.length } });
   });
@@ -122,7 +105,7 @@ function createMcpServer() {
   server.registerTool('search_jobs', {
     title: '搜索企业官网岗位',
     description: '按关键词搜索企业官网公开招聘岗位（默认校招）。'
-      + '不指定 site 时会并发查询多个主流站点，返回结果附带来源与失败站点说明。'
+      + '不指定 site 时会并发查询多个主流站点，返回结果附带来源与失败站点说明；LOCAL 或 AUTO 回退时为人工整理的非实时示例快照。'
       + '注意：不要声称你搜索了未返回的站点，也不要编造岗位。',
     inputSchema: SEARCH_INPUT,
   }, async (args) => {
@@ -148,7 +131,7 @@ function createMcpServer() {
   return server;
 }
 
-const app = express();
+export const app = express();
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (req, res) => {
@@ -157,7 +140,7 @@ app.get('/health', (req, res) => {
 
 // 调试入口：不装 MCP 客户端也能验证服务是否返回真实岗位
 app.get('/list_sites', (req, res) => {
-  res.json({ sites: listSites(), _meta: { source: SOURCE } });
+  res.json(MODE === 'LOCAL' ? snapshotSites() : { sites: listSites(), _meta: { source: SOURCE } });
 });
 
 app.post('/search_jobs', async (req, res) => {
@@ -192,7 +175,7 @@ app.get('/mcp', (req, res) => {
   res.status(405).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed. POST to /mcp.' }, id: null });
 });
 
-app.listen(PORT, process.env.HOST || '0.0.0.0', () => {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) app.listen(PORT, process.env.HOST || '0.0.0.0', () => {
   const sites = listSites();
   console.log(`jobs-mcp listening on :${PORT} — ${sites.length} sites, tools: list_sites / search_jobs / get_job_detail`);
 });

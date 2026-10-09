@@ -74,6 +74,8 @@ public class JobSearchForChat {
                 item.put(field, bounded(job.path(field).asText(), 200));
         }
         var meta = card.putObject("meta");
+        for (String field : List.of("source", "snapshotDate", "sourceDescription", "fallbackReason"))
+            if (result.path("meta").has(field)) meta.put(field, bounded(result.path("meta").path(field).asText(), 300));
         meta.put("cached", result.path("meta").path("cached").asBoolean());
         meta.put("truncated", result.path("meta").path("truncated").asBoolean());
         for (String field : List.of("sites", "degradedSites")) {
