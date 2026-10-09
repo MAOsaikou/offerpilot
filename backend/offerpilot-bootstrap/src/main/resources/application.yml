@@ -56,7 +56,7 @@ spring:
       api-key: ${DEEPSEEK_API_KEY:sk-not-configured}
       chat:
         options:
-          model: ${LLM_MODEL_CHEAP:deepseek-flash}
+          model: ${LLM_MODEL_FLASH:deepseek-flash}
     vectorstore:
       pgvector:
         dimensions: 1024
@@ -140,35 +140,32 @@ offerpilot:
     default-tier: ${LLM_DEFAULT_TIER:FLASH}
     tiers:
       FLASH:
-        provider: ${LLM_PROVIDER_FLASH:bailian}
-        model: ${LLM_MODEL_FLASH:qwen3.8-flash}
+        provider: ${LLM_PROVIDER_FLASH:deepseek}
+        model: ${LLM_MODEL_FLASH:deepseek-flash}
         supports-vision: ${LLM_VISION_FLASH:true}
         timeout: 60s
-      CHEAP:
-        provider: ${LLM_PROVIDER_CHEAP:deepseek}
-        model: ${LLM_MODEL_CHEAP:deepseek-flash}
-        supports-vision: ${LLM_VISION_CHEAP:true}
-        timeout: 90s
+        thinking: ${LLM_THINKING_FLASH:disabled}
+        max-tokens: ${LLM_MAX_TOKENS_FLASH:8192}
       VISION_ALT:
         provider: ${LLM_VISION_PROVIDER:deepseek}
         model: ${LLM_MODEL_VISION_ALT:deepseek-flash}
         supports-vision: ${LLM_VISION_VISION_ALT:true}
         timeout: 90s
+        thinking: ${LLM_THINKING_VISION_ALT:disabled}
+        max-tokens: ${LLM_MAX_TOKENS_VISION_ALT:8192}
       PRO:
-        provider: ${LLM_PROVIDER_PRO:bailian}
-        model: ${LLM_MODEL_PRO:qwen3.8-max}
+        provider: ${LLM_PROVIDER_PRO:deepseek}
+        model: ${LLM_MODEL_PRO:deepseek-v4-pro}
         supports-vision: ${LLM_VISION_PRO:false}
         timeout: 120s
+        thinking: ${LLM_THINKING_PRO:enabled}
+        max-tokens: ${LLM_MAX_TOKENS_PRO:32768}
     providers:
       custom:
         base-url: ${CUSTOM_LLM_BASE_URL:}
         api-key: ${CUSTOM_LLM_API_KEY:}
         completions-path: ${CUSTOM_LLM_COMPLETIONS_PATH:/v1/chat/completions}
     fallback:
-      FLASH:
-        - CHEAP
-      CHEAP:
-        - FLASH
       VISION:
         - VISION_ALT
   jobs:

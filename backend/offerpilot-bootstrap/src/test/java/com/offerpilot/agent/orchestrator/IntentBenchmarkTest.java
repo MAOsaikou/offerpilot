@@ -122,7 +122,7 @@ class IntentBenchmarkTest {
         private final ArrayDeque<JsonNode> responses;
         private int calls;
         ReplayGateway(ArrayDeque<JsonNode> responses) {
-            super(null, null, null, null);
+            super(null, new org.springframework.mock.env.MockEnvironment());
             this.responses = responses;
         }
         @Override public Flux<ChatResponse> stream(com.offerpilot.llm.ModelTier tier,

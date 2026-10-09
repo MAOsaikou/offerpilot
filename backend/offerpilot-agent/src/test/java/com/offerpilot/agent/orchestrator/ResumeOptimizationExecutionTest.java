@@ -50,7 +50,7 @@ class ResumeOptimizationExecutionTest {
     }
     ByteArrayResource resource(String text) { return new ByteArrayResource(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
     Flux<AgentEvent> run(Orchestrator orchestrator, AgentMode mode, Map<String,Object> context) {
-        return orchestrator.run(mode, "针对岗位改写", List.of(), ModelTier.CHEAP, "run_123", new AtomicInteger(), reply, ignored -> {}, "owner", context);
+        return orchestrator.run(mode, "针对岗位改写", List.of(), ModelTier.FLASH, "run_123", new AtomicInteger(), reply, ignored -> {}, "owner", context);
     }
     @Test void autoResumeAndJobModesGenerateReadOnlyCardsWithExplicitSelection() throws Exception {
         var orchestrator = orchestrator();

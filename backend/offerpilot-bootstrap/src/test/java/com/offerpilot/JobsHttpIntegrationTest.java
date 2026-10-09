@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT,properties={
     "spring.ai.model.chat=deepseek","spring.ai.model.embedding=none","spring.ai.retry.max-attempts=1",
-    "spring.ai.deepseek.api-key=jobs-test-only","offerpilot.llm.default-tier=CHEAP",
+    "spring.ai.deepseek.api-key=jobs-test-only","offerpilot.llm.default-tier=FLASH",
     "offerpilot.jobs.source-mode=LIVE","spring.ai.mcp.server.enabled=false","offerpilot.resume.worker-enabled=false"})
 @ActiveProfiles("test") @Testcontainers
 class JobsHttpIntegrationTest {

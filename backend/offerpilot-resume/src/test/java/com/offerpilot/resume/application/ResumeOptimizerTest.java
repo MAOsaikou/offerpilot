@@ -42,25 +42,25 @@ class ResumeOptimizerTest {
         patch.put("value","改进10个接口的缓存策略");ResumeOptimizationValidator.validate(report,source,JD);
     }
     @Test void usesSelectedModelOmitsContactsAndRepairsAtMostOnce() throws Exception {
-        var gateway=mock(ModelGateway.class);when(gateway.modelName(ModelTier.CHEAP)).thenReturn("fixture-model");
-        when(gateway.stream(eq(ModelTier.CHEAP),anyList(),eq(0.3))).thenReturn(response("bad"),response(REPORT));
+        var gateway=mock(ModelGateway.class);when(gateway.modelName(ModelTier.FLASH)).thenReturn("fixture-model");
+        when(gateway.stream(eq(ModelTier.FLASH),anyList(),eq(0.3))).thenReturn(response("bad"),response(REPORT));
         var optimizer=new ResumeOptimizer(gateway,json,new ByteArrayResource("遵守原文".getBytes(StandardCharsets.UTF_8)));
-        var report=optimizer.optimize(source(),JD,ModelTier.CHEAP).block(Duration.ofSeconds(3));
-        assertThat(report.path("modelTier").asText()).isEqualTo("CHEAP");assertThat(report.path("promptVersion").asText()).isEqualTo("resume-optimize-v1");
-        verify(gateway,times(2)).stream(eq(ModelTier.CHEAP),argThat(messages -> messages.toString().contains(JD)
+        var report=optimizer.optimize(source(),JD,ModelTier.FLASH).block(Duration.ofSeconds(3));
+        assertThat(report.path("modelTier").asText()).isEqualTo("FLASH");assertThat(report.path("promptVersion").asText()).isEqualTo("resume-optimize-v1");
+        verify(gateway,times(2)).stream(eq(ModelTier.FLASH),argThat(messages -> messages.toString().contains(JD)
             && !messages.toString().contains("private@example.test") && !messages.toString().contains("13800138000")),eq(0.3));
         reset(gateway);when(gateway.stream(any(),anyList(),eq(0.3))).thenReturn(response("bad"));
-        assertThatThrownBy(() -> optimizer.optimize(source(),JD,ModelTier.CHEAP).block(Duration.ofSeconds(3))).hasMessageContaining("未通过校验");
+        assertThatThrownBy(() -> optimizer.optimize(source(),JD,ModelTier.FLASH).block(Duration.ofSeconds(3))).hasMessageContaining("未通过校验");
         verify(gateway,times(2)).stream(any(),anyList(),eq(0.3));
     }
     @Test void rejectsTrailingJsonOversizedStreamAndHidesProviderErrors() throws Exception {
         var gateway=mock(ModelGateway.class);var optimizer=new ResumeOptimizer(gateway,json,new ByteArrayResource("fixture".getBytes(StandardCharsets.UTF_8)));
         for(String invalid:List.of(REPORT+" {}","x".repeat(24001))) {
             reset(gateway);when(gateway.stream(any(),anyList(),eq(0.3))).thenReturn(response(invalid));
-            assertThatThrownBy(() -> optimizer.optimize(source(),JD,ModelTier.CHEAP).block(Duration.ofSeconds(3))).hasMessageContaining("未通过校验");
+            assertThatThrownBy(() -> optimizer.optimize(source(),JD,ModelTier.FLASH).block(Duration.ofSeconds(3))).hasMessageContaining("未通过校验");
         }
         reset(gateway);when(gateway.stream(any(),anyList(),eq(0.3))).thenReturn(Flux.error(new IllegalStateException("private-provider-diagnostic")));
-        assertThatThrownBy(() -> optimizer.optimize(source(),JD,ModelTier.CHEAP).block(Duration.ofSeconds(3)))
+        assertThatThrownBy(() -> optimizer.optimize(source(),JD,ModelTier.FLASH).block(Duration.ofSeconds(3)))
             .isInstanceOf(BusinessException.class).hasMessageNotContaining("private-provider-diagnostic");
         verify(gateway).stream(any(),anyList(),eq(0.3));
     }
@@ -68,14 +68,14 @@ class ResumeOptimizerTest {
         var gateway=mock(ModelGateway.class);
         when(gateway.stream(any(),anyList(),eq(0.3))).thenReturn(response(REPORT.replace("参与后端服务开发", " 负责后端开发 ")));
         var optimizer=new ResumeOptimizer(gateway,json,new ByteArrayResource("fixture".getBytes(StandardCharsets.UTF_8)));
-        var report=optimizer.optimize(source(),JD,ModelTier.CHEAP).block(Duration.ofSeconds(3));
+        var report=optimizer.optimize(source(),JD,ModelTier.FLASH).block(Duration.ofSeconds(3));
         assertThat(report.path("patches")).isEmpty();
         assertThat(report.path("filteredPatches").get(0).path("reason").asText()).isEqualTo("NORMALIZED_EQUAL");
         verify(gateway).stream(any(),anyList(),eq(0.3));
 
         reset(gateway);
         when(gateway.stream(any(),anyList(),eq(0.3))).thenReturn(response("{\"summary\":\"无需改写\",\"patches\":[]}"));
-        var empty=optimizer.optimize(source(),JD,ModelTier.CHEAP).block(Duration.ofSeconds(3));
+        var empty=optimizer.optimize(source(),JD,ModelTier.FLASH).block(Duration.ofSeconds(3));
         assertThat(empty.path("patches")).isEmpty();
         assertThat(empty.path("filteredPatches").isArray()).isTrue();
         assertThat(empty.path("filteredPatches")).isEmpty();
@@ -91,7 +91,7 @@ class ResumeOptimizerTest {
         var gateway=mock(ModelGateway.class);
         when(gateway.stream(any(),anyList(),eq(0.3))).thenReturn(response(invalid.toString()));
         var optimizer=new ResumeOptimizer(gateway,json,new ByteArrayResource("fixture".getBytes(StandardCharsets.UTF_8)));
-        assertThatThrownBy(() -> optimizer.optimize(source,JD,ModelTier.CHEAP).block(Duration.ofSeconds(3)))
+        assertThatThrownBy(() -> optimizer.optimize(source,JD,ModelTier.FLASH).block(Duration.ofSeconds(3)))
                 .isInstanceOfSatisfying(BusinessException.class,
                         ex -> assertThat(ex.errorCode()).isEqualTo(ErrorCode.STRUCTURED_OUTPUT_INVALID));
         verify(gateway,times(2)).stream(any(),anyList(),eq(0.3));

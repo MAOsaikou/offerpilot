@@ -43,7 +43,7 @@ class BoardApprovalTest {
         var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
         var events = new CopyOnWriteArrayList<AgentEvent>();
         var finished = new java.util.concurrent.CompletableFuture<Void>();
-        new Orchestrator(planner, registry(boards)).run(AgentMode.AUTO, "改成面试中", List.of(), ModelTier.CHEAP,
+        new Orchestrator(planner, registry(boards)).run(AgentMode.AUTO, "改成面试中", List.of(), ModelTier.FLASH,
                 "run1", new AtomicInteger(), reply, u -> {}, "alice", Map.of()).subscribe(events::add, finished::completeExceptionally, () -> finished.complete(null));
         var required = (AgentEvent.ApprovalRequired) events.get(3);
         assertThat(((AgentEvent.ToolCall)events.get(2)).access()).isEqualTo(AgentEvent.ToolAccess.WRITE);
@@ -90,7 +90,7 @@ class BoardApprovalTest {
             var planner = mock(IntentPlanner.class);
             when(planner.prepare(any(), anyString(), anyList(), any(), any(), anyMap())).thenReturn(Mono.just(
                     new IntentPlanner.Decision("single", ExpertType.JOB, 1.0, false, null, new Plan("新建", List.of(step(Map.of("action", "createApplication", "jobId", "job1")))))));
-            var events = new Orchestrator(planner, registry(new BoardWriteTools(applications, service))).run(AgentMode.AUTO, "新建", List.of(), ModelTier.CHEAP,
+            var events = new Orchestrator(planner, registry(new BoardWriteTools(applications, service))).run(AgentMode.AUTO, "新建", List.of(), ModelTier.FLASH,
                     "run_reject", new AtomicInteger(), new ArrayList<>(), u -> {}, "alice", Map.of()).doOnNext(event -> {
                         if (!timeout && event instanceof AgentEvent.ApprovalRequired required)
                             service.resolve("alice", "run_reject", required.approvalId(), new ApprovalService.Decision("REJECT", null, null));

@@ -13,14 +13,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.deepseek.DeepSeekChatModel;
-import org.springframework.ai.deepseek.api.DeepSeekApi;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.mock.env.MockEnvironment;
-import org.springframework.retry.support.RetryTemplate;
 import reactor.core.publisher.Flux;
+import org.springframework.retry.support.RetryTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -42,18 +38,14 @@ class ResumeOptimizationLiveEvaluationTest {
         String key = System.getenv("DEEPSEEK_API_KEY");
         assertThat(key != null && !key.isBlank()).as("DEEPSEEK_API_KEY must be present").isTrue();
         String base = System.getenv().getOrDefault("DEEPSEEK_BASE_URL", "https://api.deepseek.com");
-        String model = System.getenv().getOrDefault("LLM_MODEL_CHEAP", "deepseek-flash");
+        String model = System.getenv().getOrDefault("LLM_MODEL_FLASH", "deepseek-flash");
         var tier = new OfferPilotProperties.Llm.Tier("deepseek", model, Duration.ofSeconds(90), false);
         var properties = new OfferPilotProperties(null, null, null, null, null,
-                new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier), Map.of()), null, null);
-        var beans = new DefaultListableBeanFactory();
-        beans.registerSingleton("deepseek", DeepSeekChatModel.builder()
-                .deepSeekApi(DeepSeekApi.builder().baseUrl(base).apiKey(key).build())
-                .retryTemplate(RetryTemplate.builder().maxAttempts(1).fixedBackoff(1).build()).build());
+                new OfferPilotProperties.Llm("FLASH", Map.of("FLASH", tier), Map.of()), null, null);
         var environment = new MockEnvironment().withProperty("spring.ai.deepseek.api-key", key)
                 .withProperty("spring.ai.deepseek.base-url", base);
         var json = new ObjectMapper();
-        var gateway = new RecordingGateway(properties, beans, environment);
+        var gateway = new RecordingGateway(properties, environment);
         var prompt = new ClassPathResource("prompts/resume/optimize.st");
         var optimizer = new ResumeOptimizer(gateway, json, prompt);
         var dataset = ResumeOptimizationBenchmark.load(json);
@@ -69,7 +61,7 @@ class ResumeOptimizationLiveEvaluationTest {
                 .put("datasetSha256", ResumeOptimizationBenchmark.sha256(dataset.toString()))
                 .put("promptSha256", ResumeOptimizationBenchmark.sha256(prompt.getContentAsString(StandardCharsets.UTF_8)))
                 .put("sourceRevision", System.getProperty("offerpilot.eval.revision", "UNRECORDED"))
-                .put("model", model).put("tier", "CHEAP").put("temperature", 0.3)
+                .put("model", model).put("tier", "FLASH").put("temperature", 0.3)
                 .put("scope", "10 fictional pairs; production optimizer and gateway; no database; one bounded production repair; no provider retry")
                 .put("humanStatus", "PENDING_TWO_HUMAN_REVIEWERS");
         results.putNull("humanFactSafeRate").putNull("humanAdoptionRate");
@@ -83,7 +75,7 @@ class ResumeOptimizationLiveEvaluationTest {
             gateway.attempts = entry.putArray("attempts");
             long started = System.nanoTime();
             try {
-                var report = optimizer.optimize(source, sample.path("jobDescription").asText(), ModelTier.CHEAP)
+                var report = optimizer.optimize(source, sample.path("jobDescription").asText(), ModelTier.FLASH)
                         .block(Duration.ofSeconds(100));
                 entry.put("status", "COMPLETED"); entry.set("report", report);
                 var warnings = ResumeOptimizationBenchmark.warnings(sample, report);
@@ -121,8 +113,8 @@ class ResumeOptimizationLiveEvaluationTest {
     private static final class RecordingGateway extends ModelGateway {
         private ArrayNode attempts;
 
-        RecordingGateway(OfferPilotProperties properties, DefaultListableBeanFactory beans, MockEnvironment environment) {
-            super(properties, beans.getBeanProvider(DeepSeekChatModel.class), beans.getBeanProvider(OpenAiChatModel.class), environment);
+        RecordingGateway(OfferPilotProperties properties, MockEnvironment environment) {
+            super(properties, environment, null, RetryTemplate.builder().maxAttempts(1).fixedBackoff(1).build());
         }
 
         @Override public Flux<ChatResponse> stream(ModelTier tier, List<Message> messages, double temperature) {

@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnabledIfEnvironmentVariable(named = "OFFERPILOT_RUN_LIVE_JOBS", matches = "true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.ai.model.chat=deepseek", "spring.ai.model.embedding=none", "spring.ai.retry.max-attempts=1",
-        "offerpilot.llm.default-tier=CHEAP", "spring.ai.mcp.server.enabled=false",
+        "offerpilot.llm.default-tier=FLASH", "spring.ai.mcp.server.enabled=false",
         "offerpilot.resume.worker-enabled=false", "logging.level.com.offerpilot=INFO"})
 @ActiveProfiles("test")
 @Testcontainers
@@ -59,11 +59,11 @@ class JobChatLiveEvaluationTest {
         long began = System.nanoTime();
         var step = new PlanStep("s1", "岗位分析", ExpertType.JOB, Map.of(), List.of());
         var corrected = parser.prepare(step, "城市换成北京，其他条件不变", List.of(new UserMessage("找上海Java校招岗位")),
-                ModelTier.CHEAP, ignored -> {}, Map.of()).block(Duration.ofSeconds(75));
+                ModelTier.FLASH, ignored -> {}, Map.of()).block(Duration.ofSeconds(75));
         assertThat(corrected.inputs()).containsEntry("action", "search").containsEntry("nature", "campus").containsEntry("location", "北京");
         assertThat(String.valueOf(corrected.inputs().get("query")).toLowerCase(Locale.ROOT)).contains("java");
         summary.set("followUpCriteria", json.valueToTree(corrected.inputs()));
-        var clarification = parser.prepare(step, "帮我找工作", List.of(), ModelTier.CHEAP, ignored -> {}, Map.of()).block(Duration.ofSeconds(75));
+        var clarification = parser.prepare(step, "帮我找工作", List.of(), ModelTier.FLASH, ignored -> {}, Map.of()).block(Duration.ofSeconds(75));
         assertThat(clarification.inputs()).containsEntry("action", "clarify");
         summary.put("clarifiesMissingKeyword", true);
 

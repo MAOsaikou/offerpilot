@@ -61,9 +61,8 @@ public class ChatService {
 
     public Flux<AgentEvent> chat(String owner, ChatRequest request) {
         String rawTier = request.options() == null ? null : request.options().modelTier();
-        ModelTier tier;
-        try { tier = rawTier == null || rawTier.isBlank() ? gateway.defaultTier() : ModelTier.from(rawTier); }
-        catch (IllegalArgumentException ex) { throw new BusinessException(ErrorCode.VALIDATION_FAILED, "未知模型档位"); }
+        ModelTier selected = ModelTier.from(rawTier, gateway.defaultTier());
+        ModelTier tier = selected == ModelTier.VISION_ALT ? gateway.defaultTier() : selected;
         if (request.attachments() != null && !request.attachments().isEmpty())
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "当前仅支持文字聊天，附件解析尚未接入");
         // Ownership and concurrency errors remain ordinary HTTP errors before SSE starts.

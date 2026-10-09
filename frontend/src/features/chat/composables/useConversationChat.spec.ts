@@ -63,7 +63,7 @@ describe('持久会话状态', () => {
     vi.mocked(conversationsApi.create).mockResolvedValue(conv('created'))
     vi.mocked(conversationsApi.messages).mockRejectedValueOnce(new Error('网络中断'))
     const chat = scope.run(useConversationChat)!
-    await chat.send('hello', 'AUTO', 'CHEAP', vi.fn())
+    await chat.send('hello', 'AUTO', 'FLASH', vi.fn())
     expect(chat.needsReload.value).toBe(true)
     expect(chat.busy.value).toBe(true)
     vi.mocked(conversationsApi.get).mockResolvedValue(conv('created'))
@@ -119,7 +119,7 @@ describe('持久会话状态', () => {
     vi.mocked(conversationsApi.messages).mockResolvedValue(messagePage('saved'))
     const chat = scope.run(useConversationChat)!
     const created = vi.fn()
-    await chat.send('hello', 'AUTO', 'CHEAP', created)
+    await chat.send('hello', 'AUTO', 'FLASH', created)
     expect(created).toHaveBeenCalledWith('created')
     expect(chat.messages.value.map((m) => m.id)).toEqual(['saved'])
     expect(chat.sending.value).toBe(false)
@@ -134,7 +134,7 @@ describe('持久会话状态', () => {
       total: 1,
     })
     const chat = scope.run(useConversationChat)!
-    await chat.send('后端校招怎么选', 'AUTO', 'CHEAP', vi.fn())
+    await chat.send('后端校招怎么选', 'AUTO', 'FLASH', vi.fn())
     await vi.waitFor(() => expect(chat.current.value?.title).toBe('后端校招怎么选'))
   })
   it('回复结束后保留本轮已渲染的卡片与思考摘要', async () => {
@@ -164,7 +164,7 @@ describe('持久会话状态', () => {
       return 'run'
     })
     const chat = scope.run(useConversationChat)!
-    await chat.send('hello', 'AUTO', 'CHEAP', vi.fn())
+    await chat.send('hello', 'AUTO', 'FLASH', vi.fn())
     const saved = chat.messages.value.find((m) => m.id === 'saved')
     expect(saved?.cards?.map((c) => c.cardId)).toEqual(['card_1'])
     expect(saved?.reasoning).toBe('先查岗位')
@@ -199,7 +199,7 @@ describe('持久会话状态', () => {
       listedDuringStream = chat.conversations.value.map((c) => c.id)
       return 'run'
     })
-    await chat.send('hello', 'AUTO', 'CHEAP', vi.fn())
+    await chat.send('hello', 'AUTO', 'FLASH', vi.fn())
     expect(listedDuringStream).toEqual(['created'])
   })
 })

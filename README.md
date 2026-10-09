@@ -114,11 +114,12 @@ flowchart LR
 
 | 用途 | 模型 |
 | --- | --- |
-| 主对话 / 规划 / 视觉 | `qwen3.8-flash`（阿里云百炼，OpenAI 兼容） |
-| 长文本 / 低成本批处理 | `deepseek-v4-flash` |
-| 视觉备选 | `glm-5.3-flash` |
-| 高质量场景 | `qwen3.8-max` / `deepseek-v4-pro`（按需开关） |
-| Embedding / Rerank | `text-embedding-v4` / `gte-rerank` |
+| 快速 FLASH（默认）/ 规划 / 图片 | `deepseek-flash`（DeepSeek） |
+| 深度 PRO（仅文字） | `deepseek-v4-pro`（DeepSeek） |
+| 内部视觉备选 VISION_ALT | `deepseek-flash` |
+| Embedding / Rerank | 百炼 `text-embedding-v4` / `gte-rerank` |
+
+聊天仅「快速 / 深度」两档；旧 CHEAP 自动映射为 FLASH，供应商可通过环境变量覆盖。
 
 ## 5. 仓库结构（规划）
 

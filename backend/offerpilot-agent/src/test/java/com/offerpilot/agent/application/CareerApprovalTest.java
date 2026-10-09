@@ -62,7 +62,7 @@ class CareerApprovalTest {
         var completed = new CompletableFuture<Void>();
         var events = new CopyOnWriteArrayList<AgentEvent>();
         var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
-        new Orchestrator(planner(registry), registry).run(AgentMode.AUTO, "设为目标", List.of(), ModelTier.CHEAP,
+        new Orchestrator(planner(registry), registry).run(AgentMode.AUTO, "设为目标", List.of(), ModelTier.FLASH,
                 "run", new AtomicInteger(), reply, u -> {}, "alice",
                 Map.of("careerAction", "setCareerTarget", "occupationId", "occ1", "owner", "attacker"))
                 .subscribe(e -> { events.add(e); if (e instanceof AgentEvent.ApprovalRequired a) required.complete(a); },
@@ -119,7 +119,7 @@ class CareerApprovalTest {
         when(occupations.rankHybrid(eq("IRC"), anyString(), eq(8))).thenReturn(List.of(new OccupationRecommender.Ranked("occ1", "工程师", "技术", "IRC", 6)));
         var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
         var runner = new Orchestrator(planner(registry), registry);
-        var events = runner.run(AgentMode.CAREER_DISCOVERY, "不知道适合什么", List.of(), ModelTier.CHEAP, "run",
+        var events = runner.run(AgentMode.CAREER_DISCOVERY, "不知道适合什么", List.of(), ModelTier.FLASH, "run",
                 new AtomicInteger(), reply, u -> {}, "alice", Map.of()).collectList().block(Duration.ofSeconds(3));
         assertThat(events).anySatisfy(e -> {
             assertThat(e).isInstanceOf(AgentEvent.UiCard.class);
@@ -128,7 +128,7 @@ class CareerApprovalTest {
         assertThat(events.toString()).doesNotContain("占位");
         when(profiles.get("alice")).thenReturn(new CareerProfileService.Profile("", "", "", List.of(), List.of(), null));
         reply.clear();
-        var guidance = runner.run(AgentMode.CAREER_DISCOVERY, "不知道适合什么", List.of(), ModelTier.CHEAP, "run2",
+        var guidance = runner.run(AgentMode.CAREER_DISCOVERY, "不知道适合什么", List.of(), ModelTier.FLASH, "run2",
                 new AtomicInteger(), reply, u -> {}, "alice", Map.of()).collectList().block(Duration.ofSeconds(3));
         assertThat(guidance).noneMatch(e -> e instanceof AgentEvent.UiCard);
         assertThat(reply.get(1).getText()).contains("勾选兴趣");

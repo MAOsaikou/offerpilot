@@ -28,10 +28,10 @@ class BoardIntentParserTest {
             String key = action.equals("createApplication") ? "jobId" : "applicationId";
             when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(
                     "{\"action\":\"" + action + "\",\"status\":\"INTERVIEW\",\"note\":\"周五面试\"}"))))));
-            var result = parser.prepare(step, "把所选投递改成面试中", List.of(), ModelTier.CHEAP, u -> {}, Map.of(key, "selected1")).block();
+            var result = parser.prepare(step, "把所选投递改成面试中", List.of(), ModelTier.FLASH, u -> {}, Map.of(key, "selected1")).block();
             assertThat(result.inputs()).containsEntry("action", action).containsEntry(key, "selected1")
                     .containsEntry("status", "INTERVIEW").containsEntry("note", "周五面试");
-            assertThat(parser.prepare(step, "改成面试中", List.of(), ModelTier.CHEAP, u -> {}, Map.of()).block().inputs())
+            assertThat(parser.prepare(step, "改成面试中", List.of(), ModelTier.FLASH, u -> {}, Map.of()).block().inputs())
                     .containsEntry("action", "clarify");
         }
     }

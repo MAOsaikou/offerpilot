@@ -1,3 +1,4 @@
+import { normalizeModelTier, type ModelTier } from '@/shared/types/model-tier'
 import { computed, onScopeDispose, ref } from 'vue'
 import { conversationsApi } from '@/shared/api/conversations'
 import { cancelAgentRun } from '@/shared/api/agent'
@@ -193,7 +194,7 @@ export function useConversationChat() {
   async function send(
     content: string,
     mode: AgentMode,
-    modelTier: 'FLASH' | 'CHEAP' | 'PRO',
+    modelTier: ModelTier,
     created: (id: string) => void,
     context?: Record<string, unknown>,
   ) {
@@ -233,7 +234,7 @@ export function useConversationChat() {
         conversationId: id,
         content,
         mode,
-        options: { modelTier, ...(context ? { context } : {}) },
+        options: { modelTier: normalizeModelTier(modelTier), ...(context ? { context } : {}) },
       })
       if (version === epoch && activeRun.value?.error) error.value = activeRun.value.error.message
     } catch (e) {

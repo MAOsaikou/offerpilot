@@ -16,6 +16,7 @@ const saving = ref(false)
 const error = ref('')
 const saved = ref(false)
 const models = computed(() => settings.value?.models ?? [])
+const textModels = computed(() => models.value.filter((model) => model.id !== 'VISION_ALT'))
 const textModel = computed(() => models.value.find((model) => model.id === textTier.value))
 const visionModel = computed(() => models.value.find((model) => model.id === visionTier.value))
 const valid = computed(
@@ -85,7 +86,7 @@ onMounted(load)
           <select v-model="textTier" data-testid="text-model">
             <option v-if="!textModel" :value="textTier" disabled>原模型已移除，请重新选择</option>
             <option
-              v-for="model in models"
+              v-for="model in textModels"
               :key="model.id"
               :value="model.id"
               :disabled="!model.configured"

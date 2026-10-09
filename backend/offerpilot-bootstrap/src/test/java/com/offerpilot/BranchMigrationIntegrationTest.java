@@ -18,7 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** 只操作一次性数据库，验证 V1–V17 和历史对齐，不接触开发数据。 */
+/** 只操作一次性数据库，验证 V1–V18 和历史对齐，不接触开发数据。 */
 @Testcontainers
 class BranchMigrationIntegrationTest {
     @Container
@@ -61,13 +61,39 @@ class BranchMigrationIntegrationTest {
         migrations(url, "12", false).migrate();
         migrations(url, "latest", false).migrate();
         assertThat(migrations(url, "latest", false).validateWithResult().validationSuccessful).isTrue();
-        assertThat(jdbc(url).queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(17);
+        assertThat(jdbc(url).queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(18);
         assertThat(jdbc(url).queryForList("SELECT version FROM flyway_schema_history WHERE success", String.class))
-                .contains("15", "16", "17");
+                .contains("15", "16", "17", "18");
         assertThat(jdbc(url).queryForObject("SELECT status FROM users WHERE id='usr_test_staff001'", String.class)).isEqualTo("DISABLED");
         String fresh = newDatabase();
         migrations(fresh, "latest", false).migrate();
         assertThat(migrations(fresh, "latest", false).validateWithResult().validationSuccessful).isTrue();
+    }
+
+    @Test void foldsPersistedCheapPreferencesJobsAndReportsWithoutChangingEvidence() {
+        String url = newDatabase();
+        migrations(url, "17", false).migrate();
+        var jdbc = jdbc(url);
+        jdbc.update("INSERT INTO users(id,email,password_hash,nickname) VALUES ('tier-owner','tier-migration@example.test','fixture-only','Tier migration')");
+        jdbc.update("INSERT INTO user_preferences(user_id,default_model_tier) VALUES ('tier-owner','CHEAP')");
+        jdbc.update("INSERT INTO resume_model_preferences(user_id,text_tier,vision_tier) VALUES ('tier-owner','CHEAP','cheap')");
+        jdbc.update("INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256) VALUES ('tier-file','tier-owner','RESUME','test','tier.txt','tier.txt','text/plain',10,'fixture')");
+        jdbc.update("INSERT INTO resumes(id,user_id,title,source_file_id,parse_status,text_model_tier,vision_model_tier) VALUES ('tier-resume','tier-owner','Keep title','tier-file','QUEUED','CHEAP','CHEAP')");
+        jdbc.update("INSERT INTO resume_versions(id,resume_id,user_id,version_no,source,structured,plain_text) VALUES ('tier-version','tier-resume','tier-owner',1,'UPLOAD','{}','Keep text')");
+        jdbc.update("INSERT INTO resume_diagnoses(id,user_id,resume_id,version_id,request_id,status,model_tier,report) VALUES ('tier-diag','tier-owner','tier-resume','tier-version','tier-request','SUCCEEDED','CHEAP','{\"modelTier\":\"CHEAP\",\"model\":\"old-model\"}')");
+        jdbc.update("INSERT INTO resume_optimizations(id,user_id,resume_id,version_id,request_id,status,model_tier,job_description) VALUES ('tier-opt','tier-owner','tier-resume','tier-version','tier-opt-request','FAILED','CHEAP','Keep JD')");
+        migrations(url, "latest", false).migrate();
+        for (String query : java.util.List.of(
+                "SELECT default_model_tier FROM user_preferences WHERE user_id='tier-owner'",
+                "SELECT text_tier FROM resume_model_preferences WHERE user_id='tier-owner'",
+                "SELECT vision_tier FROM resume_model_preferences WHERE user_id='tier-owner'",
+                "SELECT text_model_tier FROM resumes WHERE id='tier-resume'",
+                "SELECT vision_model_tier FROM resumes WHERE id='tier-resume'",
+                "SELECT model_tier FROM resume_diagnoses WHERE id='tier-diag'",
+                "SELECT model_tier FROM resume_optimizations WHERE id='tier-opt'"))
+            assertThat(jdbc.queryForObject(query, String.class)).isEqualTo("FLASH");
+        assertThat(jdbc.queryForObject("SELECT report->>'model' FROM resume_diagnoses WHERE id='tier-diag'", String.class)).isEqualTo("old-model");
+        assertThat(jdbc.queryForObject("SELECT job_description FROM resume_optimizations WHERE id='tier-opt'", String.class)).isEqualTo("Keep JD");
     }
 
     @ParameterizedTest
@@ -94,9 +120,9 @@ class BranchMigrationIntegrationTest {
         align(url); // 可重复运行，不覆盖原历史备份。
         migrations(url, "latest", true).migrate();
         assertThat(migrations(url, "latest", false).validateWithResult().validationSuccessful).isTrue();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(17);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(18);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success", String.class))
-                .contains("15", "16", "17");
+                .contains("15", "16", "17", "18");
         assertThat(jdbc.queryForObject("SELECT nickname FROM users WHERE id='legacy-owner'", String.class)).isEqualTo("Preserve me");
         assertThat(jdbc.queryForObject("SELECT source FROM resume_versions WHERE id='legacy-v'", String.class)).isEqualTo("OPTIMIZED");
         assertThat(jdbc.queryForObject("SELECT current_version_id FROM resumes WHERE id='legacy-resume'", String.class)).isEqualTo("legacy-v");
