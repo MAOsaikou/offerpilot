@@ -34,8 +34,12 @@ services:
       retries: 10
 
   minio:
-    # quay.io/minio/minio 匿名拉取返回 401；Docker Hub 的 minio/minio 与 dl.min.io 二进制也不可用。
-    # S3 API 仍在容器 9000。S3Mock 不校验访问密钥；后端继续用 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD 签名。
+    # 警告：仅供本地开发 / 演示（demo / local only），禁止用于共享或生产部署。
+    # S3Mock 不校验 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD；后端签名不代表服务端认证。
+    # 必须保留 127.0.0.1:9000:9000，禁止将无认证的 9000 端口暴露到公网。
+    # 生产替换见 docs/09-部署与运维.md §2.1 与 docker-compose.storage-auth.example.yml。
+    # 演示使用 S3Mock 的历史原因：quay.io/minio/minio 匿名拉取返回 401；
+    # 当时 Docker Hub 的 minio/minio 与 dl.min.io 二进制也不可用。容器内 S3 API 仍为 9000。
     image: adobe/s3mock:5.2.0@sha256:7a37f0d796e81a28b970c892dcae532797014616b3312b467af8f0274ebf0c26
     user: "0:0"
     restart: always

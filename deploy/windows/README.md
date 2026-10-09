@@ -12,6 +12,8 @@
 - 旧 7 个脚本逐个移到 `deploy/windows/legacy/`，转发到统一入口对应动作，没有删除。旧根目录快捷方式请改为指向 `OfferPilot.cmd`。
 - 命令行也可使用 `OfferPilot.cmd -Action start-backend`、`-Action stop-frontend` 等动作；`-DryRun` 只显示执行步骤，不启动、停止或构建服务。
 
+菜单中的 MinIO 服务实际运行 S3Mock，仅供本地开发 / 演示且不校验访问密钥；共享或生产部署须按 [部署文档 §2.1](../../docs/09-部署与运维.md#21-对象存储演示用-s3mock-与生产替换) 换用有认证的 S3 兼容存储。
+
 后端构建在 `backend/target/preview-builds/<唯一标识>/backend/` 的独立源码副本执行 Maven Wrapper `package`（包含测试），不运行 `clean`、不删除已有文件，也不因 JAR 锁停止 Java。副本包含模块 POM、源码、Wrapper 和迁移测试夹具，不复制本机环境凭据。构建失败保留原后端；成功后核对受管进程并停止，确认退出后从新副本的 JAR 启动。启动仍以原项目目录为工作目录，读取原 `backend/.env.local`。构建副本和失败日志保留，脚本不自动清理。
 
 进程记录仍位于 `D:\OfferPilot\backend-preview.json`，新增项目根目录和 JAR 路径；停止须同时匹配 PID、启动时间、Java 可执行路径、项目根目录和实际 `-jar` 参数。旧记录只接受当前项目原始 target 中的精确 JAR 路径。其他项目副本、无法验证的进程及已有的非受管 8081 服务均保留，不按名称片段查找或强停 Java。停止失败会阻止新版启动。
