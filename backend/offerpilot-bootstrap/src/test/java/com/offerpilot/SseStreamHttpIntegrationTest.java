@@ -54,7 +54,7 @@ class SseStreamHttpIntegrationTest {
     @ImportAutoConfiguration({ServletWebServerFactoryAutoConfiguration.class,
             org.springframework.boot.autoconfigure.web.servlet.DispatcherServletAutoConfiguration.class, WebMvcAutoConfiguration.class})
     @Import({AgentController.class, ResumeDiagnosisController.class, ResumeOptimizationController.class,
-            JacksonConfig.class, GlobalExceptionHandler.class})
+            JacksonConfig.class, GlobalExceptionHandler.class, com.offerpilot.common.web.SseStreams.class})
     static class Application {}
 
     @MockBean ChatService chats;
@@ -91,15 +91,31 @@ class SseStreamHttpIntegrationTest {
                 .delayElement(Duration.ofMillis(12)));
         when(optimizations.execute(any())).thenReturn(Mono.<com.fasterxml.jackson.databind.JsonNode>just(new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode())
                 .delayElement(Duration.ofMillis(12)));
+        assertStreamsComplete(true);
+        assertThat(output.getAll()).doesNotContain("NullPointerException", "Unhandled exception", "onErrorDropped");
+    }
+
+    @Test void immediatePublishersAreSafeBeforeEmitterInitialization(CapturedOutput output) throws Exception {
+        when(chats.chat(any(), any())).thenReturn(Flux.just(started(), completed()));
+        var report = Mono.<com.fasterxml.jackson.databind.JsonNode>just(new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode());
+        when(diagnoses.execute(any())).thenReturn(report);
+        when(optimizations.execute(any())).thenReturn(report);
+        assertStreamsComplete(false);
+        assertThat(output.getAll()).doesNotContain("NullPointerException", "Unhandled exception", "onErrorDropped");
+    }
+
+    private void assertStreamsComplete(boolean expectHeartbeat) throws Exception {
         var pending = new ArrayList<java.util.concurrent.CompletableFuture<HttpResponse<String>>>();
         for (int i = 0; i < 96; i++) pending.add(client.sendAsync(request(PATHS.get(i % 3)), HttpResponse.BodyHandlers.ofString()));
+        java.util.concurrent.CompletableFuture.allOf(pending.toArray(java.util.concurrent.CompletableFuture[]::new))
+                .get(30, TimeUnit.SECONDS);
         for (var future : pending) {
             var response = future.get(30, TimeUnit.SECONDS);
             assertThat(response.statusCode()).isEqualTo(200);
             assertThat(response.body()).contains("event:run.started", "event:run.completed").endsWith("\n\n");
             assertThat(response.body().substring(response.body().lastIndexOf("event:run.completed"))).doesNotContain(":ping");
         }
-        assertThat(output.getAll()).doesNotContain("NullPointerException", "Unhandled exception", "onErrorDropped");
+        if (expectHeartbeat) assertThat(pending).anySatisfy(future -> assertThat(future.join().body()).contains(":ping"));
     }
 
     @Test void midStreamFailureIsAnErrorEventAndNormalEof(CapturedOutput output) throws Exception {
@@ -118,16 +134,29 @@ class SseStreamHttpIntegrationTest {
         assertThat(output.getAll()).doesNotContain("NullPointerException", "Unhandled exception", "onErrorDropped");
     }
 
-    @Test void clientDisconnectDisposesTheActiveModelSubscription() throws Exception {
-        var cancelled = new CountDownLatch(1);
-        when(chats.chat(any(), any())).thenReturn(Flux.just(started()).concatWith(
-                Flux.interval(Duration.ofMillis(5)).map(tick -> (AgentEvent)new AgentEvent.TextDelta(
-                        "text.delta", tick.intValue() + 2, "run_test", Instant.now(), null, "x".repeat(8192))))
-                .doOnCancel(cancelled::countDown));
-        var response = client.send(request(PATHS.get(0)), HttpResponse.BodyHandlers.ofInputStream());
-        assertThat(response.statusCode()).isEqualTo(200);
-        try (var body = response.body()) { assertThat(body.read()).isNotEqualTo(-1); }
-        assertThat(cancelled.await(5, TimeUnit.SECONDS)).as("disconnect must cancel model publisher").isTrue();
+    @Test void clientDisconnectDisposesTheActiveModelSubscription(CapturedOutput output) throws Exception {
+        for (String path : PATHS) {
+            var cancelled = new CountDownLatch(1);
+            var subscribed = new CountDownLatch(1);
+            when(chats.chat(any(), any())).thenReturn(Flux.just(started()).concatWith(
+                    Flux.interval(Duration.ofMillis(5)).map(tick -> (AgentEvent)new AgentEvent.TextDelta(
+                            "text.delta", tick.intValue() + 2, "run_test", Instant.now(), null, "x".repeat(8192))))
+                    .doOnSubscribe(ignored -> subscribed.countDown()).doOnCancel(cancelled::countDown));
+            var report = Mono.<com.fasterxml.jackson.databind.JsonNode>never()
+                    .doOnSubscribe(ignored -> subscribed.countDown()).doOnCancel(cancelled::countDown);
+            when(diagnoses.execute(any())).thenReturn(report);
+            when(optimizations.execute(any())).thenReturn(report);
+            var response = client.send(request(path), HttpResponse.BodyHandlers.ofInputStream());
+            assertThat(response.statusCode()).isEqualTo(200);
+            try (var body = response.body()) {
+                assertThat(body.read()).isNotEqualTo(-1);
+                assertThat(subscribed.await(5, TimeUnit.SECONDS)).isTrue();
+            }
+            assertThat(cancelled.await(5, TimeUnit.SECONDS)).as(path + " disconnect must cancel publisher").isTrue();
+        }
+        // Allow the container's error dispatch to finish after upstream cancellation.
+        Thread.sleep(100);
+        assertThat(output.getAll()).doesNotContain("NullPointerException", "Unhandled exception", "onErrorDropped");
     }
 
     private HttpRequest request(String path) {

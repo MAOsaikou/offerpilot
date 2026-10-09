@@ -6,6 +6,9 @@ import com.offerpilot.auth.application.PasswordLoginService;
 import com.offerpilot.llm.ModelTier;
 import com.offerpilot.mcp.JobsMcpClient;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -40,10 +43,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Paid opt-in, at most 30 chat rounds total; each loop is a fresh three-turn conversation. */
 @Tag("eval")
+@ExtendWith(OutputCaptureExtension.class)
 @EnabledIfEnvironmentVariable(named = "OFFERPILOT_RUN_LIVE_SMOKE", matches = "true")
 @EnabledIfEnvironmentVariable(named = "DEEPSEEK_API_KEY", matches = ".*\\S.*")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "spring.ai.openai.api-key=sk-not-configured", "spring.ai.model.embedding=none",
+        "spring.ai.openai.api-key=sk-not-configured", "spring.ai.model.embedding=openai",
         "offerpilot.security.jwt-secret=sse-live-isolated-signing-key-not-for-production-0123456789abcdef0123456789abcdef",
         "offerpilot.demo.enabled=true", "offerpilot.demo.email=sse-demo@example.test",
         "offerpilot.demo.password=fictional-sse-demo-password", "offerpilot.demo.reset-cron=-",
@@ -79,7 +83,7 @@ class DeepSeekSseLiveEvaluationTest {
     @LocalServerPort int port;
 
     @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
-    void threeTurnInterviewLoops(ModelTier tier) throws Exception {
+    void threeTurnInterviewLoops(ModelTier tier, CapturedOutput output) throws Exception {
         String token = accounts.login(identities).accessToken();
         String session = jdbc.queryForObject("SELECT id FROM interview_sessions WHERE user_id=? AND completed=true LIMIT 1",
                 String.class, accounts.requireAccount());
@@ -129,5 +133,6 @@ class DeepSeekSseLiveEvaluationTest {
         assertThat(passedLoops).as(tier + " clean three-turn conversations").isEqualTo(5);
         assertThat(clean).isEqualTo(15);
         assertThat(errors + eof).isZero();
+        assertThat(output.getAll()).doesNotContain("NullPointerException", "Unhandled exception", "onErrorDropped");
     }
 }
