@@ -441,7 +441,7 @@ class ChatHttpIntegrationTest {
         assertThat(messages.get(1).status()).isEqualTo("COMPLETED");
         assertThat(messages.get(1).parts()).hasSize(1);
         assertThat(messages.get(1).parts().get(0).path("type").asText()).isEqualTo("text");
-        assertThat(requestBody.get()).contains("未执行真实业务操作");
+        assertThat(requestBody.get()).contains("指导摘要", "探索页勾选兴趣").doesNotContain("未执行真实业务操作");
         java.nio.file.Files.writeString(java.nio.file.Path.of("target", "orchestrator-sse.json"), json.writeValueAsString(events));
     }
 
