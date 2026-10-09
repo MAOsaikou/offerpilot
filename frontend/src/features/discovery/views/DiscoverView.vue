@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
-import { useWorkspace } from '@/shared/stores/workspace'
-const workspace = useWorkspace()
-const message = ref('')
+import { useCareerProfile } from '@/shared/composables/useCareerProfile'
+const { profile, loading, ready, error, pending, saveProfile, retry } = useCareerProfile()
 const interests = ['技术研发', '产品策划', '数据分析', '创意设计', '沟通协作', '研究探索']
 const directions = [
   {
@@ -31,9 +29,8 @@ const directions = [
   },
 ]
 function choose(role: string) {
-  workspace.state.target = role
-  message.value = '已设为目标：' + role
-  workspace.notify(message.value)
+  profile.value.target = role
+  saveProfile(0)
 }
 </script>
 <template>
@@ -50,29 +47,41 @@ function choose(role: string) {
         >开始对话探索</RouterLink
       ></PageHeading
     >
-    <p v-if="message" role="status" class="success-banner">{{ message }}</p>
+    <p v-if="loading" role="status" class="subtle">正在读取职业档案…</p>
+    <div v-if="error" role="alert" class="error-banner">
+      {{ error }} <button class="btn text" @click="retry">重试</button>
+    </div>
+    <p v-if="ready" role="status" class="subtle">
+      {{ pending ? '职业档案尚未保存' : '职业档案已与服务器同步' }}
+    </p>
     <div class="split-content">
       <section class="panel form-stack">
         <h2>我的职业画像</h2>
         <div class="form-grid">
           <label class="field"
             >目标方向<input
-              v-model="workspace.state.target"
+              v-model="profile.target"
+              :disabled="!ready"
               maxlength="100"
-              placeholder="例如：前端开发工程师" /></label
+              placeholder="例如：前端开发工程师"
+              @input="saveProfile()" /></label
           ><label class="field"
             >意向城市<input
-              v-model="workspace.state.city"
+              v-model="profile.city"
+              :disabled="!ready"
               maxlength="100"
               placeholder="例如：杭州、上海"
+              @input="saveProfile()"
           /></label>
         </div>
         <label class="field"
           >已有技能<textarea
-            v-model="workspace.state.skills"
+            v-model="profile.skills"
+            :disabled="!ready"
             rows="3"
             maxlength="3000"
             placeholder="你会什么？有哪些实践经历？"
+            @input="saveProfile()"
           />
         </label>
         <div class="field">
@@ -82,13 +91,19 @@ function choose(role: string) {
               v-for="interest in interests"
               :key="interest"
               class="chip"
-              :class="{ selected: workspace.state.interests.includes(interest) }"
-              ><input v-model="workspace.state.interests" type="checkbox" :value="interest" />
+              :class="{ selected: profile.interests.includes(interest) }"
+              ><input
+                v-model="profile.interests"
+                type="checkbox"
+                :value="interest"
+                :disabled="!ready"
+                @change="saveProfile(0)"
+              />
               {{ interest }}</label
             >
           </div>
         </div>
-        <p class="subtle">你的选择会自动保存在本机，并显示在工作台与成长路线中。</p>
+        <p class="subtle">你的选择会自动保存到当前用户的职业档案，并显示在成长路线中。</p>
       </section>
       <aside class="panel form-stack">
         <span class="stat-icon"><AppIcon name="discover" /></span>
@@ -110,8 +125,8 @@ function choose(role: string) {
         <h2>{{ direction.title }}</h2>
         <p class="subtle">{{ direction.desc }}</p>
         <p class="tag">{{ direction.skills }}</p>
-        <button class="btn" @click="choose(direction.role)">
-          {{ workspace.state.target === direction.role ? '当前目标' : '设为探索目标' }}
+        <button class="btn" :disabled="!ready" @click="choose(direction.role)">
+          {{ profile.target === direction.role ? '当前目标' : '设为探索目标' }}
         </button>
       </article>
     </div>

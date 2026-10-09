@@ -2,10 +2,11 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
-import { useWorkspace, learningTasks } from '@/shared/stores/workspace'
-const workspace = useWorkspace()
+import { learningTasks } from '@/shared/stores/workspace'
+import { useCareerProfile } from '@/shared/composables/useCareerProfile'
+const { profile, loading, ready, error, pending, saveTasks, retry } = useCareerProfile()
 const progress = computed(() =>
-  Math.round((workspace.state.tasks.length / learningTasks.length) * 100),
+  Math.round((profile.value.completedTasks.length / learningTasks.length) * 100),
 )
 </script>
 <template>
@@ -13,6 +14,13 @@ const progress = computed(() =>
     <PageHeading title="把远方，拆成每一步" description="明确目标，持续练习，留下可回顾的成长轨迹。"
       ><RouterLink to="/discover" class="btn">调整职业目标</RouterLink></PageHeading
     >
+    <p v-if="loading" role="status" class="subtle">正在读取职业档案…</p>
+    <div v-if="error" role="alert" class="error-banner">
+      {{ error }} <button class="btn text" @click="retry">重试</button>
+    </div>
+    <p v-if="ready" role="status" class="subtle">
+      {{ pending ? '成长行动尚未保存' : '成长行动已与服务器同步' }}
+    </p>
     <div class="split-content">
       <section class="panel">
         <div class="section-heading">
@@ -23,22 +31,26 @@ const progress = computed(() =>
           v-for="(task, index) in learningTasks"
           :key="task"
           class="check-row"
-          :class="{ done: workspace.state.tasks.includes(task) }"
+          :class="{ done: profile.completedTasks.includes(task) }"
           ><span class="step-number">{{ String(index + 1).padStart(2, '0') }}</span
-          ><input v-model="workspace.state.tasks" type="checkbox" :value="task" /><span>{{
-            task
-          }}</span></label
+          ><input
+            v-model="profile.completedTasks"
+            type="checkbox"
+            :value="task"
+            :disabled="!ready"
+            @change="saveTasks"
+          /><span>{{ task }}</span></label
         >
       </section>
       <aside class="form-stack">
         <section class="panel form-stack">
           <p class="eyebrow">目标方向</p>
-          <h2>{{ workspace.state.target || '先确定一个目标' }}</h2>
-          <p class="subtle">意向城市：{{ workspace.state.city || '不限' }}</p>
+          <h2>{{ profile.target || '先确定一个目标' }}</h2>
+          <p class="subtle">意向城市：{{ profile.city || '不限' }}</p>
           <div class="large-number">{{ progress }}<span style="font-size: 1rem"> %</span></div>
           <div class="focus-progress"><div :style="{ width: progress + '%' }" /></div>
           <p class="subtle">
-            {{ workspace.state.tasks.length }} / {{ learningTasks.length }} 个行动已完成
+            {{ profile.completedTasks.length }} / {{ learningTasks.length }} 个行动已完成
           </p>
           <RouterLink
             :to="{
@@ -47,9 +59,9 @@ const progress = computed(() =>
                 mode: 'COACH',
                 prompt:
                   '我的目标是' +
-                  workspace.state.target +
+                  profile.target +
                   '，已有技能：' +
-                  workspace.state.skills +
+                  profile.skills +
                   '。请帮我制定可执行的学习计划。',
               },
             }"
