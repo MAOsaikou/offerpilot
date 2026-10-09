@@ -27,11 +27,9 @@ class CareerRecommendForChatTest {
 
     @Test void recommendationUsesOwnerProfileExistingRankingAndDeterministicReasons() {
         when(profiles.get("alice")).thenReturn(profile(List.of("技术研发", "数据分析", "未知")));
-        when(occupations.rankHybrid(eq("IRC"), anyString(), eq(8))).thenReturn(List.of(
-                new OccupationRecommender.Ranked("occ1", "工程师", "技术", "IRC", 6),
-                new OccupationRecommender.Ranked("occ2", "分析师", "数据", "ICR", 4.5)));
-        when(occupations.citations("occ1")).thenReturn(List.of(
-                new OccupationRecommender.Citation("occ1", "工程师", "开发 Java 服务")));
+        when(occupations.rankHybrid(eq(new RiasecProfile(1, 2, 0, 0, 0, 1)), anyString(), eq(8))).thenReturn(List.of(
+                new OccupationRecommender.Ranked("occ1", "工程师", "技术", "IRC", 1, List.of(new OccupationRecommender.Citation("occ1", "工程师", "开发 Java 服务")), "文本匹配"),
+                new OccupationRecommender.Ranked("occ2", "分析师", "数据", "ICR", .75)));
         var result = careers.recommend("alice");
         assertThat(result.guidance()).isNull();
         assertThat(result.payload().hollandCode()).isEqualTo("IRC");
@@ -41,11 +39,11 @@ class CareerRecommendForChatTest {
         assertThat(result.payload().recommendations().get(0).similarity()).isEqualTo(1);
         assertThat(result.payload().recommendations().get(0).citations()).singleElement()
                 .satisfies(citation -> assertThat(citation.excerpt()).isEqualTo("开发 Java 服务"));
-        verify(occupations).rankHybrid("IRC", "技术研发 数据分析 Java 旧目标", 8);
+        verify(occupations).rankHybrid(new RiasecProfile(1, 2, 0, 0, 0, 1), "技术研发 数据分析 Java 旧目标", 8);
         assertThat(result.payload().recommendations().get(1).similarity()).isEqualTo(.75);
         assertThat(result.payload().recommendations()).allSatisfy(item -> {
-            assertThat(item.reasons()).hasSize(2);
-            assertThat(item.reasons().get(0)).contains("兴趣码 IRC", "职业码", "共同包含");
+            assertThat(item.reasons()).hasSize(3);
+            assertThat(item.reasons().get(0)).contains("六维 RIASEC", "r=", "Pearson");
         });
         assertThat(careers.recommend("alice")).isEqualTo(result);
         verify(profiles, never()).saveTarget(anyString(), anyString());

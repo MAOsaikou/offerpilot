@@ -124,7 +124,7 @@ class DemoJourneyIntegrationTest {
         }
         assertThat(json.readTree(request("GET", "/applications", token, null).body()).path("data").size()).isEqualTo(6);
         assertThat(json.readTree(request("GET", "/interviews", token, null).body()).path("data").size()).isEqualTo(2);
-        assertThat(json.readTree(request("GET", "/career/profile", token, null).body()).path("data").path("target").asText()).isEqualTo("后端开发");
+        assertThat(json.readTree(request("GET", "/career/profile", token, null).body()).path("data").path("target").asText()).isEqualTo("后端开发工程师");
     }
 
     @Test void resetsAreIdempotentAndPreserveOtherUsersAndRealJobs() throws Exception {
@@ -198,7 +198,7 @@ class DemoJourneyIntegrationTest {
         assertThat(second.join().applicationCount()).isEqualTo(6);
         jdbc.update("UPDATE career_profiles SET target='试用修改' WHERE user_id=?", owner());
         bootstrap.scheduledReset();
-        assertThat(jdbc.queryForObject("SELECT target FROM career_profiles WHERE user_id=?", String.class, owner())).isEqualTo("后端开发");
+        assertThat(jdbc.queryForObject("SELECT target FROM career_profiles WHERE user_id=?", String.class, owner())).isEqualTo("后端开发工程师");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM resumes WHERE user_id=?", Integer.class, owner())).isEqualTo(2);
     }
 
@@ -235,5 +235,16 @@ class DemoJourneyIntegrationTest {
         if (body != null) builder.header("Content-Type", "application/json");
         return HttpClient.newHttpClient().send(builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody()
                 : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(), HttpResponse.BodyHandlers.ofString());
+    }
+    @Test void demoTargetResolvesToCareerLibraryAndProducesCoachCards() {
+        var target = jdbc.queryForObject("SELECT target FROM career_profiles WHERE user_id=?", String.class, owner());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM occupations WHERE name=?", Integer.class, target)).isEqualTo(1);
+        var coach = new com.offerpilot.career.application.DefaultCoachPlanForChat(
+            new com.offerpilot.career.application.CareerProfileService(jdbc, json),
+            new com.offerpilot.career.application.OccupationRecommender(jdbc), jdbc, json,
+            new org.springframework.beans.factory.support.StaticListableBeanFactory().getBeanProvider(com.offerpilot.career.application.CoachResumeSkills.class));
+        var result = coach.plan(owner(), null, null, "demo-target-test");
+        assertThat(result.skillGap()).isNotNull();
+        assertThat(result.roadmap().weeks()).hasSize(4);
     }
 }

@@ -51,6 +51,9 @@ class OccupationRecommendationTest {
         assertThat(jdbc.queryForObject(
                 "SELECT count(*) FROM occupations WHERE holland_code IS NULL OR description = ''", Integer.class))
                 .as("每条都应有兴趣码与描述").isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM occupations WHERE holland_scores IS NULL "
+                + "OR NOT (holland_scores ?& ARRAY['R','I','A','S','E','C'])", Integer.class))
+                .as("全部种子均保留六维兴趣评分").isZero();
     }
 
     @Test
@@ -84,5 +87,47 @@ class OccupationRecommendationTest {
         assertThatThrownBy(() -> recommender.rank("XYZ", 5)).hasMessageContaining("RIASEC");
         assertThatThrownBy(() -> recommender.rank("", 5)).hasMessageContaining("RIASEC");
         assertThatThrownBy(() -> recommender.rank("AIS", 0)).hasMessageContaining("limit");
+    }
+    @Test void demoProfileAndLexicalRetrievalRankActualLibraryWithoutVectors() throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var demo = json.readTree(getClass().getResourceAsStream("/demo/journey.json")).path("career");
+        var interests = json.convertValue(demo.path("interests"), new com.fasterxml.jackson.core.type.TypeReference<java.util.List<String>>() {});
+        var derived = com.offerpilot.career.application.InterestHollandMapping.derive(interests);
+        assertThat(derived.code()).isEqualTo("RIS");
+        assertThat(derived.profile()).isEqualTo(new com.offerpilot.career.application.RiasecProfile(2, 2, 0, 1, 1, 0));
+        String query = String.join(" ", derived.interestsUsed()) + " " + demo.path("skills").asText() + " "
+                + demo.path("target").asText() + " 我喜欢研究技术和动手搭建系统";
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM occupations WHERE embedding IS NOT NULL", Integer.class)).isZero();
+        var top = recommender.rankHybrid(derived.profile(), query, 8);
+        System.out.println("DEMO_PROFILE_LEXICAL_TOP5 " + top.stream().limit(5).map(OccupationRecommender.Ranked::name).toList());
+        assertThat(top.stream().limit(5).map(OccupationRecommender.Ranked::id)).containsAnyOf("occ_backend_dev", "occ_fullstack_dev", "occ_devops_cloud", "occ_test_dev", "occ_security_engineer");
+        assertThat(top.stream().limit(3).map(OccupationRecommender.Ranked::name)).doesNotContain("假肢与矫形器师", "兽医", "口腔修复科医生");
+        assertThat(top).anySatisfy(item -> {
+            assertThat(item.retrievalReason()).contains("职业库文本中匹配");
+            assertThat(item.citations()).hasSize(1);
+        });
+        assertThat(recommender.rankHybrid(derived.profile(), query, 8)).isEqualTo(top);
+        System.out.println("DEMO_LETTER_BASELINE_TOP5 " + recommender.rank("RIS", 5).stream().map(OccupationRecommender.Ranked::name).toList());
+    }
+
+    @Test void chineseFreeTextWorksWithoutSegmenterOrVectors() {
+        String query = "我想做后端开发";
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM occupations WHERE tsv @@ plainto_tsquery('simple', ?)",
+                Integer.class, query)).isZero();
+        assertThat(recommender.retrieve(query, 20)).extracting(com.offerpilot.knowledge.application.OccupationHybridRetriever.Hit::id)
+                .contains("occ_backend_dev");
+    }
+
+    @Test @org.springframework.transaction.annotation.Transactional
+    void closeFullProfileBeatsLiteralLetterCodeMatch() {
+        jdbc.update("DELETE FROM occupations");
+        jdbc.update("""
+                INSERT INTO occupations(id,name,family,description,holland_code,holland_scores,source) VALUES
+                ('close','接近画像','fixture','fixture','IRS','{"R":4,"I":5,"A":0,"S":2,"E":2,"C":0}','test'),
+                ('letters','仅字母相同','fixture','fixture','RIS','{"R":7,"I":6,"A":5,"S":5.1,"E":0,"C":0}','test')
+                """);
+        var profile = new com.offerpilot.career.application.RiasecProfile(2, 2, 0, 1, 1, 0);
+        assertThat(recommender.rank(profile, 2)).extracting(OccupationRecommender.Ranked::id).containsExactly("close", "letters");
+        assertThat(recommender.rank("RIS", 2).get(0).id()).isEqualTo("letters");
     }
 }

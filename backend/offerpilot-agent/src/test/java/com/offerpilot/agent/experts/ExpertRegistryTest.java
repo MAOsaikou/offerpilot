@@ -30,7 +30,7 @@ class ExpertRegistryTest {
         var careers = org.mockito.Mockito.mock(com.offerpilot.career.application.CareerRecommendForChat.class);
         var payload = new com.offerpilot.career.application.CareerRecommendForChat.Payload("IRC", List.of("技术研发", "数据分析"),
                 List.of(new com.offerpilot.career.application.CareerRecommendForChat.Recommendation("occ1", "工程师", "技术", "IRC", 1, List.of("共同兴趣 IRC"))));
-        org.mockito.Mockito.when(careers.recommend("owner")).thenReturn(new com.offerpilot.career.application.CareerRecommendForChat.Result(null, payload));
+        org.mockito.Mockito.when(careers.recommend(org.mockito.ArgumentMatchers.eq("owner"), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(new com.offerpilot.career.application.CareerRecommendForChat.Result(null, payload));
         var beans = new org.springframework.beans.factory.support.StaticListableBeanFactory();
         beans.addBean("careers", careers);
         var registry = new ExpertRegistry(beans.getBeanProvider(com.offerpilot.job.application.JobMatchForChat.class),
@@ -46,7 +46,7 @@ class ExpertRegistryTest {
                 .contains("暂不可用").doesNotContain("占位专家");
         var write = new PlanStep("s1", "目标设置", ExpertType.CAREER_DISCOVERY, Map.of("action", "setCareerTarget", "occupationId", "occ1"), List.of());
         assertThatThrownBy(() -> registry.execute("owner", Map.of(), "run", write, Map.of()).block()).hasMessageContaining("必须先审批");
-        org.mockito.Mockito.verify(careers).recommend("owner");
+        org.mockito.Mockito.verify(careers).recommend("owner", null);
         org.mockito.Mockito.verifyNoMoreInteractions(careers);
     }
     @Test void resumeDiagnosisUsesOnlyExplicitContextAndReadsExistingReport() throws Exception {

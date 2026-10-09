@@ -60,4 +60,11 @@ class HollandMatcherTest {
         // 六维完全相同的时候按 RIASEC 固定顺序取前三位，保证结果可复现
         assertThat(HollandMatcher.topThree(0.5, 0.5, 0.5, 0.5, 0.5, 0.5)).isEqualTo("RIA");
     }
+    @Test void profileCorrelationRetainsStrengthsAndIgnoresRatingScaleAndBaseline() {
+        var user = new RiasecProfile(2, 2, 0, 1, 1, 0);
+        assertThat(user.correlation(new RiasecProfile(7, 7, 3, 5, 5, 3))).isEqualTo(1);
+        assertThat(user.correlation(new RiasecProfile(0, 0, 2, 1, 1, 2))).isEqualTo(-1);
+        assertThat(user.correlation(new RiasecProfile(1, 1, 1, 1, 1, 1))).isZero();
+        assertThat(new RiasecProfile(0, 0, 0, 0, 0, 0).correlation(user)).isZero();
+    }
 }

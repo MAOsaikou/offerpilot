@@ -49,17 +49,41 @@ class OccupationIndexTest {
         assertThatThrownBy(() -> OccupationEmbeddings.literal(new float[1024])).isInstanceOf(IllegalArgumentException.class);
     }
 
-    @Test void absentVectorsBlankQueriesAndRetrievalFailurePreserveRuleOrderAndScore() {
+    @Test void lexicalOnlyAndVectorRetrievalBothFuseWithoutChangingSimilarity() {
+        var profile = new com.offerpilot.career.application.RiasecProfile(1, 2, 0, 0, 0, 1);
         var retrieval = mock(OccupationHybridRetriever.class);
-        var rules = List.of(new OccupationRecommender.Ranked("a", "工程师", "技术", "IRC", 6),
-                new OccupationRecommender.Ranked("b", "分析师", "数据", "ICR", 4.5));
-        var recommender = spy(new OccupationRecommender(mock(JdbcTemplate.class), retrieval));
-        doReturn(rules).when(recommender).rank("IRC", 4);
+        var rules = List.of(new OccupationRecommender.Ranked("a", "工程师", "技术", "IRC", 1),
+                new OccupationRecommender.Ranked("b", "分析师", "数据", "ICR", .75));
+        var jdbc = mock(JdbcTemplate.class);
+        when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<OccupationRecommender.Ranked>>any()))
+                .thenReturn(rules);
+        var recommender = new OccupationRecommender(jdbc, retrieval);
+        for (boolean vectors : List.of(false, true)) {
+            when(retrieval.search("Java", 4)).thenReturn(new OccupationHybridRetriever.Retrieval(List.of(
+                    new OccupationHybridRetriever.Hit("b", "分析师", "数据", "ICR", .01, "SQL", true, vectors)), vectors));
+            var fused = recommender.rankHybrid(profile, "Java", 2);
+            assertThat(fused).extracting(OccupationRecommender.Ranked::id).containsExactly("b", "a");
+            assertThat(fused.get(0).similarity()).isEqualTo(.75);
+            assertThat(fused.get(0).citations()).singleElement().satisfies(c -> assertThat(c.excerpt()).isEqualTo("SQL"));
+            assertThat(fused.get(1).citations()).isEmpty();
+        }
         when(retrieval.search("Java", 4)).thenReturn(new OccupationHybridRetriever.Retrieval(List.of(
-                new OccupationHybridRetriever.Hit("b", "分析师", "数据", "ICR", .01, "SQL")), false));
-        assertThat(recommender.rankHybrid("IRC", "Java", 2)).isEqualTo(rules);
-        assertThat(recommender.rankHybrid("IRC", " ", 2)).isEqualTo(rules);
+                new OccupationHybridRetriever.Hit("b", "分析师", "数据", "ICR", .01, "SQL", false, true)), true));
+        assertThat(recommender.rankHybrid(profile, "Java", 2).get(0).retrievalReason())
+                .contains("向量检索").doesNotContain("文本中匹配");
+        assertThat(recommender.rankHybrid(profile, " ", 2)).isEqualTo(rules);
+        when(retrieval.search("Java", 4)).thenReturn(new OccupationHybridRetriever.Retrieval(List.of(), false));
+        assertThat(recommender.rankHybrid(profile, "Java", 2)).isEqualTo(rules);
         when(retrieval.search("Java", 4)).thenThrow(new IllegalStateException("database unavailable"));
-        assertThat(recommender.rankHybrid("IRC", "Java", 2)).isEqualTo(rules);
+        assertThat(recommender.rankHybrid(profile, "Java", 2)).isEqualTo(rules);
+    }
+
+    @Test void hanBigramsAndLatinTokensAreGenericAndQuerySyntaxCannotEscape() {
+        assertThat(OccupationDocument.lexicalTokens("后端开发 Java，研究技术"))
+                .containsExactly("后端", "端开", "开发", "java", "研究", "究技", "技术");
+        assertThat(OccupationDocument.lexicalTokens("Java工程师SQL"))
+                .containsExactly("java", "工程", "程师", "sql");
+        assertThat(OccupationDocument.lexicalQuery("Java') | ! SQL:*")).isEqualTo("'java' | 'sql'");
+        assertThat(OccupationDocument.lexicalQuery("😀！？")).isEmpty();
     }
 }

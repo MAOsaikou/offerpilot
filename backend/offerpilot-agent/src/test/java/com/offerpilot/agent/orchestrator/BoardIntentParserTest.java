@@ -35,4 +35,34 @@ class BoardIntentParserTest {
                     .containsEntry("action", "clarify");
         }
     }
+    @Test void explicitSelectedJobAddRoutesWithoutPlanningModelForEitherTier() throws Exception {
+        var gateway = mock(ModelGateway.class);
+        var parser = new JobIntentParser(gateway, new ObjectMapper(), new ByteArrayResource("board".getBytes()));
+        var experts = new com.offerpilot.agent.experts.ExpertRegistry();
+        var planner = new IntentPlanner(gateway, new ObjectMapper(), experts, new ByteArrayResource("planner".getBytes()), parser, null);
+        for (var tier : List.of(ModelTier.FLASH, ModelTier.PRO)) {
+            for (var mode : List.of(com.offerpilot.agent.domain.AgentMode.AUTO, com.offerpilot.agent.domain.AgentMode.JOB)) {
+                var decision = planner.prepare(mode, "把这个岗位加入求职看板", List.of(), tier, u -> {}, Map.of("jobId", "selected-job")).block();
+                assertThat(decision.needsClarification()).isFalse();
+                assertThat(decision.plan().steps().get(0).inputs()).containsExactlyInAnyOrderEntriesOf(Map.of("action", "createApplication", "jobId", "selected-job"));
+                assertThat(planner.prepare(mode, "把这个岗位加入求职看板", List.of(), tier, u -> {}, Map.of()).block().needsClarification()).isTrue();
+            }
+        }
+        verifyNoInteractions(gateway);
+        assertThat(BoardIntent.matches("不要把这个岗位加入求职看板", Map.of("jobId", "selected-job"))).isFalse();
+        assertThat(BoardIntent.matches("把这个岗位加入求职看板后搜索Java", Map.of("jobId", "selected-job"))).isFalse();
+        assertThat(BoardIntent.matches("帮我匹配这个岗位", Map.of("jobId", "selected-job"))).isFalse();
+    }
+    @Test void jobActionPromptKnowsSelectionsWithoutReceivingRawResourceIds() throws Exception {
+        var gateway = mock(ModelGateway.class);
+        var parser = new JobIntentParser(gateway, new ObjectMapper(), new ByteArrayResource("job actions".getBytes()));
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenAnswer(invocation -> {
+            List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(1);
+            assertThat(messages.get(messages.size()-1).getText()).contains("jobId=true", "resumeId=true", "resumeVersionId=true").doesNotContain("private-selected-id");
+            return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage("{\"action\":\"match\"}")))));
+        });
+        var context = Map.<String, Object>of("jobId", "private-selected-id", "resumeId", "resume1", "resumeVersionId", "version1");
+        var step = new PlanStep("s1", "岗位", ExpertType.JOB, Map.of(), List.of());
+        assertThat(parser.prepare(step, "匹配这个岗位与我的简历", List.of(), ModelTier.PRO, u -> {}, context).block().inputs()).containsEntry("action", "match");
+    }
 }

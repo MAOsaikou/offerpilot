@@ -11,6 +11,8 @@ export interface RealJob {
   updatedAt: string
   url: string
   source: string
+  originalSource?: string
+  fallbackReason?: string
   snapshotDate?: string
   skills?: string[]
   description: string

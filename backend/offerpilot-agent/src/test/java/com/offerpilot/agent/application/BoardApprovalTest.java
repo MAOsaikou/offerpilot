@@ -138,4 +138,20 @@ class BoardApprovalTest {
     ApplicationService.Application saved(String status) {
         return new ApplicationService.Application("app1", "job1", status, "周五面试", "", "", new ObjectMapper().createObjectNode().put("company", "示例公司").put("title", "Java"));
     }
+    @Test void selectedJobNaturalAddIsDeterministicAndStillWaitsForApproval() throws Exception {
+        for (var tier : List.of(ModelTier.FLASH, ModelTier.PRO)) {
+            var gateway = mock(com.offerpilot.llm.ModelGateway.class);
+            var registry = registry(boards);
+            var parser = new com.offerpilot.agent.orchestrator.JobIntentParser(gateway, new ObjectMapper(), new org.springframework.core.io.ByteArrayResource("board".getBytes()));
+            var planner = new IntentPlanner(gateway, new ObjectMapper(), registry, new org.springframework.core.io.ByteArrayResource("planner".getBytes()), parser, null);
+            var events = new CopyOnWriteArrayList<AgentEvent>();
+            var subscription = new Orchestrator(planner, registry).run(AgentMode.AUTO, "把这个岗位加入求职看板", List.of(), tier,
+                "board-" + tier, new AtomicInteger(), new ArrayList<>(), u -> {}, "alice", Map.of("jobId", "job1")).subscribe(events::add);
+            assertThat(events).anySatisfy(e -> assertThat(e).isInstanceOf(AgentEvent.ApprovalRequired.class));
+            assertThat(events).filteredOn(AgentEvent.ToolCall.class::isInstance).singleElement().satisfies(e ->
+                assertThat(((AgentEvent.ToolCall)e).access()).isEqualTo(AgentEvent.ToolAccess.WRITE));
+            verifyNoInteractions(gateway, applications);
+            subscription.dispose();
+        }
+    }
 }

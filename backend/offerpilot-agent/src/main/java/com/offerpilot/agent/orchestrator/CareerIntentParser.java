@@ -23,7 +23,7 @@ public final class CareerIntentParser {
                 args.put("action", "setCareerTarget");
                 args.put("name", match.group(1).strip());
             } else if (com.offerpilot.agent.application.CareerWriteTools.recognizes(step)) return clarify(step);
-            else args.put("action", "recommend");
+            else { args.put("action", "recommend"); args.put("request", content); }
         }
         return new PlanStep(step.id(), "setCareerTarget".equals(args.get("action")) ? "确认目标职业" : "职业兴趣推荐",
                 step.agent(), args, step.dependsOn());

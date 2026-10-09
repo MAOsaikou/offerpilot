@@ -14,6 +14,7 @@ public interface CareerRecommendForChat {
     record Payload(String hollandCode, List<String> interestsUsed, List<Recommendation> recommendations) {}
     record Result(String guidance, Payload payload) {}
     Result recommend(String owner);
+    default Result recommend(String owner, String request) { return recommend(owner); }
     OccupationRecommender.Ranked occupation(String occupationId, String name);
     CareerProfileService.Profile adopt(String owner, String occupationId, String name);
 }

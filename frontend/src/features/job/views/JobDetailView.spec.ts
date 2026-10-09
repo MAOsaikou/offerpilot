@@ -1,22 +1,13 @@
 import { createApp, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
-import { expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
+import { getJob, refreshJob } from '@/shared/api/jobs'
+import type { RealJob } from '@/shared/types/jobs'
 import JobDetailView from './JobDetailView.vue'
 
 vi.mock('@/shared/api/jobs', () => ({
-  getJob: vi.fn().mockResolvedValue({
-    id: 'job_snapshot',
-    title: 'Java后端开发工程师',
-    company: '字节跳动',
-    locations: '北京',
-    source: 'LOCAL_SNAPSHOT',
-    snapshotDate: '2026-10-10',
-    url: '',
-    description: '示例职责',
-    requirement: '示例要求',
-    detailFetchedAt: null,
-  }),
+  getJob: vi.fn(),
   refreshJob: vi.fn(),
   matchJob: vi.fn(),
   listJobMatches: vi.fn().mockResolvedValue([]),
@@ -35,8 +26,29 @@ vi.mock('@/shared/composables/useBoard', () => ({
     query: { isPending: ref(false), isError: ref(false) },
   }),
 }))
-
-it('snapshot detail keeps the date tooltip and does not offer a live refresh or apply link', async () => {
+const snapshot: RealJob = {
+  id: 'job_snapshot',
+  site: 'bytedance',
+  externalId: 'snapshot-1',
+  nature: 'intern',
+  title: 'Java后端开发工程师',
+  company: '字节跳动',
+  locations: '北京',
+  category: '软件',
+  department: '',
+  updatedAt: '',
+  source: 'LOCAL_SNAPSHOT',
+  snapshotDate: '2026-10-10',
+  url: '',
+  description: '示例职责',
+  requirement: '示例要求',
+  detailFetchedAt: null,
+}
+beforeEach(() => {
+  vi.mocked(getJob).mockReset().mockResolvedValue(snapshot)
+  vi.mocked(refreshJob).mockReset()
+})
+async function mountDetail() {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/jobs/:id', component: JobDetailView }],
@@ -46,15 +58,91 @@ it('snapshot detail keeps the date tooltip and does not offer a live refresh or 
   const root = document.createElement('div')
   const app = createApp(JobDetailView).use(router).use(VueQueryPlugin, { queryClient })
   app.mount(root)
+  await vi.waitFor(() => expect(root.textContent).toContain('示例职责'))
+  return {
+    root,
+    router,
+    queryClient,
+    cleanup: () => {
+      app.unmount()
+      queryClient.clear()
+    },
+  }
+}
+it('snapshot detail keeps the date tooltip and does not offer a live refresh or apply link', async () => {
+  const { root, cleanup } = await mountDetail()
   try {
-    await vi.waitFor(() => expect(root.textContent).toContain('离线快照'))
+    expect(root.textContent).toContain('离线快照')
     expect(root.querySelector('[title*="快照日期"]')?.getAttribute('title')).toContain('2026-10-10')
     expect(root.textContent).toContain('非实时数据')
     expect(root.textContent).not.toContain('更新完整详情')
     expect(root.textContent).not.toContain('尚未获取完整详情')
     expect(root.querySelector('a[target="_blank"]')).toBeNull()
   } finally {
-    app.unmount()
-    queryClient.clear()
+    cleanup()
+  }
+})
+it('refresh retains the marked stored copy and explains its availability without another GET', async () => {
+  const live = { ...snapshot, source: 'company-career-site', snapshotDate: undefined }
+  vi.mocked(getJob).mockResolvedValue(live)
+  vi.mocked(refreshJob).mockResolvedValue({
+    ...live,
+    source: 'STORED_SNAPSHOT',
+    originalSource: live.source,
+    fallbackReason: 'LIVE_DETAIL_UNAVAILABLE',
+  })
+  const { root, cleanup } = await mountDetail()
+  try {
+    Array.from(root.querySelectorAll('button'))
+      .find((b) => b.textContent?.includes('更新完整详情'))!
+      .click()
+    await vi.waitFor(() => expect(root.textContent).toContain('已存岗位 · 实时更新不可用'))
+    expect(root.textContent).toContain('仍可进行匹配')
+    expect(root.textContent).not.toContain('本次查询')
+    expect(getJob).toHaveBeenCalledTimes(1)
+    expect(refreshJob).toHaveBeenCalledWith('job_snapshot')
+  } finally {
+    cleanup()
+  }
+})
+it('demo jobs are identified as fictional and never offer a live refresh', async () => {
+  vi.mocked(getJob).mockResolvedValue({ ...snapshot, site: 'demo', source: 'demo' })
+  const { root, cleanup } = await mountDetail()
+  try {
+    expect(root.textContent).toContain('演示岗位')
+    expect(root.textContent).toContain('不接受实际投递')
+    expect(root.textContent).not.toContain('企业官网 ·')
+    expect(root.textContent).not.toContain('更新完整详情')
+  } finally {
+    cleanup()
+  }
+})
+it('a late refresh cannot replace a different selected job', async () => {
+  vi.mocked(getJob).mockImplementation(async (id) => ({
+    ...snapshot,
+    id,
+    source: 'company-career-site',
+    title: id === 'job_next' ? '下一个岗位' : snapshot.title,
+  }))
+  let resolve!: (value: RealJob) => void
+  vi.mocked(refreshJob).mockImplementation(
+    () =>
+      new Promise((r) => {
+        resolve = r
+      }),
+  )
+  const { root, router, queryClient, cleanup } = await mountDetail()
+  try {
+    Array.from(root.querySelectorAll('button'))
+      .find((b) => b.textContent?.includes('更新完整详情'))!
+      .click()
+    await router.push('/jobs/job_next')
+    await vi.waitFor(() => expect(root.textContent).toContain('下一个岗位'))
+    resolve({ ...snapshot, source: 'STORED_SNAPSHOT' })
+    await Promise.resolve()
+    expect(root.textContent).toContain('下一个岗位')
+    expect(queryClient.getQueryData<RealJob>(['job', 'job_next'])?.id).toBe('job_next')
+  } finally {
+    cleanup()
   }
 })

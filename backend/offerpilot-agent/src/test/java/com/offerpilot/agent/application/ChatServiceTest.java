@@ -213,4 +213,43 @@ class ChatServiceTest {
         verify(gateway).stream(eq(ModelTier.FLASH), argThat(messages -> messages.stream()
                 .anyMatch(message -> message.getText().contains("结果已作为卡片展示") && !message.getText().contains("未执行真实业务操作"))));
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
+    void narratorReceivesStructuredCoachInterviewAndCareerCards(ModelTier tier) throws Exception {
+        var cards = List.of(
+            new com.offerpilot.agent.experts.ExpertResult.Card("gap", "skill_gap", java.util.Map.of(
+                "target", java.util.Map.of("title", "后端开发"), "skills", List.of(java.util.Map.of("name", "并发测试", "required", 3, "current", 1, "gap", 2, "learnFirst", true)),
+                "privateField", "SHOULD_NOT_REACH_NARRATOR")),
+            new com.offerpilot.agent.experts.ExpertResult.Card("roadmap", "roadmap", java.util.Map.of("weeks", List.of(
+                java.util.Map.of("index", 1, "theme", "梳理基础", "items", List.of(java.util.Map.of("title", "核对并发场景"))),
+                java.util.Map.of("index", 2, "theme", "项目实战", "items", List.of()),
+                java.util.Map.of("index", 3, "theme", "测试验证", "items", List.of()),
+                java.util.Map.of("index", 4, "theme", "表达复盘", "items", List.of())))),
+            new com.offerpilot.agent.experts.ExpertResult.Card("interview", "interview_report", java.util.Map.of(
+                "overall", 60, "dimensions", java.util.Map.of("professional", 65, "expression", 60, "logic", 55, "jobFit", 60),
+                "weaknesses", List.of("R 结果证据不足"), "advice", List.of("补充可核对结果"),
+                "turns", List.of(java.util.Map.of("question", "介绍项目", "score", 60, "star", java.util.Map.of("situation", true, "task", true, "action", true, "result", false), "feedback", "补充R结果")))),
+            new com.offerpilot.agent.experts.ExpertResult.Card("career", "career_recommendation", java.util.Map.of(
+                "hollandCode", "RIS", "recommendations", List.of(java.util.Map.of("name", "后端开发工程师", "family", "软件研发", "hollandCode", "ICR", "similarity", .42, "reasons", List.of("已保存Java技能与软件方向"))))));
+        var planner = mock(IntentPlanner.class);
+        var experts = mock(ExpertRegistry.class);
+        var step = new com.offerpilot.agent.domain.PlanStep("s1", "成长", com.offerpilot.agent.domain.ExpertType.COACH, java.util.Map.of(), List.of());
+        when(planner.prepare(any(), anyString(), anyList(), any(), any(), anyMap())).thenReturn(reactor.core.publisher.Mono.just(
+            new IntentPlanner.Decision("single", step.agent(), 1.0, false, null, new com.offerpilot.agent.domain.Plan("成长", List.of(step)))));
+        when(experts.execute(anyString(), anyMap(), anyString(), any(), anyMap())).thenReturn(reactor.core.publisher.Mono.just(
+            com.offerpilot.agent.experts.ExpertResult.cards("已生成卡片，请查看", cards)));
+        var local = new ChatService(gateway, conversations, new ByteArrayResource("narrator".getBytes()), new Orchestrator(planner, experts), new ObjectMapper());
+        when(gateway.stream(eq(tier), anyList())).thenAnswer(invocation -> {
+            List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(1);
+            String prompt = messages.stream().map(org.springframework.ai.chat.messages.Message::getText).collect(java.util.stream.Collectors.joining("\n"));
+            assertThat(prompt).contains("topGaps", "并发测试", "\"required\":3", "\"current\":1", "\"gap\":2",
+                "梳理基础", "项目实战", "测试验证", "表达复盘", "核对并发场景", "professional", "\"result\":false", "补充R结果", "后端开发工程师", "已保存Java技能与软件方向")
+                .doesNotContain("SHOULD_NOT_REACH_NARRATOR");
+            return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage("按卡片整理准备建议")))));
+        });
+        var result = local.chat("owner", new ChatRequest(null, "分析", null, AgentMode.COACH, new ChatRequest.Options(tier.name(), null, null)))
+            .collectList().block(Duration.ofSeconds(5));
+        assertThat(result).last().isInstanceOf(AgentEvent.RunCompleted.class);
+        verify(gateway).stream(eq(tier), anyList());
+    }
 }
