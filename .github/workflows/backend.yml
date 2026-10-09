@@ -1,9 +1,15 @@
 name: backend
 on:
   push:
+    branches: [main, dev]
     paths: ["backend/**", ".github/workflows/backend.yml"]
   pull_request:
     paths: ["backend/**", ".github/workflows/backend.yml"]
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
