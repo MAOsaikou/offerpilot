@@ -182,6 +182,9 @@ export interface InterviewerStatePayload {
   state: InterviewerState
   questionIndex: number
   total: number
+  sessionId?: string
+  question?: string
+  note?: string
 }
 
 export interface InterviewTurnScorePayload {
@@ -193,13 +196,14 @@ export interface InterviewTurnScorePayload {
 
 export interface InterviewReportPayload {
   id: string
+  note?: string
   overall: number
   dimensions: {
     professional: number
     expression: number
     logic: number
     jobFit: number
-    presence: number
+    presence?: number
   }
   turns: Array<{
     question: string

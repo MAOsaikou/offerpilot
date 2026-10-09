@@ -80,7 +80,7 @@ class ChatHttpIntegrationTest {
                             : body.contains("非法状态") ? "{\"action\":\"updateApplicationStatus\",\"status\":\"WRITTEN_TEST\"}"
                             : "{\"action\":\"updateApplicationStatus\",\"status\":\"INTERVIEW\"}") : body.contains("改写刷新验收") ? (planning
                             ? "{\"kind\":\"single\",\"expert\":\"RESUME\",\"confidence\":1}"
-                            : "{\"action\":\"optimize\",\"question\":\"\"}") : body.contains("职业推荐验收")
+                            : "{\"action\":\"optimize\",\"question\":\"\"}") : body.contains("面试评分验收") ? "{\"kind\":\"single\",\"expert\":\"INTERVIEWER\",\"confidence\":1}" : body.contains("职业推荐验收")
                             ? "{\"kind\":\"single\",\"expert\":\"CAREER_DISCOVERY\",\"confidence\":1}"
                             : body.contains("复合验收") ? """
                             {"kind":"composite","confidence":1,"plan":{"goal":"岗位与简历准备","steps":[
@@ -520,6 +520,99 @@ class ChatHttpIntegrationTest {
     }
 
     @Autowired com.offerpilot.board.application.ApplicationService applications;
+
+    @Test
+    void interviewChatWritesRequireApprovalForStartAnswerAndCompletion() throws Exception {
+        String token = identities.create().accessToken(), stranger = identities.create().accessToken();
+        String id = null;
+        for (String action : java.util.List.of("startInterview", "continueInterview", "completeInterview")) {
+            for (String decision : java.util.List.of("REJECT", "APPROVE")) {
+                var context = new java.util.LinkedHashMap<String, Object>();
+                context.put("interviewAction", action); context.put("role", "Java工程师");
+                if (id != null) context.put("interviewSessionId", id);
+                String before = request("GET", "/interviews", token, null).body();
+                var beforeData = json.readTree(before).path("data");
+                var beforeSession = id == null ? null : json.readTree(request("GET", "/interviews/" + id, token, null).body()).path("data");
+                var body = json.writeValueAsString(java.util.Map.of("content", action.equals("continueInterview") ? "我负责接口" : "模拟面试",
+                        "options", java.util.Map.of("context", context)));
+                var chat = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/chat"))
+                        .header("Authorization", "Bearer " + token).header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+                var response = HttpClient.newHttpClient().send(chat, HttpResponse.BodyHandlers.ofInputStream());
+                assertThat(response.statusCode()).isEqualTo(200);
+                try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                    com.fasterxml.jackson.databind.JsonNode approval = null;
+                    for (String line; (line = reader.readLine()) != null;) {
+                        if (!line.startsWith("data:")) continue;
+                        var event = json.readTree(line.substring(5).trim());
+                        if (event.path("type").asText().equals("approval.required")) { approval = event; break; }
+                    }
+                    assertThat(approval).isNotNull();
+                    assertThat(approval.path("name").asText()).isEqualTo(action);
+                    assertThat(approval.path("editableFields")).isEmpty();
+                    assertThat(json.readTree(request("GET", "/interviews", token, null).body()).path("data")).isEqualTo(beforeData);
+                    String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
+                    assertThat(request("POST", path, stranger, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
+                    assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\",\"args\":{\"sessionId\":\"iv_other\"}}").statusCode()).isEqualTo(400);
+                    assertThat(request("POST", path, token, json.writeValueAsString(java.util.Map.of("decision", decision))).statusCode()).isEqualTo(200);
+                    var rest = reader.lines().filter(line -> line.startsWith("data:")).map(line -> {
+                        try { return json.readTree(line.substring(5).trim()); }
+                        catch (IOException ex) { throw new IllegalStateException(ex); }
+                    }).toList();
+                    var result = rest.stream().filter(e -> e.path("type").asText().equals("tool.result")).findFirst().orElseThrow();
+                    assertThat(result.path("ok").asBoolean()).isEqualTo(decision.equals("APPROVE"));
+                    assertThat(rest.toString()).doesNotContain("占位专家");
+                    if (decision.equals("REJECT")) {
+                        assertThat(json.readTree(request("GET", "/interviews", token, null).body()).path("data")).isEqualTo(beforeData);
+                        if (id != null) assertThat(json.readTree(request("GET", "/interviews/" + id, token, null).body()).path("data")).isEqualTo(beforeSession);
+                    } else {
+                        var card = rest.stream().filter(e -> e.path("type").asText().equals("ui.card")).findFirst().orElseThrow();
+                        if (action.equals("startInterview")) {
+                            assertThat(card.path("cardType").asText()).isEqualTo("interviewer_state");
+                            id = card.path("payload").path("sessionId").asText();
+                        } else if (action.equals("continueInterview")) {
+                            assertThat(card.path("payload").path("state").asText()).isEqualTo("ASKING");
+                            assertThat(json.readTree(request("GET", "/interviews/" + id, token, null).body()).path("data").path("answers").get(0).path("answerText").asText()).isEqualTo("我负责接口");
+                        } else {
+                            assertThat(card.path("cardType").asText()).isEqualTo("interview_report");
+                            assertThat(json.readTree(request("GET", "/interviews/" + id, token, null).body()).path("data").path("completed").asBoolean()).isTrue();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    void interviewScoreUsesExistingSessionAndPersistsTextRubricWithoutMutatingOrLeakingOwner() throws Exception {
+        String token = identities.create().accessToken(), stranger = identities.create().accessToken();
+        var created = request("POST", "/interviews", token, "{\"role\":\"Java工程师\",\"kind\":\"项目与经历\"}");
+        String id = json.readTree(created.body()).path("data").path("id").asText();
+        assertThat(request("PUT", "/interviews/" + id + "/answers/0", token,
+                "{\"answerText\":\"当时在项目中，我负责Java工程师接口目标。我实现缓存，最终降低延迟20%。\"}").statusCode()).isEqualTo(200);
+        var response = request("POST", "/agent/chat", token, "{\"content\":\"面试评分验收：评价刚才的面试\"}");
+        assertThat(response.statusCode()).isEqualTo(200);
+        var events = response.body().lines().filter(line -> line.startsWith("data:")).map(line -> {
+            try { return json.readTree(line.substring(5).trim()); }
+            catch (IOException ex) { throw new IllegalStateException(ex); }
+        }).toList();
+        var card = events.stream().filter(e -> e.path("type").asText().equals("ui.card")).findFirst().orElseThrow();
+        assertThat(card.path("cardType").asText()).isEqualTo("interview_report");
+        var payload = card.path("payload");
+        assertThat(payload.path("id").asText()).isEqualTo(id);
+        assertThat(payload.path("dimensions").has("professional")).isTrue();
+        assertThat(payload.path("dimensions").has("presence")).isFalse();
+        assertThat(payload.path("turns")).hasSize(5);
+        assertThat(payload.path("turns").get(0).path("star").path("action").asBoolean()).isTrue();
+        assertThat(response.body()).doesNotContain("占位专家", "placeholder.INTERVIEWER", "approval.required");
+        var saved = conversations.messages(owner(token), events.get(0).path("conversationId").asText(), null, 30).items().get(1);
+        assertThat(saved.parts().get(1).path("payload")).isEqualTo(payload);
+        assertThat(json.readTree(request("GET", "/interviews/" + id, token, null).body()).path("data").path("completed").asBoolean()).isFalse();
+        var other = request("POST", "/agent/chat", stranger, json.writeValueAsString(java.util.Map.of("content", "给我面试反馈", "options",
+                java.util.Map.of("context", java.util.Map.of("interviewAction", "scoreInterview", "interviewSessionId", id)))));
+        assertThat(other.body()).doesNotContain("interview_report", "当时在项目中");
+        assertThat(other.body()).contains("面试");
+    }
 
     @Test
     void careerChatRecommendationUsesSavedInterestsAndPersistsCardForRefresh() throws Exception {

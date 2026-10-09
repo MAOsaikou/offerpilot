@@ -12,6 +12,8 @@ import type { CardType } from '@/shared/types/cards'
 export type CardLoader = () => Promise<Component>
 
 export const cardRegistry: Partial<Record<CardType, CardLoader>> = {
+  interview_report: () => import('@/features/interview/components/InterviewReportCard.vue'),
+  interviewer_state: () => import('@/features/interview/components/InterviewerStateCard.vue'),
   career_recommendation: () =>
     import('@/features/discovery/components/CareerRecommendationCard.vue'),
   job_card: () => import('@/features/job/components/JobSearchCard.vue'),

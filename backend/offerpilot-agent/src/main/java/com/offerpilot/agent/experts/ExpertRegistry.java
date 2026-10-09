@@ -3,6 +3,8 @@ package com.offerpilot.agent.experts;
 import com.offerpilot.agent.application.ApprovalService;
 import com.offerpilot.agent.application.BoardWriteTools;
 import com.offerpilot.agent.application.CareerWriteTools;
+import com.offerpilot.agent.application.InterviewWriteTools;
+import com.offerpilot.interview.application.InterviewCoachForChat;
 import com.offerpilot.career.application.CareerRecommendForChat;
 import com.offerpilot.agent.domain.ExpertType;
 import com.offerpilot.agent.domain.PlanStep;
@@ -21,7 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 
-/** 已接入的职业推荐与目标审批、岗位搜索、匹配、审批看板写入、简历诊断与定向改写；其他专家仍明确返回占位结果。 */
+/** 已接入文字面试与规则评分、职业推荐与目标审批、岗位搜索、匹配、审批看板写入、简历诊断与定向改写；其他专家仍明确返回占位结果。 */
 @Component
 public class ExpertRegistry {
     private static final Map<ExpertType, String> LABELS = Map.of(
@@ -35,6 +37,8 @@ public class ExpertRegistry {
     private BoardWriteTools boards;
     private CareerRecommendForChat careers;
     private CareerWriteTools careerWrites;
+    private InterviewCoachForChat interviews;
+    private InterviewWriteTools interviewWrites;
 
     public ExpertRegistry() {
         this.matches = null;
@@ -72,7 +76,6 @@ public class ExpertRegistry {
         this.boards = boards;
     }
 
-    @Autowired
     public ExpertRegistry(ObjectProvider<JobMatchForChat> matches,
                           ObjectProvider<com.offerpilot.resume.application.ResumeDiagnosisForChat> diagnoses,
                           JobSearchForChat searches, ResumeOptimizationForChat optimizations, JobDescriptionForChat descriptions,
@@ -81,6 +84,28 @@ public class ExpertRegistry {
         this(matches, diagnoses, searches, optimizations, descriptions, boards);
         this.careers = careers.getIfAvailable();
         this.careerWrites = careerWrites.getIfAvailable();
+    }
+
+    @Autowired
+    public ExpertRegistry(ObjectProvider<JobMatchForChat> matches,
+                          ObjectProvider<com.offerpilot.resume.application.ResumeDiagnosisForChat> diagnoses,
+                          JobSearchForChat searches, ResumeOptimizationForChat optimizations, JobDescriptionForChat descriptions,
+                          BoardWriteTools boards, ObjectProvider<CareerRecommendForChat> careers,
+                          ObjectProvider<CareerWriteTools> careerWrites, ObjectProvider<InterviewCoachForChat> interviews,
+                          ObjectProvider<InterviewWriteTools> interviewWrites) {
+        this(matches, diagnoses, searches, optimizations, descriptions, boards, careers, careerWrites);
+        this.interviews = interviews.getIfAvailable();
+        this.interviewWrites = interviewWrites.getIfAvailable();
+    }
+
+    public boolean interviewing(PlanStep step) { return step.agent() == ExpertType.INTERVIEWER && interviews != null; }
+    public boolean writingInterview(PlanStep step) { return InterviewWriteTools.recognizes(step); }
+    public ApprovalService.Ticket requestInterview(String owner, String runId, PlanStep step) {
+        if (interviewWrites == null) throw new IllegalStateException("面试工具暂不可用");
+        return interviewWrites.request(owner, runId, step);
+    }
+    public Mono<ExpertResult> executeInterview(String owner, String runId, PlanStep step, ApprovalService.Decision decision) {
+        return interviewWrites.execute(owner, runId, step, decision);
     }
 
     public boolean recommending(PlanStep step) {
@@ -147,7 +172,18 @@ public class ExpertRegistry {
 
     public Mono<ExpertResult> execute(String owner, Map<String, Object> context, String runId, PlanStep step,
                                       Map<String, String> upstreamOutputs) {
-        if (writingBoard(step) || writingCareer(step)) return Mono.error(new IllegalStateException("写入必须先审批"));
+        if (writingBoard(step) || writingCareer(step) || writingInterview(step)) return Mono.error(new IllegalStateException("写入必须先审批"));
+        if (step.agent() == ExpertType.INTERVIEWER) {
+            if (interviews == null) return Mono.just(ExpertResult.text("文字面试服务暂不可用，请稍后重试。"));
+            if (!java.util.Set.of("scoreInterview", "generateReport").contains(String.valueOf(step.inputs().get("action"))))
+                return Mono.just(ExpertResult.text("请开始文字模拟面试，或请求面试评分卡。"));
+            return Mono.fromCallable(() -> {
+                String id = interviews.resolveSession(owner, (String) step.inputs().get("sessionId"), false);
+                var report = interviews.scoreSession(owner, id);
+                return ExpertResult.card("当前会话的文字规则评分（未修改完成状态）：" + report,
+                        requestId(runId, step.id()), "interview_report", report);
+            }).subscribeOn(Schedulers.boundedElastic());
+        }
         if (step.agent() == ExpertType.CAREER_DISCOVERY) {
             if (careers == null) return Mono.just(ExpertResult.text("职业推荐服务暂不可用，请稍后重试。未修改职业档案。"));
             return Mono.fromCallable(() -> {
@@ -219,7 +255,7 @@ public class ExpertRegistry {
         return trimmed;
     }
 
-    static String requestId(String runId, String stepId) {
+    public static String requestId(String runId, String stepId) {
         return UUID.nameUUIDFromBytes((runId + ":" + stepId).getBytes(StandardCharsets.UTF_8)).toString();
     }
 

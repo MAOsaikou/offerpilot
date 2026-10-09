@@ -4,6 +4,7 @@
     <parent><groupId>com.offerpilot</groupId><artifactId>offerpilot-backend</artifactId><version>0.1.0-SNAPSHOT</version></parent>
     <artifactId>offerpilot-agent</artifactId>
     <dependencies>
+        <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-interview</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-career</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-resume</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>com.offerpilot</groupId><artifactId>offerpilot-identity</artifactId><version>${project.version}</version></dependency>

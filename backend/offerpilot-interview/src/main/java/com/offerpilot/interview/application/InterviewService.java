@@ -20,7 +20,7 @@ public class InterviewService {
             "项目里遇到的最大技术或协作困难是什么？你如何处理？",
             "如果重新做这个项目，你会优先改进什么？为什么？",
             "你希望在未来一年掌握哪些能力？会如何安排学习？");
-    private static final Set<String> KINDS = Set.of("项目与经历", "表达与结构", "职业动机");
+    public static final Set<String> KINDS = Set.of("项目与经历", "表达与结构", "职业动机");
     private final JdbcTemplate jdbc;
 
     public InterviewService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
@@ -95,6 +95,12 @@ public class InterviewService {
                 AND EXISTS (SELECT 1 FROM interview_sessions WHERE id=? AND user_id=?)
                 """, answerText.strip(), id, index, id, owner);
         jdbc.update("UPDATE interview_sessions SET updated_at=now() WHERE id=? AND user_id=?", id, owner);
+        return get(owner, id);
+    }
+
+    @Transactional
+    public Session getForUpdate(String owner, String id) {
+        lock(owner, id);
         return get(owner, id);
     }
 
