@@ -16,6 +16,9 @@ services:
     # 先执行 docker pull "$STORAGE_AUTH_IMAGE" 验证；不得用 latest 或把 S3Mock 填回来。
     image: ${STORAGE_AUTH_IMAGE:-registry.invalid/replace-with-minio:pin-a-verified-digest}
     restart: always
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     entrypoint: ["minio"]
     command: ["server", "/data", "--address", ":9000", "--console-address", ":9001"]
     environment:
@@ -25,7 +28,7 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD for authenticated storage}
     # 保留服务名 minio，后端容器继续使用 http://minio:9000；控制台 9001 不发布到宿主机。
     # 保持回环绑定；远程浏览器的签名 URL 通过受控 HTTPS 入口访问，详见 §2.1。
-    ports: ["127.0.0.1:9000:9000"]
+    ports: ["127.0.0.1:${MINIO_HOST_PORT:-9000}:9000"]
     # S3Mock /data 格式不能直接作为 MinIO 数据卷；新卷不覆盖或删除原 minio_data。
     # 启动后预建 MINIO_BUCKET 或授予后端建桶权限；旧对象通过 S3 API 迁移，保持 bucket / object key。
     volumes: [minio_auth_data:/data]

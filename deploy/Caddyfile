@@ -1,6 +1,10 @@
 {$DOMAIN} {
     encode zstd gzip
 
+    handle /healthz {
+        respond "ok" 200
+    }
+
     @sse path /sse /api/v1/agent/chat /api/v1/agent/runs/* /api/v1/*/analyze /api/v1/*/optimize /api/v1/interviews/* /api/v1/discovery/recommendations /api/v1/career/*
     handle @sse {
         reverse_proxy backend:8081 {
@@ -46,4 +50,9 @@
         Referrer-Policy strict-origin-when-cross-origin
         Permissions-Policy "camera=(self), microphone=(self)"
     }
+}
+
+# Container-only readiness listener; port 8080 is not published to the host.
+http://:8080 {
+    respond /healthz "ok" 200
 }
