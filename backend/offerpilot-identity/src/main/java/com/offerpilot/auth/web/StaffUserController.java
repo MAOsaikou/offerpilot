@@ -6,6 +6,7 @@ import com.offerpilot.common.api.ApiResponse;
 import com.offerpilot.common.web.TraceIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import java.util.List;
@@ -42,7 +43,7 @@ public class StaffUserController {
     /** 启用/禁用用户端账号。 */
     @PatchMapping("/{id}/status")
     public ApiResponse<UserRow> setStatus(@PathVariable String id,
-            @RequestBody StatusRequest body,
+            @Valid @RequestBody StatusRequest body,
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             HttpServletRequest request, HttpServletResponse response) {
         response.setHeader("Cache-Control", "no-store");

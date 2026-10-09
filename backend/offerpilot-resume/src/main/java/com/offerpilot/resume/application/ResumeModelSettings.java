@@ -4,13 +4,17 @@ import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
 import com.offerpilot.llm.ModelGateway;
 import com.offerpilot.llm.ModelTier;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import java.util.List;
 
 @Service
 public class ResumeModelSettings {
-    public record Selection(String textTier, String visionTier) {}
+    public record Selection(
+            @NotBlank @Pattern(regexp = "FLASH|CHEAP|PRO|VISION_ALT") String textTier,
+            @NotBlank @Pattern(regexp = "FLASH|CHEAP|PRO|VISION_ALT") String visionTier) {}
     public record Settings(List<ModelGateway.ModelOption> models, Selection selection) {}
     private final JdbcTemplate jdbc;
     private final ModelGateway gateway;
