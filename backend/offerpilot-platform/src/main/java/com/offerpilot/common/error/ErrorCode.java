@@ -51,7 +51,8 @@ public enum ErrorCode {
     UNKNOWN(50000, HttpStatus.INTERNAL_SERVER_ERROR, "未知错误"),
     DATABASE_UNAVAILABLE(50001, HttpStatus.SERVICE_UNAVAILABLE, "数据库不可用"),
     STORAGE_UNAVAILABLE(50002, HttpStatus.SERVICE_UNAVAILABLE, "存储不可用"),
-    CACHE_UNAVAILABLE(50003, HttpStatus.SERVICE_UNAVAILABLE, "缓存不可用");
+    CACHE_UNAVAILABLE(50003, HttpStatus.SERVICE_UNAVAILABLE, "缓存不可用"),
+    RESUME_EXPORT_UNAVAILABLE(50004, HttpStatus.SERVICE_UNAVAILABLE, "PDF 导出不可用，请检查中文字体配置");
 
     private final int code;
     private final HttpStatus status;

@@ -3,10 +3,11 @@ import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ServerResumeEditor from './ServerResumeEditor.vue'
-import { getResume, listResumeVersions, saveResume } from '@/shared/api/resumes'
+import { exportResumePdf, getResume, listResumeVersions, saveResume } from '@/shared/api/resumes'
 import type { ServerResume } from '@/shared/types/resume'
 
 vi.mock('@/shared/api/resumes', () => ({
+  exportResumePdf: vi.fn(),
   getResume: vi.fn(),
   saveResume: vi.fn(),
   renameResume: vi.fn(),
@@ -131,4 +132,58 @@ it('版本记录正确区分改写采纳、手动编辑与上传解析', async (
   expect(rows[0]).toContain('改写采纳')
   expect(rows[1]).toContain('手动编辑')
   expect(rows[2]).toContain('上传解析')
+})
+
+it('PDF 导出使用保存版本，不提交未保存草稿，并显示下载状态', async () => {
+  await edit('未保存的修改')
+  let finish!: () => void
+  vi.mocked(exportResumePdf).mockReturnValue(
+    new Promise<void>((resolve) => {
+      finish = resolve
+    }),
+  )
+  button('导出 PDF').click()
+  await nextTick()
+  expect(button('导出中…').disabled).toBe(true)
+  expect(vi.mocked(exportResumePdf)).toHaveBeenCalledWith('rs1')
+  expect(saveResume).not.toHaveBeenCalled()
+  finish()
+  await vi.waitFor(() => expect(button('导出 PDF').disabled).toBe(false))
+  expect(root.querySelector<HTMLInputElement>('.resume-basics input')?.value).toBe('未保存的修改')
+})
+it('PDF 导出失败显示现有错误反馈，允许重试', async () => {
+  vi.mocked(exportResumePdf).mockRejectedValue(new Error('PDF 导出缺少可用中文字体'))
+  button('导出 PDF').click()
+  await vi.waitFor(() =>
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain('中文字体'),
+  )
+  expect(button('导出 PDF').disabled).toBe(false)
+})
+it('未就绪、没有当前版本和保存期间禁止 PDF 导出', async () => {
+  cache.setQueryData(['resume', 'rs1'], { ...fixture(), parseStatus: 'PARSING' })
+  await nextTick()
+  expect(button('导出 PDF').disabled).toBe(true)
+  cache.setQueryData(['resume', 'rs1'], {
+    ...fixture(),
+    currentVersion: null,
+    currentVersionId: null,
+  })
+  await nextTick()
+  expect(button('导出 PDF').disabled).toBe(true)
+  cache.setQueryData(['resume', 'rs1'], fixture())
+  await nextTick()
+  await edit('保存中的修改')
+  let finish!: (value: ServerResume) => void
+  vi.mocked(saveResume).mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve
+    }),
+  )
+  root
+    .querySelector('form')!
+    .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+  await nextTick()
+  expect(button('导出 PDF').disabled).toBe(true)
+  finish(fixture('v2'))
+  await vi.waitFor(() => expect(button('导出 PDF').disabled).toBe(false))
 })
