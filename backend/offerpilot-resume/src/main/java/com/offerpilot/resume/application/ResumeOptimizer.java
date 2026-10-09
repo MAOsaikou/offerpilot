@@ -61,7 +61,7 @@ public class ResumeOptimizer {
                         String text = all.toString().strip().replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "");
                         JsonNode report = json.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(text);
                         ResumeOptimizationValidator.validate(report, original, jd);
-                        return (ObjectNode) report;
+                        return ResumeOptimizationValueFilter.filter((ObjectNode) report);
                     } catch (Exception ex) { throw ResumeOptimizationValidator.invalid(); }
                 }).doOnSuccess(value -> { totalIn.addAndGet(in.get()); totalOut.addAndGet(out.get()); })
                   .doOnError(error -> { totalIn.addAndGet(in.get()); totalOut.addAndGet(out.get()); });

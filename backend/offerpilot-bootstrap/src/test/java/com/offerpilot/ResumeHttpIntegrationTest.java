@@ -324,6 +324,13 @@ class ResumeHttpIntegrationTest {
         {"summary":"突出已有后端贡献","patches":[{"id":"p1","op":"replace","path":"/summary","from":"负责后端开发","value":"参与后端服务开发","reason":"明确职责","jdEvidence":"后端服务开发","needsUserConfirmation":false}]}
         """;
     static final String OPTIMIZE_JD="熟悉Java；具备后端服务开发能力。";
+    String optimizationWithTrivialPatch() throws Exception {
+        var report=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(OPTIMIZE_REPORT);
+        report.withArray("patches").addObject().put("id","p2").put("op","replace")
+            .put("path","/projects/0/bullets/0").put("from","实现登录").put("value","实现登录 ")
+            .put("reason","调整措辞").put("jdEvidence","后端服务开发").put("needsUserConfirmation",false);
+        return report.toString();
+    }
     String optimizeBody(String requestId) {return JSON.createObjectNode().put("requestId",requestId).put("jobDescription",OPTIMIZE_JD).toString();}
     String chatJob(String description) {
         String id = "job_" + UUID.randomUUID().toString().replace("-", "");
@@ -344,7 +351,7 @@ class ResumeHttpIntegrationTest {
     }
     @Test void chatRewritePersistsReadOnlyCardAndDiscussionRestoresWithoutRegeneration() throws Exception {
         String token = identities.create().accessToken(), stranger = identities.create().accessToken();
-        var resume = patchFixture(token); String jobId = chatJob(OPTIMIZE_JD); output.set(OPTIMIZE_REPORT);
+        var resume = patchFixture(token); String jobId = chatJob(OPTIMIZE_JD); output.set(optimizationWithTrivialPatch());
         var selected = Map.of("jobId", jobId, "resumeId", resume.id(), "resumeVersionId", resume.currentVersionId());
         var response = request("POST", "/agent/chat", token, chatBody("AUTO", null, "针对岗位生成改写建议", selected));
         assertThat(response.statusCode()).isEqualTo(200);
@@ -356,6 +363,10 @@ class ResumeHttpIntegrationTest {
         String conversationId = stream.get(0).path("conversationId").asText(), reportId = card.path("cardId").asText();
         var report = optimizations.get(owner(token), reportId).path("report");
         assertThat(card.path("payload")).isEqualTo(report);
+        assertThat(report.path("patches").size()).isEqualTo(1);
+        assertThat(report.path("stats").path("replaced").asInt()).isEqualTo(1);
+        assertThat(report.path("filteredPatches").get(0).path("id").asText()).isEqualTo("p2");
+        assertThat(patches.get(owner(token), resume.id(), resume.currentVersionId(), report.path("batchId").asText()).patches().size()).isEqualTo(1);
         assertThat(resumes.get(owner(token), resume.id()).currentVersionId()).isEqualTo(resume.currentVersionId());
         assertThat(resumes.versions(owner(token), resume.id())).hasSize(1);
         assertThat(patches.get(owner(token), resume.id(), resume.currentVersionId(), report.path("batchId").asText()).appliedVersionId()).isNull();
@@ -386,7 +397,7 @@ class ResumeHttpIntegrationTest {
     }
     @Test void optimizePersistsSuggestionsWithoutEditingAndReplaysBeforeExplicitApply() throws Exception {
         String token=identities.create().accessToken(),stranger=identities.create().accessToken();var resume=patchFixture(token);
-        output.set(OPTIMIZE_REPORT);String path=applyPath(resume).replace("apply-patches","optimize"),body=optimizeBody("optimize-request-success");
+        output.set(optimizationWithTrivialPatch());String path=applyPath(resume).replace("apply-patches","optimize"),body=optimizeBody("optimize-request-success");
         assertThat(request("POST",path,stranger,body).statusCode()).isEqualTo(404);
         var response=request("POST",path,token,body);assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("run.started","resume_diff","run.completed");
@@ -396,6 +407,10 @@ class ResumeHttpIntegrationTest {
         var task=data(request("GET","/resumes/optimizations/"+reportId,token,null));var report=task.path("report");
         assertThat(report.path("resumeVersionId").asText()).isEqualTo(resume.currentVersionId());
         assertThat(report.path("patches").size()).isEqualTo(1);String batchId=report.path("batchId").asText();
+        assertThat(report.path("stats").path("replaced").asInt()).isEqualTo(1);
+        assertThat(report.path("filteredPatches").get(0)).isEqualTo(JSON.createObjectNode()
+            .put("id","p2").put("path","/projects/0/bullets/0").put("reason","NORMALIZED_EQUAL"));
+        assertThat(patches.get(owner(token),resume.id(),resume.currentVersionId(),batchId).patches().size()).isEqualTo(1);
         assertThat(patches.get(owner(token),resume.id(),resume.currentVersionId(),batchId).appliedVersionId()).isNull();
         int calls=providerCalls.get();providerStatus.set(503);
         assertThat(request("POST",path,token,body).body()).contains("run.completed").doesNotContain("event:error");
@@ -413,6 +428,15 @@ class ResumeHttpIntegrationTest {
         assertThat(request("POST",path,token,optimizeBody("optimize-request-empty")).body()).contains("run.completed");
         var task=optimizations.get(owner(token),optimizations.list(owner(token),resume.id()).get(0).path("id").asText());
         assertThat(task.path("report").path("batchId").isNull()).isTrue();
+        assertThat(task.path("report").path("filteredPatches").isArray()).isTrue();
+        assertThat(task.path("report").path("filteredPatches")).isEmpty();
+        output.set(OPTIMIZE_REPORT.replace("参与后端服务开发"," 负责后端开发 "));
+        assertThat(request("POST",path,token,optimizeBody("optimize-request-all-filtered")).body()).contains("run.completed");
+        var filtered=optimizations.get(owner(token),optimizations.list(owner(token),resume.id()).get(0).path("id").asText()).path("report");
+        assertThat(filtered.path("patches")).isEmpty();
+        assertThat(filtered.path("batchId").isNull()).isTrue();
+        assertThat(filtered.path("stats").path("replaced").asInt()).isZero();
+        assertThat(filtered.path("filteredPatches").get(0).path("reason").asText()).isEqualTo("NORMALIZED_EQUAL");
         output.set(OPTIMIZE_REPORT.replace("参与后端服务开发","提升性能60%"));int before=providerCalls.get();
         assertThat(request("POST",path,token,optimizeBody("optimize-request-invalid")).body()).contains("event:error").doesNotContain("event:ui.card");
         assertThat(providerCalls.get()-before).isEqualTo(2);
