@@ -100,11 +100,11 @@ class ControllerIdentityArchitectureTest {
     @Test
     void staffDelegateMustActuallyRequireStaffIdentity() throws Exception {
         var staff = source(StaffUserAdminService.class);
-        assertThat(staff.gated("listUsers#1", new HashSet<>(), false)).isTrue();
+        assertThat(staff.gated("listUsers#4", new HashSet<>(), false)).isTrue();
         assertThat(staff.gated("setUserStatus#3", new HashSet<>(), false)).isTrue();
         var removed = new GateSource(readSource(StaffUserAdminService.class)
                 .replace("logins.requireStaffId(authorization);", ""), Map.of("logins", PasswordLoginService.class));
-        assertThat(removed.gated("listUsers#1", new HashSet<>(), false)).isFalse();
+        assertThat(removed.gated("listUsers#4", new HashSet<>(), false)).isFalse();
         assertThat(removed.gated("setUserStatus#3", new HashSet<>(), false)).isFalse();
     }
 

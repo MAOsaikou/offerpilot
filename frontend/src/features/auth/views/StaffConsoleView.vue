@@ -18,6 +18,11 @@ const togglingId = ref('')
 const error = ref('')
 const notice = ref('')
 const keyword = ref('')
+const hideGuests = ref(true)
+const page = ref(1)
+const size = ref(20)
+const total = ref(0)
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
 
 const filtered = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
@@ -30,13 +35,21 @@ const filtered = computed(() => {
 const activeCount = computed(() => users.value.filter((u) => u.status === 'ACTIVE').length)
 const disabledCount = computed(() => users.value.filter((u) => u.status === 'DISABLED').length)
 
-async function load() {
+async function load(targetPage = page.value) {
+  if (loading.value || togglingId.value) return
   loading.value = true
   error.value = ''
   try {
-    const rows = await listStaffUsers()
+    const result = await listStaffUsers({
+      page: targetPage,
+      size: size.value,
+      hideGuests: hideGuests.value,
+    })
     if (!isCurrentSession()) return
-    users.value = rows
+    users.value = result.items
+    total.value = result.total
+    page.value = result.page
+    size.value = result.size
   } catch (ex) {
     if (!isCurrentSession()) return
     error.value = ex instanceof Error ? ex.message : '加载账号列表失败'
@@ -92,6 +105,7 @@ onMounted(async () => {
       return
     }
     staffName.value = info.nickname || info.userId
+    loading.value = false
     await load()
   } catch (ex) {
     if (!isCurrentSession()) return
@@ -120,16 +134,32 @@ onMounted(async () => {
         v-model="keyword"
         class="search"
         type="search"
-        placeholder="搜索邮箱或昵称…"
-        aria-label="搜索账号"
+        placeholder="搜索本页邮箱或昵称…"
+        aria-label="搜索本页账号"
       />
-      <span class="stat">共 {{ users.length }} 个账号</span>
-      <span class="stat ok">启用 {{ activeCount }}</span>
-      <span class="stat muted">禁用 {{ disabledCount }}</span>
-      <button class="btn ghost refresh" type="button" :disabled="loading" @click="load">
+      <label class="guest-filter">
+        <input
+          v-model="hideGuests"
+          type="checkbox"
+          :disabled="loading || !!togglingId"
+          @change="load(1)"
+        />
+        隐藏访客
+      </label>
+      <span class="stat">共 {{ total }} 个账号</span>
+      <span class="stat ok">本页启用 {{ activeCount }}</span>
+      <span class="stat muted">本页禁用 {{ disabledCount }}</span>
+      <button
+        class="btn ghost refresh"
+        type="button"
+        :disabled="loading || !!togglingId"
+        @click="load()"
+      >
         {{ loading ? '加载中…' : '刷新' }}
       </button>
     </div>
+
+    <p class="stat search-note">邮箱和昵称搜索仅筛选当前页。</p>
 
     <p v-if="notice" class="notice-banner" role="status">{{ notice }}</p>
     <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
@@ -173,7 +203,7 @@ onMounted(async () => {
                 class="btn toggle"
                 :class="row.status === 'ACTIVE' ? 'danger' : 'primary'"
                 type="button"
-                :disabled="togglingId === row.id"
+                :disabled="loading || !!togglingId"
                 @click="toggle(row)"
               >
                 {{ togglingId === row.id ? '处理中…' : row.status === 'ACTIVE' ? '禁用' : '启用' }}
@@ -183,6 +213,27 @@ onMounted(async () => {
         </tbody>
       </table>
     </div>
+    <nav class="pagination" aria-label="账号列表分页">
+      <button
+        class="btn ghost"
+        type="button"
+        :disabled="loading || !!togglingId || page <= 1"
+        @click="load(page - 1)"
+      >
+        上一页
+      </button>
+      <span class="stat" role="status"
+        >第 {{ page }} / {{ pageCount }} 页 · 每页 {{ size }} 个</span
+      >
+      <button
+        class="btn ghost"
+        type="button"
+        :disabled="loading || !!togglingId || page >= pageCount"
+        @click="load(page + 1)"
+      >
+        下一页
+      </button>
+    </nav>
   </section>
 </template>
 <style scoped>
@@ -233,6 +284,19 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+.guest-filter,
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pagination {
+  justify-content: center;
+}
+.search-note {
+  margin: 0;
 }
 .search {
   flex: 1 1 220px;

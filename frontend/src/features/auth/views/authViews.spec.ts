@@ -176,3 +176,74 @@ it('新凭据已写入但 storage 事件尚未送达时，旧客服错误不清�
   window.dispatchEvent(new StorageEvent('storage', { key: 'offerpilot-access-token' }))
   expect(auth.user?.id).toBe('B')
 })
+
+it('客服列表默认隐藏访客，按服务器总数翻页并在切换过滤时回到第一页', async () => {
+  const row = (id: string) => ({
+    id,
+    email: `${id}@example.com`,
+    nickname: id,
+    roles: ['USER'],
+    status: 'ACTIVE',
+    createdAt: '2026-01-01T00:00:00Z',
+  })
+  const dataResponse = (data: unknown) => new Response(JSON.stringify({ data }))
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(loginResponse('staff', ['STAFF']))
+    .mockResolvedValueOnce(dataResponse({ roles: ['STAFF'], nickname: 'staff' }))
+    .mockResolvedValueOnce(dataResponse({ items: [row('first')], total: 21, page: 1, size: 20 }))
+    .mockResolvedValueOnce(dataResponse({ items: [row('last')], total: 21, page: 2, size: 20 }))
+    .mockResolvedValueOnce(dataResponse({ items: [row('guest')], total: 22, page: 1, size: 20 }))
+  vi.stubGlobal('fetch', fetch)
+  await useAuthStore().staffLogin('staff@example.com', 'password')
+  await mount('/staff')
+  await vi.waitFor(() => expect(root.textContent).toContain('first@example.com'))
+  const checkbox = root.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+  expect(checkbox.checked).toBe(true)
+  expect(fetch.mock.calls[2]![0]).toContain('/staff/users?page=1&size=20&hideGuests=true')
+  expect(root.textContent).toContain('共 21 个账号')
+  expect(root.textContent).toContain('搜索仅筛选当前页')
+  expect(button('上一页').disabled).toBe(true)
+  button('下一页').click()
+  await vi.waitFor(() => expect(root.textContent).toContain('last@example.com'))
+  expect(fetch.mock.calls[3]![0]).toContain('page=2&size=20&hideGuests=true')
+  expect(root.textContent).toContain('第 2 / 2 页')
+  expect(button('下一页').disabled).toBe(true)
+  expect(root.textContent).not.toContain('first@example.com')
+  checkbox.click()
+  await vi.waitFor(() => expect(root.textContent).toContain('guest@example.com'))
+  expect(fetch.mock.calls[4]![0]).toContain('page=1&size=20&hideGuests=false')
+  expect(root.textContent).toContain('共 22 个账号')
+  const search = root.querySelector<HTMLInputElement>('input[type="search"]')!
+  search.value = 'missing'
+  search.dispatchEvent(new Event('input', { bubbles: true }))
+  await nextTick()
+  expect(root.textContent).toContain('没有匹配的账号')
+  expect(root.textContent).toContain('共 22 个账号')
+  expect(fetch).toHaveBeenCalledTimes(5)
+})
+
+it('翻页加载失败保留当前页并支持重试', async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(loginResponse('staff', ['STAFF']))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ data: { roles: ['STAFF'] } })))
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: { items: [], total: 21, page: 1, size: 20 } })),
+    )
+    .mockRejectedValueOnce(new TypeError('网络暂时不可用'))
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: { items: [], total: 21, page: 2, size: 20 } })),
+    )
+  vi.stubGlobal('fetch', fetch)
+  await useAuthStore().staffLogin('staff@example.com', 'password')
+  await mount('/staff')
+  await vi.waitFor(() => expect(root.textContent).toContain('共 21 个账号'))
+  button('下一页').click()
+  await vi.waitFor(() => expect(root.textContent).toContain('网络暂时不可用'))
+  expect(root.textContent).toContain('第 1 / 2 页')
+  expect(useAuthStore().isLoggedIn).toBe(true)
+  button('下一页').click()
+  await vi.waitFor(() => expect(root.textContent).toContain('第 2 / 2 页'))
+  expect(root.textContent).not.toContain('网络暂时不可用')
+})

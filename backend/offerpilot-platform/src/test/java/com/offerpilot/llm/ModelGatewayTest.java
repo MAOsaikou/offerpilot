@@ -23,7 +23,7 @@ class ModelGatewayTest {
     ModelGateway gateway(String provider, boolean vision, MockEnvironment env) {
         var tier = new OfferPilotProperties.Llm.Tier(provider, "my-model", Duration.ofSeconds(5), vision);
         var properties = new OfferPilotProperties(null, null, null, null, null,
-                new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier), Map.of()), null);
+                new OfferPilotProperties.Llm("CHEAP", Map.of("CHEAP", tier), Map.of()), null, null);
         var beans = new DefaultListableBeanFactory();
         return new ModelGateway(properties, beans.getBeanProvider(DeepSeekChatModel.class), beans.getBeanProvider(OpenAiChatModel.class), env);
     }
