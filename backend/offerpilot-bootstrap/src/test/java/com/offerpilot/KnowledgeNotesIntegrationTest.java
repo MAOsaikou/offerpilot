@@ -91,6 +91,18 @@ class KnowledgeNotesIntegrationTest {
         assertThat(request("GET", "/" + id, token, null).statusCode()).isEqualTo(404);
     }
 
+    @Test void invalidSearchAndPaginationDoNotChangeSavedData() throws Exception {
+        String token = identities.create().accessToken();
+        data(request("POST", "", token, DRAFT));
+        for (String path : List.of("?page=0", "?page=abc", "?size=51", "/search", "/search?q=%20",
+                "/search?q=Redis&limit=0", "/search?q=Redis&limit=abc", "/search?q="+"x".repeat(2001))) {
+            var response = request("GET", path, token, null);
+            assertThat(response.statusCode()).as(path).isEqualTo(400);
+            assertThat(JSON.readTree(response.body()).path("code").asInt()).isEqualTo(10001);
+        }
+        assertThat(data(request("GET", "", token, null)).path("total").asInt()).isEqualTo(1);
+    }
+
     @Test void paginationAndChineseFtsArePrivateAndWorkWithoutAnyEmbeddingKey() {
         String owner = owner(), other = owner();
         var first = notes.create(owner, DRAFT);

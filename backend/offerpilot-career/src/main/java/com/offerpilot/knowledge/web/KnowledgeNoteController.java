@@ -49,6 +49,11 @@ public class KnowledgeNoteController {
             return parser.getText();
         }
     }
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public org.springframework.http.ResponseEntity<ApiResponse<Void>> invalidQuery(HttpServletRequest request) {
+        return org.springframework.http.ResponseEntity.badRequest().body(ApiResponse.fail(
+                com.offerpilot.common.error.ErrorCode.VALIDATION_FAILED.code(), "page/size/limit 必须为整数", TraceIdFilter.current(request)));
+    }
     @GetMapping
     public ApiResponse<KnowledgeNoteService.Page> list(@RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size, HttpServletRequest request) {
@@ -56,7 +61,7 @@ public class KnowledgeNoteController {
         return ApiResponse.ok(notes.list(owner, page, size), TraceIdFilter.current(request));
     }
     @GetMapping("/search")
-    public ApiResponse<KnowledgeNoteSearch.Result> search(@RequestParam String q,
+    public ApiResponse<KnowledgeNoteSearch.Result> search(@RequestParam(defaultValue = "") String q,
             @RequestParam(defaultValue = "20") int limit, HttpServletRequest request) {
         String owner = users.require(request.getHeader("Authorization"));
         return ApiResponse.ok(search.search(owner, q, limit), TraceIdFilter.current(request));

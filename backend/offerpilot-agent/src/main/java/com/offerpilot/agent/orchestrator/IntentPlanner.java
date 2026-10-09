@@ -105,6 +105,16 @@ public class IntentPlanner {
             if (step.agent() == ExpertType.JOB && jobs != null) return jobs.prepare(step, content, history, tier, onUsage, context);
             if (step.agent() == ExpertType.RESUME && resumes != null) return resumes.prepare(step, content, history, tier, onUsage, context);
             return Mono.just(step);
+        }).map(step -> {
+            // Retrieval query comes from this turn's user text, never model-generated inputs or IDs.
+            if (step.agent() == ExpertType.INTERVIEWER
+                    || step.agent() == ExpertType.COACH && !experts.writingCoach(step)
+                    || step.agent() == ExpertType.RESUME && "advice".equals(step.inputs().get("action"))) {
+                var inputs = new LinkedHashMap<>(step.inputs());
+                inputs.put("noteQuery", com.offerpilot.knowledge.application.KnowledgeNoteSearch.bounded(content, 2000));
+                return new PlanStep(step.id(), step.title(), step.agent(), inputs, step.dependsOn());
+            }
+            return step;
         }).collectList().map(steps -> {
             for (var step : steps) {
                 if ("clarify".equals(step.inputs().get("action"))) return new Decision(decision.kind(), decision.expert(),

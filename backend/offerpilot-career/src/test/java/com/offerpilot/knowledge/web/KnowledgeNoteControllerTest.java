@@ -52,6 +52,12 @@ class KnowledgeNoteControllerTest {
                     .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(10001));
         verifyNoInteractions(notes, users);
     }
+    @Test void malformedQueryReturnsValidationErrorBeforeCallingServices() throws Exception {
+        for (String path : List.of("?page=abc", "?size=2147483648", "/search?q=test&limit=abc"))
+            mvc.perform(get("/api/v1/knowledge/notes" + path)).andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(10001));
+        verifyNoInteractions(notes, search, users);
+    }
     @Test void scalarCoercionIsRejectedAndUnicodeBoundaryIsAccepted() throws Exception {
         mvc.perform(post("/api/v1/knowledge/notes").contentType("application/json")
                 .content(json.writeValueAsBytes(Map.of("title", 123, "content", "x", "category", "面试复盘"))))
