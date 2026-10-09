@@ -34,6 +34,8 @@ public enum ErrorCode {
     MATCH_NOT_FOUND(30503, HttpStatus.NOT_FOUND, "匹配报告不存在或无权访问"),
     APPLICATION_NOT_FOUND(30601, HttpStatus.NOT_FOUND, "看板记录不存在或无权访问"),
 
+    INTERVIEW_NOT_FOUND(30701, HttpStatus.NOT_FOUND, "面试练习不存在或无权访问"),
+
     MODEL_TIMEOUT(40001, HttpStatus.GATEWAY_TIMEOUT, "模型调用超时"),
     MODEL_RATE_LIMITED(40002, HttpStatus.BAD_GATEWAY, "模型限流"),
     STRUCTURED_OUTPUT_INVALID(40003, HttpStatus.UNPROCESSABLE_ENTITY, "结构化输出校验失败"),

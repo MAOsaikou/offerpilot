@@ -68,7 +68,7 @@ watch(
       </nav>
       <div class="sidebar-foot">
         <p class="storage-note">
-          草稿保存在当前浏览器；求职看板、上传的简历、对话和匹配报告保存在服务端。岗位来自企业官网。
+          草稿保存在当前浏览器；求职看板、面试练习、上传的简历、对话和匹配报告保存在服务端。岗位来自企业官网。
         </p>
         <RouterLink
           to="/notifications"
