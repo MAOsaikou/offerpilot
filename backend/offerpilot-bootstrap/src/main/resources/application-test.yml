@@ -12,5 +12,8 @@ spring:
       - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
 
 offerpilot:
+  resume:
+    # Avoid scheduled claim()/stale-parse cleanup racing with integration-test TRUNCATE.
+    worker-enabled: false
   security:
     jwt-secret: isolated-test-signing-key-only-not-for-deployment-0123456789abcdef0123456789abcdef
