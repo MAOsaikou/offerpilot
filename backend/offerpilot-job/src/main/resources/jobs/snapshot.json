@@ -1,0 +1,985 @@
+{
+  "snapshotDate": "2026-10-10",
+  "sourceDescription": "人工整理的示例岗位快照，非实时数据；公司与业务场景仅用于求职演示，不代表当前开放岗位",
+  "sites": [
+    {
+      "id": "bytedance",
+      "name": "字节跳动",
+      "supportedNatures": [
+        "campus",
+        "intern",
+        "social"
+      ]
+    },
+    {
+      "id": "tencent",
+      "name": "腾讯",
+      "supportedNatures": [
+        "campus",
+        "intern",
+        "social"
+      ]
+    },
+    {
+      "id": "aliyun",
+      "name": "阿里云",
+      "supportedNatures": [
+        "campus",
+        "intern"
+      ]
+    },
+    {
+      "id": "meituan",
+      "name": "美团",
+      "supportedNatures": [
+        "campus",
+        "intern",
+        "social"
+      ]
+    },
+    {
+      "id": "jd",
+      "name": "京东",
+      "supportedNatures": [
+        "campus",
+        "intern",
+        "social"
+      ]
+    },
+    {
+      "id": "baidu",
+      "name": "百度",
+      "supportedNatures": [
+        "campus",
+        "social"
+      ]
+    },
+    {
+      "id": "netease",
+      "name": "网易",
+      "supportedNatures": [
+        "campus",
+        "intern"
+      ]
+    },
+    {
+      "id": "xiaomi",
+      "name": "小米",
+      "supportedNatures": [
+        "campus",
+        "intern",
+        "social"
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "id": "snapshot-bytedance-001",
+      "site": "bytedance",
+      "company": "字节跳动",
+      "title": "Java后端开发工程师 - 内容与推荐平台",
+      "category": "后端",
+      "nature": "campus",
+      "locations": "北京,上海",
+      "department": "内容与推荐平台",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向内容与推荐平台的示例业务场景开展工作\n• 参与业务接口与异步任务开发，编写单元测试和接口文档\n• 协助排查慢查询与缓存一致性问题，参与代码评审",
+      "requirement": "• 计算机相关专业，掌握 Java 集合、并发与面向对象基础\n• 了解 Spring Boot、MySQL 索引与 Redis 缓存，有课程或项目实践\n• 能够清晰说明项目设计取舍，愿意完善测试与监控",
+      "skills": [
+        "Java",
+        "Spring Boot",
+        "MySQL",
+        "Redis",
+        "Git"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-bytedance-002",
+      "site": "bytedance",
+      "company": "字节跳动",
+      "title": "前端开发工程师 - 内容与推荐平台",
+      "category": "前端",
+      "nature": "campus",
+      "locations": "北京,上海",
+      "department": "内容与推荐平台",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向内容与推荐平台的示例业务场景开展工作\n• 参与 Web 控制台与业务页面开发，完善移动端适配\n• 与产品及后端共同定义接口，优化加载性能和无障碍交互",
+      "requirement": "• 掌握 JavaScript/TypeScript、HTML 与 CSS 布局\n• 熟悉 Vue 或 React，了解 HTTP、浏览器缓存与组件状态管理\n• 有可展示的前端项目，能够使用测试和性能工具定位问题",
+      "skills": [
+        "TypeScript",
+        "Vue",
+        "React",
+        "CSS",
+        "HTTP"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-bytedance-003",
+      "site": "bytedance",
+      "company": "字节跳动",
+      "title": "大模型应用算法工程师 - 内容与推荐平台",
+      "category": "算法",
+      "nature": "social",
+      "locations": "北京,上海",
+      "department": "内容与推荐平台",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向内容与推荐平台的示例业务场景开展工作\n• 构建检索增强生成与模型评测流程，分析质量和延迟指标\n• 参与数据清洗、推理服务优化及失败样本复盘",
+      "requirement": "• 熟悉 Python、PyTorch 与机器学习基础，有两年以上相关实践\n• 了解向量检索、RAG、提示词评测与模型推理优化\n• 具备严谨的实验记录能力，能解释指标与业务效果的关系",
+      "skills": [
+        "Python",
+        "PyTorch",
+        "LLM",
+        "RAG",
+        "SQL"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-bytedance-004",
+      "site": "bytedance",
+      "company": "字节跳动",
+      "title": "测试开发工程师 - 内容与推荐平台",
+      "category": "测试",
+      "nature": "campus",
+      "locations": "北京,上海",
+      "department": "内容与推荐平台",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向内容与推荐平台的示例业务场景开展工作\n• 设计接口自动化与回归用例，覆盖异常和边界场景\n• 参与持续集成质量门禁，协助定位服务稳定性问题",
+      "requirement": "• 掌握 Python 或 Java，理解 HTTP 与关系数据库基础\n• 了解自动化测试、测试数据隔离及缺陷复现方法\n• 有良好的沟通与问题分析能力，重视用户体验",
+      "skills": [
+        "Python",
+        "Java",
+        "pytest",
+        "SQL",
+        "CI"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-bytedance-005",
+      "site": "bytedance",
+      "company": "字节跳动",
+      "title": "产品经理实习生 - 内容与推荐平台",
+      "category": "产品",
+      "nature": "intern",
+      "locations": "北京,上海",
+      "department": "内容与推荐平台",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向内容与推荐平台的示例业务场景开展工作\n• 协助梳理用户场景与需求，维护产品文档和交互原型\n• 跟踪上线指标，整理用户反馈并参与迭代复盘",
+      "requirement": "• 本科及以上在读，每周可实习至少三天，持续三个月\n• 具备需求拆解和书面表达能力，了解 SQL 或数据分析工具\n• 能够以用户场景解释功能优先级，尊重数据与隐私边界",
+      "skills": [
+        "需求分析",
+        "原型设计",
+        "数据分析",
+        "SQL"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-tencent-001",
+      "site": "tencent",
+      "company": "腾讯",
+      "title": "Java后端开发工程师 - 社交与云服务",
+      "category": "后端",
+      "nature": "campus",
+      "locations": "深圳,广州",
+      "department": "社交与云服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向社交与云服务的示例业务场景开展工作\n• 参与业务接口与异步任务开发，编写单元测试和接口文档\n• 协助排查慢查询与缓存一致性问题，参与代码评审",
+      "requirement": "• 计算机相关专业，掌握 Java 集合、并发与面向对象基础\n• 了解 Spring Boot、MySQL 索引与 Redis 缓存，有课程或项目实践\n• 能够清晰说明项目设计取舍，愿意完善测试与监控",
+      "skills": [
+        "Java",
+        "Spring Boot",
+        "MySQL",
+        "Redis",
+        "Git"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-tencent-002",
+      "site": "tencent",
+      "company": "腾讯",
+      "title": "大模型应用算法工程师 - 社交与云服务",
+      "category": "算法",
+      "nature": "social",
+      "locations": "深圳,广州",
+      "department": "社交与云服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向社交与云服务的示例业务场景开展工作\n• 构建检索增强生成与模型评测流程，分析质量和延迟指标\n• 参与数据清洗、推理服务优化及失败样本复盘",
+      "requirement": "• 熟悉 Python、PyTorch 与机器学习基础，有两年以上相关实践\n• 了解向量检索、RAG、提示词评测与模型推理优化\n• 具备严谨的实验记录能力，能解释指标与业务效果的关系",
+      "skills": [
+        "Python",
+        "PyTorch",
+        "LLM",
+        "RAG",
+        "SQL"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-tencent-003",
+      "site": "tencent",
+      "company": "腾讯",
+      "title": "产品经理实习生 - 社交与云服务",
+      "category": "产品",
+      "nature": "intern",
+      "locations": "深圳,广州",
+      "department": "社交与云服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向社交与云服务的示例业务场景开展工作\n• 协助梳理用户场景与需求，维护产品文档和交互原型\n• 跟踪上线指标，整理用户反馈并参与迭代复盘",
+      "requirement": "• 本科及以上在读，每周可实习至少三天，持续三个月\n• 具备需求拆解和书面表达能力，了解 SQL 或数据分析工具\n• 能够以用户场景解释功能优先级，尊重数据与隐私边界",
+      "skills": [
+        "需求分析",
+        "原型设计",
+        "数据分析",
+        "SQL"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-tencent-004",
+      "site": "tencent",
+      "company": "腾讯",
+      "title": "运维开发工程师（SRE） - 社交与云服务",
+      "category": "运维",
+      "nature": "social",
+      "locations": "深圳,广州",
+      "department": "社交与云服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向社交与云服务的示例业务场景开展工作\n• 完善监控告警与容量规划，参与故障演练和复盘\n• 开发发布自动化工具，优化容器平台可靠性与成本",
+      "requirement": "• 熟悉 Linux、网络排查与 Docker/Kubernetes，有两年以上相关实践\n• 了解 Prometheus、日志分析及服务可用性指标\n• 能够编写 Python 或 Go 自动化脚本，重视变更审核",
+      "skills": [
+        "Linux",
+        "Docker",
+        "Kubernetes",
+        "Prometheus",
+        "Python"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-tencent-005",
+      "site": "tencent",
+      "company": "腾讯",
+      "title": "Java后端开发实习生 - 社交与云服务",
+      "category": "后端",
+      "nature": "intern",
+      "locations": "深圳,广州",
+      "department": "社交与云服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向社交与云服务的示例业务场景开展工作\n• 在导师指导下实现基础业务接口，补充测试和开发文档\n• 参与缺陷修复与日志排查，学习服务上线流程",
+      "requirement": "• 计算机相关专业在读，掌握 Java 与 SQL 基础\n• 了解 Spring Boot 和 Git，有完整课程或个人项目\n• 每周可实习至少三天，持续三个月，愿意参与代码评审",
+      "skills": [
+        "Java",
+        "Spring Boot",
+        "MySQL",
+        "Git"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-aliyun-001",
+      "site": "aliyun",
+      "company": "阿里云",
+      "title": "Java后端开发工程师 - 云计算平台",
+      "category": "后端",
+      "nature": "campus",
+      "locations": "杭州,北京",
+      "department": "云计算平台",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向云计算平台的示例业务场景开展工作\n• 参与业务接口与异步任务开发，编写单元测试和接口文档\n• 协助排查慢查询与缓存一致性问题，参与代码评审",
+      "requirement": "• 计算机相关专业，掌握 Java 集合、并发与面向对象基础\n• 了解 Spring Boot、MySQL 索引与 Redis 缓存，有课程或项目实践\n• 能够清晰说明项目设计取舍，愿意完善测试与监控",
+      "skills": [
+        "Java",
+        "Spring Boot",
+        "MySQL",
+        "Redis",
+        "Git"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-aliyun-002",
+      "site": "aliyun",
+      "company": "阿里云",
+      "title": "测试开发工程师 - 云计算平台",
+      "category": "测试",
+      "nature": "campus",
+      "locations": "杭州,北京",
+      "department": "云计算平台",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向云计算平台的示例业务场景开展工作\n• 设计接口自动化与回归用例，覆盖异常和边界场景\n• 参与持续集成质量门禁，协助定位服务稳定性问题",
+      "requirement": "• 掌握 Python 或 Java，理解 HTTP 与关系数据库基础\n• 了解自动化测试、测试数据隔离及缺陷复现方法\n• 有良好的沟通与问题分析能力，重视用户体验",
+      "skills": [
+        "Python",
+        "Java",
+        "pytest",
+        "SQL",
+        "CI"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-aliyun-003",
+      "site": "aliyun",
+      "company": "阿里云",
+      "title": "数据分析师 - 云计算平台",
+      "category": "数据",
+      "nature": "campus",
+      "locations": "杭州,北京",
+      "department": "云计算平台",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向云计算平台的示例业务场景开展工作\n• 建设业务指标看板，完成专题分析与数据质量检查\n• 协助设计实验与效果评估，将分析结论转化为行动建议",
+      "requirement": "• 熟悉 SQL、统计学基础与 Python 数据处理\n• 了解漏斗分析、实验设计和常用可视化方法\n• 能够说明数据口径、样本限制与结论的不确定性",
+      "skills": [
+        "SQL",
+        "Python",
+        "统计分析",
+        "BI"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-aliyun-004",
+      "site": "aliyun",
+      "company": "阿里云",
+      "title": "Java后端开发实习生 - 云计算平台",
+      "category": "后端",
+      "nature": "intern",
+      "locations": "杭州,北京",
+      "department": "云计算平台",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向云计算平台的示例业务场景开展工作\n• 在导师指导下实现基础业务接口，补充测试和开发文档\n• 参与缺陷修复与日志排查，学习服务上线流程",
+      "requirement": "• 计算机相关专业在读，掌握 Java 与 SQL 基础\n• 了解 Spring Boot 和 Git，有完整课程或个人项目\n• 每周可实习至少三天，持续三个月，愿意参与代码评审",
+      "skills": [
+        "Java",
+        "Spring Boot",
+        "MySQL",
+        "Git"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-aliyun-005",
+      "site": "aliyun",
+      "company": "阿里云",
+      "title": "前端开发工程师 - 云计算平台",
+      "category": "前端",
+      "nature": "campus",
+      "locations": "杭州,北京",
+      "department": "云计算平台",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向云计算平台的示例业务场景开展工作\n• 参与 Web 控制台与业务页面开发，完善移动端适配\n• 与产品及后端共同定义接口，优化加载性能和无障碍交互",
+      "requirement": "• 掌握 JavaScript/TypeScript、HTML 与 CSS 布局\n• 熟悉 Vue 或 React，了解 HTTP、浏览器缓存与组件状态管理\n• 有可展示的前端项目，能够使用测试和性能工具定位问题",
+      "skills": [
+        "TypeScript",
+        "Vue",
+        "React",
+        "CSS",
+        "HTTP"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-meituan-001",
+      "site": "meituan",
+      "company": "美团",
+      "title": "Java后端开发工程师 - 本地生活与配送",
+      "category": "后端",
+      "nature": "campus",
+      "locations": "北京,上海",
+      "department": "本地生活与配送",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向本地生活与配送的示例业务场景开展工作\n• 参与业务接口与异步任务开发，编写单元测试和接口文档\n• 协助排查慢查询与缓存一致性问题，参与代码评审",
+      "requirement": "• 计算机相关专业，掌握 Java 集合、并发与面向对象基础\n• 了解 Spring Boot、MySQL 索引与 Redis 缓存，有课程或项目实践\n• 能够清晰说明项目设计取舍，愿意完善测试与监控",
+      "skills": [
+        "Java",
+        "Spring Boot",
+        "MySQL",
+        "Redis",
+        "Git"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-meituan-002",
+      "site": "meituan",
+      "company": "美团",
+      "title": "产品经理实习生 - 本地生活与配送",
+      "category": "产品",
+      "nature": "intern",
+      "locations": "北京,上海",
+      "department": "本地生活与配送",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向本地生活与配送的示例业务场景开展工作\n• 协助梳理用户场景与需求，维护产品文档和交互原型\n• 跟踪上线指标，整理用户反馈并参与迭代复盘",
+      "requirement": "• 本科及以上在读，每周可实习至少三天，持续三个月\n• 具备需求拆解和书面表达能力，了解 SQL 或数据分析工具\n• 能够以用户场景解释功能优先级，尊重数据与隐私边界",
+      "skills": [
+        "需求分析",
+        "原型设计",
+        "数据分析",
+        "SQL"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-meituan-003",
+      "site": "meituan",
+      "company": "美团",
+      "title": "运维开发工程师（SRE） - 本地生活与配送",
+      "category": "运维",
+      "nature": "social",
+      "locations": "北京,上海",
+      "department": "本地生活与配送",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向本地生活与配送的示例业务场景开展工作\n• 完善监控告警与容量规划，参与故障演练和复盘\n• 开发发布自动化工具，优化容器平台可靠性与成本",
+      "requirement": "• 熟悉 Linux、网络排查与 Docker/Kubernetes，有两年以上相关实践\n• 了解 Prometheus、日志分析及服务可用性指标\n• 能够编写 Python 或 Go 自动化脚本，重视变更审核",
+      "skills": [
+        "Linux",
+        "Docker",
+        "Kubernetes",
+        "Prometheus",
+        "Python"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-meituan-004",
+      "site": "meituan",
+      "company": "美团",
+      "title": "前端开发工程师 - 本地生活与配送",
+      "category": "前端",
+      "nature": "campus",
+      "locations": "北京,上海",
+      "department": "本地生活与配送",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向本地生活与配送的示例业务场景开展工作\n• 参与 Web 控制台与业务页面开发，完善移动端适配\n• 与产品及后端共同定义接口，优化加载性能和无障碍交互",
+      "requirement": "• 掌握 JavaScript/TypeScript、HTML 与 CSS 布局\n• 熟悉 Vue 或 React，了解 HTTP、浏览器缓存与组件状态管理\n• 有可展示的前端项目，能够使用测试和性能工具定位问题",
+      "skills": [
+        "TypeScript",
+        "Vue",
+        "React",
+        "CSS",
+        "HTTP"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-meituan-005",
+      "site": "meituan",
+      "company": "美团",
+      "title": "大模型应用算法工程师 - 本地生活与配送",
+      "category": "算法",
+      "nature": "social",
+      "locations": "北京,上海",
+      "department": "本地生活与配送",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向本地生活与配送的示例业务场景开展工作\n• 构建检索增强生成与模型评测流程，分析质量和延迟指标\n• 参与数据清洗、推理服务优化及失败样本复盘",
+      "requirement": "• 熟悉 Python、PyTorch 与机器学习基础，有两年以上相关实践\n• 了解向量检索、RAG、提示词评测与模型推理优化\n• 具备严谨的实验记录能力，能解释指标与业务效果的关系",
+      "skills": [
+        "Python",
+        "PyTorch",
+        "LLM",
+        "RAG",
+        "SQL"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-jd-001",
+      "site": "jd",
+      "company": "京东",
+      "title": "Java后端开发工程师 - 零售与供应链",
+      "category": "后端",
+      "nature": "campus",
+      "locations": "北京,成都",
+      "department": "零售与供应链",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向零售与供应链的示例业务场景开展工作\n• 参与业务接口与异步任务开发，编写单元测试和接口文档\n• 协助排查慢查询与缓存一致性问题，参与代码评审",
+      "requirement": "• 计算机相关专业，掌握 Java 集合、并发与面向对象基础\n• 了解 Spring Boot、MySQL 索引与 Redis 缓存，有课程或项目实践\n• 能够清晰说明项目设计取舍，愿意完善测试与监控",
+      "skills": [
+        "Java",
+        "Spring Boot",
+        "MySQL",
+        "Redis",
+        "Git"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-jd-002",
+      "site": "jd",
+      "company": "京东",
+      "title": "数据分析师 - 零售与供应链",
+      "category": "数据",
+      "nature": "campus",
+      "locations": "北京,成都",
+      "department": "零售与供应链",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向零售与供应链的示例业务场景开展工作\n• 建设业务指标看板，完成专题分析与数据质量检查\n• 协助设计实验与效果评估，将分析结论转化为行动建议",
+      "requirement": "• 熟悉 SQL、统计学基础与 Python 数据处理\n• 了解漏斗分析、实验设计和常用可视化方法\n• 能够说明数据口径、样本限制与结论的不确定性",
+      "skills": [
+        "SQL",
+        "Python",
+        "统计分析",
+        "BI"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-jd-003",
+      "site": "jd",
+      "company": "京东",
+      "title": "Java后端开发实习生 - 零售与供应链",
+      "category": "后端",
+      "nature": "intern",
+      "locations": "北京,成都",
+      "department": "零售与供应链",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向零售与供应链的示例业务场景开展工作\n• 在导师指导下实现基础业务接口，补充测试和开发文档\n• 参与缺陷修复与日志排查，学习服务上线流程",
+      "requirement": "• 计算机相关专业在读，掌握 Java 与 SQL 基础\n• 了解 Spring Boot 和 Git，有完整课程或个人项目\n• 每周可实习至少三天，持续三个月，愿意参与代码评审",
+      "skills": [
+        "Java",
+        "Spring Boot",
+        "MySQL",
+        "Git"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-jd-004",
+      "site": "jd",
+      "company": "京东",
+      "title": "前端开发工程师 - 零售与供应链",
+      "category": "前端",
+      "nature": "campus",
+      "locations": "北京,成都",
+      "department": "零售与供应链",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向零售与供应链的示例业务场景开展工作\n• 参与 Web 控制台与业务页面开发，完善移动端适配\n• 与产品及后端共同定义接口，优化加载性能和无障碍交互",
+      "requirement": "• 掌握 JavaScript/TypeScript、HTML 与 CSS 布局\n• 熟悉 Vue 或 React，了解 HTTP、浏览器缓存与组件状态管理\n• 有可展示的前端项目，能够使用测试和性能工具定位问题",
+      "skills": [
+        "TypeScript",
+        "Vue",
+        "React",
+        "CSS",
+        "HTTP"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-jd-005",
+      "site": "jd",
+      "company": "京东",
+      "title": "大模型应用算法工程师 - 零售与供应链",
+      "category": "算法",
+      "nature": "social",
+      "locations": "北京,成都",
+      "department": "零售与供应链",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向零售与供应链的示例业务场景开展工作\n• 构建检索增强生成与模型评测流程，分析质量和延迟指标\n• 参与数据清洗、推理服务优化及失败样本复盘",
+      "requirement": "• 熟悉 Python、PyTorch 与机器学习基础，有两年以上相关实践\n• 了解向量检索、RAG、提示词评测与模型推理优化\n• 具备严谨的实验记录能力，能解释指标与业务效果的关系",
+      "skills": [
+        "Python",
+        "PyTorch",
+        "LLM",
+        "RAG",
+        "SQL"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-baidu-001",
+      "site": "baidu",
+      "company": "百度",
+      "title": "Java后端开发工程师 - 搜索与智能应用",
+      "category": "后端",
+      "nature": "campus",
+      "locations": "北京,深圳",
+      "department": "搜索与智能应用",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向搜索与智能应用的示例业务场景开展工作\n• 参与业务接口与异步任务开发，编写单元测试和接口文档\n• 协助排查慢查询与缓存一致性问题，参与代码评审",
+      "requirement": "• 计算机相关专业，掌握 Java 集合、并发与面向对象基础\n• 了解 Spring Boot、MySQL 索引与 Redis 缓存，有课程或项目实践\n• 能够清晰说明项目设计取舍，愿意完善测试与监控",
+      "skills": [
+        "Java",
+        "Spring Boot",
+        "MySQL",
+        "Redis",
+        "Git"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-baidu-002",
+      "site": "baidu",
+      "company": "百度",
+      "title": "运维开发工程师（SRE） - 搜索与智能应用",
+      "category": "运维",
+      "nature": "social",
+      "locations": "北京,深圳",
+      "department": "搜索与智能应用",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向搜索与智能应用的示例业务场景开展工作\n• 完善监控告警与容量规划，参与故障演练和复盘\n• 开发发布自动化工具，优化容器平台可靠性与成本",
+      "requirement": "• 熟悉 Linux、网络排查与 Docker/Kubernetes，有两年以上相关实践\n• 了解 Prometheus、日志分析及服务可用性指标\n• 能够编写 Python 或 Go 自动化脚本，重视变更审核",
+      "skills": [
+        "Linux",
+        "Docker",
+        "Kubernetes",
+        "Prometheus",
+        "Python"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-baidu-003",
+      "site": "baidu",
+      "company": "百度",
+      "title": "大模型应用算法工程师 - 搜索与智能应用",
+      "category": "算法",
+      "nature": "social",
+      "locations": "北京,深圳",
+      "department": "搜索与智能应用",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向搜索与智能应用的示例业务场景开展工作\n• 构建检索增强生成与模型评测流程，分析质量和延迟指标\n• 参与数据清洗、推理服务优化及失败样本复盘",
+      "requirement": "• 熟悉 Python、PyTorch 与机器学习基础，有两年以上相关实践\n• 了解向量检索、RAG、提示词评测与模型推理优化\n• 具备严谨的实验记录能力，能解释指标与业务效果的关系",
+      "skills": [
+        "Python",
+        "PyTorch",
+        "LLM",
+        "RAG",
+        "SQL"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-baidu-004",
+      "site": "baidu",
+      "company": "百度",
+      "title": "测试开发工程师 - 搜索与智能应用",
+      "category": "测试",
+      "nature": "campus",
+      "locations": "北京,深圳",
+      "department": "搜索与智能应用",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向搜索与智能应用的示例业务场景开展工作\n• 设计接口自动化与回归用例，覆盖异常和边界场景\n• 参与持续集成质量门禁，协助定位服务稳定性问题",
+      "requirement": "• 掌握 Python 或 Java，理解 HTTP 与关系数据库基础\n• 了解自动化测试、测试数据隔离及缺陷复现方法\n• 有良好的沟通与问题分析能力，重视用户体验",
+      "skills": [
+        "Python",
+        "Java",
+        "pytest",
+        "SQL",
+        "CI"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-baidu-005",
+      "site": "baidu",
+      "company": "百度",
+      "title": "前端开发工程师 - 搜索与智能应用",
+      "category": "前端",
+      "nature": "campus",
+      "locations": "北京,深圳",
+      "department": "搜索与智能应用",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向搜索与智能应用的示例业务场景开展工作\n• 参与 Web 控制台与业务页面开发，完善移动端适配\n• 与产品及后端共同定义接口，优化加载性能和无障碍交互",
+      "requirement": "• 掌握 JavaScript/TypeScript、HTML 与 CSS 布局\n• 熟悉 Vue 或 React，了解 HTTP、浏览器缓存与组件状态管理\n• 有可展示的前端项目，能够使用测试和性能工具定位问题",
+      "skills": [
+        "TypeScript",
+        "Vue",
+        "React",
+        "CSS",
+        "HTTP"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-netease-001",
+      "site": "netease",
+      "company": "网易",
+      "title": "Java后端开发工程师 - 内容与游戏服务",
+      "category": "后端",
+      "nature": "campus",
+      "locations": "杭州,广州",
+      "department": "内容与游戏服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向内容与游戏服务的示例业务场景开展工作\n• 参与业务接口与异步任务开发，编写单元测试和接口文档\n• 协助排查慢查询与缓存一致性问题，参与代码评审",
+      "requirement": "• 计算机相关专业，掌握 Java 集合、并发与面向对象基础\n• 了解 Spring Boot、MySQL 索引与 Redis 缓存，有课程或项目实践\n• 能够清晰说明项目设计取舍，愿意完善测试与监控",
+      "skills": [
+        "Java",
+        "Spring Boot",
+        "MySQL",
+        "Redis",
+        "Git"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-netease-002",
+      "site": "netease",
+      "company": "网易",
+      "title": "Java后端开发实习生 - 内容与游戏服务",
+      "category": "后端",
+      "nature": "intern",
+      "locations": "杭州,广州",
+      "department": "内容与游戏服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向内容与游戏服务的示例业务场景开展工作\n• 在导师指导下实现基础业务接口，补充测试和开发文档\n• 参与缺陷修复与日志排查，学习服务上线流程",
+      "requirement": "• 计算机相关专业在读，掌握 Java 与 SQL 基础\n• 了解 Spring Boot 和 Git，有完整课程或个人项目\n• 每周可实习至少三天，持续三个月，愿意参与代码评审",
+      "skills": [
+        "Java",
+        "Spring Boot",
+        "MySQL",
+        "Git"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-netease-003",
+      "site": "netease",
+      "company": "网易",
+      "title": "前端开发工程师 - 内容与游戏服务",
+      "category": "前端",
+      "nature": "campus",
+      "locations": "杭州,广州",
+      "department": "内容与游戏服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向内容与游戏服务的示例业务场景开展工作\n• 参与 Web 控制台与业务页面开发，完善移动端适配\n• 与产品及后端共同定义接口，优化加载性能和无障碍交互",
+      "requirement": "• 掌握 JavaScript/TypeScript、HTML 与 CSS 布局\n• 熟悉 Vue 或 React，了解 HTTP、浏览器缓存与组件状态管理\n• 有可展示的前端项目，能够使用测试和性能工具定位问题",
+      "skills": [
+        "TypeScript",
+        "Vue",
+        "React",
+        "CSS",
+        "HTTP"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-netease-004",
+      "site": "netease",
+      "company": "网易",
+      "title": "测试开发工程师 - 内容与游戏服务",
+      "category": "测试",
+      "nature": "campus",
+      "locations": "杭州,广州",
+      "department": "内容与游戏服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向内容与游戏服务的示例业务场景开展工作\n• 设计接口自动化与回归用例，覆盖异常和边界场景\n• 参与持续集成质量门禁，协助定位服务稳定性问题",
+      "requirement": "• 掌握 Python 或 Java，理解 HTTP 与关系数据库基础\n• 了解自动化测试、测试数据隔离及缺陷复现方法\n• 有良好的沟通与问题分析能力，重视用户体验",
+      "skills": [
+        "Python",
+        "Java",
+        "pytest",
+        "SQL",
+        "CI"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-netease-005",
+      "site": "netease",
+      "company": "网易",
+      "title": "产品经理实习生 - 内容与游戏服务",
+      "category": "产品",
+      "nature": "intern",
+      "locations": "杭州,广州",
+      "department": "内容与游戏服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向内容与游戏服务的示例业务场景开展工作\n• 协助梳理用户场景与需求，维护产品文档和交互原型\n• 跟踪上线指标，整理用户反馈并参与迭代复盘",
+      "requirement": "• 本科及以上在读，每周可实习至少三天，持续三个月\n• 具备需求拆解和书面表达能力，了解 SQL 或数据分析工具\n• 能够以用户场景解释功能优先级，尊重数据与隐私边界",
+      "skills": [
+        "需求分析",
+        "原型设计",
+        "数据分析",
+        "SQL"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-xiaomi-001",
+      "site": "xiaomi",
+      "company": "小米",
+      "title": "Java后端开发工程师 - 智能设备与互联网服务",
+      "category": "后端",
+      "nature": "campus",
+      "locations": "北京,武汉",
+      "department": "智能设备与互联网服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向智能设备与互联网服务的示例业务场景开展工作\n• 参与业务接口与异步任务开发，编写单元测试和接口文档\n• 协助排查慢查询与缓存一致性问题，参与代码评审",
+      "requirement": "• 计算机相关专业，掌握 Java 集合、并发与面向对象基础\n• 了解 Spring Boot、MySQL 索引与 Redis 缓存，有课程或项目实践\n• 能够清晰说明项目设计取舍，愿意完善测试与监控",
+      "skills": [
+        "Java",
+        "Spring Boot",
+        "MySQL",
+        "Redis",
+        "Git"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-xiaomi-002",
+      "site": "xiaomi",
+      "company": "小米",
+      "title": "大模型应用算法工程师 - 智能设备与互联网服务",
+      "category": "算法",
+      "nature": "social",
+      "locations": "北京,武汉",
+      "department": "智能设备与互联网服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向智能设备与互联网服务的示例业务场景开展工作\n• 构建检索增强生成与模型评测流程，分析质量和延迟指标\n• 参与数据清洗、推理服务优化及失败样本复盘",
+      "requirement": "• 熟悉 Python、PyTorch 与机器学习基础，有两年以上相关实践\n• 了解向量检索、RAG、提示词评测与模型推理优化\n• 具备严谨的实验记录能力，能解释指标与业务效果的关系",
+      "skills": [
+        "Python",
+        "PyTorch",
+        "LLM",
+        "RAG",
+        "SQL"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-xiaomi-003",
+      "site": "xiaomi",
+      "company": "小米",
+      "title": "产品经理实习生 - 智能设备与互联网服务",
+      "category": "产品",
+      "nature": "intern",
+      "locations": "北京,武汉",
+      "department": "智能设备与互联网服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向智能设备与互联网服务的示例业务场景开展工作\n• 协助梳理用户场景与需求，维护产品文档和交互原型\n• 跟踪上线指标，整理用户反馈并参与迭代复盘",
+      "requirement": "• 本科及以上在读，每周可实习至少三天，持续三个月\n• 具备需求拆解和书面表达能力，了解 SQL 或数据分析工具\n• 能够以用户场景解释功能优先级，尊重数据与隐私边界",
+      "skills": [
+        "需求分析",
+        "原型设计",
+        "数据分析",
+        "SQL"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-xiaomi-004",
+      "site": "xiaomi",
+      "company": "小米",
+      "title": "数据分析师 - 智能设备与互联网服务",
+      "category": "数据",
+      "nature": "campus",
+      "locations": "北京,武汉",
+      "department": "智能设备与互联网服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向智能设备与互联网服务的示例业务场景开展工作\n• 建设业务指标看板，完成专题分析与数据质量检查\n• 协助设计实验与效果评估，将分析结论转化为行动建议",
+      "requirement": "• 熟悉 SQL、统计学基础与 Python 数据处理\n• 了解漏斗分析、实验设计和常用可视化方法\n• 能够说明数据口径、样本限制与结论的不确定性",
+      "skills": [
+        "SQL",
+        "Python",
+        "统计分析",
+        "BI"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    },
+    {
+      "id": "snapshot-xiaomi-005",
+      "site": "xiaomi",
+      "company": "小米",
+      "title": "前端开发工程师 - 智能设备与互联网服务",
+      "category": "前端",
+      "nature": "campus",
+      "locations": "北京,武汉",
+      "department": "智能设备与互联网服务",
+      "updatedAt": "",
+      "url": "",
+      "description": "• 面向智能设备与互联网服务的示例业务场景开展工作\n• 参与 Web 控制台与业务页面开发，完善移动端适配\n• 与产品及后端共同定义接口，优化加载性能和无障碍交互",
+      "requirement": "• 掌握 JavaScript/TypeScript、HTML 与 CSS 布局\n• 熟悉 Vue 或 React，了解 HTTP、浏览器缓存与组件状态管理\n• 有可展示的前端项目，能够使用测试和性能工具定位问题",
+      "skills": [
+        "TypeScript",
+        "Vue",
+        "React",
+        "CSS",
+        "HTTP"
+      ],
+      "source": "LOCAL_SNAPSHOT",
+      "snapshotDate": "2026-10-10"
+    }
+  ]
+}

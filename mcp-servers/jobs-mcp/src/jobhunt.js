@@ -162,14 +162,14 @@ function withTimeout(promise, timeoutMs, label) {
  * 文档要求：并行不超过 6 个站点，单站超时 8s，失败的站点记录在 skipped 里，
  * 而不是让整次查询失败——这样 Agent 至少能拿到部分结果。
  */
-export async function searchAcrossSites(siteIds, options = {}, { concurrency = 6, timeoutMs = 8000 } = {}) {
+export async function searchAcrossSites(siteIds, options = {}, { concurrency = 6, timeoutMs = 8000, signal } = {}) {
   const jobs = [];
   const skipped = [];
   const degradedSites = [];
   const queue = [...siteIds];
 
   async function worker() {
-    while (queue.length > 0) {
+    while (queue.length > 0 && !signal?.aborted) {
       const siteId = queue.shift();
       try {
         const result = await withTimeout(searchSite(siteId, options), timeoutMs, `${siteId} 查询`);

@@ -11,6 +11,8 @@ export interface RealJob {
   updatedAt: string
   url: string
   source: string
+  snapshotDate?: string
+  skills?: string[]
   description: string
   requirement: string
   detailFetchedAt: string | null
@@ -24,6 +26,10 @@ export interface JobSearchResult {
   items: RealJob[]
   fetchedAt: string
   meta: {
+    source?: string
+    snapshotDate?: string
+    sourceDescription?: string
+    fallbackReason?: string
     sites: string[]
     cached: boolean
     truncated: boolean

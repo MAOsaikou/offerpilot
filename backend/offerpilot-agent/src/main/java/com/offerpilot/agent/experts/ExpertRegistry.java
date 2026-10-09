@@ -255,7 +255,10 @@ public class ExpertRegistry {
                 var inputs = step.inputs();
                 var card = searches.search((String) inputs.get("query"), (String) inputs.get("site"),
                         (String) inputs.get("nature"), (String) inputs.get("location"));
-                return ExpertResult.card("真实岗位搜索快照（仅含本次返回结果，不是全站总数）：" + card,
+                String sourceLabel = "LOCAL_SNAPSHOT".equals(card.path("meta").path("source").asText())
+                        ? "离线示例岗位快照（人工整理，非实时数据，不代表当前开放岗位）："
+                        : "企业官网岗位搜索结果（仅含本次返回结果，不是全站总数）：";
+                return ExpertResult.card(sourceLabel + card,
                         requestId(runId, step.id()), "job_card", card);
             }).subscribeOn(Schedulers.boundedElastic());
         }

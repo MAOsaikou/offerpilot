@@ -42,3 +42,22 @@ it('external job links reject script and credential-bearing URLs', () => {
   expect(officialJobUrl('https://user:password@example.com')).toBeUndefined()
   expect(officialJobUrl('https://jobs.example.test/1')).toBe('https://jobs.example.test/1')
 })
+
+it('search preserves optional snapshot source metadata from the API', async () => {
+  const meta = {
+    source: 'LOCAL_SNAPSHOT',
+    snapshotDate: '2026-10-10',
+    fallbackReason: 'LIVE_UNAVAILABLE',
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { items: [], meta } }))),
+  )
+  const result = await searchJobs({
+    query: 'Java',
+    site: 'bytedance',
+    nature: 'campus',
+    location: '',
+  })
+  expect(result.meta).toEqual(meta)
+})

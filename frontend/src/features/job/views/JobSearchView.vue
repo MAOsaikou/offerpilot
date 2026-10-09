@@ -2,6 +2,7 @@
 import { ref, watch, computed } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
+import JobSourceBadge from '@/shared/components/JobSourceBadge.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import { listJobSites, searchJobs } from '@/shared/api/jobs'
 import { useBoard } from '@/shared/composables/useBoard'
@@ -80,7 +81,7 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
     </p>
     <PageHeading
       title="发现适合你的下一站"
-      description="查询企业官网岗位，把真实机会与你的简历连接起来。"
+      description="搜索企业官网岗位；离线时使用明确标注的示例快照。"
       ><RouterLink to="/board" class="btn">求职看板</RouterLink></PageHeading
     >
     <form class="panel form-stack" @submit.prevent="submit">
@@ -130,7 +131,7 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
           class="btn primary"
           :disabled="!query.trim() || unsupported || search.isFetching.value"
         >
-          {{ search.isFetching.value ? '正在查询企业官网…' : '搜索真实岗位' }}
+          {{ search.isFetching.value ? '正在查询岗位…' : '搜索岗位' }}
         </button>
       </div>
     </form>
@@ -148,10 +149,15 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
     <template v-else-if="search.data.value">
       <div class="section-heading">
         <span>本次返回 {{ search.data.value.items.length }} 个岗位</span
-        ><span class="tag"
-          >企业官网 · {{ search.data.value.meta.cached ? '近期缓存' : '本次查询' }}</span
-        >
+        ><JobSourceBadge
+          :source="search.data.value.meta.source"
+          :snapshot-date="search.data.value.meta.snapshotDate"
+          :cached="search.data.value.meta.cached"
+        />
       </div>
+      <p v-if="search.data.value.meta.source === 'LOCAL_SNAPSHOT'" class="subtle">
+        人工整理的示例岗位快照，非实时数据；当前是否开放请到企业官网核实。
+      </p>
       <p class="subtle">
         查询时间：{{ new Date(search.data.value.fetchedAt).toLocaleString('zh-CN') }} · 覆盖
         {{ search.data.value.meta.sites.map(name).join('、') }}
@@ -186,7 +192,11 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
           <p class="subtle">
             {{ job.locations || '地点未提供' }} · {{ job.category || '分类未提供' }}
           </p>
-          <p class="subtle">企业更新时间：{{ job.updatedAt || '未提供' }}</p>
+          <p class="subtle">
+            {{ job.source === 'LOCAL_SNAPSHOT' ? '快照日期' : '企业更新时间' }}：{{
+              job.source === 'LOCAL_SNAPSHOT' ? job.snapshotDate : job.updatedAt || '未提供'
+            }}
+          </p>
           <div class="card-footer">
             <RouterLink :to="'/jobs/' + job.id" class="btn">查看详情与匹配</RouterLink
             ><button

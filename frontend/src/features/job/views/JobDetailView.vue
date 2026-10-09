@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
+import JobSourceBadge from '@/shared/components/JobSourceBadge.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import CardRenderer from '@/widgets/CardRenderer/CardRenderer.vue'
 import LegacyJobDetail from '../components/LegacyJobDetail.vue'
@@ -150,8 +151,11 @@ async function openReport(reportId: string) {
     <template v-else-if="job.data.value">
       <div class="panel form-stack">
         <div class="card-footer">
-          <span class="tag">企业官网 · {{ job.data.value.company }}</span
-          ><a
+          <span>{{ job.data.value.company }}</span>
+          <JobSourceBadge
+            :source="job.data.value.source"
+            :snapshot-date="job.data.value.snapshotDate"
+          /><a
             v-if="officialJobUrl(job.data.value.url)"
             :href="officialJobUrl(job.data.value.url)"
             target="_blank"
@@ -166,16 +170,31 @@ async function openReport(reportId: string) {
             @click="board.favorite(job.data.value.id)"
           >
             {{ saved ? '已收藏至看板' : '收藏至看板' }}</button
-          ><button class="btn" :disabled="refreshing || busy" @click="refresh">
+          ><button
+            v-if="job.data.value.source !== 'LOCAL_SNAPSHOT'"
+            class="btn"
+            :disabled="refreshing || busy"
+            @click="refresh"
+          >
             {{ refreshing ? '正在获取…' : '获取 / 更新完整详情' }}
           </button>
         </div>
         <p class="subtle">
-          企业更新时间：{{ job.data.value.updatedAt || '未提供' }} · 详情获取时间：{{
-            job.data.value.detailFetchedAt
-              ? new Date(job.data.value.detailFetchedAt).toLocaleString('zh-CN')
-              : '尚未获取完整详情'
+          {{ job.data.value.source === 'LOCAL_SNAPSHOT' ? '快照日期' : '企业更新时间' }}：{{
+            job.data.value.source === 'LOCAL_SNAPSHOT'
+              ? job.data.value.snapshotDate
+              : job.data.value.updatedAt || '未提供'
           }}
+          <template v-if="job.data.value.source !== 'LOCAL_SNAPSHOT'">
+            · 详情获取时间：{{
+              job.data.value.detailFetchedAt
+                ? new Date(job.data.value.detailFetchedAt).toLocaleString('zh-CN')
+                : '尚未获取完整详情'
+            }}
+          </template>
+        </p>
+        <p v-if="job.data.value.source === 'LOCAL_SNAPSHOT'" class="subtle">
+          人工整理的示例岗位快照，非实时数据。匹配分析基于示例职责与要求，不代表当前开放岗位。
         </p>
         <p v-if="refreshError" class="error-banner" role="alert">{{ refreshError }}</p>
         <h2>工作职责</h2>
