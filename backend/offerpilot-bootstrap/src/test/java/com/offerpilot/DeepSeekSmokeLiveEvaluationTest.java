@@ -176,12 +176,24 @@ class DeepSeekSmokeLiveEvaluationTest {
 
     @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
     void resumeRewriteApprovalAndPdfContainAppliedText(ModelTier tier) throws Exception {
+        // Rewrite generation follows the saved resume preference; intent/narration follow chat options.
+        jdbc.update("INSERT INTO resume_model_preferences(user_id,text_tier,vision_tier) VALUES (?,?,'VISION_ALT') "
+                + "ON CONFLICT(user_id) DO UPDATE SET text_tier=EXCLUDED.text_tier", owner, tier.name());
+        // Save a rough draft of existing demo facts through the same editor API used by the UI.
+        // The polished seed may correctly return no suggestions; that cannot exercise approval/PDF.
+        var draft = (com.fasterxml.jackson.databind.node.ObjectNode) data(request("GET",
+                "/api/v1/resumes/" + resumeId + "/versions/" + versionId, null)).path("structured").deepCopy();
+        draft.put("summary", "我关注后端开发。接口和数据表设计我做过，预约重复的问题用数据库唯一约束和事务控制处理，还写了并发场景测试。希望在实习中学习代码评审和工程实践。以上为演示虚构内容。");
+        versionId = data(request("PUT", "/api/v1/resumes/" + resumeId + "/versions/" + versionId + "/structured", draft)).path("currentVersionId").asText();
+        assertThat(versionId).isNotBlank();
         int initialVersions = versionCount();
         var source = data(request("GET", "/api/v1/resumes/" + resumeId + "/versions/" + versionId, null)).path("structured");
         var events = chat(tier, "RESUME", "请针对选中的岗位生成简历改写建议，保留已有事实，突出项目里的后端开发职责。",
                 Map.of("jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
         assertThat(cards(events, "resume_diff").size()).isEqualTo(1);
         var report = cards(events, "resume_diff").get(0);
+        assertThat(report.path("modelTier").asText()).isEqualTo(tier.name());
+        assertThat(report.path("model").asText()).isEqualTo(gateway.modelName(tier));
         assertThat(report.path("patches").isEmpty()).as(tier + " actionable rewrite").isFalse();
         var validated = json.createObjectNode();
         validated.set("summary", report.path("summary")); validated.set("patches", report.path("patches"));
