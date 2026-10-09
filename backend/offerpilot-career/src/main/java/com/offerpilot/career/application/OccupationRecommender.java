@@ -59,11 +59,11 @@ public class OccupationRecommender {
     /** RRF changes order only: similarity remains the original Holland score for card explanations. */
     public List<Ranked> rankHybrid(String hollandCode, String query, int limit) {
         OccupationHybridRetriever.validateLimit(limit);
-        var rules = rank(hollandCode, Math.min(MAX_LIMIT, limit * 2));
+        var rules = rankContext(hollandCode, query, Math.min(MAX_LIMIT, limit * 2));
         if (retriever == null || query == null || query.isBlank()) return rules.stream().limit(limit).toList();
         try {
             var retrieval = retriever.search(query, Math.min(MAX_LIMIT, limit * 2));
-            // Direct retrieve still exposes FTS without vectors. Chat ranking degrades exactly to rules.
+            // Without vectors, use deterministic Holland + explicit field relevance rules.
             if (!retrieval.vectorAvailable() || retrieval.hits().isEmpty()) return rules.stream().limit(limit).toList();
             var candidates = new LinkedHashMap<String, Ranked>();
             rules.forEach(item -> candidates.put(item.id(), item));
@@ -79,6 +79,19 @@ public class OccupationRecommender {
             log.warn("职业混合检索失败 ({})；回退 Holland 规则", ex.getClass().getSimpleName());
             return rules.stream().limit(limit).toList();
         }
+    }
+
+    /** Similarity stays the raw Holland score; field relevance affects order, never the displayed score. */
+    public List<Ranked> rankContext(String hollandCode, String query, int limit) {
+        String code = HollandMatcher.normalize(hollandCode);
+        if (!code.matches("[RIASEC]{1,3}")) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        double maximum = switch (HollandMatcher.normalize(hollandCode).length()) { case 1 -> 3; case 2 -> 5; default -> 6; };
+        if (limit < 1 || limit > MAX_LIMIT) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        // Query all positive matches before limiting: broad interests must not exclude the student's field.
+        var candidates = allMatches(code);
+        return candidates.stream().sorted(Comparator.<Ranked>comparingDouble(item ->
+                        0.45 * item.similarity() / maximum + 0.55 * OccupationRelevance.score(query, item)).reversed()
+                .thenComparing(Ranked::name).thenComparing(Ranked::id)).limit(limit).toList();
     }
 
     public Ranked find(String occupationId, String name) {
@@ -106,6 +119,13 @@ public class OccupationRecommender {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "limit 取值范围为 1-" + MAX_LIMIT);
         }
 
+        return allMatches(code).stream()
+                .sorted(Comparator.comparingDouble(Ranked::similarity).reversed()
+                        .thenComparing(Ranked::name).thenComparing(Ranked::id))
+                .limit(limit).toList();
+    }
+
+    private List<Ranked> allMatches(String code) {
         return jdbc.query("SELECT id,name,family,holland_code FROM occupations WHERE holland_code IS NOT NULL",
                         (rs, row) -> new Ranked(
                                 rs.getString("id"),
@@ -115,9 +135,6 @@ public class OccupationRecommender {
                                 HollandMatcher.score(code, rs.getString("holland_code"))))
                 .stream()
                 .filter(ranked -> ranked.similarity() > 0)
-                .sorted(Comparator.comparingDouble(Ranked::similarity).reversed()
-                        .thenComparing(Ranked::name))   // 同分时按名称排序，保证结果可复现
-                .limit(limit)
                 .toList();
     }
 }

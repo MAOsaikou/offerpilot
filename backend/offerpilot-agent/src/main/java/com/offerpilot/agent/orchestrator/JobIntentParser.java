@@ -37,11 +37,16 @@ public class JobIntentParser {
 
     public Mono<PlanStep> prepare(PlanStep step, String content, List<Message> history, ModelTier tier,
                                   Consumer<Usage> onUsage, Map<String, Object> context) {
+        if (BoardIntent.matches(content, context)) return Mono.just(BoardIntent.prepare(step, context));
         if (BoardWriteTools.recognizes(step)) return Mono.just(step);
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(prompt));
         messages.addAll(history.subList(Math.max(0, history.size() - 12), history.size()));
-        messages.add(new UserMessage("本轮请求：" + content + "\n本步骤：" + step.title()));
+        var selections = new LinkedHashMap<String, Boolean>();
+        for (String key : List.of("jobId", "resumeId", "resumeVersionId", "applicationId"))
+            selections.put(key, context.get(key) instanceof String value && !value.isBlank() && value.length() <= 80);
+        messages.add(new UserMessage("调用方资源选择状态（true=已选择，标识由服务端绑定，不要求用户再粘贴）：" + selections
+                + "\n本轮请求：" + content + "\n本步骤：" + step.title()));
         return attempt(messages, tier, onUsage).map(intent -> normalize(step, intent, context))
                 .onErrorResume(IllegalArgumentException.class, ex ->
                         Mono.just(clarify(step, "请说明岗位关键词、城市和招聘类型，或从岗位详情选择简历版本后发起匹配。")));

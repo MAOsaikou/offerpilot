@@ -85,4 +85,16 @@ class OccupationRecommendationTest {
         assertThatThrownBy(() -> recommender.rank("", 5)).hasMessageContaining("RIASEC");
         assertThatThrownBy(() -> recommender.rank("AIS", 0)).hasMessageContaining("limit");
     }
+    @Test void risSoftwareContextOutranksMedicalMatchesWithoutEmbeddingsAndStaysExplainable() {
+        var top = recommender.rankContext("RIS", "技术研发 沟通协作 研究探索 后端开发 Java Spring Boot 我喜欢研究技术和动手搭建系统", 8);
+        assertThat(top).hasSize(8).allSatisfy(item -> {
+            assertThat(item.family()).isIn("软件研发", "算法与人工智能", "测试与质量", "运维与安全", "数据", "计算机与数学");
+            assertThat(item.similarity()).isEqualTo(com.offerpilot.career.application.HollandMatcher.score("RIS", item.hollandCode()));
+        });
+        assertThat(recommender.rankContext("RIS", "", 8)).isEqualTo(recommender.rank("RIS", 8));
+        assertThat(recommender.rankContext("RIS", "技术研发", 3)).extracting(OccupationRecommender.Ranked::family)
+                .doesNotContain("医疗健康");
+        assertThat(recommender.rankContext("RIS", "我喜欢研究技术和动手搭建系统", 8)).isEqualTo(
+                recommender.rankContext("RIS", "我喜欢研究技术和动手搭建系统", 8));
+    }
 }

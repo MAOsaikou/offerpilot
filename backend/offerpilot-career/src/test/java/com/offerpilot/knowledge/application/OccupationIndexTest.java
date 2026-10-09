@@ -54,7 +54,7 @@ class OccupationIndexTest {
         var rules = List.of(new OccupationRecommender.Ranked("a", "工程师", "技术", "IRC", 6),
                 new OccupationRecommender.Ranked("b", "分析师", "数据", "ICR", 4.5));
         var recommender = spy(new OccupationRecommender(mock(JdbcTemplate.class), retrieval));
-        doReturn(rules).when(recommender).rank("IRC", 4);
+        doReturn(rules).when(recommender).rankContext(eq("IRC"), anyString(), eq(4));
         when(retrieval.search("Java", 4)).thenReturn(new OccupationHybridRetriever.Retrieval(List.of(
                 new OccupationHybridRetriever.Hit("b", "分析师", "数据", "ICR", .01, "SQL")), false));
         assertThat(recommender.rankHybrid("IRC", "Java", 2)).isEqualTo(rules);

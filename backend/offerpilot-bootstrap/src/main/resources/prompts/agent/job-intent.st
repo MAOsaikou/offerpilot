@@ -9,3 +9,5 @@ query 必须是用户表达的岗位方向或技能关键词，不要将完整�
 本步骤如依赖搜索后再匹配，仍用 match；系统会要求用户先选择具体岗位与简历版本。不生成任何资源ID，不输出额外字段，不生成岗位列表或匹配报告。
 
 看板新增投递使用 createApplication；修改投递阶段或备注使用 updateApplicationStatus。输出可增加 status（TODO/APPLIED/INTERVIEW/OFFER/CLOSED，面试中为 INTERVIEW）和 note（备注文本）。没有指定的 status/note 使用 null，不能用空字符串表示未指定。不要输出 jobId/applicationId/owner，资源标识只由调用方上下文提供；缺少资源时系统澄清。看板写入必须人工审批。
+
+调用方资源选择状态是本轮选中的可信上下文状态，不包含标识。若用户请求匹配且 jobId/resumeId/resumeVersionId 均为 true，输出 match，不因消息没写ID而澄清。创建看板同理，jobId=true 表示已选中岗位；参数标识由服务端绑定，不能生成ID。

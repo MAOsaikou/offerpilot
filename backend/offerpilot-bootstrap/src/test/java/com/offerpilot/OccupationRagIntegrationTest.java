@@ -69,7 +69,7 @@ class OccupationRagIntegrationTest {
         assertThat(disabled.reindex(false).embedded()).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM occupations WHERE tsv IS NULL", Integer.class)).isZero();
         assertThat(recommender.retrieve("Java", 20)).extracting(OccupationHybridRetriever.Hit::id).contains("occ_backend_dev");
-        assertThat(recommender.rankHybrid("IRC", "Java", 8)).isEqualTo(recommender.rank("IRC", 8));
+        assertThat(recommender.rankHybrid("IRC", "Java", 8)).isEqualTo(recommender.rankContext("IRC", "Java", 8));
         var profiles = mock(CareerProfileService.class);
         when(profiles.get("alice")).thenReturn(new CareerProfileService.Profile("后端开发工程师", "", "Java",
                 List.of("技术研发", "数据分析"), List.of(), null));

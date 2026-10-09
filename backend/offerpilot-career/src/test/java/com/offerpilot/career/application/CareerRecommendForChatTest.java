@@ -44,7 +44,7 @@ class CareerRecommendForChatTest {
         verify(occupations).rankHybrid("IRC", "技术研发 数据分析 Java 旧目标", 8);
         assertThat(result.payload().recommendations().get(1).similarity()).isEqualTo(.75);
         assertThat(result.payload().recommendations()).allSatisfy(item -> {
-            assertThat(item.reasons()).hasSize(2);
+            assertThat(item.reasons()).hasSize(3);
             assertThat(item.reasons().get(0)).contains("兴趣码 IRC", "职业码", "共同包含");
         });
         assertThat(careers.recommend("alice")).isEqualTo(result);

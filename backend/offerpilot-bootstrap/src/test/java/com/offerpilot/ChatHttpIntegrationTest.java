@@ -645,7 +645,7 @@ class ChatHttpIntegrationTest {
         assertThat(card.path("payload").path("interestsUsed")).isEqualTo(json.valueToTree(interests));
         assertThat(card.path("payload").path("recommendations")).hasSize(8);
         card.path("payload").path("recommendations").forEach(item -> {
-            assertThat(item.path("reasons")).hasSize(2);
+            assertThat(item.path("reasons")).hasSize(3);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM occupations WHERE id=? AND name=?", Integer.class,
                     item.path("occupationId").asText(), item.path("name").asText())).isEqualTo(1);
         });

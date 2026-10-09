@@ -51,9 +51,21 @@ public class JobService implements JobDescriptionForChat {
     public JsonNode detail(String id,boolean force) {
         var existing=get(id);
         if(!force && !existing.path("detailFetchedAt").isNull() && Instant.parse(existing.path("detailFetchedAt").asText()).isAfter(Instant.now().minusSeconds(600))) return existing;
-        if(source.localOnly() || "LOCAL_SNAPSHOT".equals(existing.path("source").asText())) return existing;
-        var result=source.detail(existing.path("site").asText(),existing.path("externalId").asText(),existing.path("nature").asText());
-        if(!result.isObject()) throw new BusinessException(ErrorCode.TOOL_FAILED);
+        if(source.localOnly() || "demo".equals(existing.path("site").asText())
+                || "demo".equals(existing.path("source").asText())
+                || "LOCAL_SNAPSHOT".equals(existing.path("source").asText())) return existing;
+        JsonNode result;
+        try {
+            result=source.detail(existing.path("site").asText(),existing.path("externalId").asText(),existing.path("nature").asText());
+            if(!result.isObject() || result.path("description").asText().isBlank()
+                    && result.path("requirement").asText().isBlank()) throw new BusinessException(ErrorCode.TOOL_FAILED);
+        } catch(BusinessException ex) {
+            if(!source.fallbackToStored() || ex.errorCode()!=ErrorCode.TOOL_FAILED) throw ex;
+            var fallback=(ObjectNode)existing.deepCopy();
+            fallback.put("originalSource",existing.path("source").asText());
+            fallback.put("source","STORED_SNAPSHOT").put("fallbackReason","LIVE_DETAIL_UNAVAILABLE");
+            return fallback;
+        }
         var raw=(ObjectNode)result.deepCopy();
         raw.put("id",existing.path("externalId").asText()); raw.put("site",existing.path("site").asText());
         var data=normalize(raw,existing.path("nature").asText());

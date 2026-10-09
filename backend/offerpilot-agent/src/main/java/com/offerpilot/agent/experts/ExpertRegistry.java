@@ -244,7 +244,7 @@ public class ExpertRegistry {
         if (step.agent() == ExpertType.CAREER_DISCOVERY) {
             if (careers == null) return Mono.just(ExpertResult.text("职业推荐服务暂不可用，请稍后重试。未修改职业档案。"));
             return Mono.fromCallable(() -> {
-                var result = careers.recommend(owner);
+                var result = careers.recommend(owner, text(step.inputs().get("request")));
                 return result.payload() == null ? ExpertResult.text(result.guidance())
                         : ExpertResult.card("根据已保存兴趣生成的规则推荐（未设置目标）：" + result.payload(),
                                 requestId(runId, step.id()), "career_recommendation", result.payload());

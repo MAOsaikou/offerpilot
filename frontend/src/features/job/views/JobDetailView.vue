@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import JobSourceBadge from '@/shared/components/JobSourceBadge.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import CardRenderer from '@/widgets/CardRenderer/CardRenderer.vue'
@@ -12,7 +12,8 @@ import { useBoard } from '@/shared/composables/useBoard'
 import { officialJobUrl } from '@/shared/utils/jobs'
 import type { EvidenceMatch } from '@/shared/types/jobs'
 const route = useRoute(),
-  board = useBoard()
+  board = useBoard(),
+  queryClient = useQueryClient()
 const id = computed(() => String(route.params.id)),
   real = computed(() => id.value.startsWith('job_'))
 const job = useQuery({
@@ -81,8 +82,8 @@ async function refresh() {
   refreshing.value = true
   refreshError.value = ''
   try {
-    await refreshJob(id.value)
-    if (epoch === generation) await job.refetch()
+    const updated = await refreshJob(id.value)
+    if (epoch === generation) queryClient.setQueryData(['job', id.value], updated)
   } catch (e) {
     if (epoch === generation) refreshError.value = (e as Error).message
   } finally {
@@ -155,6 +156,7 @@ async function openReport(reportId: string) {
           <JobSourceBadge
             :source="job.data.value.source"
             :snapshot-date="job.data.value.snapshotDate"
+            :cached="true"
           /><a
             v-if="officialJobUrl(job.data.value.url)"
             :href="officialJobUrl(job.data.value.url)"
@@ -171,7 +173,7 @@ async function openReport(reportId: string) {
           >
             {{ saved ? '已收藏至看板' : '收藏至看板' }}</button
           ><button
-            v-if="job.data.value.source !== 'LOCAL_SNAPSHOT'"
+            v-if="!['LOCAL_SNAPSHOT', 'demo'].includes(job.data.value.source)"
             class="btn"
             :disabled="refreshing || busy"
             @click="refresh"
@@ -195,6 +197,12 @@ async function openReport(reportId: string) {
         </p>
         <p v-if="job.data.value.source === 'LOCAL_SNAPSHOT'" class="subtle">
           人工整理的示例岗位快照，非实时数据。匹配分析基于示例职责与要求，不代表当前开放岗位。
+        </p>
+        <p v-if="job.data.value.source === 'STORED_SNAPSHOT'" class="subtle" role="status">
+          实时详情暂不可用，当前展示已保存的岗位，仍可进行匹配；最新要求与开放状态请核对企业官网。
+        </p>
+        <p v-if="job.data.value.source === 'demo'" class="subtle">
+          虚构体验岗位，仅供练习匹配与求职流程，不接受实际投递。
         </p>
         <p v-if="refreshError" class="error-banner" role="alert">{{ refreshError }}</p>
         <h2>工作职责</h2>

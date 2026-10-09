@@ -76,6 +76,7 @@ public class JobSource {
     }
 
     public boolean localOnly() { return mode == Mode.LOCAL; }
+    public boolean fallbackToStored() { return mode == Mode.AUTO; }
 
     public JsonNode detail(String site, String externalId, String nature) {
         if (externalId.startsWith("snapshot-")) return snapshot.detail(site, externalId);
