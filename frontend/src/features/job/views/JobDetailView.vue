@@ -7,6 +7,7 @@ import JobSourceBadge from '@/shared/components/JobSourceBadge.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import CardRenderer from '@/widgets/CardRenderer/CardRenderer.vue'
 import LegacyJobDetail from '../components/LegacyJobDetail.vue'
+import JobEvalReport from '../components/JobEvalReport.vue'
 import { getJob, refreshJob, matchJob, listJobMatches, getJobMatch } from '@/shared/api/jobs'
 import { listResumes, listResumeVersions } from '@/shared/api/resumes'
 import { useBoard } from '@/shared/composables/useBoard'
@@ -426,6 +427,7 @@ async function openReport(reportId: string) {
       </section>
       <p v-if="reportLoading" class="panel" role="status">正在加载报告…</p>
       <CardRenderer v-if="report" card-type="job_evidence_match" :payload="report" />
+      <JobEvalReport v-if="report?.evaluation" :payload="report.evaluation" />
       <section class="panel form-stack">
         <div class="section-heading">
           <h2>最近的匹配记录</h2>

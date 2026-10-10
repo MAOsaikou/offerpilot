@@ -42,6 +42,8 @@ class JobMatchCardsTest {
         assertThat(card.payload().path("gaps").get(1).path("severity").asText()).isEqualTo("MEDIUM");
         assertThat(card.payload().path("advice")).extracting(node -> node.asText())
                 .containsExactly("保留项目", "补充索引", "补充容器经历");
+        assertThat(card.payload().path("evaluation").path("dimensions")).hasSize(6);
+        assertThat(card.payload().path("evaluation").path("grade").asText()).isNotBlank();
         assertThat(report.has("jobSnapshot")).isTrue();
     }
 

@@ -361,7 +361,13 @@ public class ExpertRegistry {
                 JobMatchCards.Card card = tier == null
                         ? matches.match(owner, target.jobId(), target.resumeId(), target.resumeVersionId(), requestId)
                         : matches.match(owner, target.jobId(), target.resumeId(), target.resumeVersionId(), requestId, tier);
-                return ExpertResult.card(card.summary(), card.cardId(), card.cardType(), card.payload());
+                                var payload = card.payload();
+                if (payload != null && payload.path("evaluation").isObject()) {
+                    return ExpertResult.cards(card.summary(),
+                            new ExpertResult.Card(card.cardId(), card.cardType(), payload),
+                            new ExpertResult.Card(card.cardId() + ":eval", "job_eval_report", payload.path("evaluation")));
+                }
+                return ExpertResult.card(card.summary(), card.cardId(), card.cardType(), payload);
             }).subscribeOn(Schedulers.boundedElastic());
         }
         return Mono.fromSupplier(() -> ExpertResult.text(label(step.agent()) + "占位专家已接收任务；收到 "

@@ -58,6 +58,26 @@ export interface MatchRequirement {
   reason: string
   suggestion: string
 }
+export interface JobEvalDimension {
+  code: string
+  name: string
+  score: number
+  reason: string
+}
+export interface JobEvaluation {
+  cardType: 'job_eval_report'
+  matchId: string
+  jobId: string
+  title: string
+  company: string
+  dimensions: JobEvalDimension[]
+  overall: number
+  grade: string
+  summary: string
+  advice: string[]
+  scoringVersion: string
+  note: string
+}
 export interface EvidenceMatch {
   modelTier?: ModelTier
   id: string
@@ -73,6 +93,7 @@ export interface EvidenceMatch {
   jobSnapshot: RealJob
   resumeSnapshot: Record<string, unknown>
   model: string
+  evaluation?: JobEvaluation
 }
 export interface MatchHistory {
   id: string
