@@ -85,6 +85,18 @@ public class JobMatchService {
             // already finished — idempotent no-op for dock cancel
         }
     }
+    /** No writes/refresh/model call. Without a job selection, only the exact target title qualifies. */
+    public JsonNode latestCompleted(String owner, String jobId, String target) {
+        var rows = jdbc.query("""
+                SELECT m.report FROM job_matches m JOIN jobs j ON j.id=m.job_id
+                WHERE m.user_id=? AND m.status='COMPLETED'
+                AND ((?::text IS NOT NULL AND m.job_id=?) OR
+                     (?::text IS NULL AND lower(trim(j.payload->>'title'))=lower(trim(?))))
+                ORDER BY m.created_at DESC,m.id DESC LIMIT 1
+                """, (rs, n) -> parse(rs.getString(1)), owner, jobId, jobId, jobId, target);
+        return rows.isEmpty() ? null : withEvaluation(rows.get(0));
+    }
+
     /** Derived view for API/UI; not persisted separately. */
     static JsonNode withEvaluation(JsonNode report) {
         if (!(report instanceof ObjectNode node)) return report;

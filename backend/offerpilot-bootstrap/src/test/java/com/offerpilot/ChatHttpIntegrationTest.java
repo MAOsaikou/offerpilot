@@ -690,6 +690,76 @@ class ChatHttpIntegrationTest {
         assertThat(foreignGap.path("payload").path("summary").asText()).contains("仅参考档案技能");
         assertThat(foreignGap.path("payload").path("skills").get(0).path("name").asText()).isEqualTo("SQL");
         assertThat(foreignGap.path("payload").path("skills").get(0).path("current").asInt()).isZero();
+
+        // Close the loop using saved completed artifacts, never a model-selected report or foreign owner.
+        String jobId = "job_coach_" + user, matchId = "match_coach_" + user, interviewId = "iv_coach_" + user;
+        var job = json.createObjectNode().put("id", jobId).put("title", "教练测试工程师").put("company", "Fixture")
+                .put("description", "练习岗位").put("requirement", "Docker SQL");
+        jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES (?,'fixture',?,'campus',?::jsonb)", jobId, jobId, job.toString());
+        var match = json.createObjectNode().put("id", matchId).put("jobId", jobId);
+        match.set("jobSnapshot", job);
+        match.putArray("requirements").addObject().put("requirement", "Docker").put("status", "MISSING")
+                .put("reason", "保存简历未体现容器项目");
+        ((com.fasterxml.jackson.databind.node.ArrayNode) match.path("requirements")).addObject()
+                .put("requirement", "SQL").put("status", "PARTIAL").put("reason", "缺少项目结果");
+        jdbc.update("""
+                INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status,report)
+                VALUES (?,?,?,?,?,'COMPLETED',?::jsonb)
+                """, matchId, user, jobId, versionId, matchId, match.toString());
+        // A newer foreign report even using the same public job must never become coach evidence.
+        String foreignMatchId = "match_other_" + user;
+        var otherMatch = match.deepCopy().put("id", foreignMatchId);
+        otherMatch.putArray("requirements").addObject().put("requirement", "foreign-secret-gap")
+                .put("status", "MISSING").put("reason", "foreign-private-evidence");
+        jdbc.update("""
+                INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status,report,created_at)
+                VALUES (?,?,?,?,?,'COMPLETED',?::jsonb,now()+interval '1 minute')
+                """, foreignMatchId, owner(stranger), jobId, versionId, foreignMatchId, otherMatch.toString());
+        jdbc.update("""
+                INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status,created_at)
+                VALUES (?,?,?,?,?,'RUNNING',now()+interval '2 minutes')
+                """, "running_" + user, user, jobId, versionId, "running_" + user);
+        jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,completed) VALUES (?,?,'另一练习岗位','项目与经历',true)", interviewId, user);
+        jdbc.update("INSERT INTO interview_answers(session_id,question_index,question_text,answer_text) VALUES (?,0,'介绍项目','我做过练习')", interviewId);
+        jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,completed,updated_at) VALUES (?,?,'foreign-interview','项目与经历',true,now()+interval '1 minute')",
+                "iv_foreign_" + user, owner(stranger));
+        String applicationId = "app_coach_" + user;
+        jdbc.update("INSERT INTO applications(id,user_id,job_id) VALUES (?,?,?)", applicationId, user, jobId);
+        var loopResponse = request("POST", "/agent/chat", token, json.writeValueAsString(java.util.Map.of(
+                "content", "技能差距和成长计划", "mode", "COACH", "options", java.util.Map.of("context",
+                java.util.Map.of("applicationId", applicationId, "jobId", "unrelated-caller-job")))));
+        var loopCards = sseEvents(loopResponse.body()).stream().filter(e -> e.path("type").asText().equals("ui.card")).toList();
+        assertThat(loopCards).extracting(e -> e.path("cardType").asText()).containsExactly("skill_gap", "roadmap");
+        var loopSkills = loopCards.get(0).path("payload").path("skills");
+        assertThat(loopSkills).hasSizeLessThanOrEqualTo(8);
+        assertThat(loopSkills.get(0).path("name").asText()).isEqualTo("Docker");
+        var sources = new java.util.ArrayList<com.fasterxml.jackson.databind.JsonNode>();
+        var gapIds = new java.util.HashSet<String>();
+        for (var skill : loopSkills) {
+            skill.path("evidenceSources").forEach(sources::add);
+            gapIds.add(skill.path("id").asText());
+        }
+        assertThat(sources).anySatisfy(source -> {
+            assertThat(source.path("type").asText()).isEqualTo("JOB_MATCH");
+            assertThat(source.path("id").asText()).isEqualTo(matchId);
+            assertThat(source.path("excerpt").asText()).contains("MISSING");
+        }).anySatisfy(source -> {
+            assertThat(source.path("type").asText()).isEqualTo("INTERVIEW");
+            assertThat(source.path("id").asText()).isEqualTo(interviewId);
+            assertThat(source.path("label").asText()).contains("另一练习岗位");
+        });
+        assertThat(loopSkills.toString()).contains("STAR", "PARTIAL").doesNotContain("foreign-secret-gap", "foreign-private-evidence", foreignMatchId, "iv_foreign_");
+        for (var week : loopCards.get(1).path("payload").path("weeks"))
+            for (var gapId : week.path("gapIds")) assertThat(gapIds).contains(gapId.asText());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM growth_task_completions WHERE user_id=?", Integer.class, user)).isZero();
+        // No context still resolves the exact target title; supplying someone else's selection does not expose their report.
+        var byTarget = request("POST", "/agent/chat", token, "{\"content\":\"学习计划\",\"mode\":\"COACH\"}");
+        assertThat(byTarget.body()).contains(matchId).doesNotContain(foreignMatchId, "foreign-private-evidence");
+        var strangerResponse = request("POST", "/agent/chat", stranger, json.writeValueAsString(java.util.Map.of(
+                "content", "成长计划", "mode", "COACH", "options", java.util.Map.of("context", java.util.Map.of("jobId", jobId)))));
+        var strangerCard = sseEvents(strangerResponse.body()).stream().filter(e -> e.path("cardType").asText().equals("skill_gap")).findFirst().orElseThrow();
+        assertThat(strangerCard.toString()).contains(foreignMatchId).doesNotContain(matchId, interviewId, "保存简历未体现容器项目");
+
     }
 
     private java.util.List<com.fasterxml.jackson.databind.JsonNode> sseEvents(String body) {

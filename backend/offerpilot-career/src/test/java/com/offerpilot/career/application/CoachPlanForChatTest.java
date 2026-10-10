@@ -29,6 +29,18 @@ class CoachPlanForChatTest {
         assertThat(result).extracting(CoachPlanForChat.Skill::current).containsExactly(0,2,3,2);
         assertThat(result).extracting(CoachPlanForChat.Skill::learnFirst).containsExactly(true,true,false,false);
         assertThat(result.get(2).evidence()).containsExactly("已保存简历技能或项目技术列出：SQL");
+        var signal = new CoachPlanForChat.Evidence("JOB_MATCH", "match", "岗位匹配", "MISSING：SQL");
+        var interview = new CoachPlanForChat.Evidence("INTERVIEW", "iv", "面试复盘", "逻辑 25/100");
+        var snapshot = new CoachEvidence.Snapshot(true, true, List.of(
+                new CoachEvidence.Gap(" sql ", 0, 0, signal), new CoachEvidence.Gap("SQL", 20, 50, signal),
+                new CoachEvidence.Gap("面试逻辑", 10, 25, interview)));
+        var ranked = DefaultCoachPlanForChat.ranked(result, snapshot,
+                new OccupationRecommender.Ranked("occ", "工程师", "技术", "IRC", 0), "rv", "req");
+        assertThat(ranked).extracting(CoachPlanForChat.Skill::name).containsExactly(" sql ", "面试逻辑", "沟通", "Java", "Go");
+        assertThat(ranked.get(0).evidenceSources()).extracting(CoachPlanForChat.Evidence::type)
+                .containsExactly("JOB_MATCH", "OCCUPATION", "RESUME");
+        assertThat(ranked.get(0).current()).isZero();
+        assertThat(ranked).extracting(CoachPlanForChat.Skill::id).doesNotHaveDuplicates().doesNotContainNull();
         assertThat(DefaultCoachPlanForChat.gaps(required, "JavaScript", List.of()).stream()
                 .filter(s -> s.name().equals("Java")).findFirst().orElseThrow().current()).isZero();
         assertThat(DefaultCoachPlanForChat.gaps(required, "  JAVA、Go\nJavaScript", List.of(" sql "))).isEqualTo(result);

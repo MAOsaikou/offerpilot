@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import GrowthEvidenceChips from './GrowthEvidenceChips.vue'
 import type { SkillGapPayload } from '@/shared/types/cards'
 defineProps<{ payload: SkillGapPayload }>()
 </script>
@@ -32,7 +33,11 @@ defineProps<{ payload: SkillGapPayload }>()
           :max="5"
           :aria-label="`${skill.name}证据等级`"
         />
-        <ul v-if="skill.evidence.length" class="mt-1 space-y-1 text-sm text-muted-foreground">
+        <GrowthEvidenceChips
+          v-if="skill.evidenceSources?.length"
+          :sources="skill.evidenceSources"
+        />
+        <ul v-else-if="skill.evidence.length" class="mt-1 space-y-1 text-sm text-muted-foreground">
           <li v-for="evidence in skill.evidence" :key="evidence" class="break-words">
             {{ evidence }}
           </li>

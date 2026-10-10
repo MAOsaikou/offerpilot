@@ -32,6 +32,41 @@ vi.mock('../composables/useConversationChat', async () => {
         status: 'COMPLETED',
         cards: [
           {
+            cardId: 'gaps',
+            cardType: 'skill_gap',
+            payload: {
+              id: 'gaps',
+              target: { type: 'OCCUPATION', id: 'occ', title: '工程师' },
+              summary: '证据差距',
+              citations: [],
+              skills: [
+                {
+                  id: 'gap1',
+                  name: 'SQL',
+                  required: 5,
+                  current: 0,
+                  gap: 5,
+                  evidence: [],
+                  evidenceSources: [
+                    {
+                      type: 'JOB_MATCH',
+                      id: 'match1',
+                      jobId: 'job1',
+                      label: '岗位匹配 · 工程师',
+                      excerpt: 'MISSING：SQL <script>untrusted</script>',
+                    },
+                    {
+                      type: 'INTERVIEW',
+                      id: 'iv1',
+                      label: '面试复盘 · 工程师',
+                      excerpt: '逻辑：25/100',
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          {
             cardId: 'roadmap',
             cardType: 'roadmap',
             payload: {
@@ -39,6 +74,16 @@ vi.mock('../composables/useConversationChat', async () => {
                 {
                   index: 1,
                   theme: '补齐 SQL',
+                  gapIds: ['gap1'],
+                  evidenceSources: [
+                    {
+                      type: 'JOB_MATCH',
+                      id: 'match1',
+                      jobId: 'job1',
+                      label: '岗位匹配 · 工程师',
+                      excerpt: 'MISSING：SQL',
+                    },
+                  ],
                   items: [
                     {
                       id: 'task',
@@ -121,6 +166,19 @@ describe('coach roadmap chat confirmation path', () => {
   )
   it('sends selected completed catalog titles to a COACH approval turn and opens the existing panel', async () => {
     const root = await mount('/chat?modelTier=pro')
+    await vi.waitFor(() =>
+      expect(root.querySelector('section[aria-label="技能差距"]')).not.toBeNull(),
+    )
+    const gap = root.querySelector('section[aria-label="技能差距"]')!
+    expect(gap.querySelector('a[href="/jobs/job1?matchId=match1"]')?.textContent).toContain(
+      '查看报告',
+    )
+    expect(gap.querySelector('a[href="/interviews/iv1"]')?.textContent).toContain('查看复盘')
+    expect(gap.textContent).toContain('MISSING：SQL <script>untrusted</script>')
+    expect(gap.querySelector('script')).toBeNull()
+    expect(root.querySelector('section[aria-label="学习路线图"] a')?.getAttribute('href')).toBe(
+      '/jobs/job1?matchId=match1',
+    )
     expect(root.querySelector<HTMLSelectElement>('select[aria-label="模型档位"]')!.value).toBe(
       'PRO',
     )

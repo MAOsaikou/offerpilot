@@ -26,7 +26,7 @@ public class CoachResumeSkillsAdapter implements CoachResumeSkills {
             var names = new LinkedHashSet<String>();
             data.path("skills").forEach(group -> group.path("items").forEach(item -> names.add(item.asText())));
             data.path("projects").forEach(project -> project.path("tech").forEach(item -> names.add(item.asText())));
-            return new Snapshot(true, List.copyOf(names));
+            return new Snapshot(true, List.copyOf(names), versionId);
         } catch (BusinessException ex) {
             if (ex.errorCode() != ErrorCode.RESUME_NOT_FOUND && ex.errorCode() != ErrorCode.RESUME_BUSY) throw ex;
             return new Snapshot(false, List.of());

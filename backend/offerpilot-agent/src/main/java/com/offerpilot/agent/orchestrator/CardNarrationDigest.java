@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.offerpilot.agent.experts.ExpertResult;
-import java.util.Comparator;
 import java.util.List;
 import java.util.stream.StreamSupport;
 
@@ -21,15 +20,20 @@ final class CardNarrationDigest {
                 case "skill_gap" -> {
                     row.set("target", fields(payload.path("target"), "title"));
                     var skills = row.putArray("topGaps");
-                    StreamSupport.stream(payload.path("skills").spliterator(), false)
-                            .sorted(Comparator.comparingInt((JsonNode n) -> n.path("gap").asInt()).reversed())
-                            .limit(5).forEach(n -> skills.add(fields(n, "name", "required", "current", "gap", "learnFirst")));
+                    row.set("summary", payload.path("summary"));
+                    StreamSupport.stream(payload.path("skills").spliterator(), false).limit(8).forEach(n -> {
+                        var view = fields(n, "id", "name", "required", "current", "gap", "learnFirst");
+                        view.set("evidenceSources", evidence(n.path("evidenceSources")));
+                        skills.add(view);
+                    });
                 }
                 case "roadmap" -> {
                     var weeks = row.putArray("weeks");
                     for (var week : payload.path("weeks")) {
                         if (weeks.size() == 4) break;
                         var view = fields(week, "index", "theme");
+                        view.set("gapIds", first(week.path("gapIds"), 8));
+                        view.set("evidenceSources", evidence(week.path("evidenceSources")));
                         var titles = view.putArray("taskTitles");
                         for (var item : week.path("items")) {
                             if (titles.size() == 3) break;
@@ -75,6 +79,14 @@ final class CardNarrationDigest {
             digest.add(row);
         }
         return digest.toString();
+    }
+    private static JsonNode evidence(JsonNode sources) {
+        var output = JSON.createArrayNode();
+        for (var source : sources) {
+            if (output.size() == 12) break;
+            output.add(fields(source, "type", "id", "label", "excerpt"));
+        }
+        return output;
     }
     private static ObjectNode fields(JsonNode source, String... names) {
         var output = JSON.createObjectNode();
