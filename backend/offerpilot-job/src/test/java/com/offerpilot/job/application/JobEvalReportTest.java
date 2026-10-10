@@ -40,14 +40,16 @@ class JobEvalReportTest {
         assertThat(strong.path("dimensions").get(0).path("code").asText()).isEqualTo("A");
         assertThat(weak.path("dimensions").get(4).path("score").asInt()).isLessThan(60);
         assertThat(strong.path("grade").asText()).isIn("A", "B", "C", "D");
-    }
 
-    @Test
-    void emptyRequirementsStillReturnsStructuredCard() throws Exception {
+        {
+
         var empty = json.createObjectNode().put("id", "match_empty");
         empty.putArray("requirements");
         var eval = JobEvalReport.evaluate(empty, job(false, false));
         assertThat(eval.path("overall").asInt()).isBetween(0, 100);
         assertThat(eval.path("advice").isArray()).isTrue();
+
+        }
     }
+
 }
