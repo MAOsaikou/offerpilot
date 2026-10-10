@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { PII_WARNING } from '@/shared/api/privacy-settings'
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import { useWorkspace } from '@/shared/stores/workspace'
 import LocalResumeEditor from '../components/LocalResumeEditor.vue'
 import ServerResumeEditor from '../components/ServerResumeEditor.vue'
@@ -10,6 +11,9 @@ const id = computed(() => String(route.params.id))
 const local = computed(() => workspace.state.resumes.some((resume) => resume.id === id.value))
 </script>
 <template>
+  <p v-if="route.query.piiWarning === '1'" class="helper-note" role="status">
+    {{ PII_WARNING }} <RouterLink to="/settings/privacy">隐私设置</RouterLink>
+  </p>
   <LocalResumeEditor v-if="local" :key="'local-' + id" />
   <ServerResumeEditor v-else :id="id" :key="id">
     <template #optimization-card="card"><slot name="optimization-card" v-bind="card" /></template>

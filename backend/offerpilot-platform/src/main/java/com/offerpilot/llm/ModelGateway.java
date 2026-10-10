@@ -46,6 +46,21 @@ public class ModelGateway {
     private final LlmQuotaLimiter quotas;
     private final RetryTemplate retryTemplate;
     private final ObservationRegistry observations;
+    @Autowired(required = false)
+    private com.offerpilot.llm.privacy.PiiMaskingPreference privacy;
+
+    public boolean piiMaskingEnabled(String owner) { return owner == null || privacy == null || privacy.enabled(owner); }
+    public String privacyWarning(String owner, String text) {
+        return !piiMaskingEnabled(owner) && com.offerpilot.llm.privacy.PiiMasker.detects(text)
+                ? "检测到联系方式或身份证号。当前已关闭文本脱敏，相关信息可能发送给模型；建议在设置中开启。" : null;
+    }
+    private com.offerpilot.llm.privacy.PiiMasker.Session masking(String owner, Prompt prompt) {
+        return piiMaskingEnabled(owner) ? com.offerpilot.llm.privacy.PiiMasker.forPrompt(prompt) : null;
+    }
+    private Flux<ChatResponse> protectedStream(String owner, Prompt prompt, java.util.function.Function<Prompt, Flux<ChatResponse>> provider) {
+        var session = masking(owner, prompt);
+        return session == null ? provider.apply(prompt) : session.restore(provider.apply(session.mask(prompt)));
+    }
 
     /** Compatibility constructor for isolated tests/live evaluations without business identity or Redis. */
     public ModelGateway(OfferPilotProperties properties, Environment environment) {
@@ -96,12 +111,14 @@ public class ModelGateway {
             @Override public ChatResponse call(Prompt prompt) {
                 String owner = LlmUserContext.current() == null ? capturedOwner : LlmUserContext.current();
                 var admission = admit(owner, tier);
-                ChatResponse response = delegate.call(prompt);
+                var session = masking(owner, prompt);
+                ChatResponse response = delegate.call(session == null ? prompt : session.mask(prompt));
+                if (session != null) response = session.restore(response);
                 record(admission, tokens(response));
                 return response;
             }
             @Override public Flux<ChatResponse> stream(Prompt prompt) {
-                return guardedStream(tier, capturedOwner, () -> delegate.stream(prompt));
+                return guardedStream(tier, capturedOwner, owner -> protectedStream(owner, prompt, delegate::stream));
             }
         };
     }
@@ -126,22 +143,27 @@ public class ModelGateway {
     }
 
     public Flux<ChatResponse> stream(ModelTier tier, List<Message> messages, double temperature) {
-        return guardedStream(tier, LlmUserContext.current(), () -> {
+        return guardedStream(tier, LlmUserContext.current(), owner -> {
+            var rawPrompt = new Prompt(messages);
+            var session = masking(owner, rawPrompt);
+            List<Message> outbound = session == null ? messages : session.mask(rawPrompt).getInstructions();
             // Spring AI 1.0 的 DeepSeek 适配器不处理图片；图文请求使用同一供应商的兼容接口。
             boolean hasImages = messages.stream().anyMatch(message -> message instanceof
                     org.springframework.ai.chat.messages.UserMessage user && !user.getMedia().isEmpty());
             requireAvailable(tier, hasImages);
             if (hasImages) {
-                return compatibleModel(tier).stream(new Prompt(messages,
+                var response = compatibleModel(tier).stream(new Prompt(outbound,
                         OpenAiChatOptions.builder().model(modelName(tier)).temperature(temperature)
                                 .maxTokens(configuration(tier).maxTokens()).streamUsage(true).build()));
+                return session == null ? response : session.restore(response);
             }
             ChatOptions options = "deepseek".equalsIgnoreCase(configuration(tier).provider())
                     ? DeepSeekChatOptions.builder().model(modelName(tier)).temperature(temperature)
                             .maxTokens(configuration(tier).maxTokens()).build()
                     : OpenAiChatOptions.builder().model(modelName(tier)).temperature(temperature)
                             .maxTokens(configuration(tier).maxTokens()).streamUsage(true).build();
-            return providerModel(tier).stream(new Prompt(messages, options));
+            var response = providerModel(tier).stream(new Prompt(outbound, options));
+            return session == null ? response : session.restore(response);
         });
     }
 
@@ -155,14 +177,14 @@ public class ModelGateway {
     }
 
     private Flux<ChatResponse> guardedStream(ModelTier tier, String capturedOwner,
-            java.util.function.Supplier<Flux<ChatResponse>> provider) {
+            java.util.function.Function<String, Flux<ChatResponse>> provider) {
         return Flux.deferContextual(context -> {
             String owner = context.getOrDefault(LlmUserContext.KEY, capturedOwner);
             // Validate configuration before consuming a request; quotas always run before provider IO.
             requireAvailable(tier, false);
             var admission = admit(owner, tier);
             AtomicLong usage = new AtomicLong();
-            return provider.get().timeout(configuration(tier).timeout())
+            return provider.apply(owner).timeout(configuration(tier).timeout())
                     .publishOn(Schedulers.boundedElastic())
                     // Stream usage is cumulative; repeated metadata must not be counted twice.
                     .doOnNext(response -> usage.accumulateAndGet(tokens(response), Math::max))
