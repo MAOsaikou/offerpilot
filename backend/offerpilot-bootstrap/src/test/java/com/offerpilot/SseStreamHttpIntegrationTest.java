@@ -76,24 +76,25 @@ class SseStreamHttpIntegrationTest {
     @Import({AgentController.class, ResumeDiagnosisController.class, ResumeOptimizationController.class,
             JacksonConfig.class, GlobalExceptionHandler.class, com.offerpilot.common.web.SseStreams.class})
     static class Application {
-        @Bean AsyncCompletions asyncCompletions() { return new AsyncCompletions(); }
+        @Bean ContainerCompletions containerCompletions() { return new ContainerCompletions(); }
         @Bean org.springframework.boot.web.server.WebServerFactoryCustomizer<org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory>
-        initialAsyncRequestBarrier(AsyncCompletions completions) {
+        recycledRequestObserver(ContainerCompletions completions) {
             return factory -> factory.addConnectorCustomizers(connector -> connector.addLifecycleListener(event -> {
                 if (org.apache.catalina.Lifecycle.AFTER_INIT_EVENT.equals(event.getType())) {
                     connector.getProtocolHandler().setAdapter(new org.apache.catalina.connector.CoyoteAdapter(connector) {
-                        @Override public void service(org.apache.coyote.Request request, org.apache.coyote.Response response) throws Exception {
-                            var lifecycle = completions.requests.get(request.getMimeHeaders().getHeader(REQUEST_ID_HEADER));
-                            super.service(request, response);
-                            // MVC/filter return is still inside CoyoteAdapter.service. A reset there
-                            // can interrupt its async-state bookkeeping and omit onComplete.
-                            lifecycle.initialized().complete(null);
+                        @Override public void checkRecycled(org.apache.coyote.Request request, org.apache.coyote.Response response) {
+                            String id = request.getMimeHeaders().getHeader(REQUEST_ID_HEADER);
+                            var completed = id == null ? null : completions.requests.get(id);
+                            // A TCP reset can take the CLOSED path without asyncPostProcess/onComplete.
+                            // Observe the default adapter's actual cleanup instead of assuming a callback.
+                            super.checkRecycled(request, response);
+                            if (completed != null) completed.complete(null);
                         }
                     });
                 }
             }));
         }
-        @Bean FilterRegistrationBean<Filter> completionFilter(AsyncCompletions completions) {
+        @Bean FilterRegistrationBean<Filter> completionFilter(ContainerCompletions completions) {
             var registration = new FilterRegistrationBean<Filter>((request, response, chain) -> {
                 var http = (HttpServletRequest) request;
                 var lifecycle = completions.requests.get(http.getHeader(REQUEST_ID_HEADER));
@@ -104,7 +105,7 @@ class SseStreamHttpIntegrationTest {
                     }
                     private AsyncContext observe(AsyncContext context) {
                         context.addListener(new AsyncListener() {
-                            @Override public void onComplete(AsyncEvent event) { lifecycle.completed().complete(null); }
+                            @Override public void onComplete(AsyncEvent event) { lifecycle.complete(null); }
                             @Override public void onTimeout(AsyncEvent event) {}
                             @Override public void onError(AsyncEvent event) {}
                             @Override public void onStartAsync(AsyncEvent event) { event.getAsyncContext().addListener(this); }
@@ -118,21 +119,16 @@ class SseStreamHttpIntegrationTest {
         }
     }
 
-    /** Attach at startAsync, before any write can complete/disconnect the response. */
-    static class AsyncCompletions {
-        record Lifecycle(CompletableFuture<Void> initialized, CompletableFuture<Void> completed) {}
-        final ConcurrentMap<String, Lifecycle> requests = new ConcurrentHashMap<>();
+    /** Wait for real container completion or recycling, including reset during emitter initialization. */
+    static class ContainerCompletions {
+        final ConcurrentMap<String, CompletableFuture<Void>> requests = new ConcurrentHashMap<>();
         String expect() {
             String id = UUID.randomUUID().toString();
-            requests.put(id, new Lifecycle(new CompletableFuture<>(), new CompletableFuture<>()));
+            requests.put(id, new CompletableFuture<>());
             return id;
         }
-        void awaitInitialized(String id) throws Exception {
-            requests.get(id).initialized().get(WAIT_SECONDS, TimeUnit.SECONDS);
-        }
         void awaitAll() throws Exception {
-            CompletableFuture.allOf(requests.values().stream().map(Lifecycle::completed).toArray(CompletableFuture[]::new))
-                    .get(WAIT_SECONDS, TimeUnit.SECONDS);
+            CompletableFuture.allOf(requests.values().toArray(CompletableFuture[]::new)).get(WAIT_SECONDS, TimeUnit.SECONDS);
             requests.clear();
         }
     }
@@ -141,7 +137,7 @@ class SseStreamHttpIntegrationTest {
     @MockBean CurrentUser users;
     @MockBean ResumeDiagnosisService diagnoses;
     @MockBean ResumeOptimizationService optimizations;
-    @Autowired AsyncCompletions completions;
+    @Autowired ContainerCompletions completions;
     @LocalServerPort int port;
     final HttpClient client = HttpClient.newHttpClient();
     static final List<String> PATHS = List.of("/api/v1/agent/chat",
@@ -241,6 +237,9 @@ class SseStreamHttpIntegrationTest {
     @Test void clientDisconnectDisposesTheActiveModelSubscription() throws Exception {
         var subscribed = List.of(new CountDownLatch(1), new CountDownLatch(1), new CountDownLatch(1));
         var cancelled = List.of(new CountDownLatch(1), new CountDownLatch(1), new CountDownLatch(1));
+        var domainCancelled = List.of(new CountDownLatch(1), new CountDownLatch(1));
+        doAnswer(call -> { domainCancelled.get(0).countDown(); return null; }).when(diagnoses).cancel("owner", "diag_test");
+        doAnswer(call -> { domainCancelled.get(1).countDown(); return null; }).when(optimizations).cancel("owner", "opt_test");
         // Configure each publisher once, before any callback can invoke a shared mock.
         // The model stays active until disconnect; heartbeat writes detect the broken socket.
         when(chats.chat(any(), any())).thenReturn(Flux.just(started()).concatWith(Flux.never())
@@ -269,12 +268,11 @@ class SseStreamHttpIntegrationTest {
                 do { line = reader.readLine(); assertThat(line).as("started frame before disconnect").isNotNull(); }
                 while (!line.equals("event:run.started"));
                 assertThat(subscribed.get(i).await(WAIT_SECONDS, TimeUnit.SECONDS)).as(path + " subscribed").isTrue();
-                // started can be flushed while MVC is still draining early buffered frames.
-                // Wait for Tomcat's initial service to also finish its async-state bookkeeping before resetting TCP.
-                completions.awaitInitialized(id);
                 assertThat(cancelled.get(i).getCount()).as("publisher still active before TCP reset").isEqualTo(1);
             }
             assertThat(cancelled.get(i).await(WAIT_SECONDS, TimeUnit.SECONDS)).as(path + " disconnect must cancel publisher").isTrue();
+            if (i > 0) assertThat(domainCancelled.get(i - 1).await(WAIT_SECONDS, TimeUnit.SECONDS))
+                    .as(path + " disconnect must cancel domain work").isTrue();
             completions.awaitAll();
         }
         verify(diagnoses).cancel("owner", "diag_test");
