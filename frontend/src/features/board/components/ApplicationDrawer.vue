@@ -22,6 +22,7 @@ const opener = document.activeElement as HTMLElement | null
 const query = useQuery({
   queryKey: computed(() => ['applications', 'detail', props.id]),
   queryFn: ({ signal }) => getApplication(props.id, signal),
+  refetchOnMount: 'always',
   retry: false,
 })
 const app = computed(() => query.data.value?.application)

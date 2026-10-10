@@ -248,4 +248,14 @@ it('opens the selected workspace, retries detail, preserves failed edits and exp
   )
   drawer.dispatchEvent(new Event('cancel', { cancelable: true }))
   await vi.waitFor(() => expect(document.querySelector('dialog')).toBeNull())
+  // Newly created artifacts must appear even while the previous detail cache is fresh.
+  cache.setQueryDefaults(['applications', 'detail'], { staleTime: 60_000 })
+  vi.mocked(getApplication).mockImplementation(async () => ({
+    ...detail(),
+    starStories: [{ id: 'star_2', title: '刚保存的岗位故事', sourceSessionId: 'iv_1' }],
+  }))
+  root.querySelector<HTMLAnchorElement>('article a')!.click()
+  await vi.waitFor(() =>
+    expect(document.querySelector('dialog')?.textContent).toContain('刚保存的岗位故事'),
+  )
 })
