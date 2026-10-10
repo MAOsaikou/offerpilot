@@ -88,11 +88,11 @@ public class Orchestrator {
                 boolean willAdvise = step.agent() == ExpertType.RESUME && "advice".equals(step.inputs().get("action"));
                 if (willWrite || willMatch || willDiagnose || willSearch || willOptimize || willRecommend || interviewStep || coachStep) attemptedBusiness.set(true);
                 String name = willWrite ? (String) step.inputs().get("action") : willSearch ? "search_jobs" : willMatch ? "matchJobToResume" : willOptimize ? "optimizeResumeForJob" : willDiagnose ? "diagnoseResume" : willAdvise ? "resumeGuidance" : interviewStep ? "scoreInterview" : careerStep ? "recommendCareers" : coachStep ? "planLearning" : "placeholder." + step.agent().name();
-                String running = willWrite ? (patchWrite ? "等待用户批准采纳简历改写" : coachWrite ? "等待用户批准同步成长任务" : interviewWrite ? "正在准备模拟面试，等待用户批准面试写入" : careerWrite ? "等待用户批准设置目标职业" : "等待用户批准看板写入") : willSearch ? "正在查询企业官网岗位" : willMatch ? "正在对照岗位要求与简历" : willOptimize ? "正在读取或生成改写建议，未修改简历" : willDiagnose ? "正在读取或生成简历诊断" : willAdvise ? "正在整理简历文字建议" : interviewStep ? "正在生成面试评分卡" : careerStep ? "正在根据兴趣推荐职业" : coachStep ? "正在分析技能差距与学习路线" : "正在运行占位专家";
+                String running = willWrite ? (patchWrite ? "等待用户批准采纳简历改写" : coachWrite ? "等待用户批准同步成长任务" : interviewWrite ? "正在准备模拟面试，等待用户批准面试写入" : careerWrite ? "等待用户批准设置目标职业" : "等待用户批准看板写入") : willSearch ? "正在查询企业官网岗位" : willMatch ? (tier == ModelTier.PRO ? "深度模式较慢，正在分析原文证据（最多3分钟）" : "正在对照岗位要求与简历") : willOptimize ? "正在读取或生成改写建议，未修改简历" : willDiagnose ? "正在读取或生成简历诊断" : willAdvise ? "正在整理简历文字建议" : interviewStep ? "正在生成面试评分卡" : careerStep ? "正在根据兴趣推荐职业" : coachStep ? "正在分析技能差距与学习路线" : "正在运行占位专家";
                 Map<String, String> upstream = new LinkedHashMap<>();
                 step.dependsOn().forEach(id -> upstream.put(id, outputs.get(id)));
                 Function<Mono<ExpertResult>, Flux<AgentEvent>> finish = work -> work
-                        .timeout(Duration.ofSeconds(120))
+                        .timeout(Duration.ofSeconds(willMatch ? (tier == ModelTier.PRO ? 210 : 90) : 120))
                         .switchIfEmpty(Mono.error(new IllegalStateException("专家未返回结果")))
                         .flatMapMany(result -> {
                             outputs.put(step.id(), result.summary());
@@ -112,7 +112,8 @@ public class Orchestrator {
                         new AgentEvent.ToolCall("tool.call", seq.incrementAndGet(), runId, Instant.now(), step.id(), callId,
                                 name, Map.of("inputs", step.inputs(), "upstreamOutputs", upstream), willSearch ? "mcp:jobs-mcp" : "local", willWrite ? AgentEvent.ToolAccess.WRITE : AgentEvent.ToolAccess.READ))
                         .concatWith(Flux.defer(() -> {
-                            if (!willWrite) return finish.apply(experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream)));
+                            if (!willWrite) return finish.apply(willMatch ? experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream), tier)
+                                    : experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream)));
                             return Mono.fromCallable(() -> patchWrite ? experts.requestPatch(owner, runId, step) : coachWrite ? experts.requestCoach(owner, runId, step) : interviewWrite ? experts.requestInterview(owner, runId, step) : careerWrite ? experts.requestCareer(owner, runId, step) : experts.requestBoard(owner, runId, step))
                                     .subscribeOn(careerWrite || interviewWrite || coachWrite || patchWrite ? reactor.core.scheduler.Schedulers.boundedElastic() : reactor.core.scheduler.Schedulers.immediate()).flatMapMany(ticket -> Flux.<AgentEvent>just(new AgentEvent.ApprovalRequired("approval.required", seq.incrementAndGet(), runId,
                                     Instant.now(), step.id(), ticket.id(), callId, name, ticket.args(),

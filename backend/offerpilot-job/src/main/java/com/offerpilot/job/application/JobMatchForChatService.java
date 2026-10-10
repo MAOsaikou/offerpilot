@@ -17,9 +17,17 @@ public class JobMatchForChatService implements JobMatchForChat {
 
     @Override
     public JobMatchCards.Card match(String owner, String jobId, String resumeId, String resumeVersionId, String requestId) {
+        return match(owner, jobId, resumeId, resumeVersionId, requestId, null);
+    }
+
+    @Override
+    public JobMatchCards.Card match(String owner, String jobId, String resumeId, String resumeVersionId,
+                                    String requestId, com.offerpilot.llm.ModelTier tier) {
         if (requestId == null || !REQUEST_ID.matcher(requestId).matches()) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请求标识无效");
         }
-        return JobMatchCards.fromReport(matches.create(owner, jobId, resumeId, resumeVersionId, requestId));
+        return JobMatchCards.fromReport(tier == null
+                ? matches.create(owner, jobId, resumeId, resumeVersionId, requestId)
+                : matches.create(owner, jobId, resumeId, resumeVersionId, requestId, tier));
     }
 }

@@ -35,6 +35,7 @@ class JobsHttpIntegrationTest {
     @LocalServerPort int port;
     @Autowired GuestIdentityService identities;
     @Autowired JdbcTemplate jdbc;
+    @org.springframework.boot.test.mock.mockito.SpyBean com.offerpilot.llm.ModelGateway gateway;
     @DynamicPropertySource static void properties(DynamicPropertyRegistry p) {
         p.add("spring.datasource.url",db::getJdbcUrl); p.add("spring.datasource.username",db::getUsername); p.add("spring.datasource.password",db::getPassword);
         p.add("offerpilot.mcp.jobs-url",()->"http://127.0.0.1:"+upstream.getAddress().getPort());
@@ -119,11 +120,62 @@ class JobsHttpIntegrationTest {
         assertThat(request("POST","/jobs/"+job+"/matches",other,body).statusCode()).isEqualTo(404);
         assertThat(data(request("GET","/jobs/"+job+"/matches",other,null))).isEmpty();
     }
+    @Test void controlledSlowProRequestKeepsOwnershipAndSavesExactlyOnce() throws Exception {
+        String token=identities.create().accessToken(), other=identities.create().accessToken();
+        String resume=seed(token), job=jobId(token), requestId=UUID.randomUUID().toString();
+        var subscribed=new java.util.concurrent.CountDownLatch(1);
+        var sink=reactor.core.publisher.Sinks.<org.springframework.ai.chat.model.ChatResponse>one();
+        org.mockito.Mockito.doReturn(reactor.core.publisher.Flux.defer(() -> {
+            subscribed.countDown(); return sink.asMono().flux();
+        })).when(gateway).stream(org.mockito.ArgumentMatchers.eq(com.offerpilot.llm.ModelTier.PRO),
+                org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0));
+        var body=Map.of("resumeId",resume,"resumeVersionId",resume,"requestId",requestId,"modelTier","PRO");
+        var req=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1/jobs/"+job+"/matches"))
+                .header("Authorization","Bearer "+token).header("Content-Type","application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body))).build();
+        var pending=HttpClient.newHttpClient().sendAsync(req,HttpResponse.BodyHandlers.ofString());
+        try {
+            assertThat(subscribed.await(15,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(pending).isNotDone();
+            var history=data(request("GET","/jobs/"+job+"/matches",token,null));
+            assertThat(history.get(0).path("status").asText()).isEqualTo("RUNNING");
+            assertThat(data(request("GET","/jobs/"+job+"/matches",other,null))).isEmpty();
+            assertThat(request("POST","/jobs/"+job+"/matches",other,body).statusCode()).isEqualTo(404);
+            assertThat(request("POST","/jobs/"+job+"/matches",token,body).statusCode()).isEqualTo(429);
+            String output="{\"summary\":\"依据\",\"requirements\":[{\"requirement\":\"Java\",\"status\":\"MET\",\"jdQuote\":\"熟悉Java\",\"resumePath\":\"/summary\",\"resumeQuote\":\"Java项目\",\"reason\":\"原文证据\",\"suggestion\":\"准备细节\"}]}";
+            sink.tryEmitValue(new org.springframework.ai.chat.model.ChatResponse(List.of(new org.springframework.ai.chat.model.Generation(
+                    new org.springframework.ai.chat.messages.AssistantMessage(output)))));
+            var report=data(pending.get(15,java.util.concurrent.TimeUnit.SECONDS));
+            assertThat(report.path("modelTier").asText()).isEqualTo("PRO");
+            assertThat(data(request("POST","/jobs/"+job+"/matches",token,body))).isEqualTo(report);
+            assertThat(data(request("GET","/jobs/"+job+"/matches",token,null))).hasSize(1);
+            var changedTier=new HashMap<String,String>(body); changedTier.put("modelTier","FLASH");
+            assertThat(request("POST","/jobs/"+job+"/matches",token,changedTier).statusCode()).isEqualTo(400);
+            org.mockito.Mockito.verify(gateway,org.mockito.Mockito.times(1)).stream(
+                    org.mockito.ArgumentMatchers.eq(com.offerpilot.llm.ModelTier.PRO),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0));
+        } finally { sink.tryEmitError(new IllegalStateException("fixture released")); pending.cancel(true); }
+    }
+
     @Test void fabricatedEvidenceFailsWithoutSavingAReport() throws Exception {
         String token=identities.create().accessToken(), resume=seed(token), job=jobId(token); badEvidence=true;
         assertThat(request("POST","/jobs/"+job+"/matches",token,Map.of("resumeId",resume,"resumeVersionId",resume,"requestId",UUID.randomUUID().toString())).statusCode()).isEqualTo(422);
         var history=data(request("GET","/jobs/"+job+"/matches",token,null)); assertThat(history.get(0).path("status").asText()).isEqualTo("FAILED");
     }
+    @Test void matchQuotaFailureKeepsCodeRetryAfterAndDoesNotRepair() throws Exception {
+        String token=identities.create().accessToken(), resume=seed(token), job=jobId(token);
+        org.mockito.Mockito.doReturn(reactor.core.publisher.Flux.error(new com.offerpilot.llm.quota.LlmQuotaException(
+                com.offerpilot.common.error.ErrorCode.LLM_RATE_LIMITED,30))).when(gateway).stream(
+                org.mockito.ArgumentMatchers.eq(com.offerpilot.llm.ModelTier.FLASH),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0));
+        var response=request("POST","/jobs/"+job+"/matches",token,Map.of("resumeId",resume,"resumeVersionId",resume,
+                "requestId",UUID.randomUUID().toString(),"modelTier","FLASH"));
+        assertThat(response.statusCode()).isEqualTo(429);
+        assertThat(JSON.readTree(response.body()).path("code").asInt()).isEqualTo(40011);
+        assertThat(response.headers().firstValue("Retry-After")).contains("30");
+        assertThat(data(request("GET","/jobs/"+job+"/matches",token,null)).get(0).path("status").asText()).isEqualTo("FAILED");
+        org.mockito.Mockito.verify(gateway,org.mockito.Mockito.times(1)).stream(
+                org.mockito.ArgumentMatchers.eq(com.offerpilot.llm.ModelTier.FLASH),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0));
+    }
+
     @Test void authenticationAndInputValidationBeforeTools() throws Exception {
         assertThat(request("GET","/jobs?query=Java",null,null).statusCode()).isEqualTo(401);
         String token=identities.create().accessToken();
@@ -212,7 +264,7 @@ class JobsHttpIntegrationTest {
         jdbc.update("INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status) VALUES (?,?,?,?,?,'RUNNING')",run,owner,job,resume,UUID.randomUUID().toString());
         var body=Map.of("resumeId",resume,"resumeVersionId",resume,"requestId",UUID.randomUUID().toString());
         assertThat(request("POST","/jobs/"+job+"/matches",token,body).statusCode()).isEqualTo(429);
-        jdbc.update("UPDATE job_matches SET created_at=now()-interval '4 minutes' WHERE id=?",run);
+        jdbc.update("UPDATE job_matches SET created_at=now()-interval '6 minutes' WHERE id=?",run);
         assertThat(data(request("POST","/jobs/"+job+"/matches",token,body)).path("score").asInt()).isEqualTo(100);
         assertThat(jdbc.queryForObject("SELECT status FROM job_matches WHERE id=?",String.class,run)).isEqualTo("FAILED");
     }

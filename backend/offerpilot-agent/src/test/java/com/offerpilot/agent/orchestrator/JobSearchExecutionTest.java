@@ -119,10 +119,10 @@ class JobSearchExecutionTest {
                 """), response("{\"action\":\"match\"}"));
         var report = json.createObjectNode().put("id", "match_selected").put("score", 80).put("summary", "匹配完成");
         report.putArray("requirements");
-        when(matches.match(eq("owner"), eq("job_1"), eq("res_1"), eq("ver_1"), anyString()))
+        when(matches.match(eq("owner"), eq("job_1"), eq("res_1"), eq("ver_1"), anyString(), eq(ModelTier.FLASH)))
                 .thenReturn(JobMatchCards.fromReport(report));
         var events = run(AgentMode.AUTO, context);
-        verify(matches).match(eq("owner"), eq("job_1"), eq("res_1"), eq("ver_1"), anyString());
+        verify(matches).match(eq("owner"), eq("job_1"), eq("res_1"), eq("ver_1"), anyString(), eq(ModelTier.FLASH));
         verifyNoInteractions(searches);
         assertThat(events).filteredOn(AgentEvent.UiCard.class::isInstance).singleElement();
         assertThat(events.toString()).doesNotContain("guessed-job", "guessed-resume", "guessed-version");

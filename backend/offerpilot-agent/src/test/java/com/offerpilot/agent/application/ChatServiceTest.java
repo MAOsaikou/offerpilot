@@ -72,6 +72,7 @@ class ChatServiceTest {
         var matches = mock(com.offerpilot.job.application.JobMatchForChat.class);
         var report = json.createObjectNode().put("id", "match_selected").put("score", 80).put("summary", "已核实");
         report.putArray("requirements");
+        org.mockito.Mockito.doCallRealMethod().when(matches).match(anyString(), anyString(), anyString(), anyString(), anyString(), any(ModelTier.class));
         when(matches.match(eq("owner"), eq("job_selected"), eq("resume_selected"), eq("version_selected"), anyString()))
                 .thenReturn(JobMatchCards.fromReport(report));
         var experts = new ExpertRegistry(matches);
@@ -97,6 +98,7 @@ class ChatServiceTest {
                             .isInstanceOfSatisfying(AgentEvent.UiCard.class, card -> assertThat(card.cardType()).isEqualTo("job_match"));
                     assertThat(events).extracting(AgentEvent::type).contains("run.completed").doesNotContain("error", "approval.required");
                     verify(gateway, never()).stream(any(), anyList(), eq(0.1));
+                    verify(matches).match("owner", "job_selected", "resume_selected", "version_selected", ExpertRegistry.requestId("run", "s1"), tier);
                     verify(matches).match("owner", "job_selected", "resume_selected", "version_selected", ExpertRegistry.requestId("run", "s1"));
                     verify(conversations).finish(any(), eq("匹配卡已展示"), eq("COMPLETED"), any(), isNull(), argThat(cards -> cards.size() == 1));
                 }

@@ -79,6 +79,7 @@ class JobMatcherTest {
     @Test void retriesOnlyEntirelyInvalidReportsAndComputesScoreFromVerifiedItems() throws Exception {
         var gateway=org.mockito.Mockito.mock(com.offerpilot.llm.ModelGateway.class);
         org.mockito.Mockito.when(gateway.defaultTier()).thenReturn(com.offerpilot.llm.ModelTier.FLASH);
+        org.mockito.Mockito.when(gateway.timeout(org.mockito.ArgumentMatchers.any())).thenReturn(java.time.Duration.ofSeconds(60));
         org.mockito.Mockito.when(gateway.modelName(org.mockito.ArgumentMatchers.any())).thenReturn("stub");
         var valid=report(); var invalid=report(); ((ObjectNode)invalid.path("requirements").get(0)).put("resumeQuote","编造经历");
         ((com.fasterxml.jackson.databind.node.ArrayNode)valid.path("requirements")).add(invalid.path("requirements").get(0));

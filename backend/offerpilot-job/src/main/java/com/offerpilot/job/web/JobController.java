@@ -62,12 +62,14 @@ public class JobController {
     public record MatchRequest(
             @NotBlank @Size(max = 100) String resumeId,
             @NotBlank @Size(max = 100) String resumeVersionId,
-            @NotBlank @Pattern(regexp = "[a-zA-Z0-9-]{16,80}") String requestId) {}
+            @NotBlank @Pattern(regexp = "[a-zA-Z0-9-]{16,80}") String requestId,
+            @Pattern(regexp = "FLASH|PRO") String modelTier) {}
 
     @PostMapping("/{id}/matches")
     public ApiResponse<?> match(@PathVariable String id, @Valid @RequestBody MatchRequest body,
                                HttpServletRequest r) {
-        return ok(matches.create(owner(r), id, body.resumeId(), body.resumeVersionId(), body.requestId()), r);
+        return ok(matches.create(owner(r), id, body.resumeId(), body.resumeVersionId(), body.requestId(),
+                body.modelTier() == null ? null : com.offerpilot.llm.ModelTier.from(body.modelTier())), r);
     }
 
     @GetMapping("/{id}/matches")
