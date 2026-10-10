@@ -1,35 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSearchHandler, resolveMode, snapshotDetail } from './source.js';
+import { createSearchHandler, resolveMode } from './source.js';
 
 const args = { query: 'Java', site: 'bytedance', nature: 'campus', location: '上海' };
 const silent = () => {};
-
-test('LOCAL never fetches network, applies filters and uses safe sample identifiers', async t => {
-  let calls = 0;
-  t.mock.method(globalThis, 'fetch', () => { calls++; throw new Error('network prohibited'); });
-  const handler = createSearchHandler({ mode: 'LOCAL', live: () => { throw new Error('live prohibited'); } });
-  const result = await handler(args);
-  assert.ok(result.jobs.length);
-  assert.equal(result._meta.source, 'LOCAL_SNAPSHOT');
-  assert.equal(result._meta.snapshotDate, '2026-10-10');
-  assert.equal(result._meta.fallbackReason, undefined);
-  for (const job of result.jobs) {
-    assert.equal(job.site, args.site);
-    assert.equal(job.nature, args.nature);
-    assert.ok(job.locations.includes(args.location));
-    assert.match(job.id, /^snapshot-/);
-    assert.equal(job.url, '');
-    assert.equal(snapshotDetail(job.site, job.id).job.source, 'LOCAL_SNAPSHOT');
-  }
-  assert.equal((await handler({ ...args, location: '不存在城市' })).jobs.length, 0);
-  assert.equal((await handler({ ...args, query: '前端', category: '后端' })).jobs.length, 0);
-  const limit = await handler({ query: 'Java', nature: 'all', limit: 1 });
-  assert.equal(limit.jobs.length, 1);
-  assert.equal(limit._meta.truncated, true);
-  assert.match(limit.jobs[0].title, /Java/);
-  assert.equal(calls, 0);
-});
 
 test('AUTO falls back on thrown failures, all-sites-failed and empty-due-to-error', async () => {
   for (const [live, reason] of [
@@ -91,6 +65,24 @@ test('MCP search_jobs actually routes LOCAL without fetch', async t => {
     const result = JSON.parse(toolResult.content[0].text);
     assert.equal(result._meta.source, 'LOCAL_SNAPSHOT');
     assert.ok(result.jobs.length);
+    assert.equal(result._meta.snapshotDate, '2026-10-10');
+    assert.equal(result._meta.fallbackReason, undefined);
+    for (const job of result.jobs) {
+      assert.equal(job.site, args.site);
+      assert.equal(job.nature, args.nature);
+      assert.ok(job.locations.includes(args.location));
+      assert.match(job.id, /^snapshot-/);
+      assert.equal(job.url, '');
+    }
+    for (const filters of [{ ...args, location: '不存在城市' }, { ...args, query: '前端', category: '后端' }]) {
+      const empty = await client.callTool({ name: 'search_jobs', arguments: filters });
+      assert.equal(JSON.parse(empty.content[0].text).jobs.length, 0);
+    }
+    const limited = await client.callTool({ name: 'search_jobs', arguments: { query: 'Java', nature: 'all', limit: 1 } });
+    const limit = JSON.parse(limited.content[0].text);
+    assert.equal(limit.jobs.length, 1);
+    assert.equal(limit._meta.truncated, true);
+    assert.match(limit.jobs[0].title, /Java/);
     const detail = await client.callTool({ name: 'get_job_detail', arguments: { site: args.site, jobId: result.jobs[0].id } });
     assert.equal(JSON.parse(detail.content[0].text).job.source, 'LOCAL_SNAPSHOT');
     const directory = await client.callTool({ name: 'list_sites', arguments: {} });

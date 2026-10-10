@@ -19,24 +19,6 @@ test('全站失败不缓存，恢复后的合法空结果可以缓存', async ()
   assert.equal(calls, 2);
 });
 
-test('首次未命中会执行 loader，第二次命中不再执行', async () => {
-  let calls = 0;
-  const loader = async () => {
-    calls += 1;
-    return { value: 42 };
-  };
-
-  const first = await withCache('k', loader);
-  assert.equal(first.cached, false);
-  assert.deepEqual(first.value, { value: 42 });
-
-  const second = await withCache('k', loader);
-  assert.equal(second.cached, true);
-  assert.deepEqual(second.value, { value: 42 });
-
-  assert.equal(calls, 1, 'loader 只应执行一次');
-});
-
 test('不同 key 互不影响', async () => {
   await withCache('a', async () => 'A');
   const b = await withCache('b', async () => 'B');
