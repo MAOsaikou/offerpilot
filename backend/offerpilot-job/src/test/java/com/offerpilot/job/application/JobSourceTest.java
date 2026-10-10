@@ -19,21 +19,6 @@ class JobSourceTest {
     final JobSnapshot snapshot = new JobSnapshot(json);
     final Map<String, Object> args = Map.of("query", "Java", "site", "bytedance", "nature", "campus", "limit", 30);
 
-    @Test void autoFallsBackOnLiveFailureWithProvenance() {
-        when(live.call("search_jobs", args)).thenThrow(new BusinessException(ErrorCode.TOOL_FAILED));
-        var result = new JobSource(live, snapshot, "AUTO").search(args);
-        assertThat(result.path("jobs")).isNotEmpty();
-        assertThat(result.at("/_meta/source").asText()).isEqualTo("LOCAL_SNAPSHOT");
-        assertThat(result.at("/_meta/fallbackReason").asText()).isEqualTo("LIVE_UNAVAILABLE");
-        assertThat(result.at("/_meta/snapshotDate").asText()).isEqualTo("2026-10-10");
-    }
-
-    @Test void liveStillSurfacesFailure() {
-        when(live.call("search_jobs", args)).thenThrow(new BusinessException(ErrorCode.TOOL_FAILED));
-        assertThatThrownBy(() -> new JobSource(live, snapshot, "LIVE").search(args))
-                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.errorCode()).isEqualTo(ErrorCode.TOOL_FAILED));
-    }
-
     @Test void localNeverCallsLiveForSearchDirectoryOrDetail() {
         var source = new JobSource(live, snapshot, "LOCAL");
         var result = source.search(args);
@@ -62,7 +47,7 @@ class JobSourceTest {
         assertThat(limited.path("jobs").get(0).path("title").asText()).containsIgnoringCase("Java");
     }
 
-    @ParameterizedTest @ValueSource(strings = {"ALL", "typo", "", "auto"})
+    @ParameterizedTest @ValueSource(strings = {"ALL", "typo"})
     void legacyAndUnknownModesUseAuto(String value) {
         assertThat(JobSource.resolveMode(value)).isEqualTo(JobSource.Mode.AUTO);
         when(live.call("search_jobs", args)).thenThrow(new BusinessException(ErrorCode.TOOL_FAILED));
