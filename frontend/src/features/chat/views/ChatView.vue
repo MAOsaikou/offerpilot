@@ -158,6 +158,8 @@ async function onSend(content: string) {
     for (const key of [
       'jobId',
       'applicationId',
+      'matchId',
+      'jobMatchId',
       'resumeId',
       'resumeVersionId',
       'diagnosisReportId',

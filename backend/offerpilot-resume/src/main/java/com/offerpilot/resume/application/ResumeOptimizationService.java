@@ -16,9 +16,12 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class ResumeOptimizationService {
-    public record Input(String requestId, String jobDescription) {}
+    public record Input(String requestId, String jobDescription, String jobId) {
+        public Input(String requestId, String jobDescription) { this(requestId,jobDescription,null); }
+    }
     public record Work(String id, String owner, String resumeId, ResumeService.Version version,
                        ModelTier tier, String jd, JsonNode completed) {}
+    private final com.offerpilot.common.artifact.JobArtifacts artifacts;
     private final ResumeService resumes;
     private final ResumePatchService patches;
     private final ResumeModelSettings settings;
@@ -29,29 +32,30 @@ public class ResumeOptimizationService {
     private final ObjectMapper json;
     private final Map<String, Sinks.One<Boolean>> cancellations = new ConcurrentHashMap<>();
     public ResumeOptimizationService(ResumeService resumes, ResumePatchService patches, ResumeModelSettings settings,
-            ModelGateway gateway, ResumeOptimizer optimizer, JdbcTemplate jdbc, TransactionTemplate tx, ObjectMapper json) {
+            ModelGateway gateway, ResumeOptimizer optimizer, JdbcTemplate jdbc, TransactionTemplate tx, ObjectMapper json, com.offerpilot.common.artifact.JobArtifacts artifacts) {
         this.resumes=resumes; this.patches=patches; this.settings=settings; this.gateway=gateway;
-        this.optimizer=optimizer; this.jdbc=jdbc; this.tx=tx; this.json=json;
+        this.artifacts=artifacts; this.optimizer=optimizer; this.jdbc=jdbc; this.tx=tx; this.json=json;
     }
     public static Input input(JsonNode body) {
-        if (body == null || !body.isObject() || body.size() != 2 || !body.path("requestId").isTextual() || !body.path("jobDescription").isTextual())
+        if (body == null || !body.isObject() || (body.size() != 2 && body.size() != 3) || (body.has("jobId") && !body.path("jobId").isNull() && !body.path("jobId").isTextual()) || (body.size() == 3 && !body.has("jobId")) || !body.path("requestId").isTextual() || !body.path("jobDescription").isTextual())
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);
-        return new Input(body.get("requestId").asText(), body.get("jobDescription").asText());
+        return new Input(body.get("requestId").asText(), body.get("jobDescription").asText(), body.hasNonNull("jobId") ? body.get("jobId").asText() : null);
     }
     public Work begin(String owner, String resumeId, String versionId, Input input) {
         if (input.requestId() == null || !input.requestId().matches("[a-zA-Z0-9-]{16,80}") || input.jobDescription() == null
-                || input.jobDescription().isBlank() || input.jobDescription().length() > 20000) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+                || (input.jobId()!=null && !input.jobId().matches("\\S{1,80}")) || input.jobDescription().isBlank() || input.jobDescription().length() > 20000) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         var version=resumes.version(owner,resumeId,versionId);
         if (!"READY".equals(resumes.get(owner,resumeId).parseStatus())) throw new BusinessException(ErrorCode.RESUME_BUSY);
         String jd=input.jobDescription().strip(); ModelTier tier=ModelTier.valueOf(settings.selection(owner).textTier());
         return tx.execute(status -> {
             jdbc.queryForObject("SELECT id FROM users WHERE id=? FOR UPDATE",String.class,owner);
+            artifacts.lockJob(owner,input.jobId());
             expire(owner);
-            var previous=jdbc.queryForList("SELECT id,version_id,job_description,status,report FROM resume_optimizations WHERE user_id=? AND request_id=?",owner,input.requestId());
+            var previous=jdbc.queryForList("SELECT id,version_id,job_description,job_id,status,report FROM resume_optimizations WHERE user_id=? AND request_id=?",owner,input.requestId());
             if (!previous.isEmpty()) {
                 var row=previous.get(0);
-                if (!versionId.equals(row.get("version_id")) || !jd.equals(row.get("job_description")))
-                    throw new BusinessException(ErrorCode.VALIDATION_FAILED,"请求标识不能用于不同简历版本或岗位内容");
+                if (!versionId.equals(row.get("version_id")) || !jd.equals(row.get("job_description")) || !Objects.equals(input.jobId(),row.get("job_id")))
+                    throw new BusinessException(ErrorCode.VALIDATION_FAILED,"请求标识不能用于不同简历版本、岗位或岗位内容");
                 if ("SUCCEEDED".equals(row.get("status"))) return new Work(row.get("id").toString(),owner,resumeId,version,tier,jd,parse(row.get("report").toString()));
                 throw new BusinessException(ErrorCode.CONCURRENT_RUN_LIMIT,"本次改写正在处理或已结束，请刷新记录；重试使用新的请求标识");
             }
@@ -60,8 +64,9 @@ public class ResumeOptimizationService {
             gateway.requireAvailable(tier,false);
             gateway.checkQuota(owner,tier);
             String id=IdGenerator.next("opt");
-            jdbc.update("INSERT INTO resume_optimizations(id,user_id,resume_id,version_id,request_id,status,model_tier,job_description) VALUES (?,?,?,?,?,'RUNNING',?,?)",
-                id,owner,resumeId,versionId,input.requestId(),tier.name(),jd);
+            jdbc.update("INSERT INTO resume_optimizations(id,user_id,resume_id,version_id,request_id,status,model_tier,job_description,job_id) VALUES (?,?,?,?,?,'RUNNING',?,?,?)",
+                id,owner,resumeId,versionId,input.requestId(),tier.name(),jd,input.jobId());
+            artifacts.linkJob(owner,input.jobId());
             return new Work(id,owner,resumeId,version,tier,jd,null);
         });
     }
@@ -105,7 +110,7 @@ public class ResumeOptimizationService {
         var rows=jdbc.query("SELECT * FROM resume_optimizations WHERE id=? AND user_id=?",(rs,n) -> {
             ObjectNode row=json.createObjectNode().put("id",rs.getString("id")).put("resumeId",rs.getString("resume_id"))
                 .put("versionId",rs.getString("version_id")).put("requestId",rs.getString("request_id")).put("status",rs.getString("status"))
-                .put("jobDescription",rs.getString("job_description")).put("error",rs.getString("error"))
+                .put("jobId",rs.getString("job_id")).put("jobDescription",rs.getString("job_description")).put("error",rs.getString("error"))
                 .put("createdAt",rs.getTimestamp("created_at").toInstant().toString());
             String report=rs.getString("report"); if(report!=null) row.set("report",parse(report));
             return (JsonNode)row;

@@ -83,7 +83,7 @@ class InterviewValidationTest {
             mvc.perform(post("/api/v1/interviews").contentType("application/json")
                     .content(json.writeValueAsString(Map.of("role", "😀".repeat(100), "kind", kind))))
                     .andExpect(status().isOk());
-            verify(service).create("owner", "😀".repeat(100), kind);
+            verify(service).create("owner", "😀".repeat(100), kind, null);
         }
         for (String answer : new String[] {"", "😀".repeat(12000), "多行\n回答", "当时在校园预约系统项目中，背景是高峰期接口超时。我负责预约接口稳定性，目标是把 P95 压到 200ms 内。"
                 + "我先排查慢查询，再设计缓存与限流，我实现了批量写入并做压测验证。最终 P95 从 800ms 降到 180ms，结果是预约成功率提升，也完成了答辩演示。"}) {

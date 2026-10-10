@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink, useRouter, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
@@ -14,6 +14,7 @@ import { exportInterview } from '@/shared/utils/interviewExport'
 
 const workspace = useWorkspace()
 const router = useRouter()
+const route = useRoute()
 const cache = useQueryClient()
 const query = useQuery({
   queryKey: ['interviews'],
@@ -41,7 +42,7 @@ async function removeStory(id: string) {
     storyBusy.value = ''
   }
 }
-const role = ref(workspace.state.target)
+const role = ref(typeof route.query.role === 'string' ? route.query.role : workspace.state.target)
 const kind = ref<InterviewKind>('项目与经历')
 const busy = ref(false)
 const error = ref('')
@@ -54,7 +55,11 @@ async function start() {
   error.value = ''
   try {
     const session = await createInterview(
-      { role: role.value.trim(), kind: kind.value },
+      {
+        role: role.value.trim(),
+        kind: kind.value,
+        jobId: typeof route.query.jobId === 'string' ? route.query.jobId : undefined,
+      },
       controller.signal,
     )
     if (controller.signal.aborted) return
@@ -87,6 +92,11 @@ function exportLegacy(session: Interview) {
     <div class="split-content">
       <form class="panel form-stack" @submit.prevent="start">
         <h2>开启一场文字练习</h2>
+        <p v-if="typeof route.query.jobId === 'string'" class="helper-note">
+          本次练习将关联到所选岗位的投递工作区。<RouterLink :to="'/jobs/' + route.query.jobId"
+            >查看岗位</RouterLink
+          >
+        </p>
         <div class="form-grid">
           <label class="field"
             >目标岗位<input

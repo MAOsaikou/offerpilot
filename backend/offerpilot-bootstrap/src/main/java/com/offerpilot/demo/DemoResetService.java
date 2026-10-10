@@ -29,6 +29,9 @@ import java.util.zip.ZipOutputStream;
 public class DemoResetService {
     private static final Logger log = LoggerFactory.getLogger(DemoResetService.class);
     private static final String DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    private final ObjectMapper json;
+    private final com.offerpilot.resume.application.ResumePatchService patches;
+    private final com.offerpilot.common.artifact.JobArtifacts artifacts;
     private final DemoAccountBootstrap accounts;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transaction;
@@ -38,7 +41,8 @@ public class DemoResetService {
     private final com.offerpilot.memory.application.UserMemoryService memories;
 
     public DemoResetService(DemoAccountBootstrap accounts, JdbcTemplate jdbc, PlatformTransactionManager transactions,
-                            ResumeObjectStore storage, ObjectMapper json, com.offerpilot.knowledge.application.KnowledgeNoteService notes, com.offerpilot.memory.application.UserMemoryService memories) throws Exception {
+                            ResumeObjectStore storage, ObjectMapper json, com.offerpilot.knowledge.application.KnowledgeNoteService notes, com.offerpilot.memory.application.UserMemoryService memories, com.offerpilot.common.artifact.JobArtifacts artifacts, com.offerpilot.resume.application.ResumePatchService patches) throws Exception {
+        this.json=json; this.patches=patches; this.artifacts=artifacts;
         this.notes = notes; this.memories = memories;
         this.accounts = accounts;
         this.jdbc = jdbc;
@@ -164,15 +168,35 @@ public class DemoResetService {
         i = 0;
         for (JsonNode interview : journey.path("interviews")) {
             String id = "int_demo_" + userId + "_" + (++i);
-            jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,question_index,completed) VALUES (?,?,?,?,?,?)",
+            JsonNode target=journey.path("jobs").get(interview.path("jobIndex").asInt());
+            String jobId=jdbc.queryForObject("SELECT id FROM jobs WHERE site='demo' AND external_id=? AND nature=?",String.class,target.path("externalId").asText(),target.path("nature").asText());
+            jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,question_index,completed,job_id) VALUES (?,?,?,?,?,?,?)",
                     id, userId, interview.path("role").asText(), interview.path("kind").asText(),
-                    interview.path("questionIndex").asInt(), interview.path("completed").asBoolean());
+                    interview.path("questionIndex").asInt(), interview.path("completed").asBoolean(),jobId);
             int q = 0;
             for (JsonNode answer : interview.path("answers")) {
                 jdbc.update("INSERT INTO interview_answers(session_id,question_index,question_text,answer_text) VALUES (?,?,?,?)",
                         id, q++, answer.path("question").asText(), answer.path("answer").asText());
             }
         }
+        String resumeId="rsm_demo_"+userId+"_1", versionId="rsv_demo_"+userId+"_1", optId="opt_demo_"+userId;
+        String linkedJob=jdbc.queryForObject("SELECT job_id FROM applications WHERE user_id=? ORDER BY id LIMIT 1",String.class,userId);
+        var demoPatches=json.createArrayNode();
+        demoPatches.addObject().put("id","demo_summary").put("op","replace").put("path","/summary")
+            .put("from",journey.path("resumes").get(0).path("structured").path("summary").asText())
+            .put("value","关注后端开发与可靠数据服务的 2027 届计算机专业学生，希望在实习中参与真实业务、学习代码评审与工程实践。以上全部为演示虚构内容。")
+            .put("reason","虚构演示：突出后端方向，保留原有事实；未自动采纳。")
+            .put("needsUserConfirmation",true).put("confirmationHint","此为虚构夹具，实际使用请换成本人的真实经历。");
+        var batch=patches.store(userId,resumeId,versionId,demoPatches);
+        var demoReport=json.createObjectNode().put("summary","虚构演示：调整摘要顺序，突出岗位方向；建议尚未采纳。")
+            .put("model","演示夹具（未调用模型）").put("modelTier","FLASH").put("promptVersion","demo-fixture")
+            .put("durationMs",0).put("inputTokens",0).put("outputTokens",0);
+        demoReport.set("patches",demoPatches);
+        demoReport.set("stats",json.valueToTree(batch.stats()));
+        demoReport.put("reportId",optId).put("resumeId",resumeId).put("resumeVersionId",versionId).put("versionNo",1).put("createdAt",Instant.now().toString()).put("batchId",batch.batchId());
+        jdbc.update("INSERT INTO resume_optimizations(id,user_id,resume_id,version_id,request_id,status,model_tier,job_description,job_id,report) VALUES (?,?,?,?,?,'SUCCEEDED','FLASH',?,?,?::jsonb)",
+            optId,userId,resumeId,versionId,"demo-rewrite-"+userId,"虚构演示岗位定向改写",linkedJob,demoReport.toString());
+        jdbc.queryForList("SELECT job_id FROM applications WHERE user_id=?",String.class,userId).forEach(job -> artifacts.linkJob(userId,job));
         for (JsonNode note : journey.path("notes"))
             notes.create(userId, new com.offerpilot.knowledge.application.KnowledgeNoteService.Draft(
                     note.path("title").asText(), note.path("content").asText(), note.path("category").asText()));

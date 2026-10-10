@@ -13,6 +13,8 @@ vi.mock('@/shared/api/applications', () => ({
 }))
 vi.mock('@/shared/api/jobs', () => ({ exportJobEvalMarkdown: vi.fn(), getJobMatch: vi.fn() }))
 import { exportJobEvalMarkdown } from '@/shared/api/jobs'
+import { exportInterviewRecap } from '@/shared/api/interviews'
+vi.mock('@/shared/api/interviews', () => ({ exportInterviewRecap: vi.fn() }))
 
 const fixture = (): ServerApplication => ({
   id: 'app_1',
@@ -49,7 +51,10 @@ async function mount() {
     history: createMemoryHistory(),
     routes: [
       { path: '/board', component: BoardView },
+      { path: '/chat', component: { render: () => null } },
       { path: '/jobs/:id?', component: { render: () => null } },
+      { path: '/resumes/:id?', component: { render: () => null } },
+      { path: '/interviews/:id?', component: { render: () => null } },
     ],
   })
   await router.push('/board')
@@ -149,9 +154,28 @@ it('opens the selected workspace, retries detail, preserves failed edits and exp
       topGaps: ['补齐项目证据'],
       exportUrl: '/api/v1/jobs/matches/match_1/eval.md',
     },
-    resumeOptimizations: [],
-    interviews: [],
-    starStories: [],
+    resumeOptimizations: [
+      {
+        id: 'opt_1',
+        resumeId: 'res_1',
+        resumeVersionId: 'ver_1',
+        createdAt: '2026-10-11',
+        status: 'SUCCEEDED',
+        viewUrl: '/resumes/res_1',
+        pdfAvailable: true,
+        exportUrl: '/api/v1/resumes/res_1/export.pdf',
+      },
+    ],
+    interviews: [
+      {
+        id: 'iv_1',
+        status: 'IN_PROGRESS',
+        overallScore: 42,
+        createdAt: '2026-10-11',
+        recapExportUrl: '/api/v1/interviews/iv_1/recap.md',
+      },
+    ],
+    starStories: [{ id: 'star_1', title: '项目复盘', sourceSessionId: 'iv_1' }],
     linkageNote: '仅按岗位 ID 关联',
     timeline: [
       {
@@ -182,6 +206,23 @@ it('opens the selected workspace, retries detail, preserves failed edits and exp
   )
   const drawer = document.querySelector('dialog')!
   expect(drawer.textContent).toContain('加入求职看板')
+  const links = [...drawer.querySelectorAll('a')].map((a) => a.getAttribute('href'))
+  expect(links).toContain(
+    '/resumes/res_1?tab=optimize&optimizationReportId=opt_1&resumeVersionId=ver_1&jobId=job_1',
+  )
+  expect(links).toContain('/interviews/iv_1')
+  expect(links).toContain('/interviews?jobId=job_1&role=%E5%B7%A5%E7%A8%8B%E5%B8%88')
+  ;[...drawer.querySelectorAll('button')]
+    .find((button) => button.textContent?.includes('下载复盘.md'))!
+    .click()
+  await vi.waitFor(() => expect(exportInterviewRecap).toHaveBeenCalledWith('iv_1'))
+  await vi.waitFor(() =>
+    expect(
+      [...drawer.querySelectorAll('button')].find((button) =>
+        button.textContent?.includes('下载评估.md'),
+      )!.disabled,
+    ).toBe(false),
+  )
   ;[...drawer.querySelectorAll('button')]
     .find((button) => button.textContent?.includes('下载评估.md'))!
     .click()
@@ -207,4 +248,14 @@ it('opens the selected workspace, retries detail, preserves failed edits and exp
   )
   drawer.dispatchEvent(new Event('cancel', { cancelable: true }))
   await vi.waitFor(() => expect(document.querySelector('dialog')).toBeNull())
+  // Newly created artifacts must appear even while the previous detail cache is fresh.
+  cache.setQueryDefaults(['applications', 'detail'], { staleTime: 60_000 })
+  vi.mocked(getApplication).mockImplementation(async () => ({
+    ...detail(),
+    starStories: [{ id: 'star_2', title: '刚保存的岗位故事', sourceSessionId: 'iv_1' }],
+  }))
+  root.querySelector<HTMLAnchorElement>('article a')!.click()
+  await vi.waitFor(() =>
+    expect(document.querySelector('dialog')?.textContent).toContain('刚保存的岗位故事'),
+  )
 })

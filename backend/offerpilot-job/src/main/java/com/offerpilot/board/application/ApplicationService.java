@@ -23,8 +23,9 @@ public class ApplicationService {
     private final JobService jobs;
     private final JobMatchService matches;
     private final ApplicationTimeline timeline;
-    public ApplicationService(JdbcTemplate jdbc, JobService jobs, JobMatchService matches, ApplicationTimeline timeline) {
-        this.jdbc=jdbc; this.jobs=jobs; this.matches=matches; this.timeline=timeline;
+    private final com.offerpilot.common.artifact.JobArtifacts artifacts;
+    public ApplicationService(JdbcTemplate jdbc, JobService jobs, JobMatchService matches, ApplicationTimeline timeline, com.offerpilot.common.artifact.JobArtifacts artifacts) {
+        this.jdbc=jdbc; this.jobs=jobs; this.matches=matches; this.timeline=timeline; this.artifacts=artifacts;
     }
     public record Application(String id, String jobId, String status, String note,
                               String createdAt, String updatedAt, JsonNode job, String nextAction, String nextActionAt) {
@@ -37,12 +38,8 @@ public class ApplicationService {
     public record Match(String id, String createdAt, String grade, List<String> topGaps, String exportUrl) {}
     public record Event(String id, String kind, String fromStatus, String toStatus, String detail,
                         String artifactType, String artifactId, String actor, String createdAt) {}
-    public record ResumeArtifact(String id, String resumeId, String resumeVersionId, String createdAt,
-                                 boolean pdfAvailable, String exportUrl) {}
-    public record InterviewArtifact(String id, String status, Integer overallScore, String createdAt, String recapExportUrl) {}
-    public record StoryArtifact(String id, String title, String sourceSessionId) {}
-    public record Detail(Application application, Match latestMatch, List<ResumeArtifact> resumeOptimizations,
-                         List<InterviewArtifact> interviews, List<StoryArtifact> starStories, List<Event> timeline, String linkageNote) {}
+    public record Detail(Application application, Match latestMatch, List<com.offerpilot.common.artifact.JobArtifacts.Resume> resumeOptimizations,
+                         List<com.offerpilot.common.artifact.JobArtifacts.Interview> interviews, List<com.offerpilot.common.artifact.JobArtifacts.Story> starStories, List<Event> timeline, String linkageNote) {}
     private Application view(ResultSet rs, int row) throws SQLException {
         return new Application(rs.getString("id"),rs.getString("job_id"),rs.getString("status"),rs.getString("note"),
             rs.getTimestamp("created_at").toInstant().toString(),rs.getTimestamp("updated_at").toInstant().toString(),
@@ -77,8 +74,9 @@ public class ApplicationService {
             """,(rs,row)->new Event(rs.getString("id"),rs.getString("kind"),rs.getString("from_status"),
                 rs.getString("to_status"),rs.getString("detail"),rs.getString("artifact_type"),rs.getString("artifact_id"),
                 rs.getString("actor"),rs.getTimestamp("created_at").toInstant().toString()),id,owner);
-        return new Detail(app,latest,List.of(),List.of(),List.of(),events,
-            "匹配报告按同一用户和岗位关联。简历改写只保存 JD 文本，面试只保存岗位名称，STAR 只引用面试会话；这些材料没有岗位 ID，暂不自动关联。");
+        var linked = artifacts.read(owner,app.jobId());
+        return new Detail(app,latest,linked.resumes(),linked.interviews(),linked.stories(),events,
+            "仅展示创建时明确选择此岗位的材料；旧记录未保存岗位 ID，不按 JD 或岗位名称推测关联。PDF 导出当前保存的简历版本。");
     }
     private Application require(String owner, String id, boolean lock) {
         var rows=jdbc.query("SELECT * FROM applications WHERE id=? AND user_id=?"+(lock?" FOR UPDATE":""),this::view,id,owner);
@@ -97,6 +95,7 @@ public class ApplicationService {
         var saved=jdbc.queryForObject("SELECT * FROM applications WHERE user_id=? AND job_id=?",this::view,owner,jobId);
         if(inserted==1) timeline.record(saved.id(),"CREATED",null,"TODO","加入求职看板",actor,runId);
         timeline.linkMatches(owner,jobId);
+        artifacts.linkJob(owner,jobId);
         return saved;
     }
     @Transactional

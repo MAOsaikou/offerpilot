@@ -27,7 +27,8 @@ public class InterviewWriteTools {
     public static boolean recognizes(PlanStep step) { return step.agent() == ExpertType.INTERVIEWER && action(String.valueOf(step.inputs().get("action"))); }
     static void validate(String action, Map<String, Object> args) {
         if (action.equals("startInterview")) {
-            if (!args.keySet().equals(Set.of("role", "kind")) || !validText(args.get("role"), 100)
+            if (!(args.keySet().equals(Set.of("role", "kind")) || args.keySet().equals(Set.of("role", "kind", "jobId")))
+                    || (args.containsKey("jobId") && !validText(args.get("jobId"),80)) || !validText(args.get("role"), 100)
                     || !InterviewService.KINDS.contains(String.valueOf(args.get("kind")))) throw invalid();
         } else {
             Set<String> keys = action.equals("completeInterview") ? Set.of("sessionId", "expectedUpdatedAt")
@@ -45,6 +46,7 @@ public class InterviewWriteTools {
         if (action.equals("startInterview")) {
             args.put("role", step.inputs().getOrDefault("role", "目标岗位"));
             args.put("kind", step.inputs().getOrDefault("kind", "项目与经历"));
+            if (step.inputs().containsKey("jobId")) args.put("jobId",step.inputs().get("jobId"));
         } else {
             String id = coach.resolveSession(owner, (String) step.inputs().get("sessionId"), true);
             args.put("sessionId", id);
@@ -72,7 +74,7 @@ public class InterviewWriteTools {
                 return withCandidates(owner, (String) args.get("sessionId"), report,
                         "已按批准标记面试完成。" + com.offerpilot.interview.application.InterviewRubric.summary(report), runId, step.id());
             }
-            var turn = action.equals("startInterview") ? coach.startSession(owner, (String) args.get("role"), (String) args.get("kind"))
+            var turn = action.equals("startInterview") ? (args.containsKey("jobId") ? coach.startSession(owner, (String) args.get("role"), (String) args.get("kind"), (String) args.get("jobId")) : coach.startSession(owner, (String) args.get("role"), (String) args.get("kind")))
                     : coach.continueSession(owner, (String) args.get("sessionId"), (String) args.get("answer"), (Boolean) args.get("nextQuestion"), (String) args.get("expectedUpdatedAt"));
             if (turn.state().equals("CLOSING")) {
                 var report = coach.scoreSession(owner, turn.sessionId());

@@ -398,6 +398,10 @@ watch(
                 },
               }"
               >在聊天中改写</RouterLink
+            ><RouterLink
+              class="btn"
+              :to="{ path: '/interviews', query: { jobId: id, role: job.data.value.title } }"
+              >针对该岗位模拟面试</RouterLink
             ><button
               class="btn primary"
               :disabled="

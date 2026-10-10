@@ -49,7 +49,15 @@ class InterviewApprovalTest {
     }
 
 
-    @Test void invalidKindOtherOwnerTimeoutAndCancellationNeverWrite() {
+    @Test void linkedStartPreservesProvenanceAndRejectedWritesStayUnchanged() {
+        var linked = InterviewIntentParser.prepare(new PlanStep("s0","面试",ExpertType.INTERVIEWER,Map.of("jobId","model_guessed"),List.of()),
+                "开始面试",Map.of("interviewAction","startInterview","role","Java工程师","jobId","job_1"));
+        when(sessions.create("alice","Java工程师","项目与经历","job_1")).thenReturn(session(false));
+        var start=writes.request("alice","run_start",linked);
+        assertThatThrownBy(() -> approvals.resolve("alice","run_start",start.id(),new ApprovalService.Decision("APPROVE",Map.of("jobId","job_other"),null))).isInstanceOf(BusinessException.class);
+        var accepted=approvals.resolve("alice","run_start",start.id(),new ApprovalService.Decision("APPROVE",null,null));
+        writes.execute("alice","run_start",linked,accepted).block();
+        verify(sessions).create("alice","Java工程师","项目与经历","job_1");
         var bad = new PlanStep("s1", "面试", ExpertType.INTERVIEWER, Map.of("action", "startInterview", "kind", "硬件指标"), List.of());
         assertThatThrownBy(() -> writes.request("alice", "run", bad)).isInstanceOf(BusinessException.class);
         when(sessions.get("bob", "iv_1")).thenThrow(new BusinessException(ErrorCode.INTERVIEW_NOT_FOUND));

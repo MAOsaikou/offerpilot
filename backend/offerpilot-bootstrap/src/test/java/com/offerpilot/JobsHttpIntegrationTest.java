@@ -35,6 +35,8 @@ class JobsHttpIntegrationTest {
     @LocalServerPort int port;
     @Autowired GuestIdentityService identities;
     @Autowired JdbcTemplate jdbc;
+    @org.springframework.boot.test.mock.mockito.SpyBean com.offerpilot.resume.application.ResumeOptimizer optimizer;
+    @Autowired com.offerpilot.common.artifact.JobArtifacts artifacts;
     @org.springframework.boot.test.mock.mockito.SpyBean com.offerpilot.llm.ModelGateway gateway;
     @DynamicPropertySource static void properties(DynamicPropertyRegistry p) {
         p.add("spring.datasource.url",db::getJdbcUrl); p.add("spring.datasource.username",db::getUsername); p.add("spring.datasource.password",db::getPassword);
@@ -196,17 +198,49 @@ class JobsHttpIntegrationTest {
     @Test void applicationDetailAggregatesOnlyOwnedJobArtifactsAndJournalsStatusChanges() throws Exception {
         String token=identities.create().accessToken(), other=identities.create().accessToken(), resume=seed(token), job=jobId(token);
         var report=data(request("POST","/jobs/"+job+"/matches",token,Map.of("resumeId",resume,"resumeVersionId",resume,"requestId",UUID.randomUUID().toString())));
+        org.mockito.Mockito.doAnswer(invocation -> reactor.core.publisher.Mono.fromSupplier(() -> JSON.createObjectNode().put("summary","岗位定向建议").set("patches",JSON.createArrayNode())))
+            .when(optimizer).optimize(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any());
+        String optimizePath="/resumes/"+resume+"/versions/"+resume+"/optimize";
+        var rewriteBody=Map.of("requestId",UUID.randomUUID().toString(),"jobDescription","熟悉Java","jobId",job);
+        // Real REST rewrite before favoriting; later creation must link this existing artifact once.
+        var rewriteResponse=request("POST",optimizePath,token,rewriteBody);
+        assertThat(rewriteResponse.statusCode()).withFailMessage(rewriteResponse.body()).isEqualTo(200);
+        assertThat(rewriteResponse.body()).contains("run.completed").doesNotContain("\"type\":\"error\"");
+        String rewrite=data(request("GET","/resumes/"+resume+"/optimizations",token,null)).get(0).path("id").asText();
         String id=data(request("POST","/applications",token,Map.of("jobId",job))).path("id").asText();
+        String interview=data(request("POST","/interviews",token,Map.of("role","Java工程师","kind","项目与经历","jobId",job))).path("id").asText();
+        data(request("PUT","/interviews/"+interview+"/answers/0",token,Map.of("answerText","当时在项目中，我负责接口，我实现事务，最终完成验证。")));
+        String story=data(request("POST","/star-stories",token,Map.of("sessionId",interview,"questionIndex",0))).path("id").asText();
+        // Repeated favorites and GETs must not duplicate links. Unknown jobs never create artifacts.
+        data(request("POST","/applications",token,Map.of("jobId",job)));
+        assertThat(request("POST",optimizePath,token,Map.of("requestId",UUID.randomUUID().toString(),"jobDescription","熟悉Java","jobId","missing")).statusCode()).isEqualTo(404);
+        assertThat(request("POST","/interviews",token,Map.of("role","Java","kind","项目与经历","jobId","missing")).statusCode()).isEqualTo(404);
+        assertThat(request("POST",optimizePath,other,rewriteBody).statusCode()).isEqualTo(404);
+        assertThatThrownBy(() -> artifacts.selectedJob(identities.require("Bearer "+other),null,id,null)).isInstanceOf(com.offerpilot.common.error.BusinessException.class);
+        assertThatThrownBy(() -> artifacts.selectedJob(identities.require("Bearer "+other),null,null,report.path("id").asText())).isInstanceOf(com.offerpilot.common.error.BusinessException.class);
         // A newer report for the same public job belongs to a different owner.
         String otherResume=seed(other), otherOwner=identities.require("Bearer "+other);
         jdbc.update("INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status,report,created_at) VALUES (?,?,?,?,?,'COMPLETED',?::jsonb,now()+interval '1 minute')",
                 "match_other_"+UUID.randomUUID(),otherOwner,job,otherResume,UUID.randomUUID().toString(),report.toString());
+        String otherInterview=data(request("POST","/interviews",other,Map.of("role","Java工程师","kind","项目与经历","jobId",job))).path("id").asText();
+        var otherRewrite=request("POST","/resumes/"+otherResume+"/versions/"+otherResume+"/optimize",other,Map.of("requestId",UUID.randomUUID().toString(),"jobDescription","熟悉Java","jobId",job));
+        assertThat(otherRewrite.statusCode()).isEqualTo(200);
+        // Same JD/role but no explicit provenance remains unlinked.
+        String owner=identities.require("Bearer "+token);
+        jdbc.update("INSERT INTO resume_optimizations(id,user_id,resume_id,version_id,request_id,status,model_tier,job_description) VALUES (?,?,?,?,?,'FAILED','FLASH','熟悉Java')",UUID.randomUUID().toString(),owner,resume,resume,UUID.randomUUID().toString());
+        data(request("POST","/interviews",token,Map.of("role","Java工程师","kind","项目与经历")));
         data(request("PATCH","/applications/"+id,token,Map.of("status","INTERVIEW","nextAction","准备项目复盘","nextActionAt","2026-10-12")));
         var detail=data(request("GET","/applications/"+id,token,null));
         assertThat(detail.path("application").path("status").asText()).isEqualTo("INTERVIEW");
         assertThat(detail.path("latestMatch").path("id")).isEqualTo(report.path("id"));
         assertThat(detail.path("timeline").findValuesAsText("kind")).contains("CREATED","ARTIFACT_LINKED","STATUS_CHANGED");
-        assertThat(detail.path("resumeOptimizations")).isEmpty(); // JD text cannot prove job identity.
+        assertThat(detail.path("resumeOptimizations").findValuesAsText("id")).containsExactly(rewrite);
+        assertThat(detail.path("interviews").findValuesAsText("id")).containsExactly(interview).doesNotContain(otherInterview);
+        assertThat(detail.path("starStories").findValuesAsText("id")).containsExactly(story);
+        assertThat(java.util.stream.StreamSupport.stream(detail.path("timeline").spliterator(),false).filter(e->"ARTIFACT_LINKED".equals(e.path("kind").asText())).map(e->e.path("artifactType").asText()).toList()).containsExactlyInAnyOrder("JOB_MATCH","RESUME_OPTIMIZATION","INTERVIEW","STAR_STORY");
+        assertThat(request("GET","/interviews/"+interview+"/recap.md",token,null).statusCode()).isEqualTo(200);
+        assertThat(request("GET","/interviews/"+interview+"/recap.md",other,null).statusCode()).isEqualTo(404);
+        assertThat(request("GET","/resumes/optimizations/"+rewrite,other,null).statusCode()).isEqualTo(404);
         assertThat(request("GET","/applications/"+id,other,null).statusCode()).isEqualTo(404);
         assertThat(request("GET","/applications/"+id,null,null).statusCode()).isEqualTo(401);
         assertThat(request("GET","/jobs/matches/"+report.path("id").asText()+"/eval.md",token,null).statusCode()).isEqualTo(200);

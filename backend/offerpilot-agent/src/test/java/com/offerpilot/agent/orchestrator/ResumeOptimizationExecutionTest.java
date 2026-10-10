@@ -43,7 +43,7 @@ class ResumeOptimizationExecutionTest {
         when(descriptions.description("job_1")).thenReturn("岗位JD");
         var report = json.createObjectNode().put("reportId", "opt_1").put("resumeId", "res_1").put("resumeVersionId", "ver_1");
         report.putArray("patches");
-        when(optimizations.generate(eq("owner"), eq("res_1"), eq("ver_1"), eq("岗位JD"), anyString())).thenReturn(Mono.just(report));
+        when(optimizations.generate(eq("owner"), eq("res_1"), eq("ver_1"), eq("岗位JD"), anyString(), eq("job_1"))).thenReturn(Mono.just(report));
         when(optimizations.report("owner", "res_1", "ver_1", "opt_1")).thenReturn(Mono.just(report));
         return new Orchestrator(new IntentPlanner(gateway, json, experts, resource("plan"),
                 new JobIntentParser(gateway, json, resource("job")), new ResumeIntentParser(gateway, json, resource("resume"))), experts);
@@ -67,7 +67,7 @@ class ResumeOptimizationExecutionTest {
             assertThat(reply.get(reply.size()-2)).isInstanceOfSatisfying(SystemMessage.class,
                     message -> assertThat(message.getText()).contains("只读动作未执行采纳", "逐条核对"));
         }
-        verify(optimizations, times(3)).generate(eq("owner"), eq("res_1"), eq("ver_1"), eq("岗位JD"), matches("[a-z0-9-]{36}"));
+        verify(optimizations, times(3)).generate(eq("owner"), eq("res_1"), eq("ver_1"), eq("岗位JD"), matches("[a-z0-9-]{36}"), eq("job_1"));
         verifyNoInteractions(diagnoses, matches, searches);
     }
     @Test void missingSelectionAndInvalidActionsNeverGenerateOrGuessIds() throws Exception {
@@ -83,14 +83,14 @@ class ResumeOptimizationExecutionTest {
         plan = "{\"kind\":\"composite\",\"confidence\":1,\"plan\":{\"goal\":\"改写\",\"steps\":[{\"id\":\"s1\",\"title\":\"改写\",\"agent\":\"RESUME\",\"inputs\":{\"resumeId\":\"guessed\",\"resumeVersionId\":\"guessed\",\"jobId\":\"guessed\"},\"dependsOn\":[]}]}}";
         var events = run(orchestrator, AgentMode.AUTO, selected).collectList().block(Duration.ofSeconds(5));
         assertThat(events.toString()).doesNotContain("guessed");
-        verify(optimizations).generate(eq("owner"), eq("res_1"), eq("ver_1"), eq("岗位JD"), anyString());
+        verify(optimizations).generate(eq("owner"), eq("res_1"), eq("ver_1"), eq("岗位JD"), anyString(), eq("job_1"));
     }
     @Test void discussionReadsExistingReportWithoutJobReadOrRegenerationAndAdviceNeverAdopts() throws Exception {
         var orchestrator = orchestrator(); action.set("discuss");
         var context = Map.<String,Object>of("resumeId", "res_1", "resumeVersionId", "ver_1", "optimizationReportId", "opt_1");
         assertThat(run(orchestrator, AgentMode.RESUME, context).collectList().block()).anyMatch(AgentEvent.UiCard.class::isInstance);
         verify(optimizations).report("owner", "res_1", "ver_1", "opt_1");
-        verify(optimizations, never()).generate(any(), any(), any(), any(), any());
+        verify(optimizations, never()).generate(any(), any(), any(), any(), any(), any());
         action.set("advice");
         assertThat(run(orchestrator, AgentMode.RESUME, context).collectList().block()).noneMatch(AgentEvent.UiCard.class::isInstance);
         assertThat(reply.get(reply.size()-2)).isInstanceOfSatisfying(SystemMessage.class,
@@ -99,12 +99,12 @@ class ResumeOptimizationExecutionTest {
     }
     @Test void failuresAreSanitizedAndCancellationPropagatesToRewrite() throws Exception {
         var orchestrator = orchestrator();
-        when(optimizations.generate(any(), any(), any(), any(), any())).thenReturn(Mono.error(new RuntimeException("private-secret")));
+        when(optimizations.generate(any(), any(), any(), any(), any(), any())).thenReturn(Mono.error(new RuntimeException("private-secret")));
         var events = run(orchestrator, AgentMode.RESUME, selected).collectList().block();
         assertThat(events).noneMatch(AgentEvent.UiCard.class::isInstance);
         assertThat(events.toString()).contains("FAILED").doesNotContain("private-secret");
         var cancelled = new AtomicBoolean(); var subscribed = new AtomicBoolean();
-        when(optimizations.generate(any(), any(), any(), any(), any())).thenReturn(Mono.<com.fasterxml.jackson.databind.JsonNode>never()
+        when(optimizations.generate(any(), any(), any(), any(), any(), any())).thenReturn(Mono.<com.fasterxml.jackson.databind.JsonNode>never()
                 .doOnSubscribe(s -> subscribed.set(true)).doOnCancel(() -> cancelled.set(true)));
         var subscription = run(orchestrator, AgentMode.RESUME, selected).subscribe();
         long deadline = System.nanoTime()+Duration.ofSeconds(3).toNanos();

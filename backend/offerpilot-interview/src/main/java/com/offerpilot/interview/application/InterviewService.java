@@ -23,7 +23,8 @@ public class InterviewService {
     public static final Set<String> KINDS = Set.of("项目与经历", "表达与结构", "职业动机");
     private final JdbcTemplate jdbc;
 
-    public InterviewService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    private final com.offerpilot.common.artifact.JobArtifacts artifacts;
+    public InterviewService(JdbcTemplate jdbc, com.offerpilot.common.artifact.JobArtifacts artifacts) { this.jdbc = jdbc; this.artifacts=artifacts; }
 
     public record Summary(String id, String role, String kind, int questionIndex, boolean completed,
                           String createdAt, String updatedAt) {}
@@ -56,17 +57,26 @@ public class InterviewService {
 
     @Transactional
     public Session create(String owner, String role, String kind) {
+        return create(owner,role,kind,null);
+    }
+
+    @Transactional
+    public Session create(String owner, String role, String kind, String jobId) {
         if (role == null || role.isBlank() || role.codePointCount(0, role.length()) > 100
                 || kind == null || !KINDS.contains(kind)) invalid();
+        artifacts.lockJob(owner,jobId);
         String id = IdGenerator.next("iv");
-        jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind) VALUES (?,?,?,?)",
-                id, owner, role.strip(), kind);
+        jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,job_id) VALUES (?,?,?,?,?)",
+                id, owner, role.strip(), kind, jobId);
         for (int index = 0; index < QUESTIONS.size(); index++) {
             jdbc.update("INSERT INTO interview_answers(session_id,question_index,question_text) VALUES (?,?,?)",
                     id, index, QUESTIONS.get(index));
         }
+        artifacts.linkJob(owner,jobId);
         return get(owner, id);
     }
+
+    public void linkStories(String owner, String sessionId) { artifacts.linkSession(owner,sessionId); }
 
     @Transactional(readOnly = true)
     public Session get(String owner, String id) {

@@ -15,7 +15,7 @@ export const listInterviews = (signal?: AbortSignal) =>
   apiRequest<InterviewSummary[]>('/interviews', { signal })
 
 export const createInterview = (
-  body: { role: string; kind: InterviewKind },
+  body: { role: string; kind: InterviewKind; jobId?: string },
   signal?: AbortSignal,
 ) =>
   apiRequest<InterviewSession>('/interviews', {

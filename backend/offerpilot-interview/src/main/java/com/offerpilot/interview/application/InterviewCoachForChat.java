@@ -6,6 +6,7 @@ public interface InterviewCoachForChat {
     InterviewService.Session session(String owner, String id);
     String resolveSession(String owner, String sessionId, boolean activeOnly);
     Turn startSession(String owner, String role, String kind);
+    Turn startSession(String owner, String role, String kind, String jobId);
     Turn continueSession(String owner, String sessionId, String answer, boolean nextQuestion, String expectedUpdatedAt);
     InterviewRubric.Report scoreSession(String owner, String sessionId);
     InterviewRubric.Report completeSession(String owner, String sessionId, String expectedUpdatedAt);

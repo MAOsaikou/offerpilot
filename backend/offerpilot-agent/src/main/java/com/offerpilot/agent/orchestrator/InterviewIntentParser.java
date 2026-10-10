@@ -61,6 +61,7 @@ public final class InterviewIntentParser {
             String kind = string(context.get("kind"));
             if (kind == null) kind = InterviewService.KINDS.stream().filter(content::contains).sorted().findFirst().orElse("项目与经历");
             args.put("kind", kind);
+            if (string(context.get("jobId")) != null) args.put("jobId",string(context.get("jobId")));
         } else if (action.equals("continueInterview")) {
             args.put("answer", content);
             args.put("nextQuestion", content.strip().matches("(?:请)?(?:下一题|跳过追问|跳过本题)[。！!]?"));
