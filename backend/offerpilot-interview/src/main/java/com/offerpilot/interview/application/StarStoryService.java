@@ -98,6 +98,7 @@ public class StarStoryService {
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,to_tsvector('simple',?))
                 """, id, owner, title, body, session.role(), session.id(), questionIndex, star.count(),
                 star.situation(), star.task(), star.action(), star.result(), normalized, document);
+        interviews.linkStories(owner,session.id());
         return get(owner, id);
     }
 

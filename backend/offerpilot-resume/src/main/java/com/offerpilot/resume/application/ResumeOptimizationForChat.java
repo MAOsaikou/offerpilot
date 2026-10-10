@@ -14,8 +14,12 @@ public class ResumeOptimizationForChat {
     public ResumeOptimizationForChat(ResumeOptimizationService optimizations) { this.optimizations = optimizations; }
 
     public Mono<JsonNode> generate(String owner, String resumeId, String versionId, String jd, String requestId) {
+        return generate(owner,resumeId,versionId,jd,requestId,null);
+    }
+
+    public Mono<JsonNode> generate(String owner, String resumeId, String versionId, String jd, String requestId, String jobId) {
         return Mono.fromCallable(() -> optimizations.begin(owner, resumeId, versionId,
-                        new ResumeOptimizationService.Input(requestId, jd)))
+                        new ResumeOptimizationService.Input(requestId, jd, jobId)))
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnDiscard(ResumeOptimizationService.Work.class, work -> optimizations.cancel(owner, work.id()))
                 .flatMap(optimizations::execute);

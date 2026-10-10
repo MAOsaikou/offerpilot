@@ -33,7 +33,14 @@ public class Orchestrator {
     public Flux<AgentEvent> run(AgentMode mode, String content, List<Message> history, ModelTier tier,
                                String runId, AtomicInteger seq, List<Message> replyPrompt, Consumer<Usage> onUsage,
                                String owner, Map<String, Object> context) {
-        Map<String, Object> safeContext = context == null ? Map.of() : context;
+        var selected=context==null ? Map.<String,Object>of() : context;
+        if (!selected.containsKey("jobId") && (selected.containsKey("applicationId") || selected.containsKey("matchId") || selected.containsKey("jobMatchId")))
+            return Mono.fromCallable(() -> experts.withJobContext(owner,selected)).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                .flatMapMany(resolved -> runSelected(mode,content,history,tier,runId,seq,replyPrompt,onUsage,owner,resolved));
+        return runSelected(mode,content,history,tier,runId,seq,replyPrompt,onUsage,owner,selected);
+    }
+    private Flux<AgentEvent> runSelected(AgentMode mode,String content,List<Message> history,ModelTier tier,String runId,
+            AtomicInteger seq,List<Message> replyPrompt,Consumer<Usage> onUsage,String owner,Map<String,Object> safeContext) {
         AtomicBoolean attemptedBusiness = new AtomicBoolean();
         AtomicBoolean producedCard = new AtomicBoolean();
         AtomicBoolean producedGuidance = new AtomicBoolean();

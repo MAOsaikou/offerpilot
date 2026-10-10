@@ -20,6 +20,10 @@ public class DefaultInterviewCoachForChat implements InterviewCoachForChat {
         return turn(sessions.create(owner, role, kind), "面试已创建，请回答第一题。继续时会先确认保存答案。");
     }
     @Transactional
+    public Turn startSession(String owner, String role, String kind, String jobId) {
+        return turn(sessions.create(owner,role,kind,jobId), "面试已创建，请回答第一题。继续时会先确认保存答案。");
+    }
+    @Transactional
     public Turn continueSession(String owner, String id, String answer, boolean nextQuestion, String expectedUpdatedAt) {
         var session = sessions.getForUpdate(owner, id);
         checkSnapshot(session, expectedUpdatedAt);

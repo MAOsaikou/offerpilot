@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Service SQL boundaries and real MVC/advice without database, sockets or Docker. */
 class InterviewServiceTest {
     final JdbcTemplate jdbc = mock(JdbcTemplate.class);
-    final InterviewService service = new InterviewService(jdbc);
+    final InterviewService service = new InterviewService(jdbc, mock(com.offerpilot.common.artifact.JobArtifacts.class));
     final String owner = "owner-a";
     final String id = "iv_1";
     final InterviewService.Summary summary = new InterviewService.Summary(id, "工程师", "项目与经历", 0, false, "2026-10-09T00:00:00Z", "2026-10-09T00:00:00Z");

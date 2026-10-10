@@ -39,7 +39,7 @@ public class InterviewController {
     // Regex bounds count Unicode code points, matching PostgreSQL char_length.
     public record CreateRequest(
             @NotBlank @Pattern(regexp = "(?s).{1,100}") String role,
-            @NotNull @Pattern(regexp = "项目与经历|表达与结构|职业动机", message = "练习类型必须为项目与经历、表达与结构或职业动机") String kind) {}
+            @NotNull @Pattern(regexp = "项目与经历|表达与结构|职业动机", message = "练习类型必须为项目与经历、表达与结构或职业动机") String kind, @Pattern(regexp = "\\S{1,80}") String jobId) {}
     public record ProgressRequest(@Min(0) @Max(4) Integer questionIndex, Boolean completed) {}
     public record AnswerRequest(@NotNull(message = "请提供 answerText，可为空字符串") @Pattern(regexp = "(?s).{0,12000}", message = "回答不能超过12000个字符") String answerText) {}
 
@@ -50,7 +50,7 @@ public class InterviewController {
 
     @PostMapping
     public ApiResponse<?> create(@Valid @RequestBody CreateRequest body, HttpServletRequest request) {
-        return ok(interviews.create(owner(request), body.role(), body.kind()), request);
+        return ok(interviews.create(owner(request), body.role(), body.kind(), body.jobId()), request);
     }
 
     @GetMapping("/{id}")

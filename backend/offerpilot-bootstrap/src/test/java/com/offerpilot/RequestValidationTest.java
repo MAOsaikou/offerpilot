@@ -41,6 +41,7 @@ class RequestValidationTest {
     private final ApplicationService applications = mock(ApplicationService.class);
     private final ResumeModelSettings settings = mock(ResumeModelSettings.class);
     private final CurrentUser users = mock(CurrentUser.class);
+    private final com.offerpilot.interview.application.InterviewService interviews = mock(com.offerpilot.interview.application.InterviewService.class);
     private final ObjectMapper json = new ObjectMapper();
     private LocalValidatorFactoryBean validator;
     private MockMvc mvc;
@@ -50,12 +51,24 @@ class RequestValidationTest {
         validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mvc = MockMvcBuilders.standaloneSetup(new LoginController(logins), new StaffUserController(admin),
-                        new ApplicationController(applications, users), new ResumeModelSettingsController(settings, users))
+                        new ApplicationController(applications, users), new ResumeModelSettingsController(settings, users),
+                        new com.offerpilot.interview.web.InterviewController(interviews, mock(com.offerpilot.interview.application.InterviewRecapExporter.class), users))
                 .setValidator(validator).setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
     @AfterEach
     void closeValidator() { validator.close(); }
+
+    @Test
+    void rewriteAcceptsOnlyAnOptionalTextJobIdAlongsideExistingFields() throws Exception {
+        for (String extra : List.of("\"jobId\":7", "\"jobId\":{}", "\"unknown\":\"job\"")) {
+            var body=json.readTree("{\"requestId\":\"rewrite-request-123\",\"jobDescription\":\"Java\","+extra+"}");
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> com.offerpilot.resume.application.ResumeOptimizationService.input(body))
+                .isInstanceOf(com.offerpilot.common.error.BusinessException.class);
+        }
+        assertThat(com.offerpilot.resume.application.ResumeOptimizationService.input(json.readTree("{\"requestId\":\"rewrite-request-123\",\"jobDescription\":\"Java\",\"jobId\":\"job_1\"}")))
+            .isEqualTo(new com.offerpilot.resume.application.ResumeOptimizationService.Input("rewrite-request-123","Java","job_1"));
+    }
 
     static Stream<Arguments> invalidBodies() {
         Stream<Arguments> auth = Stream.of("login", "register", "staff/login").flatMap(endpoint ->
@@ -70,7 +83,9 @@ class RequestValidationTest {
                         "{\"textTier\":\"unknown\",\"visionTier\":\"VISION_ALT\"}",
                         "{\"textTier\":\"FLASH\",\"visionTier\":\"VISION\"}")
                 .map(body -> Arguments.of(HttpMethod.PUT, "/api/v1/resume-model-settings", body));
-        return Stream.of(auth, staff, board, models).flatMap(stream -> stream);
+        Stream<Arguments> interview = Stream.of("", " ", "a".repeat(81)).map(job -> Arguments.of(HttpMethod.POST,"/api/v1/interviews",
+            "{\"role\":\"Java\",\"kind\":\"项目与经历\",\"jobId\":\""+job+"\"}"));
+        return Stream.of(auth, staff, board, models, interview).flatMap(stream -> stream);
     }
 
     @ParameterizedTest
@@ -80,7 +95,7 @@ class RequestValidationTest {
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(10001))
                 .andExpect(jsonPath("$.errors").isNotEmpty()).andReturn();
         assertThat(result.getResolvedException()).isInstanceOf(MethodArgumentNotValidException.class);
-        verifyNoInteractions(logins, admin, applications, settings, users);
+        verifyNoInteractions(logins, admin, applications, settings, interviews, users);
     }
 
     @Test
