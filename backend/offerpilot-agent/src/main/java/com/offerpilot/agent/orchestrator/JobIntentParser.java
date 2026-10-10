@@ -22,7 +22,7 @@ import java.util.function.Consumer;
 
 @Component
 public class JobIntentParser {
-    record Intent(String action, String query, String site, String nature, String location, String question, String status, String note) {}
+    record Intent(String action, String query, String site, String nature, String location, String question, String status, String note, String nextAction, String nextActionAt) {}
     private final ModelGateway gateway;
     private final ObjectMapper json;
     private final String prompt;
@@ -82,7 +82,7 @@ public class JobIntentParser {
     private PlanStep normalize(PlanStep step, Intent intent, Map<String, Object> context) {
         if (intent == null || intent.action() == null) throw new IllegalArgumentException("缺少动作");
         if ("clarify".equals(intent.action())) return clarify(step, field(intent.question(), 300, false));
-        if (Set.of("createApplication", "updateApplicationStatus").contains(intent.action())) {
+        if (Set.of("createApplication", "updateApplicationStatus", "getApplicationDetail").contains(intent.action())) {
             String key = "createApplication".equals(intent.action()) ? "jobId" : "applicationId";
             if (!(context.get(key) instanceof String id) || id.isBlank() || id.length() > 80)
                 return clarify(step, "请先提供目标" + key + "，确认要操作的投递记录或岗位。");
@@ -91,7 +91,9 @@ public class JobIntentParser {
             inputs.put(key, context.get(key));
             if (intent.status() != null) inputs.put("status", intent.status());
             if (intent.note() != null) inputs.put("note", intent.note());
-            return new PlanStep(step.id(), "确认看板写入", step.agent(), inputs, step.dependsOn());
+            if (intent.nextAction() != null) inputs.put("nextAction", intent.nextAction());
+            if (intent.nextActionAt() != null) inputs.put("nextActionAt", intent.nextActionAt());
+            return new PlanStep(step.id(), "getApplicationDetail".equals(intent.action()) ? "读取求职详情" : "确认看板写入", step.agent(), inputs, step.dependsOn());
         }
         if ("optimize".equals(intent.action())) return ResumeIntentParser.optimize(step, context);
         if ("match".equals(intent.action())) {

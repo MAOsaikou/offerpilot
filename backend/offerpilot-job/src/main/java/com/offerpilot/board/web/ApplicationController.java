@@ -35,11 +35,18 @@ public class ApplicationController {
     // Java regex counts Unicode code points, preserving the service's 2,000-character contract.
     public record UpdateRequest(
             @Pattern(regexp = "TODO|APPLIED|INTERVIEW|OFFER|CLOSED") String status,
-            @Pattern(regexp = "(?s).{0,2000}", message = "备注最多 2000 个 Unicode 字符") String note) {}
+            @Pattern(regexp = "(?s).{0,2000}", message = "备注最多 2000 个 Unicode 字符") String note,
+            @Pattern(regexp = "(?s).{0,1000}") String nextAction,
+            @Size(max = 10) String nextActionAt) {}
 
     @GetMapping
     public ApiResponse<?> list(HttpServletRequest r) {
         return ok(applications.list(owner(r)), r);
+    }
+
+    @GetMapping("/{id}")
+    public ApiResponse<?> detail(@PathVariable String id, HttpServletRequest r) {
+        return ok(applications.detail(owner(r), id), r);
     }
 
     @PostMapping
@@ -50,6 +57,6 @@ public class ApplicationController {
     @PatchMapping("/{id}")
     public ApiResponse<?> update(@Valid @RequestBody UpdateRequest body, @PathVariable String id,
                                 HttpServletRequest r) {
-        return ok(applications.update(owner(r), id, body.status(), body.note()), r);
+        return ok(applications.updateWithPatch(owner(r), id, new ApplicationService.Patch(body.status(), body.note(), body.nextAction(), body.nextActionAt()), "USER", null), r);
     }
 }

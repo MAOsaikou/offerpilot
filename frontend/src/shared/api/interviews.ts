@@ -1,4 +1,12 @@
-import { apiRequest } from './client'
+import {
+  apiRequest,
+  apiUrl,
+  authenticatedHeaders,
+  fetchWithIdentity,
+  toApiError,
+  assertResponseIdentity,
+} from './client'
+import { downloadText } from '@/shared/utils/download'
 import type { InterviewKind, InterviewSession, InterviewSummary } from '@/shared/types/interview'
 
 const sessionPath = (id: string) => `/interviews/${encodeURIComponent(id)}`
@@ -41,3 +49,13 @@ export const saveInterviewAnswer = (
     body: JSON.stringify({ answerText }),
     signal,
   })
+
+export async function exportInterviewRecap(id: string): Promise<void> {
+  const response = await fetchWithIdentity(apiUrl(`${sessionPath(id)}/recap.md`), {
+    headers: await authenticatedHeaders({ Accept: 'text/markdown' }),
+  })
+  if (!response.ok) throw await toApiError(response)
+  const text = await response.text()
+  assertResponseIdentity(response)
+  downloadText('面试复盘.md', text, 'text/markdown;charset=utf-8')
+}

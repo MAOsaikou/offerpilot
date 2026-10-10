@@ -92,6 +92,7 @@ public class DemoResetService {
 
     private void clear(String userId) {
         // FK cascades remove answers, versions, messages, agent steps/calls/approvals/events.
+        jdbc.update("DELETE FROM application_events WHERE application_id IN (SELECT id FROM applications WHERE user_id=?)", userId);
         for (String table : List.of("user_memories", "star_stories", "knowledge_note_imports", "knowledge_notes", "interview_sessions", "applications", "job_matches", "growth_task_completions",
                 "career_profiles", "resume_optimizations", "resume_patch_batches", "resume_diagnoses", "conversations")) {
             jdbc.update("DELETE FROM " + table + " WHERE user_id=?", userId);
@@ -148,8 +149,17 @@ public class DemoResetService {
             JsonNode job = journey.path("jobs").get(application.path("jobIndex").asInt());
             String jobId = jdbc.queryForObject("SELECT id FROM jobs WHERE site='demo' AND external_id=? AND nature=?",
                     String.class, job.path("externalId").asText(), job.path("nature").asText());
-            jdbc.update("INSERT INTO applications(id,user_id,job_id,status,note) VALUES (?,?,?,?,?)",
-                    "app_demo_" + userId + "_" + (++i), userId, jobId, application.path("status").asText(), application.path("note").asText());
+            String appId = "app_demo_" + userId + "_" + (++i);
+            jdbc.update("INSERT INTO applications(id,user_id,job_id,status,note,next_action,next_action_at) VALUES (?,?,?,?,?,?,current_date)",
+                    appId, userId, jobId, application.path("status").asText(), application.path("note").asText(),
+                    "核对岗位要求，准备项目 STAR 复盘（虚构演示）");
+            jdbc.update("INSERT INTO application_events(id,application_id,kind,to_status,detail,actor,created_at) VALUES (?,?,'CREATED','TODO','加入求职看板（虚构演示）','SYSTEM',now()-interval '2 days')",
+                    "evt_demo_create_"+appId, appId);
+            if (!"TODO".equals(application.path("status").asText()))
+                jdbc.update("INSERT INTO application_events(id,application_id,kind,from_status,to_status,detail,actor,created_at) VALUES (?,?,'STATUS_CHANGED','TODO',?,'演示阶段更新','SYSTEM',now()-interval '1 day')",
+                        "evt_demo_status_"+appId, appId, application.path("status").asText());
+            jdbc.update("INSERT INTO application_events(id,application_id,kind,detail,actor) VALUES (?,?,'NEXT_ACTION_EDITED','今天准备项目 STAR 复盘（虚构演示）','SYSTEM')",
+                    "evt_demo_next_"+appId, appId);
         }
         i = 0;
         for (JsonNode interview : journey.path("interviews")) {

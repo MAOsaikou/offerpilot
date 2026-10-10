@@ -174,6 +174,7 @@ export interface BoardUpdatePayload {
     company: string
     title: string
     status: ApplicationStatus
+    nextAction?: string
     nextActionAt: string | null
   }
   change: 'CREATED' | 'UPDATED'

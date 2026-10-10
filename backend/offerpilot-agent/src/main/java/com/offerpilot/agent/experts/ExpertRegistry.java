@@ -278,7 +278,7 @@ public class ExpertRegistry {
 
     /** 显式 match 必须执行或明确失败；旧无动作步骤仅在服务和所选资源齐全时匹配。 */
     public boolean matching(PlanStep step, Map<String, Object> context) {
-        return step.agent() == ExpertType.JOB && !writingBoard(step) && !"search".equals(step.inputs().get("action"))
+        return step.agent() == ExpertType.JOB && !writingBoard(step) && !"search".equals(step.inputs().get("action")) && !"getApplicationDetail".equals(step.inputs().get("action"))
                 && ("match".equals(step.inputs().get("action")) || matches != null && read(context) != null);
     }
 
@@ -348,6 +348,10 @@ public class ExpertRegistry {
                         : ExpertResult.card("根据已保存兴趣生成的规则推荐（未设置目标）。",
                                 requestId(runId, step.id()), "career_recommendation", result.payload());
             }).subscribeOn(Schedulers.boundedElastic());
+        }
+        if (step.agent() == ExpertType.JOB && "getApplicationDetail".equals(step.inputs().get("action"))) {
+            if (boards == null) return Mono.error(new IllegalStateException("看板服务不可用"));
+            return boards.detail(owner, text(step.inputs().get("applicationId")));
         }
         if (searching(step)) {
             return Mono.fromCallable(() -> {
