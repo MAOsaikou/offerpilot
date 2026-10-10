@@ -25,9 +25,10 @@ public final class MessageCards {
     private static final Set<String> CARD_TYPES = Set.of(
             "career_profile_confirm", "career_recommendation", "career_compare",
             "resume_diagnosis", "resume_diff",
-            "job_card", "job_match", "job_evidence_match", "campus_calendar",
+            "job_card", "job_match", "job_evidence_match", "job_eval_report", "campus_calendar",
             "board_update",
             "interviewer_state", "interview_turn_score", "interview_report",
+            "star_story", "star_story_candidates", "star_story_citations",
             "skill_gap", "skill_radar", "roadmap",
             "reminder");
 

@@ -315,7 +315,7 @@ public class ExpertRegistry {
                 }
                 return ExpertResult.cards("当前会话的文字规则评分（未修改完成状态）。可审批入库的 STAR 候选：" + candidates.size() + " 条。",
                         new ExpertResult.Card(requestId(runId, step.id()), "interview_report", report),
-                        new ExpertResult.Card(requestId(runId, step.id() + ":stars"), "star_story_candidates", candidates));
+                        new ExpertResult.Card(requestId(runId, step.id() + ":stars"), "star_story_candidates", java.util.Map.of("items", candidates, "count", candidates.size())));
             }).subscribeOn(Schedulers.boundedElastic());
         }
         if (step.agent() == ExpertType.CAREER_DISCOVERY) {
