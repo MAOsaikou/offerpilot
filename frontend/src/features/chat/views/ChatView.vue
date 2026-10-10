@@ -138,8 +138,14 @@ async function onSend(content: string) {
   try {
     privacyWarning.value = ''
     // The server applies the checksum-aware recognizers; this cheap screen avoids extra IO for ordinary turns.
-    if (/@|1[3-9]\d{9}|\d{17}[0-9Xx]/.test(content))
-      privacyWarning.value = (await checkPrivacyText(content)).warning ?? ''
+    if (/@|1[3-9]\d{9}|\d{17}[0-9Xx]/.test(content)) {
+      try {
+        privacyWarning.value = (await checkPrivacyText(content)).warning ?? ''
+      } catch {
+        privacyWarning.value =
+          '隐私风险检查暂不可用；模型端仍按你的脱敏设置处理。建议在设置中确认已开启。'
+      }
+    }
     const submittedMode = mode.value
     const matchAction = matchingSelection.value
     lastAttempt.value = content

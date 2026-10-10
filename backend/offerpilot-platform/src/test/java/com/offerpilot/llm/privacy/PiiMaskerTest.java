@@ -40,6 +40,15 @@ class PiiMaskerTest {
         var restored = session.restore(original);
         assertThat(restored.getMetadata()).isSameAs(original.getMetadata());
     }
+    @Test void usageOnlyTailAndErrorsDoNotLoseOrFlushBufferedText() {
+        var session = new PiiMasker.Session(List.of()); session.mask("13800138000");
+        assertThat(session.restore(Flux.just(chunk("[PH"), new ChatResponse(List.of())))
+                .map(c -> c.getResult() == null ? "" : c.getResult().getOutput().getText()).reduce("", String::concat).block()).isEqualTo("[PH");
+        List<String> emitted = new java.util.ArrayList<>();
+        assertThatThrownBy(() -> session.restore(Flux.concat(Flux.just(chunk("正文[PH")), Flux.error(new IllegalStateException("failed"))))
+                .doOnNext(c -> emitted.add(c.getResult().getOutput().getText())).blockLast()).isInstanceOf(IllegalStateException.class);
+        assertThat(emitted).containsExactly("正文");
+    }
     @Test void masksHistoryAndToolDataAsWellAsUserAndSystemText() {
         var prompt = new Prompt(List.of(new SystemMessage("上下文13800138000"), new UserMessage("fictional@example.test"),
                 new AssistantMessage(ID), new ToolResponseMessage(List.of(new ToolResponseMessage.ToolResponse("call", "read", "13800138000")))));

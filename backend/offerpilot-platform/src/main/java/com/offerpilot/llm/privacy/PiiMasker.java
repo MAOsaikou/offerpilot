@@ -35,6 +35,7 @@ public final class PiiMasker {
         private final Map<String, String> originals = new LinkedHashMap<>();
         private final Map<String, String> aliases = new HashMap<>();
         private final Set<String> reserved = new HashSet<>();
+        private final Set<String> prefixes = new HashSet<>();
         private final Map<String, Integer> counts = new HashMap<>();
         public Session(List<String> texts) {
             for (String text : texts) if (text != null) PLACEHOLDER.matcher(text).results().forEach(m -> reserved.add(m.group()));
@@ -55,6 +56,7 @@ public final class PiiMasker {
                     String candidate;
                     do { candidate = "[" + type + "_" + counts.merge(type, 1, Integer::sum) + "]"; } while (reserved.contains(candidate));
                     originals.put(candidate, value);
+                    for (int size = 1; size < candidate.length(); size++) prefixes.add(candidate.substring(0, size));
                     return candidate;
                 });
                 matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(alias));
@@ -77,7 +79,7 @@ public final class PiiMasker {
         }
         private Message maskMessage(Message message) {
             if (message instanceof UserMessage user) return user.mutate().text(mask(user.getText())).build();
-            if (message instanceof SystemMessage system) return new SystemMessage(mask(system.getText()));
+            if (message instanceof SystemMessage system) return system.mutate().text(mask(system.getText())).build();
             if (message instanceof AssistantMessage assistant) return new AssistantMessage(mask(assistant.getText()), assistant.getMetadata(),
                     assistant.getToolCalls().stream().map(c -> new AssistantMessage.ToolCall(c.id(), c.type(), c.name(), mask(c.arguments()))).toList(), assistant.getMedia());
             if (message instanceof ToolResponseMessage tool) return new ToolResponseMessage(tool.getResponses().stream()
@@ -103,16 +105,18 @@ public final class PiiMasker {
                     if (!response.getResults().isEmpty()) last[0] = response;
                     return transform(response, (index, text) -> {
                         String combined = pending.getOrDefault(index, "") + (text == null ? "" : text);
-                        int keep = 0;
-                        for (String alias : originals.keySet()) for (int size = 1; size < alias.length() && size <= combined.length(); size++)
-                            if (combined.endsWith(alias.substring(0, size))) keep = Math.max(keep, size);
+                        int start = combined.lastIndexOf('[');
+                        String suffix = start < 0 ? "" : combined.substring(start);
+                        int keep = prefixes.contains(suffix) ? suffix.length() : 0;
                         pending.put(index, combined.substring(combined.length() - keep));
                         return restore(combined.substring(0, combined.length() - keep));
                     });
                 }).concatWith(Flux.defer(() -> {
                     if (last[0] == null || pending.values().stream().allMatch(String::isEmpty)) return Flux.empty();
                     // Flush an unfinished token only on normal completion, never on cancellation/error.
-                    return Flux.just(transform(last[0], (index, text) -> restore(pending.getOrDefault(index, ""))));
+                    var tail = transform(last[0], (index, text) -> restore(pending.getOrDefault(index, "")));
+                    return Flux.just(new ChatResponse(tail.getResults().stream()
+                            .map(g -> new Generation(new AssistantMessage(g.getOutput().getText()), g.getMetadata())).toList(), tail.getMetadata()));
                 }));
             });
         }

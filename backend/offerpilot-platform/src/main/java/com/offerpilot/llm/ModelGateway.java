@@ -58,6 +58,7 @@ public class ModelGateway {
         return piiMaskingEnabled(owner) ? com.offerpilot.llm.privacy.PiiMasker.forPrompt(prompt) : null;
     }
     private Flux<ChatResponse> protectedStream(String owner, Prompt prompt, java.util.function.Function<Prompt, Flux<ChatResponse>> provider) {
+        prompt = com.offerpilot.llm.privacy.ModelInputBoundary.apply(prompt);
         var session = masking(owner, prompt);
         return session == null ? provider.apply(prompt) : session.restore(provider.apply(session.mask(prompt)));
     }
@@ -111,6 +112,7 @@ public class ModelGateway {
             @Override public ChatResponse call(Prompt prompt) {
                 String owner = LlmUserContext.current() == null ? capturedOwner : LlmUserContext.current();
                 var admission = admit(owner, tier);
+                prompt = com.offerpilot.llm.privacy.ModelInputBoundary.apply(prompt);
                 var session = masking(owner, prompt);
                 ChatResponse response = delegate.call(session == null ? prompt : session.mask(prompt));
                 if (session != null) response = session.restore(response);
@@ -144,9 +146,9 @@ public class ModelGateway {
 
     public Flux<ChatResponse> stream(ModelTier tier, List<Message> messages, double temperature) {
         return guardedStream(tier, LlmUserContext.current(), owner -> {
-            var rawPrompt = new Prompt(messages);
+            var rawPrompt = com.offerpilot.llm.privacy.ModelInputBoundary.apply(new Prompt(messages));
             var session = masking(owner, rawPrompt);
-            List<Message> outbound = session == null ? messages : session.mask(rawPrompt).getInstructions();
+            List<Message> outbound = session == null ? rawPrompt.getInstructions() : session.mask(rawPrompt).getInstructions();
             // Spring AI 1.0 的 DeepSeek 适配器不处理图片；图文请求使用同一供应商的兼容接口。
             boolean hasImages = messages.stream().anyMatch(message -> message instanceof
                     org.springframework.ai.chat.messages.UserMessage user && !user.getMedia().isEmpty());
