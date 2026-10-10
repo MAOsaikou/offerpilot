@@ -427,7 +427,7 @@ async function openReport(reportId: string) {
       </section>
       <p v-if="reportLoading" class="panel" role="status">正在加载报告…</p>
       <CardRenderer v-if="report" card-type="job_evidence_match" :payload="report" />
-      <JobEvalReport v-if="report?.evaluation" :payload="report.evaluation" />
+      <JobEvalReport v-if="report?.evaluation" :payload="report.evaluation" :match-id="report.id" />
       <section class="panel form-stack">
         <div class="section-heading">
           <h2>最近的匹配记录</h2>

@@ -7,6 +7,8 @@ import com.offerpilot.common.web.TraceIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -14,11 +16,13 @@ import org.springframework.web.bind.annotation.*;
 public class JobController {
     private final JobService jobs;
     private final JobMatchService matches;
+    private final JobEvalMarkdownExporter evalExports;
     private final CurrentUser users;
 
-    public JobController(JobService jobs, JobMatchService matches, CurrentUser users) {
+    public JobController(JobService jobs, JobMatchService matches, JobEvalMarkdownExporter evalExports, CurrentUser users) {
         this.jobs = jobs;
         this.matches = matches;
+        this.evalExports = evalExports;
         this.users = users;
     }
 
@@ -80,5 +84,13 @@ public class JobController {
     @GetMapping("/matches/{id}")
     public ApiResponse<?> report(@PathVariable String id, HttpServletRequest r) {
         return ok(matches.get(owner(r), id), r);
+    }
+
+    @GetMapping(value = "/matches/{id}/eval.md", produces = "text/markdown;charset=UTF-8")
+    public ResponseEntity<String> evaluationMarkdown(@PathVariable String id, HttpServletRequest r) {
+        String markdown = evalExports.markdown(owner(r), id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"job-eval.md\"")
+                .body(markdown);
     }
 }

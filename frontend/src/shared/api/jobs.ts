@@ -1,4 +1,12 @@
-import { ApiError, apiRequest } from './client'
+import {
+  ApiError,
+  apiRequest,
+  apiUrl,
+  authenticatedHeaders,
+  fetchWithIdentity,
+  toApiError,
+} from './client'
+import { downloadText } from '@/shared/utils/download'
 import type { ModelTier } from '@/shared/types/model-tier'
 import type {
   EvidenceMatch,
@@ -54,3 +62,18 @@ export const listJobMatches = (id: string, signal?: AbortSignal) =>
   apiRequest<MatchHistory[]>(`/jobs/${encodeURIComponent(id)}/matches`, { signal })
 export const getJobMatch = (id: string, signal?: AbortSignal) =>
   apiRequest<EvidenceMatch>(`/jobs/matches/${encodeURIComponent(id)}`, { signal })
+
+/** Downloads deterministic A–F evaluation markdown for a COMPLETED match. */
+export async function exportJobEvalMarkdown(
+  matchId: string,
+  filename = '岗位评估.md',
+): Promise<void> {
+  const response = await fetchWithIdentity(
+    apiUrl(`/jobs/matches/${encodeURIComponent(matchId)}/eval.md`),
+    {
+      headers: await authenticatedHeaders({ Accept: 'text/markdown' }),
+    },
+  )
+  if (!response.ok) throw await toApiError(response)
+  downloadText(filename, await response.text())
+}
