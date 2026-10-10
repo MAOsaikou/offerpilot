@@ -30,6 +30,8 @@
         <testcontainers.version>1.21.3</testcontainers.version>
         <!-- JDK 25 local toolchain: Mockito/Byte Buddy needs experimental until upgraded -->
         <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+        <!-- Keep paid/deep smoke sources out of the default test compilation and discovery. -->
+        <offerpilot.live-test-exclude>**/*LiveEvaluation*.java</offerpilot.live-test-exclude>
     </properties>
 
     <dependencyManagement>
@@ -67,10 +69,22 @@
             <plugins>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <testExcludes>
+                            <testExclude>${offerpilot.live-test-exclude}</testExclude>
+                        </testExcludes>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <configuration>
                         <!-- Mockito/Byte Buddy must also support developer machines running JDK 25. -->
                         <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+                        <excludes>
+                            <exclude>${offerpilot.live-test-exclude}</exclude>
+                        </excludes>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -80,4 +94,13 @@
             </plugins>
         </pluginManagement>
     </build>
+    <profiles>
+        <profile>
+            <id>live</id>
+            <properties>
+                <!-- Compile/discover live tests; their per-suite env/key gates still apply. -->
+                <offerpilot.live-test-exclude>**/__no_live_test_exclusions__.java</offerpilot.live-test-exclude>
+            </properties>
+        </profile>
+    </profiles>
 </project>

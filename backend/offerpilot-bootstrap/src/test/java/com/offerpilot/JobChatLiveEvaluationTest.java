@@ -33,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** 显式启用的真实模型/MCP小样本验收；数据库隔离，仅生成虚构简历。 */
 @EnabledIfEnvironmentVariable(named = "OFFERPILOT_RUN_LIVE_JOBS", matches = "true")
+@EnabledIfEnvironmentVariable(named = "DEEPSEEK_API_KEY", matches = ".*\\S.*")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.ai.model.chat=deepseek", "spring.ai.model.embedding=none", "spring.ai.retry.max-attempts=1",
         "offerpilot.llm.default-tier=FLASH", "spring.ai.mcp.server.enabled=false",

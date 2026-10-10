@@ -53,7 +53,9 @@ try {
         Write-Output ('Evaluation output: ' + $env:OFFERPILOT_OPTIMIZE_EVAL_OUT)
     }
     $taskRevision = (git rev-parse HEAD).Trim() + '+evaluation-working-tree'
-    & './mvnw.cmd' -q -B -pl offerpilot-bootstrap -am "-Dtest=$taskTests" '-Dsurefire.failIfNoSpecifiedTests=false' "-Dofferpilot.eval.revision=$taskRevision" test
+    $taskProfiles = @()
+    if ($Live) { $taskProfiles = @('-Plive') }
+    & './mvnw.cmd' -q -B @taskProfiles -pl offerpilot-bootstrap -am "-Dtest=$taskTests" '-Dsurefire.failIfNoSpecifiedTests=false' "-Dofferpilot.eval.revision=$taskRevision" test
     $taskExit = $LASTEXITCODE
     if ($Live -and (Test-Path -LiteralPath (Join-Path $env:OFFERPILOT_OPTIMIZE_EVAL_OUT 'human-review.json'))) {
         & python -B (Join-Path $PSScriptRoot 'summarize-resume-optimize.py') $env:OFFERPILOT_OPTIMIZE_EVAL_OUT

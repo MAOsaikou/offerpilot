@@ -3,43 +3,17 @@ package com.offerpilot;
 import com.offerpilot.career.application.OccupationRecommender;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** 验证职业条目库能通过导入器落库，且规则层推荐能给出合理结果。 */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE, properties = {
-        "spring.ai.model.chat=deepseek", "spring.ai.model.embedding=none",
-        "spring.ai.deepseek.api-key=occupation-test-only",
-        "spring.ai.mcp.server.enabled=false", "offerpilot.resume.worker-enabled=false"})
-@ActiveProfiles("test")
-@Testcontainers
-class OccupationRecommendationTest {
-    @Container
-    static PostgreSQLContainer<?> db = new PostgreSQLContainer<>(
-            DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
-
-    @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", db::getJdbcUrl);
-        registry.add("spring.datasource.username", db::getUsername);
-        registry.add("spring.datasource.password", db::getPassword);
-    }
-
-    @Autowired
-    OccupationRecommender recommender;
-
-    @Autowired
-    JdbcTemplate jdbc;
+/** Catalog assertions inherited by OccupationRagIntegrationTest in its rollback-isolated context. */
+@Transactional
+abstract class OccupationRecommendationTest {
+    @Autowired protected OccupationRecommender recommender;
+    @Autowired protected JdbcTemplate jdbc;
 
     @Test
     void seederLoadsWholeOccupationLibrary() {
@@ -57,7 +31,7 @@ class OccupationRecommendationTest {
     }
 
     @Test
-    void ranksOccupationsByHollandCode() {
+    void ranksOccupationsByHollandCodeAndExactMatchScoresHighest() {
         var top = recommender.rank("AIS", 10);
 
         assertThat(top).hasSize(10);
@@ -69,17 +43,12 @@ class OccupationRecommendationTest {
             assertThat(ranked.name()).isNotBlank();
             assertThat(ranked.similarity()).isGreaterThan(0);
         });
-    }
-
-    @Test
-    void exactCodeMatchScoresHighest() {
         // 取一条真实职业的兴趣码，用自己的码去查，应该拿到满分
         String code = jdbc.queryForObject(
                 "SELECT holland_code FROM occupations WHERE id = 'occ_backend_dev'", String.class);
-        var top = recommender.rank(code, 5);
-
-        assertThat(top.get(0).similarity()).isEqualTo(6.0);
-        assertThat(top).extracting(OccupationRecommender.Ranked::hollandCode).contains(code.trim());
+        var exact = recommender.rank(code, 5);
+        assertThat(exact.get(0).similarity()).isEqualTo(6.0);
+        assertThat(exact).extracting(OccupationRecommender.Ranked::hollandCode).contains(code.trim());
     }
 
     @Test
@@ -97,6 +66,8 @@ class OccupationRecommendationTest {
         assertThat(derived.profile()).isEqualTo(new com.offerpilot.career.application.RiasecProfile(2, 2, 0, 1, 1, 0));
         String query = String.join(" ", derived.interestsUsed()) + " " + demo.path("skills").asText() + " "
                 + demo.path("target").asText() + " 我喜欢研究技术和动手搭建系统";
+        // RAG's startup fills vectors; this case deliberately tests the no-vector fallback.
+        jdbc.update("UPDATE occupations SET embedding=NULL");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM occupations WHERE embedding IS NOT NULL", Integer.class)).isZero();
         var top = recommender.rankHybrid(derived.profile(), query, 8);
         System.out.println("DEMO_PROFILE_LEXICAL_TOP5 " + top.stream().limit(5).map(OccupationRecommender.Ranked::name).toList());
@@ -111,6 +82,7 @@ class OccupationRecommendationTest {
     }
 
     @Test void chineseFreeTextWorksWithoutSegmenterOrVectors() {
+        jdbc.update("UPDATE occupations SET embedding=NULL");
         String query = "我想做后端开发";
         assertThat(jdbc.queryForObject("SELECT count(*) FROM occupations WHERE tsv @@ plainto_tsquery('simple', ?)",
                 Integer.class, query)).isZero();
@@ -118,7 +90,7 @@ class OccupationRecommendationTest {
                 .contains("occ_backend_dev");
     }
 
-    @Test @org.springframework.transaction.annotation.Transactional
+    @Test
     void closeFullProfileBeatsLiteralLetterCodeMatch() {
         jdbc.update("DELETE FROM occupations");
         jdbc.update("""

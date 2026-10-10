@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.*;
 
 /** 显式启用才调用付费模型；仅发送本测试生成的虚构简历，不连接业务数据库。 */
 @EnabledIfEnvironmentVariable(named = "OFFERPILOT_RUN_LIVE_RESUME", matches = "true")
+@EnabledIfEnvironmentVariable(named = "DEEPSEEK_API_KEY", matches = ".*\\S.*")
 class ResumeLiveEvaluationTest {
     @Test void extractsKnownFactsFromTextImageMixedPdfAndDocx() throws Exception {
         String key = System.getenv("DEEPSEEK_API_KEY");

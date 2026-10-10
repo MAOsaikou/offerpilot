@@ -29,7 +29,7 @@ import static org.mockito.ArgumentMatchers.*;
 /** Explicit opt-in, FLASH only, no DB/tools/embedding, <=40 provider attempts including repairs/planning. */
 @Tag("eval")
 @EnabledIfEnvironmentVariable(named="OFFERPILOT_RUN_LIVE_SMOKE",matches="true")
-@EnabledIfEnvironmentVariable(named="DEEPSEEK_API_KEY",matches=".+")
+@EnabledIfEnvironmentVariable(named="DEEPSEEK_API_KEY",matches=".*\\S.*")
 class RedteamLiveEvaluationTest {
     static final ObjectMapper JSON = RedteamSupport.JSON;
     @Test void measureSevenVersionedAttacksWithoutClaimingGeneralInterception() throws Exception {
