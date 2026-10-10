@@ -59,7 +59,6 @@ class InterviewCoachTest {
         assertThat(coach.continueSession("alice", "iv_1", "下一题", true, "snapshot").state()).isEqualTo("CLOSING");
         verify(service, never()).saveAnswer(any(), any(), anyInt(), any());
         verify(service, never()).update(any(), any(), any(), any());
-
     }
 
     @Test void staleApprovalCompletedSessionAndOtherOwnerCannotWrite() {
