@@ -1,4 +1,5 @@
 import { createApp, defineComponent, h, nextTick, type App } from 'vue'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter, type RouteRecordRaw, type Router } from 'vue-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -7,6 +8,10 @@ import { routes } from './index'
 import { registerGuards } from './guards'
 import { useAuthStore } from '@/shared/stores/auth'
 import { saveGuest, saveLogin } from '@/shared/utils/authSession'
+
+vi.mock('@/shared/api/generationTasks', () => ({
+  listGenerationTasks: vi.fn(async () => []),
+}))
 
 // Keep the production route tree, lazy layouts, RouterViews and Transitions.
 // Only page bodies are replaced so this regression needs no API servers.
@@ -62,7 +67,8 @@ afterEach(() => {
 
 async function mount(path = '/') {
   await router.push(path)
-  app = createApp(AppRoot).use(pinia).use(router)
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  app = createApp(AppRoot).use(pinia).use(router).use(VueQueryPlugin, { queryClient })
   app.mount(root)
   await nextTick()
 }
