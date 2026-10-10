@@ -86,7 +86,22 @@ async function importFile(event: Event) {
       点击上传后，原文件保存到服务端，内容将发送给配置的模型用于解析。请核对解析结果后保存。
       <RouterLink to="/settings/models">切换解析模型</RouterLink>
     </div>
-    <p v-if="server.isPending.value" role="status">正在加载服务端简历…</p>
+    <template v-if="server.isPending.value">
+      <h2>已上传的简历 <span class="subtle">— 份</span></h2>
+      <div class="card-grid" role="status" aria-label="正在加载服务端简历…">
+        <div
+          v-for="index in 3"
+          :key="index"
+          class="panel job-card resume-skeleton"
+          aria-hidden="true"
+        >
+          <div class="skeleton-line skeleton-tag" />
+          <div class="skeleton-line skeleton-title" />
+          <div class="skeleton-line" />
+          <div class="skeleton-line" />
+        </div>
+      </div>
+    </template>
     <div v-else-if="server.isError.value" class="error-banner" role="alert">
       {{ server.error.value?.message }}
       <button class="btn" @click="server.refetch()">重新加载</button>
@@ -167,3 +182,29 @@ async function importFile(event: Event) {
     </div>
   </section>
 </template>
+
+<style scoped>
+/* Match one ordinary uploaded-resume row; reserve three cards during the first read. */
+.resume-skeleton {
+  min-height: 186px;
+}
+.skeleton-line {
+  height: 22px;
+  width: 70%;
+  background: var(--muted);
+  border-radius: var(--radius-tag);
+}
+.skeleton-tag {
+  height: 26px;
+  width: 30%;
+}
+.skeleton-title {
+  height: 28px;
+  width: 60%;
+}
+@media (max-width: 640px) {
+  .resume-skeleton {
+    min-height: 174px;
+  }
+}
+</style>

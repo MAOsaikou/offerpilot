@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter, type RouteRecordRaw, type Router } from 'vue-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import AppRoot from '@/app/App.vue'
-import { routes } from './index'
+import { routes, router as productionRouter } from './index'
 import { registerGuards } from './guards'
 import { useAuthStore } from '@/shared/stores/auth'
 import { saveGuest, saveLogin } from '@/shared/utils/authSession'
@@ -194,4 +194,18 @@ it('preserves the logout guard and remounts pages when identity changes', async 
   saveGuest('guest-return-fixture')
   await router.push('/')
   await expectPage('dashboard')
+})
+
+it('skips initial scroll layout but preserves navigation and history restoration', async () => {
+  const scroll = productionRouter.options.scrollBehavior!
+  const initial = router.currentRoute.value
+  await router.push('/')
+  const dashboard = router.currentRoute.value
+  await router.push('/resumes')
+  const resumes = router.currentRoute.value
+  expect(scroll(dashboard, initial, null)).toBe(false)
+  expect(scroll(resumes, dashboard, null)).toEqual({ top: 0 })
+  const saved = { left: 0, top: 640 }
+  expect(scroll(dashboard, initial, saved)).toBe(saved)
+  expect(scroll(dashboard, resumes, saved)).toBe(saved)
 })

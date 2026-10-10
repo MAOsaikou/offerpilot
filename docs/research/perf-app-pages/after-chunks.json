@@ -1,0 +1,392 @@
+[
+  {
+    "name": "AppIcon-K38ey9k2.js",
+    "bytes": 2413,
+    "gzipBytes": 1311
+  },
+  {
+    "name": "AppLayout-CzlKjDQW.js",
+    "bytes": 9081,
+    "gzipBytes": 4051
+  },
+  {
+    "name": "AppLayout-hHJjbTiV.css",
+    "bytes": 801,
+    "gzipBytes": 394
+  },
+  {
+    "name": "AuthLayout--3FNSWNh.js",
+    "bytes": 254,
+    "gzipBytes": 218
+  },
+  {
+    "name": "BoardUpdateCard-BiGpzo-9.js",
+    "bytes": 1300,
+    "gzipBytes": 827
+  },
+  {
+    "name": "BoardView-BxpXeFdn.js",
+    "bytes": 3868,
+    "gzipBytes": 1929
+  },
+  {
+    "name": "BrandMark-nu3gevZF.js",
+    "bytes": 614,
+    "gzipBytes": 406
+  },
+  {
+    "name": "CardRenderer-Blka7_xc.js",
+    "bytes": 4754,
+    "gzipBytes": 1979
+  },
+  {
+    "name": "CareerRecommendationCard-CMSPsZae.js",
+    "bytes": 1978,
+    "gzipBytes": 1056
+  },
+  {
+    "name": "CareerView-lXsatwbN.js",
+    "bytes": 3078,
+    "gzipBytes": 1807
+  },
+  {
+    "name": "ChatPage-BjLt7g-k.css",
+    "bytes": 7700,
+    "gzipBytes": 1927
+  },
+  {
+    "name": "ChatPage-PNNLic0L.js",
+    "bytes": 66277,
+    "gzipBytes": 23435
+  },
+  {
+    "name": "DashboardView-Cz-eFSBt.js",
+    "bytes": 6835,
+    "gzipBytes": 3284
+  },
+  {
+    "name": "DashboardView-DeTEnacs.css",
+    "bytes": 4809,
+    "gzipBytes": 1426
+  },
+  {
+    "name": "DiagnosisCard-BnGTdTwv.js",
+    "bytes": 760,
+    "gzipBytes": 548
+  },
+  {
+    "name": "DiscoverView-BtkevC8T.js",
+    "bytes": 4656,
+    "gzipBytes": 2526
+  },
+  {
+    "name": "EvidenceMatchReport-CMQLDR3k.css",
+    "bytes": 2103,
+    "gzipBytes": 696
+  },
+  {
+    "name": "EvidenceMatchReport-Cuk5jjCi.js",
+    "bytes": 4318,
+    "gzipBytes": 2107
+  },
+  {
+    "name": "InterviewListView-CfDfIIwc.js",
+    "bytes": 6488,
+    "gzipBytes": 3048
+  },
+  {
+    "name": "InterviewReportCard-DobneoQw.js",
+    "bytes": 3790,
+    "gzipBytes": 1847
+  },
+  {
+    "name": "InterviewReportCard-ceeVEfKB.css",
+    "bytes": 329,
+    "gzipBytes": 161
+  },
+  {
+    "name": "InterviewRoomView-CH7JNREc.js",
+    "bytes": 13899,
+    "gzipBytes": 5835
+  },
+  {
+    "name": "InterviewRoomView-D0V7jA9h.css",
+    "bytes": 309,
+    "gzipBytes": 189
+  },
+  {
+    "name": "InterviewerStateCard-BAcCiOHZ.js",
+    "bytes": 1005,
+    "gzipBytes": 661
+  },
+  {
+    "name": "JobDetailView-CAhMV6jW.css",
+    "bytes": 225,
+    "gzipBytes": 157
+  },
+  {
+    "name": "JobDetailView-CNQyPase.js",
+    "bytes": 15322,
+    "gzipBytes": 5749
+  },
+  {
+    "name": "JobEvalReport-CrXhQH3S.js",
+    "bytes": 2054,
+    "gzipBytes": 1125
+  },
+  {
+    "name": "JobSearchCard-B4NAiSsG.js",
+    "bytes": 3753,
+    "gzipBytes": 1875
+  },
+  {
+    "name": "JobSearchCard-CNQcQWeD.css",
+    "bytes": 301,
+    "gzipBytes": 208
+  },
+  {
+    "name": "JobSearchView-BXdps7Qq.js",
+    "bytes": 7680,
+    "gzipBytes": 3393
+  },
+  {
+    "name": "JobSearchView-wHfJVCrQ.css",
+    "bytes": 321,
+    "gzipBytes": 173
+  },
+  {
+    "name": "JobSourceBadge-Dyuewq0u.js",
+    "bytes": 842,
+    "gzipBytes": 622
+  },
+  {
+    "name": "KnowledgeView-D2ufGpwQ.js",
+    "bytes": 9642,
+    "gzipBytes": 4034
+  },
+  {
+    "name": "LoginView-Bo0NI-B0.css",
+    "bytes": 4503,
+    "gzipBytes": 1217
+  },
+  {
+    "name": "LoginView-CNduXZr9.js",
+    "bytes": 6149,
+    "gzipBytes": 2861
+  },
+  {
+    "name": "MatchReport-BETfdJ9n.js",
+    "bytes": 3007,
+    "gzipBytes": 1312
+  },
+  {
+    "name": "NotFoundView-DgMM8A_Q.js",
+    "bytes": 742,
+    "gzipBytes": 573
+  },
+  {
+    "name": "NotificationsView-Cu0yhIlC.js",
+    "bytes": 1453,
+    "gzipBytes": 939
+  },
+  {
+    "name": "PageHeading-Big0mQm-.js",
+    "bytes": 433,
+    "gzipBytes": 302
+  },
+  {
+    "name": "PatchDiffViewer-CsJyGlXF.js",
+    "bytes": 5902,
+    "gzipBytes": 2691
+  },
+  {
+    "name": "ResumeDetailPage-Bxdg0dg2.css",
+    "bytes": 2985,
+    "gzipBytes": 895
+  },
+  {
+    "name": "ResumeDetailPage-DHXR-6HZ.js",
+    "bytes": 33726,
+    "gzipBytes": 11436
+  },
+  {
+    "name": "ResumeDiagnosisReport-DLES5x8T.css",
+    "bytes": 8020,
+    "gzipBytes": 1709
+  },
+  {
+    "name": "ResumeDiagnosisReport-DstBQE7t.js",
+    "bytes": 8147,
+    "gzipBytes": 3541
+  },
+  {
+    "name": "ResumeListView-Cp5_Uuvu.js",
+    "bytes": 6289,
+    "gzipBytes": 3013
+  },
+  {
+    "name": "ResumeListView-DfSmjwiq.css",
+    "bytes": 347,
+    "gzipBytes": 190
+  },
+  {
+    "name": "RoadmapCard-Bcf7H53J.js",
+    "bytes": 2805,
+    "gzipBytes": 1458
+  },
+  {
+    "name": "SettingsView-BACYc_gM.css",
+    "bytes": 878,
+    "gzipBytes": 406
+  },
+  {
+    "name": "SettingsView-CnDBqB8W.js",
+    "bytes": 22009,
+    "gzipBytes": 8944
+  },
+  {
+    "name": "SkillGapCard-DO4fQtWW.js",
+    "bytes": 1893,
+    "gzipBytes": 962
+  },
+  {
+    "name": "StaffConsoleView-BXiGATBB.css",
+    "bytes": 3677,
+    "gzipBytes": 1007
+  },
+  {
+    "name": "StaffConsoleView-eqcSJsrh.js",
+    "bytes": 5471,
+    "gzipBytes": 2525
+  },
+  {
+    "name": "StaffLoginView-Bd-O0brJ.css",
+    "bytes": 4503,
+    "gzipBytes": 1217
+  },
+  {
+    "name": "StaffLoginView-DYPrwTEm.js",
+    "bytes": 2772,
+    "gzipBytes": 1567
+  },
+  {
+    "name": "_plugin-vue_export-helper-BDNMzG2s.js",
+    "bytes": 84,
+    "gzipBytes": 99
+  },
+  {
+    "name": "archivo-latin-ext-wdth-normal-7khWdh9v.woff2",
+    "bytes": 86240,
+    "gzipBytes": 86288
+  },
+  {
+    "name": "archivo-latin-wdth-normal-DY7AcnAa.woff2",
+    "bytes": 90104,
+    "gzipBytes": 90152
+  },
+  {
+    "name": "archivo-ui-wdth-normal-DAXq-iAx.woff2",
+    "bytes": 53636,
+    "gzipBytes": 53674
+  },
+  {
+    "name": "archivo-vietnamese-wdth-normal-rJmnGBSt.woff2",
+    "bytes": 34464,
+    "gzipBytes": 34497
+  },
+  {
+    "name": "authSession-B4Gmh5gC.js",
+    "bytes": 29298,
+    "gzipBytes": 8611
+  },
+  {
+    "name": "board-BQjJiCiQ.js",
+    "bytes": 112,
+    "gzipBytes": 130
+  },
+  {
+    "name": "download-CmJdez3R.js",
+    "bytes": 339,
+    "gzipBytes": 273
+  },
+  {
+    "name": "index-DgXDVONt.css",
+    "bytes": 46328,
+    "gzipBytes": 9979
+  },
+  {
+    "name": "index-DjNjeUqX.js",
+    "bytes": 61869,
+    "gzipBytes": 24037
+  },
+  {
+    "name": "interviewExport-B7t0d1dr.js",
+    "bytes": 1201,
+    "gzipBytes": 621
+  },
+  {
+    "name": "jobs-DrMPTvvH.js",
+    "bytes": 1350,
+    "gzipBytes": 778
+  },
+  {
+    "name": "memories-BIDMis7i.js",
+    "bytes": 710,
+    "gzipBytes": 468
+  },
+  {
+    "name": "payload-CwSyuB8d.js",
+    "bytes": 79,
+    "gzipBytes": 93
+  },
+  {
+    "name": "privacy-settings-CV_rpJzh.js",
+    "bytes": 627,
+    "gzipBytes": 477
+  },
+  {
+    "name": "resume-38ggY5Ye.js",
+    "bytes": 193,
+    "gzipBytes": 190
+  },
+  {
+    "name": "resumes-BZIigswe.js",
+    "bytes": 1786,
+    "gzipBytes": 944
+  },
+  {
+    "name": "runtime-core.esm-bundler-BPEIp0sN.js",
+    "bytes": 63281,
+    "gzipBytes": 24559
+  },
+  {
+    "name": "sse-C4tn2dxJ.js",
+    "bytes": 125974,
+    "gzipBytes": 51736
+  },
+  {
+    "name": "useBoard-CTqGAoIl.js",
+    "bytes": 1008,
+    "gzipBytes": 568
+  },
+  {
+    "name": "useCareerProfile-D6N4PzvS.js",
+    "bytes": 2020,
+    "gzipBytes": 1025
+  },
+  {
+    "name": "useQuery-BKMiKvtl.js",
+    "bytes": 7710,
+    "gzipBytes": 2782
+  },
+  {
+    "name": "useQueryClient-CvUqRgdM.js",
+    "bytes": 413,
+    "gzipBytes": 296
+  },
+  {
+    "name": "workspace-Dz2Fau_a.js",
+    "bytes": 6248,
+    "gzipBytes": 3297
+  }
+]
