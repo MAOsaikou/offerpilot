@@ -429,7 +429,7 @@ class ChatHttpIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("event:run.started", "event:text.delta", "你好", "，同学。",
                 "event:usage", "\"promptTokens\":24", "\"completionTokens\":12", "event:run.completed", "COMPLETED");
-        assertThat(requestBody.get()).contains("我是大三学生", "deepseek-flash", "\"stream\":true", "仅提供文字建议");
+        assertThat(requestBody.get()).contains("我是大三学生", "deepseek-flash", "\"stream\":true", "仅以工具成功结果说明已执行的操作");
         assertThat(response.body().indexOf("event:usage")).isLessThan(response.body().indexOf("event:run.completed"));
     }
 
