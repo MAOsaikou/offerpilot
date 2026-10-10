@@ -12,3 +12,12 @@ export interface GenerationTask {
 
 export const listGenerationTasks = (signal?: AbortSignal) =>
   apiRequest<GenerationTask[]>('/generation-tasks', { signal })
+
+export const cancelGenerationTask = (kind: string, id: string, signal?: AbortSignal) =>
+  apiRequest<null>(
+    `/generation-tasks/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/cancel`,
+    {
+      method: 'POST',
+      signal,
+    },
+  )

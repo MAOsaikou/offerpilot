@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
-import { listGenerationTasks } from '@/shared/api/generationTasks'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { cancelGenerationTask, listGenerationTasks } from '@/shared/api/generationTasks'
 import { useAuthStore } from '@/shared/stores/auth'
 
 const auth = useAuthStore()
 const open = ref(true)
+const queryClient = useQueryClient()
 const query = useQuery({
   queryKey: computed(() => ['generation-tasks', auth.identityKey]),
   queryFn: ({ signal }) => listGenerationTasks(signal),
@@ -19,6 +20,29 @@ const kindLabel: Record<string, string> = {
   JOB_MATCH: '匹配',
   RESUME_OPTIMIZE: '改写',
   RESUME_DIAGNOSIS: '诊断',
+}
+const cancellingId = ref<string | null>(null)
+const cancelError = ref('')
+const cancelMutation = useMutation({
+  mutationFn: ({ kind, id }: { kind: string; id: string }) => cancelGenerationTask(kind, id),
+  onMutate: ({ id }) => {
+    cancellingId.value = id
+    cancelError.value = ''
+  },
+  onSuccess: async () => {
+    await queryClient.invalidateQueries({ queryKey: ['generation-tasks', auth.identityKey] })
+  },
+  onError: (error: unknown) => {
+    cancelError.value = error instanceof Error ? error.message : '取消失败，请稍后重试'
+  },
+  onSettled: () => {
+    cancellingId.value = null
+  },
+})
+
+function cancelTask(kind: string, id: string) {
+  if (cancellingId.value) return
+  cancelMutation.mutate({ kind, id })
 }
 </script>
 <template>
@@ -34,14 +58,25 @@ const kindLabel: Record<string, string> = {
         {{ open ? '收起' : '展开' }}
       </button>
     </header>
+    <p v-if="cancelError" class="generation-dock__error" role="alert">{{ cancelError }}</p>
     <ul v-if="open" class="generation-dock__list">
       <li v-for="task in tasks" :key="task.id">
-        <RouterLink :to="task.href">
-          <span class="tag">{{ kindLabel[task.kind] || task.kind }}</span>
-          {{ task.title }}
-          <span v-if="task.modelTier" class="subtle"> · {{ task.modelTier }}</span>
-        </RouterLink>
-        <p class="subtle">离开页面也会继续，可稍后回来查看结果。</p>
+        <div class="generation-dock__row">
+          <RouterLink :to="task.href">
+            <span class="tag">{{ kindLabel[task.kind] || task.kind }}</span>
+            {{ task.title }}
+            <span v-if="task.modelTier" class="subtle"> · {{ task.modelTier }}</span>
+          </RouterLink>
+          <button
+            type="button"
+            class="btn generation-dock__cancel"
+            :disabled="cancellingId === task.id"
+            @click="cancelTask(task.kind, task.id)"
+          >
+            {{ cancellingId === task.id ? '取消中…' : '取消' }}
+          </button>
+        </div>
+        <p class="subtle">离开页面也会继续；可取消后重新发起。</p>
       </li>
     </ul>
   </aside>
@@ -74,5 +109,20 @@ const kindLabel: Record<string, string> = {
 }
 .generation-dock__list a {
   font-weight: 600;
+}
+.generation-dock__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.generation-dock__cancel {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.generation-dock__error {
+  margin: 8px 0 0;
+  color: var(--danger, #b91c1c);
+  font-size: 12px;
 }
 </style>

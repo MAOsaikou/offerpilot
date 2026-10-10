@@ -11,6 +11,7 @@ import { saveGuest, saveLogin } from '@/shared/utils/authSession'
 
 vi.mock('@/shared/api/generationTasks', () => ({
   listGenerationTasks: vi.fn(async () => []),
+  cancelGenerationTask: vi.fn(async () => null),
 }))
 
 // Keep the production route tree, lazy layouts, RouterViews and Transitions.
