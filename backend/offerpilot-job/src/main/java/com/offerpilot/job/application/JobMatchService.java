@@ -23,19 +23,24 @@ public class JobMatchService {
         this.jobs=jobs; this.resumes=resumes; this.matcher=matcher; this.jdbc=jdbc; this.tx=tx; this.json=json;
     }
     public JsonNode create(String owner,String jobId,String resumeId,String versionId,String requestId) {
+        return create(owner, jobId, resumeId, versionId, requestId, null);
+    }
+    public JsonNode create(String owner,String jobId,String resumeId,String versionId,String requestId,com.offerpilot.llm.ModelTier tier) {
         var resume=resumes.snapshot(owner,resumeId,versionId);
         var job=jobs.get(jobId);
         String id=IdGenerator.next("match");
         String existing=tx.execute(status->{
             jdbc.queryForObject("SELECT id FROM users WHERE id=? FOR UPDATE",String.class,owner);
-            var previous=jdbc.queryForList("SELECT id,status,job_id,resume_version_id FROM job_matches WHERE user_id=? AND request_id=?",owner,requestId);
+            var previous=jdbc.queryForList("SELECT id,status,job_id,resume_version_id,report->>'modelTier' AS model_tier FROM job_matches WHERE user_id=? AND request_id=?",owner,requestId);
             if(!previous.isEmpty()) {
                 var row=previous.get(0);
                 if(!jobId.equals(row.get("job_id")) || !versionId.equals(row.get("resume_version_id"))) throw new BusinessException(ErrorCode.VALIDATION_FAILED,"请求标识不能用于不同的岗位或简历版本");
+                if (tier != null && row.get("model_tier") != null && !tier.name().equals(row.get("model_tier")))
+                    throw new BusinessException(ErrorCode.VALIDATION_FAILED,"请求标识不能用于不同的模型档位");
                 if("COMPLETED".equals(row.get("status"))) return row.get("id").toString();
                 throw new BusinessException(ErrorCode.CONCURRENT_RUN_LIMIT,"此请求正在处理或已失败，请刷新报告列表；失败后请重新发起分析");
             }
-            jdbc.update("UPDATE job_matches SET status='FAILED',updated_at=now() WHERE user_id=? AND status='RUNNING' AND created_at<now()-interval '3 minutes'",owner);
+            jdbc.update("UPDATE job_matches SET status='FAILED',updated_at=now() WHERE user_id=? AND status='RUNNING' AND created_at<now()-interval '5 minutes'",owner);
             if(jdbc.queryForObject("SELECT count(*) FROM job_matches WHERE user_id=? AND status='RUNNING'",Integer.class,owner)>0)
                 throw new BusinessException(ErrorCode.CONCURRENT_RUN_LIMIT,"已有匹配分析进行中，请等待完成");
             jdbc.update("INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status) VALUES (?,?,?,?,?,'RUNNING')",id,owner,jobId,versionId,requestId);
@@ -46,7 +51,7 @@ public class JobMatchService {
             job=jobs.detail(jobId,false);
             JsonNode selectedJob = job;
             ObjectNode report=(ObjectNode)com.offerpilot.llm.quota.LlmUserContext.asUser(owner,
-                    () -> matcher.match(selectedJob,resume.structured()));
+                    () -> tier == null ? matcher.match(selectedJob,resume.structured()) : matcher.match(selectedJob,resume.structured(),tier));
             report.put("id",id).put("jobId",jobId).put("resumeId",resumeId).put("resumeTitle",resume.title())
                 .put("resumeVersionId",versionId).put("resumeVersionNo",resume.versionNo()).put("createdAt",Instant.now().toString());
             report.set("jobSnapshot",job); report.set("resumeSnapshot",resume.structured());
@@ -64,7 +69,7 @@ public class JobMatchService {
         return rows.get(0);
     }
     public List<JsonNode> list(String owner,String jobId) {
-        jdbc.update("UPDATE job_matches SET status='FAILED',updated_at=now() WHERE user_id=? AND status='RUNNING' AND created_at<now()-interval '3 minutes'",owner);
+        jdbc.update("UPDATE job_matches SET status='FAILED',updated_at=now() WHERE user_id=? AND status='RUNNING' AND created_at<now()-interval '5 minutes'",owner);
         return jdbc.query("SELECT id,status,resume_version_id,created_at,report->>'resumeTitle' AS title,report->>'score' AS score FROM job_matches WHERE user_id=? AND job_id=? ORDER BY created_at DESC LIMIT 20",(rs,n)-> {
             var row=json.createObjectNode().put("id",rs.getString("id")).put("status",rs.getString("status"))
                 .put("resumeVersionId",rs.getString("resume_version_id")).put("createdAt",rs.getTimestamp("created_at").toInstant().toString());

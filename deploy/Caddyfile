@@ -17,7 +17,14 @@
     }
 
     handle /api/* {
-        reverse_proxy backend:8081
+        reverse_proxy backend:8081 {
+            transport http {
+                dial_timeout 10s
+                response_header_timeout 240s
+                read_timeout 240s
+                write_timeout 240s
+            }
+        }
     }
     handle /mcp* {
         reverse_proxy backend:8081 {

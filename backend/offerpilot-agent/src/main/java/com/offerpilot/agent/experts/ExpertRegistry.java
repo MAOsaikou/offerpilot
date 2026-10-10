@@ -230,15 +230,20 @@ public class ExpertRegistry {
 
     public Mono<ExpertResult> execute(String owner, Map<String, Object> context, String runId, PlanStep step,
                                       Map<String, String> upstreamOutputs) {
+        return execute(owner, context, runId, step, upstreamOutputs, null);
+    }
+
+    public Mono<ExpertResult> execute(String owner, Map<String, Object> context, String runId, PlanStep step,
+                                      Map<String, String> upstreamOutputs, com.offerpilot.llm.ModelTier tier) {
         if (writingBoard(step) || writingCareer(step) || writingInterview(step) || writingCoach(step) || writingPatches(step)) return Mono.error(new IllegalStateException("写入必须先审批"));
-        var work = executeRead(owner, context, runId, step, upstreamOutputs);
+        var work = executeRead(owner, context, runId, step, upstreamOutputs, tier);
         return step.agent() == ExpertType.COACH || step.agent() == ExpertType.INTERVIEWER
                 || (step.agent() == ExpertType.RESUME && "advice".equals(step.inputs().get("action")))
                 ? withNotes(owner, step, work) : work;
     }
 
     private Mono<ExpertResult> executeRead(String owner, Map<String, Object> context, String runId, PlanStep step,
-                                         Map<String, String> upstreamOutputs) {
+                                         Map<String, String> upstreamOutputs, com.offerpilot.llm.ModelTier tier) {
         if (step.agent() == ExpertType.COACH) {
             if (coach == null) return Mono.just(ExpertResult.text("成长教练服务暂不可用，请稍后重试。"));
             return Mono.fromCallable(() -> {
@@ -310,7 +315,9 @@ public class ExpertRegistry {
         if (target != null && matches != null) {
             String requestId = requestId(runId, step.id());
             return Mono.fromCallable(() -> {
-                JobMatchCards.Card card = matches.match(owner, target.jobId(), target.resumeId(), target.resumeVersionId(), requestId);
+                JobMatchCards.Card card = tier == null
+                        ? matches.match(owner, target.jobId(), target.resumeId(), target.resumeVersionId(), requestId)
+                        : matches.match(owner, target.jobId(), target.resumeId(), target.resumeVersionId(), requestId, tier);
                 return ExpertResult.card(card.summary(), card.cardId(), card.cardType(), card.payload());
             }).subscribeOn(Schedulers.boundedElastic());
         }

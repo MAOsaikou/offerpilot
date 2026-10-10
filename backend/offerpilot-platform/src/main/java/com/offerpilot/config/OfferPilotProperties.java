@@ -121,6 +121,8 @@ public record OfferPilotProperties(
             public Tier {
                 if (!"enabled".equals(thinking) && !"disabled".equals(thinking))
                     throw new IllegalArgumentException("LLM thinking must be enabled or disabled");
+                if (timeout == null || timeout.isZero() || timeout.isNegative())
+                    throw new IllegalArgumentException("LLM timeout must be positive");
                 if (maxTokens < 1) throw new IllegalArgumentException("LLM maxTokens must be positive");
             }
         }

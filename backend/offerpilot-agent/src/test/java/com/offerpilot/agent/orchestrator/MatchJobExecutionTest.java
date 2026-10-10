@@ -68,6 +68,35 @@ class MatchJobExecutionTest {
     }
 
     @Test
+    void proChatMatchSurvivesOldExpertDeadlineAndForwardsTier() throws Exception {
+        var facade = (com.offerpilot.job.application.JobMatchForChat) (owner, job, resume, version, request) -> null;
+        ExpertRegistry experts = org.mockito.Mockito.spy(new ExpertRegistry(facade));
+        var report = json.createObjectNode().put("id", "match_slow").put("score", 80).put("summary", "原文证据");
+        report.putArray("requirements");
+        var card = JobMatchCards.fromReport(report);
+        org.mockito.Mockito.doAnswer(invocation -> reactor.core.publisher.Mono.just(
+                com.offerpilot.agent.experts.ExpertResult.card(card.summary(), card.cardId(), card.cardType(), card.payload()))
+                .delayElement(Duration.ofSeconds(125))).when(experts).execute(org.mockito.ArgumentMatchers.eq("owner"),
+                org.mockito.ArgumentMatchers.anyMap(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyMap(),org.mockito.ArgumentMatchers.eq(ModelTier.PRO));
+        var orchestrator = new Orchestrator(new IntentPlanner(gateway, json, experts, new ByteArrayResource("{experts}".getBytes())), experts);
+        var context = Map.<String,Object>of("jobAction", "match", "jobId", "job_1", "resumeId", "res_1", "resumeVersionId", "ver_1");
+        reactor.test.StepVerifier.withVirtualTime(() -> orchestrator.run(AgentMode.JOB, "匹配", List.of(), ModelTier.PRO,
+                "run_slow",new AtomicInteger(),reply,usage -> {},"owner",context).collectList())
+                .expectSubscription().expectNoEvent(Duration.ofSeconds(121)).thenAwait(Duration.ofSeconds(4))
+                .assertNext(events -> {
+                    assertThat(events).extracting(AgentEvent::type).contains("ui.card").doesNotContain("error");
+                    assertThat(events).filteredOn(AgentEvent.ToolResult.class::isInstance).singleElement()
+                            .isInstanceOfSatisfying(AgentEvent.ToolResult.class, result -> assertThat(result.ok()).isTrue());
+                    assertThat(events).filteredOn(AgentEvent.StepUpdated.class::isInstance)
+                            .anySatisfy(event -> assertThat(((AgentEvent.StepUpdated)event).summary()).contains("深度模式较慢"));
+                }).verifyComplete();
+        org.mockito.Mockito.verify(experts).execute(org.mockito.ArgumentMatchers.eq("owner"),org.mockito.ArgumentMatchers.anyMap(),
+                org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyMap(),
+                org.mockito.ArgumentMatchers.eq(ModelTier.PRO));
+    }
+
+    @Test
     void rejectedIdsFailTheStepWithoutACardOrSubstitutedTarget() throws Exception {
         ExpertRegistry experts = new ExpertRegistry((owner, jobId, resumeId, versionId, requestId) -> {
             calls.add(jobId);

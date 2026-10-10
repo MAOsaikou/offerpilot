@@ -1,4 +1,5 @@
-import { apiRequest } from './client'
+import { ApiError, apiRequest } from './client'
+import type { ModelTier } from '@/shared/types/model-tier'
 import type {
   EvidenceMatch,
   JobSearchResult,
@@ -20,16 +21,35 @@ export const getJob = (id: string, signal?: AbortSignal) =>
   apiRequest<RealJob>(`/jobs/${encodeURIComponent(id)}`, { signal })
 export const refreshJob = (id: string, signal?: AbortSignal) =>
   apiRequest<RealJob>(`/jobs/${encodeURIComponent(id)}/refresh`, { method: 'POST', signal })
-export const matchJob = (
+/** No automatic POST retry: a disconnected request may still save its report. */
+export const matchJob = async (
   id: string,
   resumeId: string,
   resumeVersionId: string,
   requestId: string,
-) =>
-  apiRequest<EvidenceMatch>(`/jobs/${encodeURIComponent(id)}/matches`, {
-    method: 'POST',
-    body: JSON.stringify({ resumeId, resumeVersionId, requestId }),
-  })
+  modelTier?: ModelTier,
+) => {
+  try {
+    return await apiRequest<EvidenceMatch>(`/jobs/${encodeURIComponent(id)}/matches`, {
+      method: 'POST',
+      body: JSON.stringify({ resumeId, resumeVersionId, requestId, modelTier }),
+      signal: AbortSignal.timeout(modelTier === 'FLASH' ? 90_000 : 210_000),
+    })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'TimeoutError')
+      throw new ApiError(
+        '等待匹配响应超时。分析可能仍在保存，请先刷新匹配记录，再决定是否重新分析。',
+        { code: 40001 },
+      )
+    if (error instanceof ApiError && error.status === 504 && error.code === 504)
+      throw new ApiError('网关等待匹配响应超时。请先刷新匹配记录，确认结果后再重新分析。', {
+        code: 40001,
+        status: 504,
+        traceId: error.traceId,
+      })
+    throw error
+  }
+}
 export const listJobMatches = (id: string, signal?: AbortSignal) =>
   apiRequest<MatchHistory[]>(`/jobs/${encodeURIComponent(id)}/matches`, { signal })
 export const getJobMatch = (id: string, signal?: AbortSignal) =>

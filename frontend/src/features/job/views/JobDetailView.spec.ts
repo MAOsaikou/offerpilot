@@ -2,7 +2,7 @@ import { createApp, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { getJob, refreshJob } from '@/shared/api/jobs'
+import { getJob, refreshJob, matchJob } from '@/shared/api/jobs'
 import { listResumes, listResumeVersions } from '@/shared/api/resumes'
 import type { RealJob } from '@/shared/types/jobs'
 import JobDetailView from './JobDetailView.vue'
@@ -50,6 +50,7 @@ beforeEach(() => {
   vi.mocked(refreshJob).mockReset()
   vi.mocked(listResumes).mockReset().mockResolvedValue({ items: [], total: 0, page: 1, size: 20 })
   vi.mocked(listResumeVersions).mockReset()
+  vi.mocked(matchJob).mockReset()
 })
 async function mountDetail() {
   const router = createRouter({
@@ -130,7 +131,9 @@ it('the chat match entry carries the selected job, resume version and structured
     await vi.waitFor(() =>
       expect(root.querySelector('option[value="resume_selected"]')).not.toBeNull(),
     )
-    const select = root.querySelector<HTMLSelectElement>('select')!
+    const select = root.querySelector<HTMLSelectElement>(
+      'select:has(option[value="resume_selected"])',
+    )!
     select.value = 'resume_selected'
     select.dispatchEvent(new Event('change', { bubbles: true }))
     await vi.waitFor(() =>
@@ -213,6 +216,133 @@ it('a late refresh cannot replace a different selected job', async () => {
     await Promise.resolve()
     expect(root.textContent).toContain('下一个岗位')
     expect(queryClient.getQueryData<RealJob>(['job', 'job_next'])?.id).toBe('job_next')
+  } finally {
+    cleanup()
+  }
+})
+
+function savedResume() {
+  vi.mocked(listResumes).mockResolvedValue({
+    items: [
+      {
+        id: 'resume_selected',
+        title: '已保存简历',
+        parseStatus: 'READY',
+        parseProgress: 100,
+        parseError: null,
+        currentVersionId: 'version_selected',
+        currentVersion: null,
+        fileName: 'resume.txt',
+        createdAt: '',
+        updatedAt: '',
+      },
+    ],
+    total: 1,
+    page: 1,
+    size: 20,
+  })
+  vi.mocked(listResumeVersions).mockResolvedValue([
+    {
+      id: 'version_selected',
+      versionNo: 1,
+      parentVersionId: null,
+      source: 'UPLOAD',
+      plainText: '',
+      parseMeta: {},
+      createdAt: '',
+      structured: {
+        basics: { name: '', phone: '', email: '', city: '', links: [] },
+        education: [],
+        experience: [],
+        projects: [],
+        skills: [],
+        certificates: [],
+        summary: '',
+      },
+    },
+  ])
+}
+async function selectResume(root: HTMLElement) {
+  await vi.waitFor(() =>
+    expect(root.querySelector('option[value="resume_selected"]')).not.toBeNull(),
+  )
+  const select = root.querySelector<HTMLSelectElement>(
+    'select:has(option[value="resume_selected"])',
+  )!
+  select.value = 'resume_selected'
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+  await vi.waitFor(() =>
+    expect(
+      [...root.querySelectorAll('button')].find((b) => b.textContent?.includes('生成匹配报告'))
+        ?.disabled,
+    ).toBe(false),
+  )
+}
+it('deep matching shows progress, preserves the precise failure and allows an explicit retry', async () => {
+  savedResume()
+  let reject!: (error: Error) => void
+  vi.mocked(matchJob).mockImplementationOnce(
+    () =>
+      new Promise((_resolve, failure) => {
+        reject = failure
+      }),
+  )
+  vi.mocked(matchJob).mockRejectedValueOnce(new Error('本次原文证据仍未通过校验'))
+  const { root, cleanup } = await mountDetail()
+  try {
+    await selectResume(root)
+    const mode = root.querySelector<HTMLSelectElement>('select:has(option[value="PRO"])')!
+    mode.value = 'PRO'
+    mode.dispatchEvent(new Event('change', { bubbles: true }))
+    await vi.waitFor(() => expect(root.textContent).toContain('深度模式较慢'))
+    const button = [...root.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('生成匹配报告'),
+    )!
+    button.click()
+    await vi.waitFor(() => expect(root.textContent).toContain('深度模式正在分析原文证据'))
+    expect(button.disabled).toBe(true)
+    expect(matchJob).toHaveBeenCalledWith(
+      'job_snapshot',
+      'resume_selected',
+      'version_selected',
+      expect.any(String),
+      'PRO',
+    )
+    reject(new Error('深度匹配超过 180 秒，未保存报告，请稍后重试或切换快速模式'))
+    await vi.waitFor(() => expect(root.textContent).toContain('深度匹配超过 180 秒'))
+    expect(root.textContent).not.toContain('深度模式正在分析原文证据')
+    const retry = [...root.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === '重新分析',
+    )!
+    retry.click()
+    await vi.waitFor(() => expect(matchJob).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(root.textContent).toContain('本次原文证据仍未通过校验'))
+    expect(vi.mocked(matchJob).mock.calls[0]![3]).not.toBe(vi.mocked(matchJob).mock.calls[1]![3])
+  } finally {
+    cleanup()
+  }
+})
+it('leaving a pending match ignores its later failure and releases its progress timer', async () => {
+  savedResume()
+  let reject!: (error: Error) => void
+  vi.mocked(matchJob).mockImplementationOnce(
+    () =>
+      new Promise((_resolve, failure) => {
+        reject = failure
+      }),
+  )
+  const { root, router, cleanup } = await mountDetail()
+  try {
+    await selectResume(root)
+    ;[...root.querySelectorAll('button')]
+      .find((b) => b.textContent?.includes('生成匹配报告'))!
+      .click()
+    await vi.waitFor(() => expect(matchJob).toHaveBeenCalledOnce())
+    await router.push('/jobs/job_other')
+    await vi.waitFor(() => expect(root.textContent).not.toContain('已等待'))
+    reject(new Error('old match error'))
+    await Promise.resolve()
+    expect(root.textContent).not.toContain('old match error')
   } finally {
     cleanup()
   }

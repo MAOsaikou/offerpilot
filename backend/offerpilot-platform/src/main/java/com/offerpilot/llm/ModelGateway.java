@@ -79,6 +79,9 @@ public class ModelGateway {
         }
     }
 
+    /** Idle stream timeout; structured match also uses it as its complete generation/repair budget. */
+    public java.time.Duration timeout(ModelTier tier) { return configuration(tier).timeout(); }
+
     public ModelTier defaultTier() {
         ModelTier tier = ModelTier.from(properties.llm().defaultTier());
         return tier == ModelTier.VISION_ALT ? ModelTier.FLASH : tier;
@@ -107,7 +110,7 @@ public class ModelGateway {
         requireAvailable(tier, false);
         return models.computeIfAbsent(tier, selected -> {
             if (!"deepseek".equalsIgnoreCase(configuration(selected).provider())) return compatibleModel(selected);
-            var support = new DeepSeekRequestSupport(configuration(selected).thinking());
+            var support = new DeepSeekRequestSupport(configuration(selected).thinking(), configuration(selected).timeout());
             return DeepSeekChatModel.builder().retryTemplate(retryTemplate).observationRegistry(observations)
                     .deepSeekApi(org.springframework.ai.deepseek.api.DeepSeekApi.builder()
                             .baseUrl(baseUrl(selected)).apiKey(apiKey(selected))
@@ -221,7 +224,7 @@ public class ModelGateway {
             var api = org.springframework.ai.openai.api.OpenAiApi.builder()
                     .baseUrl(baseUrl(selected)).apiKey(apiKey(selected)).completionsPath(completionsPath(selected));
             if ("deepseek".equalsIgnoreCase(configuration(selected).provider())) {
-                var support = new DeepSeekRequestSupport(configuration(selected).thinking());
+                var support = new DeepSeekRequestSupport(configuration(selected).thinking(), configuration(selected).timeout());
                 api.restClientBuilder(support.restClient()).webClientBuilder(support.webClient());
             }
             return OpenAiChatModel.builder().openAiApi(api.build()).retryTemplate(retryTemplate).observationRegistry(observations)
