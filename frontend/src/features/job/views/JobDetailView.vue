@@ -81,11 +81,27 @@ watch(resumeId, () => {
   versionId.value = ''
 })
 watch(
+  () => resumes.data.value?.items,
+  (items) => {
+    if (resumeId.value || !items?.length) return
+    const ready = items.find((resume) => resume.parseStatus === 'READY')
+    if (ready) resumeId.value = ready.id
+  },
+)
+watch(
   () => versions.data.value,
   (items) => {
     if (items?.length && !versionId.value) versionId.value = items[0]!.id
   },
 )
+const matchBlockedReason = computed(() => {
+  if (busy.value || refreshing.value) return ''
+  if (versions.isError.value) return '简历版本加载失败，请重试后再生成匹配报告。'
+  if (versions.isFetching.value) return '正在加载简历版本…'
+  if (!resumeId.value) return '请先选择一份已解析完成的简历。'
+  if (!versionId.value) return '请先选择要用于匹配的保存版本。'
+  return ''
+})
 const saved = computed(() => board.saved(id.value))
 function changeResumePage(delta: number) {
   page.value += delta
@@ -386,6 +402,9 @@ async function openReport(reportId: string) {
               {{ busy ? '正在分析原文证据…' : '生成匹配报告' }}
             </button>
           </div>
+          <p v-if="matchBlockedReason" class="helper-note" role="status">
+            {{ matchBlockedReason }}
+          </p>
         </template>
         <p v-if="busy" class="helper-note" role="status">
           {{ modelTier === 'PRO' ? '深度模式正在分析原文证据' : '正在分析原文证据' }} · 已等待

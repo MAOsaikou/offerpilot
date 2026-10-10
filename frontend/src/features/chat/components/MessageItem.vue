@@ -25,7 +25,7 @@ defineProps<{ message: ChatMessageView }>()
       <span v-if="!message.status || message.status === 'RUNNING'" class="live-dot pending-dot" />
       {{
         message.status === 'FAILED'
-          ? '本轮未收到有效回复'
+          ? '本轮未能完成回复'
           : message.status === 'CANCELLED'
             ? '本轮已停止'
             : '正在思考'
@@ -34,10 +34,9 @@ defineProps<{ message: ChatMessageView }>()
     <p v-if="message.status === 'FAILED' || message.status === 'CANCELLED'" class="run-note">
       {{
         message.status === 'FAILED'
-          ? '回复未完成，可重新发送问题。'
-          : '已停止生成，保留已收到的内容。'
+          ? '可检查模型配置或网络后重新发送。此轮不计入后续上下文。'
+          : '已停止生成，保留已收到的内容。此轮不计入后续上下文。'
       }}
-      此轮不计入后续上下文。
     </p>
 
     <div v-if="message.cards?.length" class="assistant-cards">

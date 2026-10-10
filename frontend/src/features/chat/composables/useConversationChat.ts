@@ -78,7 +78,9 @@ export function useConversationChat() {
       m.id === optimisticId.value && activeRun.value
         ? {
             ...m,
-            text: activeRun.value.text,
+            text:
+              activeRun.value.text ||
+              (activeRun.value.status === 'FAILED' ? activeRun.value.error?.message || '' : ''),
             reasoning: activeRun.value.reasoning,
             cards: activeRun.value.cards,
             streaming: stream.streaming.value,
