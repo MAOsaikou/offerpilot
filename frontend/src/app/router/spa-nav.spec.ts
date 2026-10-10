@@ -13,7 +13,6 @@ vi.mock('@/shared/api/generationTasks', () => ({
   listGenerationTasks: vi.fn(async () => []),
 }))
 
-
 // Keep the production route tree, lazy layouts, RouterViews and Transitions.
 // Only page bodies are replaced so this regression needs no API servers.
 function lightRoutes(records: RouteRecordRaw[]): RouteRecordRaw[] {
