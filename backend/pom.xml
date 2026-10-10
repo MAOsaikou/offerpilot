@@ -14,7 +14,7 @@
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>OfferPilot Backend Parent</name>
-    <description>OfferPilot 职航 — 后端 Maven 多模块聚合工程</description>
+    <description>OfferPilot backend multi-module Maven parent</description>
 
     <properties>
         <java.version>17</java.version>
