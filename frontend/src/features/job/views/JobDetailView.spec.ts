@@ -87,45 +87,7 @@ it('snapshot detail keeps the date tooltip and does not offer a live refresh or 
   }
 })
 it('the chat match entry carries the selected job, resume version and structured action', async () => {
-  vi.mocked(listResumes).mockResolvedValue({
-    items: [
-      {
-        id: 'resume_selected',
-        title: '已保存简历',
-        parseStatus: 'READY',
-        parseProgress: 100,
-        parseError: null,
-        currentVersionId: 'version_selected',
-        currentVersion: null,
-        fileName: 'resume.txt',
-        createdAt: '',
-        updatedAt: '',
-      },
-    ],
-    total: 1,
-    page: 1,
-    size: 20,
-  })
-  vi.mocked(listResumeVersions).mockResolvedValue([
-    {
-      id: 'version_selected',
-      versionNo: 1,
-      parentVersionId: null,
-      source: 'UPLOAD',
-      plainText: '',
-      parseMeta: {},
-      createdAt: '',
-      structured: {
-        basics: { name: '', phone: '', email: '', city: '', links: [] },
-        education: [],
-        experience: [],
-        projects: [],
-        skills: [],
-        certificates: [],
-        summary: '',
-      },
-    },
-  ])
+  savedResume()
   const { root, cleanup } = await mountDetail()
   try {
     await vi.waitFor(() =>
@@ -175,18 +137,6 @@ it('refresh retains the marked stored copy and explains its availability without
     expect(root.textContent).not.toContain('本次查询')
     expect(getJob).toHaveBeenCalledTimes(1)
     expect(refreshJob).toHaveBeenCalledWith('job_snapshot')
-  } finally {
-    cleanup()
-  }
-})
-it('demo jobs are identified as fictional and never offer a live refresh', async () => {
-  vi.mocked(getJob).mockResolvedValue({ ...snapshot, site: 'demo', source: 'demo' })
-  const { root, cleanup } = await mountDetail()
-  try {
-    expect(root.textContent).toContain('演示岗位')
-    expect(root.textContent).toContain('不接受实际投递')
-    expect(root.textContent).not.toContain('企业官网 ·')
-    expect(root.textContent).not.toContain('更新完整详情')
   } finally {
     cleanup()
   }

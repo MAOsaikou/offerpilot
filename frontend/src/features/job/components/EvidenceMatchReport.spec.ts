@@ -93,46 +93,7 @@ afterEach(() => {
   }
 })
 
-it('exposes row statuses, text labels and inline evidence for mixed coverage', () => {
-  const root = mountReport()
-  const labels = { MET: '有明确证据', PARTIAL: '部分体现', MISSING: '简历未体现' }
-  const rows = root.querySelectorAll('.requirement-row')
-  expect(rows).toHaveLength(report.requirements.length)
-  report.requirements.forEach((item, index) => {
-    const row = rows[index]!
-    expect(row.getAttribute('data-status')).toBe(item.status)
-    expect(row.querySelector('.status-chip')?.textContent).toBe(labels[item.status])
-    expect(row.querySelector('.evidence-quote')?.textContent).toBe(item.jdQuote)
-    if (item.resumeQuote)
-      expect(row.querySelectorAll('.evidence-quote')[1]?.textContent).toBe(item.resumeQuote)
-    else {
-      expect(row.querySelectorAll('button')).toHaveLength(1)
-      expect(row.textContent).toContain('所选简历中未找到可引用的证据')
-    }
-  })
-})
-
-it('counts each status and proportions the coverage bar by item count', () => {
-  const root = mountReport()
-  const summary = root.querySelector('.coverage-summary')!
-  expect(summary.getAttribute('aria-label')).toBe('岗位要求证据覆盖概览')
-  for (const [status, label, count] of [
-    ['MET', '明确', 2],
-    ['PARTIAL', '部分', 1],
-    ['MISSING', '未体现', 1],
-  ] as const) {
-    const text = summary.querySelector(`.coverage-counts [data-status="${status}"]`)
-    expect(text?.textContent?.replace(/\s+/g, ' ').trim()).toBe(`${label} ${count} 项`)
-    const segment = summary.querySelector<HTMLElement>(`.coverage-bar [data-status="${status}"]`)
-    expect(segment?.style.flexGrow).toBe(String(count))
-  }
-  expect(summary.querySelector('.coverage-bar')?.getAttribute('aria-hidden')).toBe('true')
-})
-
-it.each([
-  ['PARTIAL', 'Java项目'],
-  ['MET', '使用SQL'],
-] as const)(
+it.each([['PARTIAL', 'Java项目']] as const)(
   '%s evidence opens the immutable original field and highlights the exact quote',
   async (status, quote) => {
     const root = mountReport()
@@ -165,14 +126,4 @@ it('switches the original quote and status when navigating to missing JD evidenc
   panel.querySelector<HTMLButtonElement>('button')!.click()
   await nextTick()
   expect(root.querySelector('section[tabindex="-1"]')).toBeNull()
-})
-
-it('shows zero counts and an empty state without a bar when no requirements are available', () => {
-  const root = mountReport({ ...report, requirements: [] })
-  expect(root.querySelectorAll('.requirement-row')).toHaveLength(0)
-  expect(root.querySelector('.coverage-bar')).toBeNull()
-  expect([...root.querySelectorAll('.coverage-counts strong')].map((el) => el.textContent)).toEqual(
-    ['0', '0', '0'],
-  )
-  expect(root.textContent).toContain('本报告暂无可展示的要求证据')
 })

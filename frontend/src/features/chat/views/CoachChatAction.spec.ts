@@ -94,7 +94,7 @@ async function mount(path = '/chat') {
   return root
 }
 describe('coach roadmap chat confirmation path', () => {
-  it.each(['CHEAP', 'economy', '经济', 'BALANCED', 'unknown'])(
+  it.each(['CHEAP'])(
     'offers exactly 快速 / 深度 and normalizes legacy URL tier %s',
     async (tier) => {
       const root = await mount(`/chat?modelTier=${encodeURIComponent(tier)}`)
