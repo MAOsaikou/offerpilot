@@ -173,6 +173,69 @@ class SseWriterTest {
         verify(emitter, never()).completeWithError(any());
     }
 
+    @Test void cancellingAnInFlightTimerDoesNotEnqueueOnADisposedWorker() throws Exception {
+        // A timer tick is already in progress when the terminal event cancels its worker.
+        // With interval -> publishOn, cancellation can dispose the delivery worker just
+        // before its pending schedule() call, dropping a Scheduler unavailable error.
+        var scheduler = mock(reactor.core.scheduler.Scheduler.class);
+        var worker = mock(reactor.core.scheduler.Scheduler.Worker.class);
+        var tick = new AtomicReference<Runnable>();
+        var paused = new AtomicBoolean();
+        var disposed = new AtomicBoolean();
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var finished = new CountDownLatch(1);
+        var dropped = new java.util.concurrent.CopyOnWriteArrayList<Throwable>();
+        when(scheduler.createWorker()).thenReturn(worker);
+        doAnswer(call -> { disposed.set(true); return null; }).when(worker).dispose();
+        when(worker.schedulePeriodically(any(Runnable.class), anyLong(), anyLong(), any(TimeUnit.class)))
+                .thenAnswer(call -> { tick.set(call.getArgument(0)); return mock(reactor.core.Disposable.class); });
+        when(worker.schedule(any(Runnable.class))).thenAnswer(call -> {
+            if (paused.get()) {
+                entered.countDown();
+                assertThat(release.await(30, TimeUnit.SECONDS)).isTrue();
+                if (disposed.get()) throw reactor.core.Exceptions.failWithRejected();
+            }
+            ((Runnable)call.getArgument(0)).run();
+            return mock(reactor.core.Disposable.class);
+        });
+        var emitter = mock(SseEmitter.class);
+        doAnswer(call -> {
+            entered.countDown();
+            assertThat(release.await(30, TimeUnit.SECONDS)).isTrue();
+            return null;
+        }).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        reactor.core.publisher.Hooks.onErrorDropped(dropped::add);
+        var writer = new SseWriter(json, emitter, Duration.ofMillis(2), "run_test", "failure", () -> {}, scheduler);
+        var ticking = new Thread(() -> tick.get().run());
+        var completing = new Thread(() -> { writer.complete(); finished.countDown(); });
+        try {
+            paused.set(true);
+            ticking.start();
+            assertThat(entered.await(30, TimeUnit.SECONDS)).isTrue();
+            completing.start();
+            // The serialized writer either blocks completion behind send, or the old
+            // pipeline disposes the worker while a heartbeat is still being enqueued.
+            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(30)).until(() ->
+                    completing.getState() == Thread.State.BLOCKED || disposed.get());
+            release.countDown();
+            assertThat(finished.await(30, TimeUnit.SECONDS)).isTrue();
+            ticking.join(30_000);
+            assertThat(ticking.isAlive()).isFalse();
+            assertThat(dropped).isEmpty();
+            tick.get().run(); // A late timer callback is harmless after completion.
+            verify(emitter, times(1)).send(any(SseEmitter.SseEventBuilder.class));
+            verify(emitter, times(1)).complete();
+        } finally {
+            release.countDown();
+            ticking.join(30_000);
+            completing.join(30_000);
+            writer.complete();
+            reactor.core.publisher.Hooks.resetOnErrorDropped();
+            scheduler.dispose();
+        }
+    }
+
     private static String frame(SseEmitter.SseEventBuilder builder) {
         return builder.build().stream().map(item -> item.getData().toString()).reduce("", String::concat);
     }
