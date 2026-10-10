@@ -53,13 +53,15 @@ class InterviewCoachTest {
         when(service.update("alice", "iv_1", 1, null)).thenReturn(session(1, "", false));
         assertThat(coach.continueSession("alice", "iv_1", "当时是课程项目", false, "snapshot").questionIndex()).isEqualTo(1);
         verify(service).saveAnswer("alice", "iv_1", 0, "我负责接口\n当时是课程项目");
-    }
-    @Test void finalTurnClosesWithoutCompletionAndSkipDoesNotReplaceAnswer() {
+
+        clearInvocations(service);
         when(service.getForUpdate("alice", "iv_1")).thenReturn(session(4, "已有答案", false));
         assertThat(coach.continueSession("alice", "iv_1", "下一题", true, "snapshot").state()).isEqualTo("CLOSING");
         verify(service, never()).saveAnswer(any(), any(), anyInt(), any());
         verify(service, never()).update(any(), any(), any(), any());
+
     }
+
     @Test void staleApprovalCompletedSessionAndOtherOwnerCannotWrite() {
         when(service.getForUpdate("alice", "iv_1")).thenReturn(session(0, "", false));
         assertThatThrownBy(() -> coach.continueSession("alice", "iv_1", "答案", false, "old")).hasMessageContaining("已被更新");
