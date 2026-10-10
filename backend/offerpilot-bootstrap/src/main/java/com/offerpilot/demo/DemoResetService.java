@@ -35,10 +35,11 @@ public class DemoResetService {
     private final ResumeObjectStore storage;
     private final JsonNode journey;
     private final com.offerpilot.knowledge.application.KnowledgeNoteService notes;
+    private final com.offerpilot.memory.application.UserMemoryService memories;
 
     public DemoResetService(DemoAccountBootstrap accounts, JdbcTemplate jdbc, PlatformTransactionManager transactions,
-                            ResumeObjectStore storage, ObjectMapper json, com.offerpilot.knowledge.application.KnowledgeNoteService notes) throws Exception {
-        this.notes = notes;
+                            ResumeObjectStore storage, ObjectMapper json, com.offerpilot.knowledge.application.KnowledgeNoteService notes, com.offerpilot.memory.application.UserMemoryService memories) throws Exception {
+        this.notes = notes; this.memories = memories;
         this.accounts = accounts;
         this.jdbc = jdbc;
         transaction = new TransactionTemplate(transactions);
@@ -50,7 +51,7 @@ public class DemoResetService {
     }
 
     public record Summary(Instant resetAt, int resumeCount, int jobCount, int applicationCount,
-                          int interviewSessionCount, int careerProfileCount, int growthTaskCount, int knowledgeNoteCount) {}
+                          int interviewSessionCount, int careerProfileCount, int growthTaskCount, int knowledgeNoteCount, int memoryCount) {}
     private record StoredFile(String bucket, String key) {}
 
     public Summary reset() {
@@ -77,7 +78,7 @@ public class DemoResetService {
             insertJobs();
             insertJourney(userId);
             return new Summary(Instant.now(), journey.path("resumes").size(), journey.path("jobs").size(),
-                    journey.path("applications").size(), journey.path("interviews").size(), 1, journey.path("growthTasks").size(), journey.path("notes").size());
+                    journey.path("applications").size(), journey.path("interviews").size(), 1, journey.path("growthTasks").size(), journey.path("notes").size(), 3);
         });
         // Never remove source objects until the database replacement has committed.
         for (StoredFile file : obsolete) {
@@ -91,7 +92,7 @@ public class DemoResetService {
 
     private void clear(String userId) {
         // FK cascades remove answers, versions, messages, agent steps/calls/approvals/events.
-        for (String table : List.of("knowledge_note_imports", "knowledge_notes", "interview_sessions", "applications", "job_matches", "growth_task_completions",
+        for (String table : List.of("user_memories", "knowledge_note_imports", "knowledge_notes", "interview_sessions", "applications", "job_matches", "growth_task_completions",
                 "career_profiles", "resume_optimizations", "resume_patch_batches", "resume_diagnoses", "conversations")) {
             jdbc.update("DELETE FROM " + table + " WHERE user_id=?", userId);
         }
@@ -165,6 +166,13 @@ public class DemoResetService {
         for (JsonNode note : journey.path("notes"))
             notes.create(userId, new com.offerpilot.knowledge.application.KnowledgeNoteService.Draft(
                     note.path("title").asText(), note.path("content").asText(), note.path("category").asText()));
+        memories.settings(userId, true);
+        memories.add(userId, new com.offerpilot.memory.application.UserMemoryService.Draft(
+                com.offerpilot.memory.application.UserMemoryService.Kind.GOAL, "我的目标岗位是Java后端开发（虚构演示）"));
+        memories.add(userId, new com.offerpilot.memory.application.UserMemoryService.Draft(
+                com.offerpilot.memory.application.UserMemoryService.Kind.LOCATION, "我的目标城市是杭州（虚构演示）"));
+        memories.add(userId, new com.offerpilot.memory.application.UserMemoryService.Draft(
+                com.offerpilot.memory.application.UserMemoryService.Kind.SKILL, "我的技术栈是Java、Spring Boot、PostgreSQL（虚构演示）"));
         JsonNode career = journey.path("career");
         jdbc.update("INSERT INTO career_profiles(user_id,target,city,skills,interests) VALUES (?,?,?,?,?::jsonb)",
                 userId, career.path("target").asText(), career.path("city").asText(), career.path("skills").asText(), career.path("interests").toString());
