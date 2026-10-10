@@ -148,6 +148,7 @@ onBeforeUnmount(() => dialog.value?.close())
 }
 dialog {
   width: min(480px, calc(100vw - 32px));
+  margin: auto;
   max-height: calc(100dvh - 32px);
   overflow: auto;
   padding: 24px;

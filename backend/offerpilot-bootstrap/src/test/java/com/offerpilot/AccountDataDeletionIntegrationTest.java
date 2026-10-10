@@ -25,6 +25,7 @@ import java.net.URI;
 import java.net.http.*;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -51,6 +52,7 @@ class AccountDataDeletionIntegrationTest {
     @Autowired ResumeService resumes;
     @Autowired ConversationService conversations;
     @Autowired AccountDataCleanup cleanup;
+    @Autowired org.springframework.transaction.support.TransactionTemplate tx;
     @SpyBean ResumeObjectStore storage;
     @LocalServerPort int port;
     static final ObjectMapper JSON = new ObjectMapper();
@@ -159,9 +161,71 @@ class AccountDataDeletionIntegrationTest {
         assertThatThrownBy(() -> storage.get(job.bucket(),job.key())).isInstanceOf(RuntimeException.class);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup WHERE object_key=?",Integer.class,job.key())).isZero();
     }
+    @Test void deletionWaitsForAnUploadingObjectAndThenIncludesItInCleanup() throws Exception {
+        String guest=guests.create().accessToken(),o=guests.require("Bearer "+guest);
+        var entered=new CountDownLatch(1);var release=new CountDownLatch(1);
+        var executor=Executors.newFixedThreadPool(2);
+        var key=new java.util.concurrent.atomic.AtomicReference<String>();
+        doAnswer(call -> {
+            key.set(call.getArgument(0));entered.countDown();
+            if(!release.await(10,TimeUnit.SECONDS)) throw new IllegalStateException("fixture upload release timeout");
+            return call.callRealMethod();
+        }).when(storage).put(startsWith("resumes/"+o+"/"),any(byte[].class),anyString());
+        try {
+            var upload=executor.submit(() -> {
+                try { resumes.upload(o,"racing.txt",null,"fictional".getBytes()); }
+                catch(com.offerpilot.common.error.BusinessException e) {
+                    // Deletion can win the subsequent response read after upload transaction commits.
+                    assertThat(e.errorCode()).isEqualTo(com.offerpilot.common.error.ErrorCode.RESUME_NOT_FOUND);
+                }
+            });
+            assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue();
+            var deletion=executor.submit(() -> request("/users/me/data",guest,"{\"confirm\":\"DELETE\"}"));
+            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(10)).until(() ->
+                jdbc.queryForObject("SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND query LIKE 'SELECT is_demo,%' AND wait_event_type='Lock'",Integer.class)>0);
+            release.countDown();upload.get(15,TimeUnit.SECONDS);
+            assertThat(deletion.get(15,TimeUnit.SECONDS).statusCode()).isEqualTo(200);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM files WHERE user_id=?",Integer.class,o)).isZero();
+            assertThatThrownBy(() -> storage.get(storage.bucket(),key.get())).isInstanceOf(RuntimeException.class);
+            // A request that passed auth before deletion cannot upload another object afterward.
+            assertThatThrownBy(() -> resumes.upload(o,"late.txt",null,"fictional".getBytes())).isInstanceOf(RuntimeException.class);
+        } finally { release.countDown();executor.shutdownNow();doCallRealMethod().when(storage).put(startsWith("resumes/"+o+"/"),any(byte[].class),anyString()); }
+    }
+    @Test void deletionCompletesWhenAParserAlreadyHoldsAResumeLock() throws Exception {
+        String guest=guests.create().accessToken(),o=guests.require("Bearer "+guest);
+        var resume=resumes.upload(o,"parsing.txt",null,"fictional".getBytes());
+        var locked=new CountDownLatch(1);var release=new CountDownLatch(1);
+        var executor=Executors.newFixedThreadPool(2);
+        try {
+            var parsing=executor.submit(() -> {
+                try { tx.executeWithoutResult(status -> {
+                    jdbc.queryForList("SELECT id FROM resumes WHERE id=? FOR UPDATE",resume.id());locked.countDown();
+                    try { if(!release.await(10,TimeUnit.SECONDS)) throw new IllegalStateException("fixture parser release timeout"); }
+                    catch(InterruptedException e) { Thread.currentThread().interrupt();throw new IllegalStateException(e); }
+                    // ResumeService.complete takes this row lock before inserting the FK-backed version.
+                    jdbc.update("INSERT INTO resume_versions(id,resume_id,user_id,version_no,source,structured,plain_text) VALUES (?,?,?,1,'UPLOAD','{}','private')",o+"racing-version",resume.id(),o);
+                }); } catch(org.springframework.dao.DataAccessException ignored) {
+                    // PostgreSQL may choose the late parser as deadlock victim; rollback is safe.
+                }
+            });
+            assertThat(locked.await(10,TimeUnit.SECONDS)).isTrue();
+            var deletion=executor.submit(() -> request("/users/me/data",guest,"{\"confirm\":\"DELETE\"}"));
+            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(10)).until(() ->
+                jdbc.queryForObject("SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND query LIKE 'DELETE FROM users WHERE id=%' AND wait_event_type='Lock'",Integer.class)>0);
+            release.countDown();parsing.get(15,TimeUnit.SECONDS);
+            var result=deletion.get(15,TimeUnit.SECONDS);
+            assertThat(result.statusCode()).as(result.body()).isEqualTo(200);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE id=?",Integer.class,o)).isZero();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM resume_versions WHERE user_id=?",Integer.class,o)).isZero();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup WHERE object_key=? OR object_key LIKE ?",Integer.class,o,"resumes/"+o+"/%")).isZero();
+        } finally { release.countDown();executor.shutdownNow(); }
+    }
     @Test void inventoryRequiresCoverageForEveryOwnerColumnAndCascadeDescendant() {
         var owned=jdbc.queryForList("SELECT DISTINCT table_name FROM information_schema.columns WHERE table_schema='public' AND column_name IN ('user_id','owner_id')",String.class);
         assertThat(new HashSet<>(owned)).isEqualTo(DIRECT);
+        var directFks=jdbc.queryForList("SELECT DISTINCT c.conrelid::regclass::text FROM pg_constraint c WHERE c.contype='f' AND c.confrelid='users'::regclass",String.class);
+        assertThat(new HashSet<>(directFks)).isEqualTo(DIRECT);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM pg_constraint WHERE contype='f' AND confrelid='users'::regclass AND confdeltype<>'c'",Integer.class)).isZero();
         var descendants=jdbc.queryForList("""
             WITH RECURSIVE owned(oid) AS (
               SELECT 'users'::regclass::oid
