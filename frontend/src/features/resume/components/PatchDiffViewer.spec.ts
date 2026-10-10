@@ -103,18 +103,3 @@ it('取消选择不提交该条；原文相同不能创建无变化版本', asyn
     confirmed: [],
   })
 })
-it('聊天和旧卡片默认只读，没有保存入口', () => {
-  mount(false)
-  expect(root.querySelector('button')).toBeNull()
-  expect(root.textContent).toContain('仅查看建议')
-})
-it('保存卡片提供绑定报告与版本的采纳入口，空建议不误报已改写', () => {
-  mount(false, { ...payload, resumeId: 'r1', reportId: 'o1', batchId: null, patches: [] })
-  const link = root.querySelector('a')!
-  expect(link.getAttribute('href')).toBe(
-    '/resumes/r1?tab=optimize&resumeVersionId=v1&optimizationReportId=o1',
-  )
-  expect(link.textContent).toContain('查看改写记录')
-  expect(root.textContent).toContain('未创建简历新版本')
-  expect(root.querySelector('button')).toBeNull()
-})

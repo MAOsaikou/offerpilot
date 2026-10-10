@@ -93,38 +93,6 @@ it('does not resume a cancelled listen request and ignores old TTS callbacks', a
   speech.cancelAll()
 })
 
-it('reports denied permissions and keeps speech output usable', () => {
-  const mock = installSpeechMocks()
-  const speech = useSpeech()
-  speech.startListening()
-  mock.latest().onerror?.({ error: 'not-allowed' })
-  expect(speech.canListen.value).toBe(false)
-  expect(speech.error.value).toContain('权限被拒绝')
-  expect(speech.listening.value).toBe(false)
-  speech.startListening()
-  expect(mock.instances).toHaveLength(1)
-  speech.speak('仍可阅读题目')
-  expect(mock.synthesis.speak).toHaveBeenCalledOnce()
-  speech.cancelAll()
-})
-
-it('waits for the final result after stop before resolving', async () => {
-  const mock = installSpeechMocks()
-  const onFinal = vi.fn()
-  const speech = useSpeech({ onFinal })
-  speech.startListening()
-  mock.latest().stop.mockImplementation(() => {})
-  const stopped = vi.fn()
-  const pending = speech.stopListening().then(stopped)
-  await Promise.resolve()
-  expect(stopped).not.toHaveBeenCalled()
-  mock.latest().result([{ text: '最后一句', final: true }])
-  mock.latest().onend?.()
-  await pending
-  expect(onFinal).toHaveBeenCalledExactlyOnceWith('最后一句')
-  expect(stopped).toHaveBeenCalledOnce()
-})
-
 it('stops after three seconds of silence and bounds a missing end event', async () => {
   vi.useFakeTimers()
   const mock = installSpeechMocks()

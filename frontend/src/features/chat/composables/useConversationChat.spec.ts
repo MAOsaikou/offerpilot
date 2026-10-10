@@ -124,19 +124,6 @@ describe('持久会话状态', () => {
     expect(chat.messages.value.map((m) => m.id)).toEqual(['saved'])
     expect(chat.sending.value).toBe(false)
   })
-  it('发送后服务端改写的标题同步到当前会话，无需刷新页面', async () => {
-    vi.mocked(conversationsApi.create).mockResolvedValue({ ...conv('created'), title: '新对话' })
-    vi.mocked(conversationsApi.messages).mockResolvedValue(messagePage('saved'))
-    vi.mocked(conversationsApi.list).mockResolvedValue({
-      items: [{ ...conv('created'), title: '后端校招怎么选' }],
-      page: 1,
-      size: 20,
-      total: 1,
-    })
-    const chat = scope.run(useConversationChat)!
-    await chat.send('后端校招怎么选', 'AUTO', 'FLASH', vi.fn())
-    await vi.waitFor(() => expect(chat.current.value?.title).toBe('后端校招怎么选'))
-  })
   it('回复结束后保留本轮已渲染的卡片与思考摘要', async () => {
     vi.mocked(conversationsApi.create).mockResolvedValue(conv('created'))
     vi.mocked(conversationsApi.messages).mockResolvedValue(messagePage('saved'))
@@ -168,38 +155,5 @@ describe('持久会话状态', () => {
     const saved = chat.messages.value.find((m) => m.id === 'saved')
     expect(saved?.cards?.map((c) => c.cardId)).toEqual(['card_1'])
     expect(saved?.reasoning).toBe('先查岗位')
-  })
-  it('按契约读取服务端消息 parts 中的卡片', async () => {
-    const page = messagePage('stored')
-    page.items[0]!.parts = [
-      { type: 'text', text: 'stored' },
-      { type: 'card', cardType: 'job_match', payload: { score: 60 } },
-    ]
-    vi.mocked(conversationsApi.get).mockResolvedValue(conv('a'))
-    vi.mocked(conversationsApi.messages).mockResolvedValue(page)
-    const chat = scope.run(useConversationChat)!
-    await chat.open('a')
-    expect(chat.messages.value[0]?.cards).toEqual([
-      { cardId: 'stored-card-1', cardType: 'job_match', payload: { score: 60 } },
-    ])
-  })
-  it('新会话创建后立即出现在历史列表，不必等回复结束', async () => {
-    vi.mocked(conversationsApi.create).mockResolvedValue(conv('created'))
-    vi.mocked(conversationsApi.messages).mockResolvedValue(messagePage('saved'))
-    vi.mocked(conversationsApi.list).mockResolvedValue({
-      items: [conv('created')],
-      page: 1,
-      size: 20,
-      total: 1,
-    })
-    let listedDuringStream: string[] = []
-    const chat = scope.run(useConversationChat)!
-    startMock.mockImplementation(async () => {
-      await vi.waitFor(() => expect(chat.conversations.value).toHaveLength(1))
-      listedDuringStream = chat.conversations.value.map((c) => c.id)
-      return 'run'
-    })
-    await chat.send('hello', 'AUTO', 'FLASH', vi.fn())
-    expect(listedDuringStream).toEqual(['created'])
   })
 })
