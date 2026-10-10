@@ -32,6 +32,7 @@ public class JobMatcher {
     // The injected scheduler lets tests advance time without sleeping or racing the host CPU.
     reactor.core.publisher.Mono<JsonNode> analyze(JsonNode job, JsonNode resume,
             com.offerpilot.llm.ModelTier tier, reactor.core.scheduler.Scheduler clock) {
+        String owner = com.offerpilot.llm.quota.LlmUserContext.current();
         return reactor.core.publisher.Mono.defer(() -> {
             String jd = JobService.evidenceText(job);
             if (job.path("description").asText().isBlank() && job.path("requirement").asText().isBlank())
@@ -45,7 +46,8 @@ public class JobMatcher {
             return generate(jd, resume, tier, messages, 0, start)
                     .timeout(budget, clock)
                     .onErrorMap(error -> modelFailure(error, tier, budget));
-        });
+        }).contextWrite(context -> owner == null ? context
+                : com.offerpilot.llm.quota.LlmUserContext.withUser(context, owner));
     }
 
     private reactor.core.publisher.Mono<JsonNode> generate(String jd, JsonNode resume,

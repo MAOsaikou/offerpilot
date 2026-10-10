@@ -125,6 +125,40 @@ class JobMatchDeadlineTest {
         verify(gateway, times(2)).stream(eq(ModelTier.PRO), anyList(), eq(0.0));
     }
 
+    @Test void repairPreservesVerifiedOwnerAfterThreadLocalScopeEndsAndCannotBypassQuota() throws Exception {
+        var matcher = matcher();
+        var fixed = java.time.Clock.fixed(java.time.Instant.parse("2026-10-10T00:00:10Z"), java.time.ZoneOffset.UTC);
+        var limits = new com.offerpilot.config.OfferPilotProperties.RateLimit(1,1,2,100,100,15,20,20,20,20);
+        var limiter = new com.offerpilot.llm.quota.LlmQuotaLimiter(
+                owner -> new com.offerpilot.llm.quota.LlmQuotaIdentity.Policy(false,100),
+                new com.offerpilot.llm.quota.MemoryLlmUsageStore(fixed),limits,fixed);
+        var providerCalls = new java.util.concurrent.atomic.AtomicInteger();
+        when(gateway.stream(eq(ModelTier.PRO), anyList(), eq(0.0))).thenAnswer(invocation -> {
+            String captured = com.offerpilot.llm.quota.LlmUserContext.current();
+            return Flux.deferContextual(context -> {
+                String owner = context.getOrDefault(com.offerpilot.llm.quota.LlmUserContext.KEY,captured);
+                assertThat(owner).isEqualTo("verified-owner");
+                limiter.check(owner,ModelTier.PRO,true);
+                providerCalls.incrementAndGet();
+                return Flux.just(response("invalid JSON")).delaySubscription(Duration.ofSeconds(1),clock);
+            });
+        });
+        var error = new AtomicReference<Throwable>();
+        com.offerpilot.llm.quota.LlmUserContext.asUser("verified-owner", () -> {
+            // Assemble under the same trusted identity scope as JobMatchService, then subscribe.
+            try {
+                analyze(matcher,ModelTier.PRO).subscribe(value -> fail("repair must be rate limited"),error::set);
+            } catch (Exception ex) { throw new RuntimeException(ex); }
+            return null;
+        });
+        assertThat(com.offerpilot.llm.quota.LlmUserContext.current()).isNull();
+        clock.advanceTimeBy(Duration.ofSeconds(1));
+        assertThat(error.get()).isInstanceOf(LlmQuotaException.class);
+        assertThat(((BusinessException)error.get()).errorCode()).isEqualTo(ErrorCode.LLM_RATE_LIMITED);
+        assertThat(providerCalls).hasValue(1);
+        verify(gateway,times(2)).stream(eq(ModelTier.PRO),anyList(),eq(0.0));
+    }
+
     private void assertTimeout(Throwable error, String seconds) {
         assertThat(error).isInstanceOf(BusinessException.class);
         assertThat(((BusinessException) error).errorCode()).isEqualTo(ErrorCode.MODEL_TIMEOUT);
