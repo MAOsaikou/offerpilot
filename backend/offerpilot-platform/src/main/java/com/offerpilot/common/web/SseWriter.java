@@ -39,6 +39,11 @@ public final class SseWriter {
 
     SseWriter(ObjectMapper json, SseEmitter emitter, Duration interval, String runId,
               String failureMessage, Runnable onDisconnect) {
+        this(json, emitter, interval, runId, failureMessage, onDisconnect, Schedulers.boundedElastic());
+    }
+
+    SseWriter(ObjectMapper json, SseEmitter emitter, Duration interval, String runId,
+              String failureMessage, Runnable onDisconnect, reactor.core.scheduler.Scheduler heartbeatScheduler) {
         this.json = json;
         this.emitter = emitter;
         this.runId = runId;
@@ -47,7 +52,10 @@ public final class SseWriter {
         emitter.onCompletion(this::disconnected);
         emitter.onTimeout(this::disconnected);
         emitter.onError(ignored -> disconnected());
-        heartbeat.update(Flux.interval(interval).onBackpressureDrop().publishOn(Schedulers.boundedElastic(), 1)
+        // Run the periodic write on its blocking-capable worker directly. An interval ->
+        // publishOn handoff can race terminal cancellation disposing the delivery worker,
+        // producing a dropped RejectedExecutionException while a tick is being enqueued.
+        heartbeat.update(Flux.interval(interval, heartbeatScheduler)
                 .subscribe(ignored -> ping(), ignored -> disconnected()));
     }
 
