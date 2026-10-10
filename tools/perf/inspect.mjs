@@ -72,6 +72,33 @@ try {
         );
       console.log(`${route.name} ${width}: no overflow/pageerror`);
     }
+    // Inspect pending UI under an extra request delay, independently of scores.
+    await page.setRequestInterception(true);
+    page.on("request", async (request) => {
+      if (/\/api\/v1\/(applications|resumes)(?:\?|$)/.test(request.url()))
+        await new Promise((r) => setTimeout(r, 1000));
+      if (!request.isInterceptResolutionHandled()) await request.continue();
+    });
+    for (const [name, path, selector] of [
+      ["dashboard", "/", ".route.is-loading"],
+      ["resume", "/resumes", ".resume-skeleton"],
+    ]) {
+      await page.goto(`http://127.0.0.1:4179${path}`, {
+        waitUntil: "domcontentloaded",
+      });
+      await page.waitForSelector(selector);
+      await new Promise((r) => setTimeout(r, 250));
+      await page.screenshot({
+        path: `${output}/${name}-loading-${width}.png`,
+        fullPage: true,
+      });
+      await page.waitForFunction(
+        (selector) => !document.querySelector(selector),
+        {},
+        selector,
+      );
+      console.log(`${name} loading ${width}: skeleton resolves`);
+    }
     await page.close();
   }
 } finally {

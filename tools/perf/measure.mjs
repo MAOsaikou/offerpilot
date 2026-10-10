@@ -20,10 +20,10 @@ const { default: desktop } = await import(
 const dist = resolve(process.argv[2] || "frontend/dist");
 const output = resolve(process.argv[3] || "/tmp/offerpilot-perf-results");
 await mkdir(output, { recursive: true });
-const server = await serve(dist);
 const results = JSON.parse(
   await readFile(`${output}/runs.json`, "utf8").catch(() => "[]"),
 );
+const server = await serve(dist);
 try {
   const chunkReport = await Promise.all(
     (await readdir(`${dist}/assets`))

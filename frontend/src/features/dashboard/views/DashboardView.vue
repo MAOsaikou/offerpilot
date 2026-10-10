@@ -88,12 +88,11 @@ function send() {
         <h2>你的航线</h2>
         <RouterLink to="/board">打开看板</RouterLink>
       </div>
-      <p v-if="board.query.isPending.value" role="status">正在读取看板…</p>
-      <p v-else-if="board.query.isError.value" class="error-banner" role="alert">
+      <p v-if="board.query.isError.value" class="error-banner" role="alert">
         {{ board.query.error.value?.message
         }}<button class="btn" @click="board.query.refetch()">重试加载</button>
       </p>
-      <RouteStrip v-else :stops="stops" />
+      <RouteStrip v-else :stops="stops" :loading="board.query.isPending.value" />
     </section>
 
     <div class="dashboard-grid">

@@ -130,7 +130,10 @@ export const routes: RouteRecordRaw[] = [
 export const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes,
-  scrollBehavior(_to, _from, savedPosition) {
+  scrollBehavior(_to, from, savedPosition) {
+    // Fresh documents start at the top. A redundant scrollTo here forces layout
+    // before the route and its fonts can paint; keep restoration/navigation below.
+    if (!from.matched.length && !savedPosition) return false
     return savedPosition ?? { top: 0 }
   },
 })

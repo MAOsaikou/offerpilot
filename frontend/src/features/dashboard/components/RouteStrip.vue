@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { Stage } from '@/shared/types/workspace'
 
-const props = defineProps<{ stops: { stage: Stage; count: number }[] }>()
+const props = defineProps<{ stops: { stage: Stage; count: number }[]; loading?: boolean }>()
 
 const route = computed(() => props.stops.filter((s) => s.stage !== '已结束'))
 const ended = computed(() => props.stops.find((s) => s.stage === '已结束')?.count ?? 0)
@@ -15,9 +15,14 @@ const progress = computed(() =>
 )
 </script>
 <template>
-  <div class="route" :style="{ '--progress': progress, '--stops': route.length }">
+  <div
+    class="route"
+    :class="{ 'is-loading': loading }"
+    :aria-busy="loading"
+    :style="{ '--progress': progress, '--stops': route.length }"
+  >
     <div class="route-track" aria-hidden="true"><span class="route-fill" /></div>
-    <ol>
+    <ol :aria-hidden="loading || undefined">
       <li
         v-for="(stop, index) in route"
         :key="stop.stage"
@@ -25,11 +30,12 @@ const progress = computed(() =>
         :aria-current="index === furthest ? 'step' : undefined"
       >
         <span class="route-node" aria-hidden="true" />
-        <strong class="route-count">{{ stop.count }}</strong>
+        <strong class="route-count">{{ loading ? '—' : stop.count }}</strong>
         <span class="route-label">{{ stop.stage }}</span>
       </li>
     </ol>
-    <p v-if="furthest < 0" class="subtle">
+    <p v-if="loading" class="subtle" role="status">正在读取看板…</p>
+    <p v-else-if="furthest < 0" class="subtle">
       收藏第一个岗位，航线就从这里开始。<RouterLink to="/jobs" class="route-link"
         >搜索岗位</RouterLink
       >
@@ -40,7 +46,13 @@ const progress = computed(() =>
 <style scoped>
 .route {
   position: relative;
+  min-height: 149px;
   --node: 16px;
+}
+.is-loading .route-count {
+  color: transparent;
+  background: var(--muted);
+  border-radius: var(--radius-tag);
 }
 .route-track {
   position: absolute;
@@ -134,6 +146,9 @@ li.current .route-label {
   text-underline-offset: 3px;
 }
 @media (max-width: 640px) {
+  .route {
+    min-height: 133px;
+  }
   .route-count {
     font-size: 32px;
   }

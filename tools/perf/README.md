@@ -17,6 +17,7 @@ pnpm --dir frontend run build
 npm install --prefix /tmp/offerpilot-perf-tools lighthouse@12.8.2 puppeteer-core@24
 node tools/perf/measure.mjs frontend/dist /tmp/offerpilot-perf-results
 node tools/perf/inspect.mjs frontend/dist /tmp/offerpilot-perf-visual
+node tools/perf/summarize.mjs /tmp/offerpilot-perf-baseline /tmp/offerpilot-perf-after
 ```
 
 `CHROME_PATH` overrides Chrome's binary; `PERF_TOOLS` overrides the separate
@@ -32,7 +33,7 @@ it is not a real credential. Lighthouse keeps that auth storage and clears the
 HTTP cache itself. Production auth guards, route chunks, API calls, fonts,
 Markdown, card registry and layout all run normally. The viewport inspection
 after scoring verifies the fixtures rendered and the three chat card wrappers
-exist; a separate visual run checks 390px/1280px, screenshots and page errors.
+exist; a separate visual run checks 390px/1280px, screenshots and page errors, plus delayed-request skeletons.
 Neither inspection is included in the Lighthouse score. Preserve the JSON
 reports (`*-1.json` etc.), `runs.json`, render verification, and `chunks.json`.
 JS transferred is the sum of Lighthouse network `Script.transferSize`, including
