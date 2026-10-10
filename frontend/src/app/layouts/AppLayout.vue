@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/shared/components/AppIcon.vue'
+import GenerationProgressDock from '@/shared/components/GenerationProgressDock.vue'
 import BrandMark from '@/shared/components/BrandMark.vue'
 import PageBoundary from './PageBoundary.vue'
 import { useWorkspace } from '@/shared/stores/workspace'
@@ -123,5 +124,6 @@ watch(
         </RouterView>
       </main>
     </div>
+    <GenerationProgressDock />
   </div>
 </template>
