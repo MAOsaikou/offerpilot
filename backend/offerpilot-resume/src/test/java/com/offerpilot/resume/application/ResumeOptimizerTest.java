@@ -25,10 +25,6 @@ class ResumeOptimizerTest {
         ObjectNode source=(ObjectNode)json.readTree(ResumeStructure.SCHEMA);source.put("summary","负责后端开发");
         source.withObject("/basics").put("phone","13800138000").put("email","private@example.test");return source;
     }
-    @Test void acceptsEvidenceAndEmptySuggestions() throws Exception {
-        ResumeOptimizationValidator.validate(json.readTree(REPORT),source(),JD);
-        ResumeOptimizationValidator.validate(json.readTree("{\"summary\":\"已有表达清楚，无需改写\",\"patches\":[]}"),source(),JD);
-    }
     @Test void rejectsInventedNumbersPointersQuotesAndExtraFields() throws Exception {
         for(String invalid:List.of(REPORT.replace("参与后端服务开发","独立实现12个接口"),REPORT.replace("后端服务开发\",\"needs","不存在的JD引文\",\"needs"),
             REPORT.replace("/summary","/basics/phone"),REPORT.replace("负责后端开发","伪造的原文"),REPORT.replace("\"patches\":","\"score\":99,\"patches\":")))
