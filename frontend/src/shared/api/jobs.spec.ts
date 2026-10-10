@@ -6,15 +6,23 @@ afterEach(() => {
   vi.unstubAllGlobals()
   localStorage.clear()
 })
-it('search passes filters, cancellation and owner to the backend, never directly to MCP', async () => {
-  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { items: [] } })))
+it('search preserves snapshot metadata and sends filters, cancellation and owner to the backend', async () => {
+  const meta = {
+    source: 'LOCAL_SNAPSHOT',
+    snapshotDate: '2026-10-10',
+    fallbackReason: 'LIVE_UNAVAILABLE',
+  }
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify({ data: { items: [], meta } })))
   vi.stubGlobal('fetch', fetch)
   const controller = new AbortController()
   const signal = controller.signal
-  await searchJobs(
+  const result = await searchJobs(
     { query: 'Java & SQL', site: 'bytedance', nature: 'campus', location: '上海' },
     signal,
   )
+  expect(result.meta).toEqual(meta)
   const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit]
   expect(url).toContain('/jobs?')
   expect(new URL(url, 'http://localhost').searchParams.get('query')).toBe('Java & SQL')
@@ -41,25 +49,6 @@ it('external job links reject script and credential-bearing URLs', () => {
   expect(officialJobUrl('javascript:alert(1)')).toBeUndefined()
   expect(officialJobUrl('https://user:password@example.com')).toBeUndefined()
   expect(officialJobUrl('https://jobs.example.test/1')).toBe('https://jobs.example.test/1')
-})
-
-it('search preserves optional snapshot source metadata from the API', async () => {
-  const meta = {
-    source: 'LOCAL_SNAPSHOT',
-    snapshotDate: '2026-10-10',
-    fallbackReason: 'LIVE_UNAVAILABLE',
-  }
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { items: [], meta } }))),
-  )
-  const result = await searchJobs({
-    query: 'Java',
-    site: 'bytedance',
-    nature: 'campus',
-    location: '',
-  })
-  expect(result.meta).toEqual(meta)
 })
 
 it.each(['FLASH', 'PRO'] as const)(

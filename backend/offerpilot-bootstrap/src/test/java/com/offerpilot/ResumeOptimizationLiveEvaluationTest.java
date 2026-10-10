@@ -33,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Explicit paid-model opt-in. Calls production optimizer/gateway; never connects to business data. */
 @Tag("eval")
 @EnabledIfEnvironmentVariable(named = "OFFERPILOT_RUN_LIVE_OPTIMIZE", matches = "true")
+@EnabledIfEnvironmentVariable(named = "DEEPSEEK_API_KEY", matches = ".*\\S.*")
 class ResumeOptimizationLiveEvaluationTest {
     @Test void evaluatesTenFictionalResumeJobPairsAndPreservesEvidence() throws Exception {
         String key = System.getenv("DEEPSEEK_API_KEY");

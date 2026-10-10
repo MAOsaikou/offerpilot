@@ -7,9 +7,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 class HollandMatcherTest {
 
     @Test
-    void identicalCodeScoresFull() {
+    void identicalAndNormalizedCodesScoreFull() {
         assertThat(HollandMatcher.score("IRC", "IRC")).isEqualTo(6.0);
         assertThat(HollandMatcher.score("AIS", "AIS")).isEqualTo(6.0);
+        assertThat(HollandMatcher.score("i r c", "IRC")).isEqualTo(6.0);
+        assertThat(HollandMatcher.score("irc", "i-r-c")).isEqualTo(6.0);
     }
 
     @Test
@@ -35,12 +37,6 @@ class HollandMatcherTest {
         assertThat(HollandMatcher.score("IRC", null)).isZero();
         assertThat(HollandMatcher.score("", "IRC")).isZero();
         assertThat(HollandMatcher.score("IRC", "")).isZero();
-    }
-
-    @Test
-    void inputIsNormalizedBeforeComparing() {
-        assertThat(HollandMatcher.score("i r c", "IRC")).isEqualTo(6.0);
-        assertThat(HollandMatcher.score("irc", "i-r-c")).isEqualTo(6.0);
     }
 
     @Test
