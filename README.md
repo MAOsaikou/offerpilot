@@ -4,7 +4,7 @@
 >
 > 一个懂你简历、盯着岗位、陪你面试、帮你规划的求职 Agent。
 
-![status](https://img.shields.io/badge/status-planning-blue) ![frontend](https://img.shields.io/badge/frontend-Vue3%20%2B%20TypeScript-42b883) ![backend](https://img.shields.io/badge/backend-Java%2021%20%2B%20Spring%20AI%202.0-6db33f) ![license](https://img.shields.io/badge/license-MIT-lightgrey)
+![status](https://img.shields.io/badge/status-demo-green) ![frontend](https://img.shields.io/badge/frontend-Vue3%20%2B%20TypeScript-42b883) ![backend](https://img.shields.io/badge/backend-Java%2017%20%2B%20Spring%20AI%201.0-6db33f) ![license](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
@@ -12,10 +12,10 @@
 
 OfferPilot 面向高校应届生与实习生，用多 Agent 协作把「我适合做什么 → 简历 → 岗位 → 面试 → 规划 → 复盘」的求职全流程串成一个闭环：
 
-- **职业探索 Agent**：通过对话式测评（而非死板问卷）收集并推断用户的专业、兴趣爱好、性格特质（Holland 兴趣代码、可选 MBTI）、价值观与约束条件，结合职业知识库匹配出适合的职业方向，每个推荐都附带「为什么适合你」的证据链，并可一键设为目标职业，联动岗位搜索与学习路线。
+- **职业探索 Agent**：通过对话式测评（而非死板问卷）收集并推断用户的专业、兴趣爱好（Holland 兴趣代码）、价值观与约束条件，结合职业知识库匹配出适合的职业方向，每个推荐都附带「为什么适合你」的证据链，并可一键设为目标职业，联动岗位搜索与学习路线。
 - **简历 Agent**：解析 PDF / Word / 图片简历为结构化数据，按 rubric 诊断评分，针对目标岗位定向改写，并以 diff 形式让用户逐条采纳。
-- **岗位 Agent**：通过 MCP 直连数十家企业官网公开招聘 API，自然语言搜索岗位，基于向量召回 + LLM 重排给出匹配度与证据链，一键加入求职看板。
-- **面试官 Agent**：按岗位与简历生成题目，支持文字与语音两种模式，实时追问、STAR 评价，结束后输出多维评分报告；浏览器端 MediaPipe 分析眼神接触与姿态（仅上传聚合指标）。
+- **岗位 Agent**：通过 MCP 直连数十家企业官网公开招聘 API，自然语言搜索岗位（官网不可用时回退离线快照）；模型逐条引用 JD 与简历原文，服务端校验证据后按确定公式给出匹配度，一键加入求职看板。
+- **面试官 Agent**：按岗位与简历生成题目，支持文字与语音（浏览器 Web Speech 听写 / 读题）两种模式，实时追问、STAR 评价，结束后输出多维评分报告。
 - **职业规划 Agent**：基于职业知识库（RAG）做技能差距分析与学习路线规划，联动校招日历与 DDL 提醒。
 - **Orchestrator**：Supervisor 模式的规划 - 执行 - 反思循环，计划、工具调用、引用来源、审批请求全部实时可视化；敏感操作必须经用户确认（Human-in-the-loop）。
 
@@ -25,11 +25,11 @@ OfferPilot 面向高校应届生与实习生，用多 Agent 协作把「我适�
 | --- | --- |
 | 多 Agent 编排 | Orchestrator + 5 个专家 Agent（职业探索 / 简历 / 岗位 / 面试官 / 规划），显式 Plan / Step / Tool 事件流 |
 | 职业探索 | 对话式性格与兴趣测评、专业 + 兴趣 + 性格三维画像、职业知识库匹配与证据链推荐 |
-| 工具调用 | Spring AI `@Tool` 本地工具 + MCP 外部工具（jobs-mcp、GitHub MCP、搜索 MCP） |
+| 工具调用 | 专家内领域工具（写操作走审批）+ MCP 外部工具（自建 jobs-mcp） |
 | MCP 双向 | 既是 MCP Client，也以 MCP Server 形式对外暴露简历诊断、岗位搜索、匹配工具 |
-| RAG | pgvector 向量检索 + PostgreSQL 全文检索 RRF 融合 + 重排 + 引用溯源 |
-| 多模态 | 图片/扫描简历视觉理解、语音面试（ASR/TTS）、端侧表情与姿态分析 |
-| 生成式 UI | 后端下发结构化卡片（职业推荐、画像确认、岗位、匹配报告、简历 diff、技能雷达、路线图、面试报告），前端按类型注册组件渲染 |
+| RAG | 职业库与私有知识笔记：pgvector 向量检索 + PostgreSQL 全文检索 RRF 融合 + 引用溯源；无向量 Key 时降级规则/全文 |
+| 多模态 | 图片/扫描简历视觉理解、语音面试（浏览器 ASR/TTS，拒权退回文字） |
+| 生成式 UI | 后端下发结构化卡片（职业推荐、画像确认、岗位、匹配报告、简历 diff、技能差距、路线图、面试报告），前端按类型注册组件渲染 |
 | 安全可控 | 不可信资料隔离、写操作审批、证据/数字校验；模型文字入口默认脱敏手机号/有效18位身份证/邮箱，流式回显还原；[红队回归与实测限制](docs/research/2026-10-10-红队回归.md)；设置页输入 DELETE 一键删除在线私有数据 |
 | 记忆 | 已实现短期会话窗口；长期用户事实记忆与管理为规划 |
 | 流式体验 | SSE 事件流、可中断、可重连（Last-Event-ID）、可回放 |
@@ -40,7 +40,7 @@ OfferPilot 面向高校应届生与实习生，用多 Agent 协作把「我适�
 flowchart LR
   subgraph browser [浏览器 Vue 3 SPA]
     UI[对话 / 职业探索 / 简历 / 岗位 / 看板 / 面试 / 规划]
-    Edge[端侧 AI：Web Speech API · MediaPipe]
+    Edge[端侧：Web Speech API]
   end
 
   subgraph backend [Java 17 · Spring Boot 3.3.5 · Spring AI 1.0]
@@ -64,7 +64,6 @@ flowchart LR
   subgraph ext [外部]
     LLM[百炼 Qwen / GLM · DeepSeek]
     Jobs[jobs-mcp · 企业官网公开招聘 API]
-    GH[GitHub MCP]
   end
 
   browser --> GW --> Guard --> Orch --> Agents --> Tools
@@ -72,7 +71,6 @@ flowchart LR
   Agents --> RAG
   Orch --> Mem
   Tools --> McpC --> Jobs
-  McpC --> GH
   McpS --> Tools
   RAG --> PG
   Mem --> PG
@@ -89,26 +87,25 @@ flowchart LR
 
 | 类别 | 选型 |
 | --- | --- |
-| 框架 | Vue 3.5（`<script setup>` + Composition API）、TypeScript 5（strict）、Vite 7、pnpm |
-| 路由与状态 | Vue Router 4、Pinia 3、TanStack Query Vue |
-| UI | Tailwind CSS 4.1、shadcn-vue 2.7（Reka UI）、lucide-vue-next、@vueuse/core、@vueuse/motion |
-| AI 交互 | 自研 `useAgentStream`（SSE 解析、中断、重连、审批回传）、markdown-it + shiki 流式渲染 |
-| 可视化 | vue-echarts（技能雷达、面试评分）、diff（简历改写对比） |
-| 多媒体 | Web Speech API（ASR/TTS）、MediaRecorder、MediaPipe Tasks Vision（Web Worker） |
-| 工程 | ESLint 9、Prettier、Vitest、Playwright、Husky + lint-staged、openapi-typescript |
+| 框架 | Vue 3.5（`<script setup>` + Composition API）、TypeScript 6（strict）、Vite 8、pnpm |
+| 路由与状态 | Vue Router 5、Pinia 4、TanStack Query Vue |
+| UI | Tailwind CSS 4（tailwind-merge、clsx）、自研组件与设计令牌 |
+| AI 交互 | 自研 `useAgentStream`（SSE 解析、中断、重连、审批回传）、markdown-it + shiki 流式渲染、DOMPurify 清洗 |
+| 多媒体 | Web Speech API（ASR/TTS） |
+| 工程 | ESLint 10、Prettier、Vitest + jsdom + MSW、openapi-typescript；CI 跑 format/lint/typecheck/test/build |
 
 ### 后端
 
 | 类别 | 选型 |
 | --- | --- |
 | 运行时与框架 | Java 17 LTS、Spring Boot 3.3.5、Spring Web MVC |
-| AI | Spring AI 1.0.0（OpenAI 兼容 / DeepSeek starter、pgvector store、MCP client & server、Advisors） |
-| 数据 | PostgreSQL 17 + pgvector、Redis 7、MinIO（S3 兼容） |
+| AI | Spring AI 1.0.0（OpenAI 兼容 / DeepSeek starter、pgvector store、MCP client & server） |
+| 数据 | PostgreSQL 17 + pgvector、Redis 7、S3 兼容对象存储（MinIO SDK；Compose 默认 S3Mock） |
 | 持久层 | Spring Data JPA、Flyway |
 | 安全 | Spring Security 6 + JWT、Bucket4j、Resilience4j |
-| 文件解析 | Apache Tika、PDFBox |
-| 文档与可观测 | SpringDoc OpenAPI、Actuator、Micrometer、Spring AI Observability |
-| 测试 | JUnit 5、Testcontainers、Spring AI Evaluators |
+| 文件解析与导出 | Apache Tika、PDFBox（解析与简历 PDF 模板导出） |
+| 文档与可观测 | SpringDoc OpenAPI、Actuator |
+| 测试 | JUnit 5、Testcontainers、Reactor Test；真实模型评测按环境开关运行（默认 CI 跳过） |
 
 ### 模型
 
@@ -117,7 +114,7 @@ flowchart LR
 | 快速 FLASH（默认）/ 规划 / 图片 | `deepseek-flash`（DeepSeek） |
 | 深度 PRO（仅文字） | `deepseek-v4-pro`（DeepSeek） |
 | 内部视觉备选 VISION_ALT | `deepseek-flash` |
-| Embedding / Rerank | 百炼 `text-embedding-v4` / `gte-rerank` |
+| Embedding（可选） | 百炼 `text-embedding-v4`（DeepSeek 无向量接口；未配置时降级） |
 
 聊天仅「快速 / 深度」两档；旧 CHEAP 自动映射为 FLASH，供应商可通过环境变量覆盖。
 
@@ -216,9 +213,9 @@ API_BASE_URL=https://<domain>/api/v1 bash deploy/scripts/reset-demo.sh
 
 - 岗位数据仅来自**企业官网公开招聘接口**（通过开源工具 `jobhunt-cli` 的适配器访问）与**公开聚合的校招信息**（如 GitHub 公开仓库维护的秋招时间表），不爬取任何需登录或明确禁止抓取的平台。
 - 职业探索所用的职业条目与兴趣量表基于 **O*NET（美国劳工部，公共领域）** 的职业兴趣代码体系中文化映射、《中华人民共和国职业分类大典（2022）》公开目录以及团队自建的互联网岗位族谱；推荐结果基于用户自陈信息，仅作参考，不构成职业测评结论。
-- 用户简历、面试录音等个人数据仅用于向用户提供服务；设置页提供默认开启的文本 PII 脱敏开关（送模型前替换大陆手机号 / 有效18位身份证 / 邮箱，回显还原）；关闭时检测到相关文本会提示风险。姓名、地址和图片像素暂不遮盖；原件和服务端数据保留原文。
+- 用户简历、面试回答等个人数据仅用于向用户提供服务；设置页提供默认开启的文本 PII 脱敏开关（送模型前替换大陆手机号 / 有效18位身份证 / 邮箱，回显还原）；关闭时检测到相关文本会提示风险。姓名、地址和图片像素暂不遮盖；原件和服务端数据保留原文。
 - 设置 → 数据与隐私支持输入 `DELETE` 永久删除当前注册账号/访客及全部在线私有数据、文件和当前浏览器此身份工作区，旧令牌失效；文件清理失败后台重试。共享 demo 与 STAFF 不可自助删除。此操作不清除其他设备本地副本、下载件、离线备份或供应商已接收内容。
-- 端侧视觉分析在浏览器内完成，**不会上传视频画面**，仅上传聚合后的数值指标。
+- 语音面试听写使用浏览器 Web Speech（部分浏览器会交由其厂商语音服务识别）；OfferPilot 后端只接收识别后的文字，不接收音频或视频。
 - 演示与测试使用虚构简历与账号。
 
 ## 10. 团队信息
