@@ -6,6 +6,7 @@ import { useWorkspace } from '@/shared/stores/workspace'
 import { getStoredTheme, setTheme, type ThemeMode } from '@/shared/utils/theme'
 import { downloadText } from '@/shared/utils/download'
 import { API_BASE } from '@/shared/api/client'
+import DeleteMyData from '../components/DeleteMyData.vue'
 import PrivacySettings from '../components/PrivacySettings.vue'
 import ResumeModelSettings from '../components/ResumeModelSettings.vue'
 const workspace = useWorkspace()
@@ -141,7 +142,7 @@ function exportWorkspace() {
       <PrivacySettings />
       <h3>你的内容保存在哪里</h3>
       <p class="subtle">
-        本地简历草稿、旧看板归档、旧练习回答和知识笔记保存在此浏览器。新面试练习、岗位收藏、求职阶段和跟进备注、已上传的简历原件、解析结果、版本和
+        本地简历草稿、旧看板归档、旧练习回答和未导入的知识笔记保存在此浏览器。职业档案、成长任务、已导入知识笔记与向量、新面试练习、岗位收藏、求职阶段和跟进备注、已上传的简历原件、解析结果、版本和
         AI
         对话历史保存在后端。岗位匹配报告及其资料快照也保存在后端；上传解析和主动发起匹配时，相关简历内容会发送给配置的模型。
         访客通过浏览器保存的令牌访问服务端数据，清除站点数据、更换浏览器或令牌过期后无法自动恢复访客访问；访客身份暂不支持跨设备找回。注册用户通过
@@ -151,6 +152,7 @@ function exportWorkspace() {
       <p class="helper-note">
         已提供正式注册与登录；访客身份暂不支持跨设备找回。此按钮仅导出本地工作区，不包含服务端面试练习、看板、简历、对话和匹配报告，也不包含登录凭据。模型密钥仅在服务器配置，不要输入前端。
       </p>
+      <DeleteMyData />
     </section>
   </section>
 </template>

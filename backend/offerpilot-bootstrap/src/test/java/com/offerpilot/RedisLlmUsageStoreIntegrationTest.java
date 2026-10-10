@@ -24,6 +24,21 @@ class RedisLlmUsageStoreIntegrationTest {
         redis = new StringRedisTemplate(connections);
     }
     @AfterAll static void close() { if (connections != null) connections.destroy(); }
+    @Test void eraseRemovesOnlyOwnersCountersAndFencesLateUsageAcrossInstances() {
+        var first=new RedisLlmUsageStore(redis);var second=new RedisLlmUsageStore(redis);
+        Instant reset=Instant.now().plusSeconds(3600);
+        first.check("deleted",1,"day",10,1000,reset,reset,true);
+        first.addTokens("deleted","day",50,reset);
+        first.addTokens("survivor","day",75,reset);
+        first.erase("deleted");
+        second.addTokens("deleted","day",99,reset);
+        assertThat(redis.hasKey("offerpilot:llm:{deleted}:rpm:1")).isFalse();
+        assertThat(redis.hasKey("offerpilot:llm:{deleted}:tokens:day")).isFalse();
+        assertThat(redis.opsForValue().get("offerpilot:llm:{survivor}:tokens:day")).isEqualTo("75");
+        assertThat(redis.getExpire("offerpilot:llm:{deleted}:revoked")).isBetween(93500L,93600L);
+        assertThatThrownBy(() -> second.check("deleted",2,"day",10,1000,reset,reset,true))
+            .isInstanceOf(com.offerpilot.common.error.BusinessException.class).hasMessage("未登录");
+    }
     @Test void twoInstancesShareAtomicRpmAndDailyUsage() throws Exception {
         var first = new RedisLlmUsageStore(redis);
         var second = new RedisLlmUsageStore(redis);

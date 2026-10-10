@@ -9,6 +9,7 @@ import java.util.List;
 
 public final class RedisLlmUsageStore implements LlmUsageStore {
     private static final DefaultRedisScript<Long> CHECK = new DefaultRedisScript<>("""
+            if redis.call('EXISTS', KEYS[3]) == 1 then return 3 end
             local tokens = tonumber(redis.call('GET', KEYS[2]) or '0')
             if tokens >= tonumber(ARGV[2]) then return 2 end
             local requests = tonumber(redis.call('GET', KEYS[1]) or '0')
@@ -20,6 +21,7 @@ public final class RedisLlmUsageStore implements LlmUsageStore {
             return 0
             """, Long.class);
     private static final DefaultRedisScript<Long> ADD = new DefaultRedisScript<>("""
+            if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
             local value = redis.call('INCRBY', KEYS[1], ARGV[1])
             redis.call('EXPIREAT', KEYS[1], ARGV[2])
             return value
@@ -31,17 +33,31 @@ public final class RedisLlmUsageStore implements LlmUsageStore {
     @Override public int check(String owner, long minute, String day, int rpm, long dailyLimit,
             Instant minuteReset, Instant dayReset, boolean consume) {
         try {
-            Long result = redis.execute(CHECK, List.of(prefix(owner) + "rpm:" + minute, prefix(owner) + "tokens:" + day),
+            Long result = redis.execute(CHECK, List.of(prefix(owner) + "rpm:" + minute, prefix(owner) + "tokens:" + day, prefix(owner) + "revoked"),
                     String.valueOf(rpm), String.valueOf(dailyLimit), String.valueOf(minuteReset.getEpochSecond()), String.valueOf(consume));
             if (result == null) throw new IllegalStateException("Missing quota result");
+            if (result == 3) throw new BusinessException(ErrorCode.UNAUTHENTICATED);
             return result.intValue();
-        } catch (RuntimeException ex) { throw new BusinessException(ErrorCode.CACHE_UNAVAILABLE); }
+        } catch (BusinessException ex) { throw ex; }
+        catch (RuntimeException ex) { throw new BusinessException(ErrorCode.CACHE_UNAVAILABLE); }
+    }
+    @Override public void erase(String owner) {
+        // Fence late accounting/admissions before removing counters; expires after all daily counters/runs.
+        redis.opsForValue().set(prefix(owner) + "revoked", "1", java.time.Duration.ofHours(26));
+        var options = org.springframework.data.redis.core.ScanOptions.scanOptions().match(prefix(owner) + "*").count(100).build();
+        try (var cursor = redis.scan(options)) {
+            while (cursor.hasNext()) {
+                String key = cursor.next();
+                if (!key.equals(prefix(owner) + "revoked")) redis.delete(key);
+            }
+        }
     }
     @Override public void addTokens(String owner, String day, long tokens, Instant dayReset) {
         try {
-            if (redis.execute(ADD, List.of(prefix(owner) + "tokens:" + day), String.valueOf(tokens),
+            if (redis.execute(ADD, List.of(prefix(owner) + "tokens:" + day, prefix(owner) + "revoked"), String.valueOf(tokens),
                     String.valueOf(dayReset.plusSeconds(3600).getEpochSecond())) == null)
                 throw new IllegalStateException("Missing usage result");
-        } catch (RuntimeException ex) { throw new BusinessException(ErrorCode.CACHE_UNAVAILABLE); }
+        } catch (BusinessException ex) { throw ex; }
+        catch (RuntimeException ex) { throw new BusinessException(ErrorCode.CACHE_UNAVAILABLE); }
     }
 }

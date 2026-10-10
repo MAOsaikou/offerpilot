@@ -81,6 +81,15 @@ export function clearLogin(): void {
   publishSession()
 }
 
+/** Remove only the deleted identity; a dormant unrelated guest workspace remains private. */
+export function completeDataDeletion(): void {
+  if (!getStoredToken()) {
+    localStorage.removeItem(GUEST_TOKEN_KEY)
+    localStorage.removeItem(INVALID_GUEST_KEY)
+  }
+  clearLogin()
+}
+
 export function expireLoginIfNeeded(): void {
   const token = getStoredToken()
   if (!token) return

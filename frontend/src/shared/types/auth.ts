@@ -3,6 +3,7 @@ export interface AuthUser {
   email: string
   nickname: string
   roles: string[]
+  isDemo?: boolean
 }
 export interface LoginResult {
   accessToken: string

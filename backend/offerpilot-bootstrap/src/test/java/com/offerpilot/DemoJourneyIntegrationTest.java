@@ -105,6 +105,7 @@ class DemoJourneyIntegrationTest {
         assertThat(login.statusCode()).isEqualTo(200);
         assertThat(login.headers().firstValue("Cache-Control")).contains("no-store");
         var data = json.readTree(login.body()).path("data");
+        assertThat(data.path("user").path("isDemo").asBoolean()).isTrue();
         assertThat(data.path("user").path("roles").get(0).asText()).isEqualTo("USER");
         assertThat(data.path("expiresIn").asInt()).isEqualTo(43200);
         String token = data.path("accessToken").asText();

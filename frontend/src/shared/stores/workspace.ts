@@ -219,6 +219,17 @@ export const useWorkspace = defineStore('workspace', () => {
     },
     { immediate: true, flush: 'sync' },
   )
+  function clearIdentityData() {
+    // Stop pending deep-watch persistence before removing the stored workspace.
+    stopPersistence?.()
+    stopPersistence = undefined
+    state.value = createWorkspace()
+    localStorage.removeItem(boundKey)
+    if (localStorage.getItem(MIGRATION_OWNER_KEY) === boundKey) {
+      localStorage.removeItem(LEGACY_KEY)
+      localStorage.removeItem(MIGRATION_OWNER_KEY)
+    }
+  }
   function notify(text: string) {
     state.value.notices.unshift({
       id: crypto.randomUUID(),
@@ -234,7 +245,7 @@ export const useWorkspace = defineStore('workspace', () => {
     )
   }
   // Existing applications remain a readable/exportable archive. Active board writes use the API.
-  return { state, storageError, notify, jobFor }
+  return { state, storageError, notify, jobFor, clearIdentityData }
 })
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object'
