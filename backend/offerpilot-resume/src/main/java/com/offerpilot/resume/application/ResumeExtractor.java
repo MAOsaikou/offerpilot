@@ -42,7 +42,7 @@ public class ResumeExtractor {
         var usage = new java.util.concurrent.atomic.AtomicReference<org.springframework.ai.chat.metadata.Usage>();
         var media = document.images().stream().map(image -> new Media(MimeTypeUtils.parseMimeType(image.mime()),
             new ByteArrayResource(image.bytes()))).toList();
-        var user = UserMessage.builder().text("<resume_data>\n" + document.text() + "\n</resume_data>").media(media).build();
+        var user = UserMessage.builder().text("<resume_data>\n" + document.text().replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") + "\n</resume_data>").media(media).build();
         String output;
         try {
             output = gateway.stream(tier, List.of(new SystemMessage(prompt + "\n" + ResumeStructure.SCHEMA), user), 0.0)

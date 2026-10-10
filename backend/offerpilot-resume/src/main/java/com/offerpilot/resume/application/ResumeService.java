@@ -32,6 +32,13 @@ public class ResumeService {
                          ResumeObjectStore storage, ResumeDocumentReader reader, ResumeModelSettings models) {
         this.jdbc = jdbc; this.tx = tx; this.json = json; this.storage = storage; this.reader = reader; this.models = models;
     }
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.offerpilot.auth.application.PrivacySettings privacy;
+    public com.offerpilot.auth.application.PrivacySettings.Risk privacyCheck(String owner, String filename, byte[] bytes) {
+        String mime = reader.mime(filename == null ? "resume" : filename, bytes);
+        if (privacy.enabled(owner)) return new com.offerpilot.auth.application.PrivacySettings.Risk(false, null);
+        return privacy.check(owner, reader.read(bytes, mime).text());
+    }
     public Resume upload(String owner, String filename, String title, byte[] bytes) {
         String name = filename == null ? "resume" : filename.replace('\\', '/');
         name = name.substring(name.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "");

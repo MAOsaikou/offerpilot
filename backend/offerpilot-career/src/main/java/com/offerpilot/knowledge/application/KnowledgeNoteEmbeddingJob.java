@@ -22,7 +22,7 @@ public class KnowledgeNoteEmbeddingJob {
         this.embeddings = embeddings;
         this.enabled = enabled;
     }
-    private record Entry(String id, long revision, String document) {}
+    private record Entry(String id, String owner, long revision, String document) {}
 
     @Scheduled(fixedDelayString = "${offerpilot.knowledge.notes-embed.delay-ms:30000}", initialDelayString = "${offerpilot.knowledge.notes-embed.delay-ms:30000}")
     public void tick() {
@@ -41,20 +41,24 @@ public class KnowledgeNoteEmbeddingJob {
                     ORDER BY embedding_next_attempt_at,id LIMIT 8 FOR UPDATE SKIP LOCKED
                 )
                 UPDATE knowledge_notes n SET embedding_next_attempt_at=now()+interval '5 minutes'
-                FROM pending p WHERE n.id=p.id RETURNING n.id,n.revision,n.title,n.content,n.category
-                """, (rs, row) -> new Entry(rs.getString("id"), rs.getLong("revision"),
+                FROM pending p WHERE n.id=p.id RETURNING n.id,n.user_id,n.revision,n.title,n.content,n.category
+                """, (rs, row) -> new Entry(rs.getString("id"), rs.getString("user_id"), rs.getLong("revision"),
                 KnowledgeNoteSearch.bounded(KnowledgeNoteService.document(new KnowledgeNoteService.Draft(
                         rs.getString("title"), rs.getString("content"), rs.getString("category"))), 6000)));
         if (entries.isEmpty()) return 0;
-        var vectors = embeddings.embed(entries.stream().map(Entry::document).toList());
-        if (vectors.isEmpty()) return 0;
         int indexed = 0;
-        for (int i = 0; i < entries.size(); i++) {
-            Entry entry = entries.get(i);
-            indexed += jdbc.update("""
-                    UPDATE knowledge_notes SET embedding=CAST(? AS vector)
-                    WHERE id=? AND revision=? AND embedding IS NULL
-                    """, OccupationEmbeddings.literal(vectors.get(i)), entry.id(), entry.revision());
+        var groups = entries.stream().collect(java.util.stream.Collectors.groupingBy(Entry::owner));
+        for (var group : groups.values()) {
+            var vectors = com.offerpilot.llm.quota.LlmUserContext.asUser(group.get(0).owner(),
+                    () -> embeddings.embed(group.stream().map(Entry::document).toList()));
+            if (vectors.isEmpty()) continue;
+            for (int i = 0; i < group.size(); i++) {
+                Entry entry = group.get(i);
+                indexed += jdbc.update("""
+                        UPDATE knowledge_notes SET embedding=CAST(? AS vector)
+                        WHERE id=? AND revision=? AND embedding IS NULL
+                        """, OccupationEmbeddings.literal(vectors.get(i)), entry.id(), entry.revision());
+            }
         }
         return indexed;
     }

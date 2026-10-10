@@ -37,6 +37,11 @@ public class ResumeController {
 
     public record Rename(@NotBlank @Size(max = 100) String title) {}
 
+    @PostMapping("/privacy-check")
+    public ApiResponse<?> privacyCheck(@RequestParam MultipartFile file, HttpServletRequest request) throws IOException {
+        String owner = users.require(request.getHeader("Authorization"));
+        return ok(resumes.privacyCheck(owner, file.getOriginalFilename(), file.getBytes()), request);
+    }
     @PostMapping(consumes = "multipart/form-data")
     public ApiResponse<?> upload(@RequestParam MultipartFile file, @RequestParam(required = false) String title,
                                 HttpServletRequest r) throws IOException {
