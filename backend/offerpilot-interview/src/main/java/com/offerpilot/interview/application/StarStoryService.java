@@ -87,7 +87,7 @@ public class StarStoryService {
         var byBody = jdbc.query("SELECT * FROM star_stories WHERE user_id=? AND normalized_body=?",
                 StarStoryService::map, owner, normalized);
         if (!byBody.isEmpty()) return byBody.get(0);
-        int count = jdbc.queryForObject("SELECT count(*) FROM star_stories WHERE user_id=?", Integer.class, owner);
+        Integer count = jdbc.queryForObject("SELECT count(*) FROM star_stories WHERE user_id=?", Integer.class, owner);
         if (count != null && count >= CAP) throw conflict("最多保存 " + CAP + " 条 STAR 故事，请先删除旧条目");
         String id = IdGenerator.next("star");
         String title = titleOf(answer.questionText(), body);
@@ -158,7 +158,7 @@ public class StarStoryService {
         return new Citation(story.id(), story.title(), story.role(), story.starCount(), excerpt);
     }
 
-    static String titleOf(String question, String body) {
+    public static String titleOf(String question, String body) {
         String source = body.codePointCount(0, body.length()) >= 12 ? body : (question == null ? body : question);
         source = source.replaceAll("\\s+", " ").strip();
         int end = source.offsetByCodePoints(0, Math.min(48, source.codePointCount(0, source.length())));

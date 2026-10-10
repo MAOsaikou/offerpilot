@@ -187,6 +187,17 @@ public class ExpertRegistry {
         return withStories(owner, step, withNotes(owner, step, interviewWrites.execute(owner, runId, step, decision)));
     }
 
+    public boolean writingStarStory(PlanStep step) {
+        return starWrites != null && com.offerpilot.agent.application.StarStoryWriteTools.recognizes(step);
+    }
+    public ApprovalService.Ticket requestStarStory(String owner, String runId, PlanStep step) {
+        if (starWrites == null) throw new IllegalStateException("STAR 故事工具暂不可用");
+        return starWrites.request(owner, runId, step);
+    }
+    public Mono<ExpertResult> executeStarStory(String owner, String runId, PlanStep step, ApprovalService.Decision decision) {
+        return starWrites.execute(owner, runId, step, decision);
+    }
+
     public boolean recommending(PlanStep step) {
         return careers != null && step.agent() == ExpertType.CAREER_DISCOVERY && !writingCareer(step);
     }

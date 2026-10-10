@@ -166,9 +166,13 @@ function exportLegacy(session: Interview) {
     <section class="panel">
       <div class="section-heading">
         <h2>STAR 故事库</h2>
-        <span class="subtle">{{ stories.data.value?.items.length ?? 0 }} / {{ stories.data.value?.limit ?? 30 }}</span>
+        <span class="subtle"
+          >{{ stories.data.value?.items.length ?? 0 }} / {{ stories.data.value?.limit ?? 30 }}</span
+        >
       </div>
-      <p class="helper-note">从已完成练习中确认保存的 STAR 回答，会在后续面试对话中作为可引用证据。</p>
+      <p class="helper-note">
+        从已完成练习中确认保存的 STAR 回答，会在后续面试对话中作为可引用证据。
+      </p>
       <p v-if="stories.isPending.value" role="status">正在加载故事库…</p>
       <div v-else-if="stories.isError.value" class="empty-state" role="alert">
         <p>{{ stories.error.value?.message }}</p>
@@ -186,7 +190,9 @@ function exportLegacy(session: Interview) {
       >
         <h3>{{ story.title }}</h3>
         <p class="subtle">{{ story.role || '未标注岗位' }} · {{ story.starCount }}/4 STAR</p>
-        <p class="prose-content">{{ story.body.slice(0, 200) }}{{ story.body.length > 200 ? '…' : '' }}</p>
+        <p class="prose-content">
+          {{ story.body.slice(0, 200) }}{{ story.body.length > 200 ? '…' : '' }}
+        </p>
         <button
           type="button"
           class="btn"

@@ -168,7 +168,6 @@ async function submit() {
   else await persist(session.value.questionIndex + 1)
 }
 
-
 async function saveCandidate(candidate: StarStoryCandidate) {
   if (!session.value || starBusy.value || candidate.alreadySaved) return
   starBusy.value = true
@@ -321,17 +320,19 @@ onBeforeRouteUpdate(saveBeforeLeave)
         </section>
         <aside class="panel form-stack" style="align-self: start">
           <h2>STAR 故事库</h2>
-          <p class="subtle">把 STAR 线索齐全的回答保存下来，之后面试练习会引用这些故事。保存需你确认，不会自动入库。</p>
+          <p class="subtle">
+            把 STAR 线索齐全的回答保存下来，之后面试练习会引用这些故事。保存需你确认，不会自动入库。
+          </p>
           <p v-if="starMessage" class="success-banner" role="status">{{ starMessage }}</p>
-          <div v-if="!starCandidates.length" class="helper-note">本题练习暂无满足 3 项 STAR 线索的候选。</div>
-          <article
-            v-for="item in starCandidates"
-            :key="item.questionIndex"
-            class="answer-card"
-          >
+          <div v-if="!starCandidates.length" class="helper-note">
+            本题练习暂无满足 3 项 STAR 线索的候选。
+          </div>
+          <article v-for="item in starCandidates" :key="item.questionIndex" class="answer-card">
             <h3>第 {{ item.questionIndex + 1 }} 题 · {{ item.starCount }}/4 STAR</h3>
             <p class="subtle">{{ item.title }}</p>
-            <p class="prose-content">{{ item.body.slice(0, 160) }}{{ item.body.length > 160 ? '…' : '' }}</p>
+            <p class="prose-content">
+              {{ item.body.slice(0, 160) }}{{ item.body.length > 160 ? '…' : '' }}
+            </p>
             <button
               type="button"
               class="btn primary"
