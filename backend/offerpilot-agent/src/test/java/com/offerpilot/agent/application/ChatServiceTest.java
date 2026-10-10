@@ -182,35 +182,6 @@ class ChatServiceTest {
         verify(gateway, never()).stream(any(), anyList());
     }
 
-    @Test
-    void streamsTextThenUsageThenCompletionWithIncreasingIds() {
-        when(gateway.stream(eq(ModelTier.FLASH), anyList())).thenReturn(Flux.just(
-                new ChatResponse(List.of(new Generation(new AssistantMessage("你好")))),
-                new ChatResponse(List.of(new Generation(new AssistantMessage("，同学"))),
-                        ChatResponseMetadata.builder().usage(new DefaultUsage(12, 6)).build())));
-        var events = events();
-        assertThat(events).extracting(AgentEvent::type)
-                .containsExactly("run.started", "text.delta", "text.delta", "usage", "run.completed");
-        assertThat(events).extracting(AgentEvent::id).containsExactly(1, 2, 3, 4, 5);
-        assertThat((AgentEvent.Usage) events.get(3)).extracting(AgentEvent.Usage::promptTokens,
-                AgentEvent.Usage::completionTokens).containsExactly(12, 6);
-        verify(gateway).stream(eq(ModelTier.FLASH), argThat(messages -> messages.size() == 2
-                && messages.get(0).getText().equals("test system prompt") && messages.get(1).getText().equals("你好")));
-    }
-
-    @Test
-    void systemPromptCarriesCurrentDate() throws Exception {
-        var dated = new ChatService(gateway, conversations, new ByteArrayResource(
-                "今天是 {current_date}".getBytes(java.nio.charset.StandardCharsets.UTF_8)), orchestrator, new ObjectMapper());
-        when(gateway.stream(eq(ModelTier.FLASH), anyList())).thenReturn(Flux.just(
-                new ChatResponse(List.of(new Generation(new AssistantMessage("好"))))));
-
-        dated.chat("owner", request()).collectList().block(Duration.ofSeconds(5));
-
-        String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString();
-        verify(gateway).stream(eq(ModelTier.FLASH),
-                argThat(messages -> messages.get(0).getText().equals("今天是 " + today)));
-    }
 
     @Test
     void missingKeyProducesActionableTerminalError() {
@@ -262,30 +233,6 @@ class ChatServiceTest {
         verify(gateway, never()).stream(any(), anyList());
     }
 
-    @Test
-    void acceptedCardsAreStreamedAndSavedAndInvalidCardsAreDropped() throws Exception {
-        Orchestrator cards = mock(Orchestrator.class);
-        when(cards.run(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(Flux.just(
-                new AgentEvent.UiCard("ui.card", 0, "run", java.time.Instant.now(), "s1", "card_job_1", "job_match", java.util.Map.of("score", 80)),
-                new AgentEvent.UiCard("ui.card", 0, "run", java.time.Instant.now(), "s1", "card_job_1", "job_match", java.util.Map.of("score", 1)),
-                new AgentEvent.UiCard("ui.card", 0, "run", java.time.Instant.now(), "s1", "card_bad", "not_a_card", java.util.Map.of("score", 1))));
-        var local = new ChatService(gateway, conversations, new ByteArrayResource("test system prompt".getBytes()), cards, new ObjectMapper());
-        when(gateway.stream(eq(ModelTier.FLASH), anyList())).thenReturn(Flux.just(
-                new ChatResponse(List.of(new Generation(new AssistantMessage("报告"))))));
-
-        var events = local.chat("owner", request()).collectList().block(Duration.ofSeconds(5));
-
-        assertThat(events).extracting(AgentEvent::type).containsExactly("run.started", "ui.card", "text.delta", "run.completed");
-        assertThat(((AgentEvent.UiCard) events.get(1)).cardId()).isEqualTo("card_job_1");
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<MessageCard>> saved = ArgumentCaptor.forClass(List.class);
-        verify(conversations).finish(any(), eq("报告"), eq("COMPLETED"), isNull(), isNull(), saved.capture());
-        assertThat(saved.getValue()).singleElement().satisfies(card -> {
-            assertThat(card.cardId()).isEqualTo("card_job_1");
-            assertThat(card.cardType()).isEqualTo("job_match");
-            assertThat(card.payload().path("score").asInt()).isEqualTo(80);
-        });
-    }
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})

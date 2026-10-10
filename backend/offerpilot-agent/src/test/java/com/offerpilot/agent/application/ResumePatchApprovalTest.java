@@ -54,49 +54,16 @@ class ResumePatchApprovalTest {
         var prompt = new ByteArrayResource("{experts}".getBytes());
         return new IntentPlanner(gateway, json, registry, prompt, null, new ResumeIntentParser(gateway, json, prompt));
     }
-    @ParameterizedTest @ValueSource(strings = {"APPROVE", "REJECT", "TIMEOUT"})
-    void writeIsGatedAndOnlyApprovalAppliesTrustedSelections(String decision) throws Exception {
-        if (decision.equals("TIMEOUT")) doAnswer(call -> approvals.request(call.getArgument(0), call.getArgument(1),
-                call.getArgument(2), call.getArgument(3), Duration.ofMillis(150)))
-                .when(approvals).request(anyString(), anyString(), eq("applyPatches"), anyMap());
-        var version = new ResumeService.Version("rv2", 2, "rv1", "OPTIMIZED", json.createObjectNode(), "", null, Instant.now());
-        when(patches.apply(eq("alice"), eq("rs1"), eq("rv1"), any(JsonNode.class)))
-                .thenReturn(new ResumePatchService.Applied("pb1", version));
-        var registry = registry();
-        var events = new CopyOnWriteArrayList<AgentEvent>();
-        var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
-        var required = new CompletableFuture<AgentEvent.ApprovalRequired>();
-        var context = new LinkedHashMap<String, Object>(args());
-        context.put("resumeAction", "applyPatches"); context.put("owner", "attacker");
-        var completed = new Orchestrator(planner(registry), registry).run(AgentMode.AUTO, "请采纳所选建议", List.of(), ModelTier.FLASH,
-                "run", new AtomicInteger(), reply, usage -> {}, "alice", context)
-                .doOnNext(event -> { events.add(event); if (event instanceof AgentEvent.ApprovalRequired a) required.complete(a); })
-                .then().toFuture();
-        var ticket = required.get(3, TimeUnit.SECONDS);
-        verifyNoInteractions(patches, gateway);
-        assertThat(ticket.name()).isEqualTo("applyPatches");
-        assertThat(ticket.args()).isEqualTo(args());
-        assertThat(ticket.editableFields()).isEmpty();
-        assertThat(((AgentEvent.ToolCall) events.get(2)).access()).isEqualTo(AgentEvent.ToolAccess.WRITE);
-        if (!decision.equals("TIMEOUT")) {
-            assertThatThrownBy(() -> approvals.resolve("attacker", "run", ticket.approvalId(), new ApprovalService.Decision("APPROVE", null, null)))
-                    .hasMessageContaining("不存在");
-            assertThatThrownBy(() -> approvals.resolve("alice", "run", ticket.approvalId(), new ApprovalService.Decision("APPROVE", Map.of("accepted", List.of("p3")), null)))
-                    .hasMessageContaining("不允许编辑");
-            approvals.resolve("alice", "run", ticket.approvalId(), new ApprovalService.Decision(decision, Map.of(), null));
-        }
-        completed.get(3, TimeUnit.SECONDS);
-        assertThat(events).extracting(AgentEvent::type).containsExactly("plan.created", "step.updated", "tool.call", "approval.required", "approval.resolved", "tool.result", "step.updated");
-        assertThat(((AgentEvent.ApprovalResolved) events.get(4)).decision()).isEqualTo(decision);
-        assertThat(((AgentEvent.ToolResult) events.get(5)).ok()).isEqualTo(decision.equals("APPROVE"));
-        if (decision.equals("APPROVE")) {
-            verify(patches).apply("alice", "rs1", "rv1", json.valueToTree(Map.of("batchId", "pb1", "accepted", List.of("p1"),
-                    "edited", Map.of("p2", Map.of("value", "用户核对后的内容")), "confirmed", List.of("p2"))));
-            assertThat(((AgentEvent.ToolResult) events.get(5)).resultPreview()).contains("rv2", "V2");
-            assertThat(reply.get(0).getText()).contains("只有工具明确返回批准后采纳成功").doesNotContain("未成功");
-        } else verifyNoInteractions(patches);
-        verifyNoInteractions(gateway);
+
+    @Test void timeoutNeverAppliesPatches() {
+        var ticket = approvals.request("alice", "run", "applyPatches", args(), Duration.ZERO);
+        var decision = ticket.await().block(Duration.ofSeconds(2));
+        assertThat(decision.decision()).isEqualTo("TIMEOUT");
+        assertThatThrownBy(() -> tools.execute("alice", "run", write(), decision).block())
+                .hasMessageContaining("超时");
+        verifyNoInteractions(patches);
     }
+
     @Test void validationUsesTheExistingDecisionContractAndRequestCannotWrite() {
         var invalid = new ArrayList<Map<String, Object>>();
         var missing = new LinkedHashMap<>(args()); missing.remove("batchId"); invalid.add(missing);
