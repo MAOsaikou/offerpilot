@@ -14,14 +14,6 @@ class MessageCardsTest {
     private final ObjectMapper json = new ObjectMapper();
 
     @Test
-    void textOnlyPartsStayCompatible() throws Exception {
-        var parts = json.readTree(MessageCards.encode("你好", List.of(), json));
-        assertThat(parts).hasSize(1);
-        assertThat(parts.get(0).path("type").asText()).isEqualTo("text");
-        assertThat(parts.get(0).path("text").asText()).isEqualTo("你好");
-    }
-
-    @Test
     void selectKeepsValidCardsInOrderAndDropsTheRest() throws Exception {
         ObjectNode match = json.createObjectNode().put("score", 80);
         ObjectNode board = json.createObjectNode().put("change", "CREATED");

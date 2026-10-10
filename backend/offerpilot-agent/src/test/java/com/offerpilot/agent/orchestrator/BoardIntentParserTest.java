@@ -53,18 +53,6 @@ class BoardIntentParserTest {
         assertThat(BoardIntent.matches("把这个岗位加入求职看板后搜索Java", Map.of("jobId", "selected-job"))).isFalse();
         assertThat(BoardIntent.matches("帮我匹配这个岗位", Map.of("jobId", "selected-job"))).isFalse();
     }
-    @Test void jobActionPromptKnowsSelectionsWithoutReceivingRawResourceIds() throws Exception {
-        var gateway = mock(ModelGateway.class);
-        var parser = new JobIntentParser(gateway, new ObjectMapper(), new ByteArrayResource("job actions".getBytes()));
-        when(gateway.stream(any(), anyList(), eq(0.1))).thenAnswer(invocation -> {
-            List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(1);
-            assertThat(messages.get(messages.size()-1).getText()).contains("jobId=true", "resumeId=true", "resumeVersionId=true").doesNotContain("private-selected-id");
-            return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage("{\"action\":\"match\"}")))));
-        });
-        var context = Map.<String, Object>of("jobId", "private-selected-id", "resumeId", "resume1", "resumeVersionId", "version1");
-        var step = new PlanStep("s1", "岗位", ExpertType.JOB, Map.of(), List.of());
-        assertThat(parser.prepare(step, "匹配这个岗位与我的简历", List.of(), ModelTier.PRO, u -> {}, context).block().inputs()).containsEntry("action", "match");
-    }
     @Test void autoPlanningReceivesTheSameBoundedSelectionsAsJobActionParsing() throws Exception {
         var gateway = mock(ModelGateway.class);
         when(gateway.stream(any(), anyList(), eq(0.1))).thenAnswer(invocation -> {

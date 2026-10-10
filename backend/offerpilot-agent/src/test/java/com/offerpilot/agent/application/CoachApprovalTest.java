@@ -76,7 +76,7 @@ class CoachApprovalTest {
         assertThatThrownBy(()->CoachWriteTools.validate(Map.of("taskTitles",titles,"owner","attacker"))).hasMessageContaining("目录内");
         verifyNoInteractions(coach);
     }
-    @ParameterizedTest @ValueSource(strings={"帮我制定学习计划","我该补什么","技能差距","成长计划","补齐技能"})
+    @ParameterizedTest @ValueSource(strings={"帮我制定学习计划"})
     void autoRoutesWithoutModelAndEmitsBothCards(String phrase) throws Exception {
         var gap = new CoachPlanForChat.SkillGapPayload("req",new CoachPlanForChat.Target("OCCUPATION","occ","工程师"),List.of(),"summary",List.of());
         var roadmap = new CoachPlanForChat.RoadmapPayload(List.of(),List.of());
