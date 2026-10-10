@@ -52,9 +52,8 @@ class JobContextTest {
     @Test void missingAndForeignSourcesDoNotAbortOrdinaryChatOrSelectAJob() {
         var registry = new ExpertRegistry();
         registry.setArtifacts(artifacts);
-        for (String key : List.of("applicationId", "matchId", "jobMatchId", "jobId")) {
+        for (String key : List.of("applicationId", "matchId", "jobMatchId")) {
             for (String id : List.of("missing", "foreign")) {
-                if (key.equals("jobId")) when(jobs.get(id)).thenThrow(new BusinessException(ErrorCode.JOB_NOT_FOUND));
                 var context = Map.<String,Object>of(key, id, "resumeId", "resume_selected");
                 var planner = mock(IntentPlanner.class);
                 when(planner.prepare(any(), anyString(), anyList(), any(), any(), anyMap())).thenAnswer(call -> {
@@ -75,7 +74,6 @@ class JobContextTest {
     @Test void ownedSourcesAndSharedJobsResolveBeforePlanning() {
         var registry = new ExpertRegistry();
         registry.setArtifacts(artifacts);
-        when(jobs.get("shared_job")).thenReturn(new ObjectMapper().createObjectNode().put("id", "shared_job"));
         when(jdbc.queryForList("SELECT job_id FROM applications WHERE user_id=? AND id=?", String.class, "owner", "owned_app"))
                 .thenReturn(List.of("shared_job"));
         when(jdbc.queryForList("SELECT job_id FROM job_matches WHERE user_id=? AND id=?", String.class, "owner", "owned_match"))
@@ -89,20 +87,92 @@ class JobContextTest {
             });
             assertThat(run(new Orchestrator(planner, registry), context)).isEmpty();
         }
-        verify(jobs).get("shared_job");
+        verifyNoInteractions(jobs);
     }
 
-    @Test void invalidJobSelectionKeepsExplicitMatchValidationWithoutExistenceError() throws Exception {
+    @Test void selectedJobReachesMatchingAndCompletedEvenWithoutArtifactSnapshot() throws Exception {
+        var json = new ObjectMapper();
         var gateway = mock(ModelGateway.class);
-        var registry = new ExpertRegistry();
+        var matches = mock(com.offerpilot.job.application.JobMatchForChat.class);
+        var registry = new ExpertRegistry(matches);
+        registry.setArtifacts(artifacts);
+        var planner = new IntentPlanner(gateway, json, registry, resource("planner"));
+        var conversations = mock(ConversationService.class);
+        var service = new ChatService(gateway, conversations, resource("system"), new Orchestrator(planner, registry), json);
+        when(gateway.defaultTier()).thenReturn(ModelTier.FLASH);
+        when(gateway.modelName(any())).thenReturn("stub");
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.just(new ChatResponse(
+                List.of(new Generation(new AssistantMessage("匹配结果已展示。"))))));
+        when(conversations.begin(anyString(), any(), anyString(), any(), anyString())).thenAnswer(call ->
+                new ConversationService.Turn("owner", "conv", "run", "msg", call.getArgument(3), Instant.now(), List.of()));
+        when(conversations.checkpoint(any(), anyString())).thenReturn(true);
+        when(conversations.finish(any(), anyString(), anyString(), any(), any(), any())).thenAnswer(call -> call.getArgument(2));
+        var report = json.createObjectNode().put("id", "match_selected").put("score", 0).put("summary", "已匹配");
+        report.putArray("requirements");
+        when(matches.match(eq("owner"), eq("job"), eq("rs"), eq("rv"), anyString(), eq(ModelTier.FLASH)))
+                .thenReturn(com.offerpilot.job.application.JobMatchCards.fromReport(report));
+        for (var mode : List.of(AgentMode.JOB, AgentMode.AUTO)) {
+            var context = Map.<String,Object>of("jobAction", "match", "jobId", "job", "resumeId", "rs", "resumeVersionId", "rv",
+                    "applicationId", "foreign-application");
+            var events = service.chat("owner", new ChatRequest(null, "匹配所选岗位和简历", null, mode,
+                    new ChatRequest.Options("FLASH", false, context))).collectList().block(Duration.ofSeconds(5));
+            assertThat(events).noneMatch(AgentEvent.ErrorEvent.class::isInstance)
+                    .anyMatch(e -> e instanceof AgentEvent.UiCard card && card.cardType().equals("job_match"))
+                    .anyMatch(AgentEvent.RunCompleted.class::isInstance);
+            assertThat(context).containsEntry("jobId", "job");
+        }
+        verify(matches, times(2)).match(eq("owner"), eq("job"), eq("rs"), eq("rv"), anyString(), eq(ModelTier.FLASH));
+        verifyNoInteractions(jobs, jdbc);
+        verify(gateway, never()).stream(any(), anyList(), anyDouble()); // Explicit match bypasses planning.
+    }
+
+    @Test void artifactFilteringPreservesToolSelectionAndOnlyDropsUnavailableProvenance() {
+        var json = new ObjectMapper();
+        var optimizations = mock(com.offerpilot.resume.application.ResumeOptimizationForChat.class);
+        var descriptions = mock(com.offerpilot.job.application.JobDescriptionForChat.class);
+        var coach = mock(com.offerpilot.interview.application.InterviewCoachForChat.class);
+        var approvals = new ApprovalService(mock(ConversationService.class));
+        var beans = new org.springframework.beans.factory.support.StaticListableBeanFactory();
+        beans.addBean("interviews", coach);
+        beans.addBean("writes", new com.offerpilot.agent.application.InterviewWriteTools(coach, approvals,
+                mock(com.offerpilot.interview.application.StarStoryService.class)));
+        var registry = new ExpertRegistry(beans.getBeanProvider(com.offerpilot.job.application.JobMatchForChat.class),
+                beans.getBeanProvider(com.offerpilot.resume.application.ResumeDiagnosisForChat.class), null, optimizations, descriptions, null,
+                beans.getBeanProvider(com.offerpilot.career.application.CareerRecommendForChat.class),
+                beans.getBeanProvider(com.offerpilot.agent.application.CareerWriteTools.class),
+                beans.getBeanProvider(com.offerpilot.interview.application.InterviewCoachForChat.class),
+                beans.getBeanProvider(com.offerpilot.agent.application.InterviewWriteTools.class));
         registry.setArtifacts(artifacts);
         when(jobs.get("missing")).thenThrow(new BusinessException(ErrorCode.JOB_NOT_FOUND));
-        var planner = new IntentPlanner(gateway, new ObjectMapper(), registry, resource("planner"));
-        assertThatThrownBy(() -> run(new Orchestrator(planner, registry), Map.of("jobAction", "match", "jobId", "missing",
-                "resumeId", "resume_selected", "resumeVersionId", "version_selected")))
-                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.errorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED))
-                .hasMessageContaining("请先选择岗位");
-        verifyNoInteractions(gateway);
+        when(jobs.get("shared")).thenReturn(json.createObjectNode().put("id", "shared"));
+        when(descriptions.description(anyString())).thenReturn("Java JD");
+        when(optimizations.generate(eq("owner"), eq("rs"), eq("rv"), eq("Java JD"), anyString(), nullable(String.class)))
+                .thenReturn(Mono.just(json.createObjectNode().put("reportId", "opt")));
+        for (String job : List.of("missing", "shared")) {
+            var context = Map.<String,Object>of("jobId", job, "resumeId", "rs", "resumeVersionId", "rv");
+            var selected = registry.withJobContext("owner", context).block();
+            assertThat(selected).containsEntry("jobId", job);
+            var interview = com.offerpilot.agent.orchestrator.InterviewIntentParser.prepare(
+                    new com.offerpilot.agent.domain.PlanStep("s", "面试", com.offerpilot.agent.domain.ExpertType.INTERVIEWER, Map.of(), List.of()),
+                    "开始面试", selected);
+            var ticket = registry.requestInterview("owner", "run_" + job, interview);
+            if (job.equals("missing")) assertThat(ticket.args()).doesNotContainKey("jobId");
+            else assertThat(ticket.args()).containsEntry("jobId", job);
+            assertThat(interview.inputs()).containsEntry("jobId", job); // No mutation of the tool selection.
+            approvals.resolve("owner", "run_" + job, ticket.id(), new ApprovalService.Decision("REJECT", null, null));
+            var optimize = new com.offerpilot.agent.domain.PlanStep("s", "改写", com.offerpilot.agent.domain.ExpertType.RESUME,
+                    Map.of("action", "optimize"), List.of());
+            registry.execute("owner", selected, "run_" + job, optimize, Map.of()).block();
+            verify(descriptions).description(job);
+            verify(optimizations).generate(eq("owner"), eq("rs"), eq("rv"), eq("Java JD"), anyString(),
+                    job.equals("missing") ? isNull() : eq(job));
+        }
+        when(jobs.get("unavailable")).thenThrow(new BusinessException(ErrorCode.DATABASE_UNAVAILABLE));
+        var interview = new com.offerpilot.agent.domain.PlanStep("s", "面试", com.offerpilot.agent.domain.ExpertType.INTERVIEWER,
+                Map.of("action", "startInterview", "jobId", "unavailable"), List.of());
+        assertThatThrownBy(() -> registry.requestInterview("owner", "run_failed", interview))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.errorCode()).isEqualTo(ErrorCode.DATABASE_UNAVAILABLE));
+        verifyNoInteractions(coach);
     }
 
     @Test void redteamWriteRequestsStillReachApprovalAndRejectWithoutDomainAccess() throws Exception {
@@ -162,9 +232,6 @@ class JobContextTest {
                 .thenThrow(new DataAccessResourceFailureException("database unavailable"));
         assertThatThrownBy(() -> run(new Orchestrator(planner, registry), Map.of("applicationId", "app")))
                 .isInstanceOf(DataAccessResourceFailureException.class);
-        when(jobs.get("job")).thenThrow(new BusinessException(ErrorCode.DATABASE_UNAVAILABLE));
-        assertThatThrownBy(() -> run(new Orchestrator(planner, registry), Map.of("jobId", "job")))
-                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.errorCode()).isEqualTo(ErrorCode.DATABASE_UNAVAILABLE));
         verifyNoInteractions(planner);
     }
 

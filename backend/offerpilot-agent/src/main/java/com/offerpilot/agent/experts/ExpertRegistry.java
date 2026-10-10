@@ -38,23 +38,27 @@ public class ExpertRegistry {
     @Autowired(required = false)
     public void setArtifacts(com.offerpilot.common.artifact.JobArtifacts artifacts) { this.artifacts=artifacts; }
     public Mono<Map<String,Object>> withJobContext(String owner,Map<String,Object> context) {
-        if (artifacts==null) return Mono.just(context);
+        // A selected job is a tool input. Optional artifact visibility must not rewrite it.
+        if (artifacts==null || text(context.get("jobId"))!=null) return Mono.just(context);
         return Mono.fromCallable(() -> resolveJobContext(owner,context)).subscribeOn(Schedulers.boundedElastic());
     }
     private Map<String,Object> resolveJobContext(String owner,Map<String,Object> context) {
         var selected=new java.util.LinkedHashMap<String,Object>(context);
-        selected.remove("jobId");
+        String job=optionalJob(owner,null,text(context.get("applicationId")),
+            text(context.getOrDefault("matchId",context.get("jobMatchId"))));
+        if (job!=null) selected.put("jobId",job);
+        return selected;
+    }
+    private String optionalJob(String owner,String jobId,String applicationId,String matchId) {
+        if (artifacts==null) return jobId;
         try {
-            String job=artifacts.selectedJob(owner,text(context.get("jobId")),text(context.get("applicationId")),
-                text(context.getOrDefault("matchId",context.get("jobMatchId"))));
-            if (job!=null) selected.put("jobId",job);
+            return artifacts.selectedJob(owner,jobId,applicationId,matchId);
         } catch (BusinessException ex) {
             if (ex.errorCode()!=ErrorCode.JOB_NOT_FOUND && ex.errorCode()!=ErrorCode.APPLICATION_NOT_FOUND
                     && ex.errorCode()!=ErrorCode.MATCH_NOT_FOUND) throw ex;
-            // Optional provenance is unavailable. Keep opaque board targets on their existing
-            // approval/owner-check path, but never use them as a selected job or expose existence.
+            // Missing optional provenance does not authorize or invalidate the tool input.
+            return null;
         }
-        return selected;
     }
     private final JobMatchForChat matches;
     private com.offerpilot.resume.application.ResumeDiagnosisForChat diagnoses;
@@ -225,6 +229,12 @@ public class ExpertRegistry {
     public boolean writingInterview(PlanStep step) { return InterviewWriteTools.recognizes(step); }
     public ApprovalService.Ticket requestInterview(String owner, String runId, PlanStep step) {
         if (interviewWrites == null) throw new IllegalStateException("面试工具暂不可用");
+        if ("startInterview".equals(step.inputs().get("action")) && step.inputs().containsKey("jobId")) {
+            var inputs=new java.util.LinkedHashMap<String,Object>(step.inputs());
+            String job=optionalJob(owner,text(inputs.remove("jobId")),null,null);
+            if (job!=null) inputs.put("jobId",job);
+            step=new PlanStep(step.id(),step.title(),step.agent(),inputs,step.dependsOn());
+        }
         return interviewWrites.request(owner, runId, step);
     }
     public Mono<ExpertResult> executeInterview(String owner, String runId, PlanStep step, ApprovalService.Decision decision) {
@@ -392,7 +402,8 @@ public class ExpertRegistry {
             Mono<com.fasterxml.jackson.databind.JsonNode> result = "read_optimization".equals(step.inputs().get("action"))
                     ? optimizations.report(owner, resumeId, versionId, text(context.get("optimizationReportId")))
                     : Mono.fromCallable(() -> descriptions.description(text(context.get("jobId"))))
-                        .subscribeOn(Schedulers.boundedElastic()).flatMap(jd -> optimizations.generate(owner, resumeId, versionId, jd, requestId(runId, step.id()), text(context.get("jobId"))));
+                        .subscribeOn(Schedulers.boundedElastic()).flatMap(jd -> optimizations.generate(owner, resumeId, versionId, jd,
+                            requestId(runId, step.id()), optionalJob(owner,text(context.get("jobId")),null,null)));
             return result.map(report -> ExpertResult.card("已保存的改写建议（本轮未执行采纳，采纳状态请在简历页查看）：" + jsonSummary(report),
                     report.path("reportId").asText(), "resume_diff", report));
         }
