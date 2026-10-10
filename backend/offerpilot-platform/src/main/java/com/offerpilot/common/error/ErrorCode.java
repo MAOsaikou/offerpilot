@@ -37,6 +37,9 @@ public enum ErrorCode {
 
     INTERVIEW_NOT_FOUND(30701, HttpStatus.NOT_FOUND, "面试练习不存在或无权访问"),
 
+    STAR_STORY_NOT_FOUND(30702, HttpStatus.NOT_FOUND, "STAR 故事不存在或无权访问"),
+    STAR_STORY_CONFLICT(30703, HttpStatus.CONFLICT, "STAR 故事库已满或保存冲突"),
+
     KNOWLEDGE_NOTE_NOT_FOUND(30801, HttpStatus.NOT_FOUND, "笔记不存在或无权访问"),
     KNOWLEDGE_IMPORT_CONFLICT(30802, HttpStatus.CONFLICT, "该本地笔记已导入且原内容发生变化，请保留本地副本并另存为新笔记"),
 

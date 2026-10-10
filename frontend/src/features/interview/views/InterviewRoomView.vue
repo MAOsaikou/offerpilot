@@ -5,6 +5,11 @@ import { useQueryClient } from '@tanstack/vue-query'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { getInterview, saveInterviewAnswer, updateInterview } from '@/shared/api/interviews'
+import {
+  listStarStoryCandidates,
+  saveStarStory,
+  type StarStoryCandidate,
+} from '@/shared/api/starStories'
 import { ApiError } from '@/shared/api/client'
 import type { InterviewSession } from '@/shared/types/interview'
 import { exportInterview } from '@/shared/utils/interviewExport'
@@ -19,6 +24,9 @@ const loadError = ref('')
 const notFound = ref(false)
 const error = ref('')
 const busy = ref(false)
+const starCandidates = ref<StarStoryCandidate[]>([])
+const starBusy = ref(false)
+const starMessage = ref('')
 const current = computed(() =>
   session.value?.answers.find((a) => a.questionIndex === session.value?.questionIndex),
 )
@@ -89,6 +97,15 @@ async function load() {
     if (requestRevision !== revision) return
     session.value = loaded
     answer.value = current.value?.answerText || ''
+    starCandidates.value = []
+    starMessage.value = ''
+    if (loaded.completed) {
+      try {
+        starCandidates.value = await listStarStoryCandidates(loaded.id, controller.signal)
+      } catch {
+        /* Story bank is optional on the room page. */
+      }
+    }
   } catch (e) {
     if (requestRevision !== revision) return
     notFound.value = e instanceof ApiError && e.status === 404
@@ -149,6 +166,23 @@ async function submit() {
   if (session.value.questionIndex === session.value.answers.length - 1)
     await persist(undefined, true)
   else await persist(session.value.questionIndex + 1)
+}
+
+async function saveCandidate(candidate: StarStoryCandidate) {
+  if (!session.value || starBusy.value || candidate.alreadySaved) return
+  starBusy.value = true
+  starMessage.value = ''
+  error.value = ''
+  try {
+    await saveStarStory({ sessionId: session.value.id, questionIndex: candidate.questionIndex })
+    starCandidates.value = await listStarStoryCandidates(session.value.id)
+    starMessage.value = '已保存到 STAR 故事库。'
+    void cache.invalidateQueries({ queryKey: ['star-stories'] })
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    starBusy.value = false
+  }
 }
 
 async function saveBeforeLeave() {
@@ -285,6 +319,29 @@ onBeforeRouteUpdate(saveBeforeLeave)
           </article>
         </section>
         <aside class="panel form-stack" style="align-self: start">
+          <h2>STAR 故事库</h2>
+          <p class="subtle">
+            把 STAR 线索齐全的回答保存下来，之后面试练习会引用这些故事。保存需你确认，不会自动入库。
+          </p>
+          <p v-if="starMessage" class="success-banner" role="status">{{ starMessage }}</p>
+          <div v-if="!starCandidates.length" class="helper-note">
+            本题练习暂无满足 3 项 STAR 线索的候选。
+          </div>
+          <article v-for="item in starCandidates" :key="item.questionIndex" class="answer-card">
+            <h3>第 {{ item.questionIndex + 1 }} 题 · {{ item.starCount }}/4 STAR</h3>
+            <p class="subtle">{{ item.title }}</p>
+            <p class="prose-content">
+              {{ item.body.slice(0, 160) }}{{ item.body.length > 160 ? '…' : '' }}
+            </p>
+            <button
+              type="button"
+              class="btn primary"
+              :disabled="starBusy || item.alreadySaved"
+              @click="saveCandidate(item)"
+            >
+              {{ item.alreadySaved ? '已入库' : starBusy ? '保存中…' : '保存到故事库' }}
+            </button>
+          </article>
           <h2>复盘时，问自己三个问题</h2>
           <p class="subtle">
             ① 我是否直接回答了问题？<br />② 我是否说清自己的贡献？<br />③ 我的结果是否具体、可验证？

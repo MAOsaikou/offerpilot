@@ -29,8 +29,12 @@ class InterviewApprovalTest {
     final InterviewCoachForChat coach = new DefaultInterviewCoachForChat(sessions);
     final ConversationService conversations = mock(ConversationService.class);
     final ApprovalService approvals = new ApprovalService(conversations);
-    final InterviewWriteTools writes = new InterviewWriteTools(coach, approvals);
+    final StarStoryService stories = mock(StarStoryService.class);
+    final InterviewWriteTools writes = new InterviewWriteTools(coach, approvals, stories);
     final ModelGateway gateway = mock(ModelGateway.class);
+    {
+        when(stories.candidates(any(), any())).thenReturn(java.util.List.of());
+    }
     InterviewService.Session session(boolean completed) {
         return new InterviewService.Session("iv_1", "Java工程师", "项目与经历", 0, completed, "now", "snapshot",
                 java.util.stream.IntStream.range(0, 5).mapToObj(i -> new InterviewService.Answer(i, InterviewService.QUESTIONS.get(i), "")).toList());

@@ -7,6 +7,7 @@ import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
 import com.offerpilot.interview.application.InterviewCoachForChat;
 import com.offerpilot.interview.application.InterviewService;
+import com.offerpilot.interview.application.StarStoryService;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -18,7 +19,10 @@ import java.util.Set;
 public class InterviewWriteTools {
     private final InterviewCoachForChat coach;
     private final ApprovalService approvals;
-    public InterviewWriteTools(InterviewCoachForChat coach, ApprovalService approvals) { this.coach = coach; this.approvals = approvals; }
+    private final StarStoryService stories;
+    public InterviewWriteTools(InterviewCoachForChat coach, ApprovalService approvals, StarStoryService stories) {
+        this.coach = coach; this.approvals = approvals; this.stories = stories;
+    }
     public static boolean action(String action) { return Set.of("startInterview", "continueInterview", "answerInterview", "completeInterview").contains(action); }
     public static boolean recognizes(PlanStep step) { return step.agent() == ExpertType.INTERVIEWER && action(String.valueOf(step.inputs().get("action"))); }
     static void validate(String action, Map<String, Object> args) {
@@ -62,16 +66,28 @@ public class InterviewWriteTools {
             validate(action, args);
             if (action.equals("completeInterview")) {
                 var report = coach.completeSession(owner, (String) args.get("sessionId"), (String) args.get("expectedUpdatedAt"));
-                return ExpertResult.card("已按批准标记面试完成。文字规则报告：" + report, com.offerpilot.agent.experts.ExpertRegistry.requestId(runId, step.id()), "interview_report", report);
+                return withCandidates(owner, (String) args.get("sessionId"), report,
+                        "已按批准标记面试完成。文字规则报告：" + report, runId, step.id());
             }
             var turn = action.equals("startInterview") ? coach.startSession(owner, (String) args.get("role"), (String) args.get("kind"))
                     : coach.continueSession(owner, (String) args.get("sessionId"), (String) args.get("answer"), (Boolean) args.get("nextQuestion"), (String) args.get("expectedUpdatedAt"));
             if (turn.state().equals("CLOSING")) {
                 var report = coach.scoreSession(owner, turn.sessionId());
-                return ExpertResult.card(turn.note() + "文字规则报告：" + report, com.offerpilot.agent.experts.ExpertRegistry.requestId(runId, step.id()), "interview_report", report);
+                return withCandidates(owner, turn.sessionId(), report,
+                        turn.note() + "文字规则报告：" + report, runId, step.id());
             }
             return ExpertResult.card("面试会话 " + turn.sessionId() + "，第 " + (turn.questionIndex() + 1) + " 题：" + turn.question() + " " + turn.note(),
                     com.offerpilot.agent.experts.ExpertRegistry.requestId(runId, step.id()), "interviewer_state", turn);
         }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private ExpertResult withCandidates(String owner, String sessionId, Object report, String summary, String runId, String stepId) {
+        var candidates = stories.candidates(owner, sessionId).stream().filter(c -> !c.alreadySaved()).toList();
+        if (candidates.isEmpty()) {
+            return ExpertResult.card(summary, com.offerpilot.agent.experts.ExpertRegistry.requestId(runId, stepId), "interview_report", report);
+        }
+        return ExpertResult.cards(summary + " 可审批入库的 STAR 候选：" + candidates.size() + " 条。",
+                new ExpertResult.Card(com.offerpilot.agent.experts.ExpertRegistry.requestId(runId, stepId), "interview_report", report),
+                new ExpertResult.Card(com.offerpilot.agent.experts.ExpertRegistry.requestId(runId, stepId + ":stars"), "star_story_candidates", candidates));
     }
 }

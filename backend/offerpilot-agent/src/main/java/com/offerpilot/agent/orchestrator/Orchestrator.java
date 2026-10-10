@@ -76,10 +76,11 @@ public class Orchestrator {
                 boolean patchWrite = experts.writingPatches(step);
                 boolean coachWrite = experts.writingCoach(step);
                 boolean interviewWrite = experts.writingInterview(step);
+                boolean starWrite = experts.writingStarStory(step);
                 boolean interviewStep = step.agent() == ExpertType.INTERVIEWER;
                 boolean careerWrite = experts.writingCareer(step);
                 boolean careerStep = step.agent() == ExpertType.CAREER_DISCOVERY;
-                boolean willWrite = experts.writingBoard(step) || careerWrite || interviewWrite || coachWrite || patchWrite;
+                boolean willWrite = experts.writingBoard(step) || careerWrite || interviewWrite || starWrite || coachWrite || patchWrite;
                 boolean willRecommend = experts.recommending(step);
                 boolean willMatch = experts.matching(step, safeContext);
                 boolean willDiagnose = experts.diagnosing(step, safeContext);
@@ -88,7 +89,7 @@ public class Orchestrator {
                 boolean willAdvise = step.agent() == ExpertType.RESUME && "advice".equals(step.inputs().get("action"));
                 if (willWrite || willMatch || willDiagnose || willSearch || willOptimize || willRecommend || interviewStep || coachStep) attemptedBusiness.set(true);
                 String name = willWrite ? (String) step.inputs().get("action") : willSearch ? "search_jobs" : willMatch ? "matchJobToResume" : willOptimize ? "optimizeResumeForJob" : willDiagnose ? "diagnoseResume" : willAdvise ? "resumeGuidance" : interviewStep ? "scoreInterview" : careerStep ? "recommendCareers" : coachStep ? "planLearning" : "placeholder." + step.agent().name();
-                String running = willWrite ? (patchWrite ? "等待用户批准采纳简历改写" : coachWrite ? "等待用户批准同步成长任务" : interviewWrite ? "正在准备模拟面试，等待用户批准面试写入" : careerWrite ? "等待用户批准设置目标职业" : "等待用户批准看板写入") : willSearch ? "正在查询企业官网岗位" : willMatch ? (tier == ModelTier.PRO ? "深度模式较慢，正在分析原文证据（最多3分钟）" : "正在对照岗位要求与简历") : willOptimize ? "正在读取或生成改写建议，未修改简历" : willDiagnose ? "正在读取或生成简历诊断" : willAdvise ? "正在整理简历文字建议" : interviewStep ? "正在生成面试评分卡" : careerStep ? "正在根据兴趣推荐职业" : coachStep ? "正在分析技能差距与学习路线" : "正在运行占位专家";
+                String running = willWrite ? (patchWrite ? "等待用户批准采纳简历改写" : coachWrite ? "等待用户批准同步成长任务" : starWrite ? "等待用户批准保存 STAR 故事" : interviewWrite ? "正在准备模拟面试，等待用户批准面试写入" : careerWrite ? "等待用户批准设置目标职业" : "等待用户批准看板写入") : willSearch ? "正在查询企业官网岗位" : willMatch ? (tier == ModelTier.PRO ? "深度模式较慢，正在分析原文证据（最多3分钟）" : "正在对照岗位要求与简历") : willOptimize ? "正在读取或生成改写建议，未修改简历" : willDiagnose ? "正在读取或生成简历诊断" : willAdvise ? "正在整理简历文字建议" : interviewStep ? "正在生成面试评分卡" : careerStep ? "正在根据兴趣推荐职业" : coachStep ? "正在分析技能差距与学习路线" : "正在运行占位专家";
                 Map<String, String> upstream = new LinkedHashMap<>();
                 step.dependsOn().forEach(id -> upstream.put(id, outputs.get(id)));
                 Function<Mono<ExpertResult>, Flux<AgentEvent>> finish = work -> work
@@ -114,18 +115,18 @@ public class Orchestrator {
                         .concatWith(Flux.defer(() -> {
                             if (!willWrite) return finish.apply(willMatch ? experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream), tier)
                                     : experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream)));
-                            return Mono.fromCallable(() -> patchWrite ? experts.requestPatch(owner, runId, step) : coachWrite ? experts.requestCoach(owner, runId, step) : interviewWrite ? experts.requestInterview(owner, runId, step) : careerWrite ? experts.requestCareer(owner, runId, step) : experts.requestBoard(owner, runId, step))
-                                    .subscribeOn(careerWrite || interviewWrite || coachWrite || patchWrite ? reactor.core.scheduler.Schedulers.boundedElastic() : reactor.core.scheduler.Schedulers.immediate()).flatMapMany(ticket -> Flux.<AgentEvent>just(new AgentEvent.ApprovalRequired("approval.required", seq.incrementAndGet(), runId,
+                            return Mono.fromCallable(() -> patchWrite ? experts.requestPatch(owner, runId, step) : coachWrite ? experts.requestCoach(owner, runId, step) : starWrite ? experts.requestStarStory(owner, runId, step) : interviewWrite ? experts.requestInterview(owner, runId, step) : careerWrite ? experts.requestCareer(owner, runId, step) : experts.requestBoard(owner, runId, step))
+                                    .subscribeOn(careerWrite || interviewWrite || starWrite || coachWrite || patchWrite ? reactor.core.scheduler.Schedulers.boundedElastic() : reactor.core.scheduler.Schedulers.immediate()).flatMapMany(ticket -> Flux.<AgentEvent>just(new AgentEvent.ApprovalRequired("approval.required", seq.incrementAndGet(), runId,
                                     Instant.now(), step.id(), ticket.id(), callId, name, ticket.args(),
-                                    (patchWrite ? "此操作将按所选补丁写入新的简历版本，原版本保留可查看；请核对后批准。" : coachWrite ? "此操作将把所选任务标记完成，并保留原有完成项；请确认这些任务已完成后批准。" : interviewWrite ? "此操作将创建面试、保存答案或更新会话状态，请核对后批准。" : careerWrite ? "此操作将把职业档案目标设为「" + ticket.args().get("name") + "」，请确认后批准。" : "此操作将修改求职看板，请确认状态和备注后批准。"), ticket.expiresAt(), careerWrite || interviewWrite || coachWrite || patchWrite ? List.of() : List.of("status", "note")))
+                                    (patchWrite ? "此操作将按所选补丁写入新的简历版本，原版本保留可查看；请核对后批准。" : coachWrite ? "此操作将把所选任务标记完成，并保留原有完成项；请确认这些任务已完成后批准。" : starWrite ? "此操作将把该题已验证的 STAR 回答保存到故事库，供后续面试练习引用；拒绝或超时均不保存。" : interviewWrite ? "此操作将创建面试、保存答案或更新会话状态，请核对后批准。" : careerWrite ? "此操作将把职业档案目标设为「" + ticket.args().get("name") + "」，请确认后批准。" : "此操作将修改求职看板，请确认状态和备注后批准。"), ticket.expiresAt(), careerWrite || interviewWrite || starWrite || coachWrite || patchWrite ? List.of() : List.of("status", "note")))
                                     .concatWith(ticket.await().flatMapMany(decisionResult -> Flux.<AgentEvent>just(
                                             new AgentEvent.ApprovalResolved("approval.resolved", seq.incrementAndGet(), runId,
                                                     Instant.now(), ticket.id(), decisionResult.decision()))
-                                            .concatWith(Flux.defer(() -> finish.apply(patchWrite ? experts.executePatch(owner, runId, step, decisionResult) : coachWrite ? experts.executeCoach(owner, step, decisionResult) : interviewWrite ? experts.executeInterview(owner, runId, step, decisionResult) : careerWrite ? experts.executeCareer(owner, step, decisionResult) : experts.executeBoard(owner, runId, step, decisionResult)))))));
+                                            .concatWith(Flux.defer(() -> finish.apply(patchWrite ? experts.executePatch(owner, runId, step, decisionResult) : coachWrite ? experts.executeCoach(owner, step, decisionResult) : starWrite ? experts.executeStarStory(owner, runId, step, decisionResult) : interviewWrite ? experts.executeInterview(owner, runId, step, decisionResult) : careerWrite ? experts.executeCareer(owner, step, decisionResult) : experts.executeBoard(owner, runId, step, decisionResult)))))));
                         }).onErrorResume(ex -> {
                             failed.add(step.id());
                             String summary = willWrite || willMatch || willDiagnose || willSearch || willOptimize || careerStep || interviewStep || coachStep
-                                    ? ex instanceof BusinessException business ? business.getMessage() : willWrite ? (patchWrite ? "简历补丁采纳失败或超时，请重试" : coachWrite ? "成长任务同步失败或超时，请重试" : interviewWrite ? "面试写入失败或超时，请重试" : careerWrite ? "职业目标写入失败或超时，请重试" : "看板写入失败或超时，请重试") : willSearch ? "岗位搜索失败或超时，请重试" : "分析失败"
+                                    ? ex instanceof BusinessException business ? business.getMessage() : willWrite ? (patchWrite ? "简历补丁采纳失败或超时，请重试" : coachWrite ? "成长任务同步失败或超时，请重试" : starWrite ? "STAR 故事保存失败或超时，请重试" : interviewWrite ? "面试写入失败或超时，请重试" : careerWrite ? "职业目标写入失败或超时，请重试" : "看板写入失败或超时，请重试") : willSearch ? "岗位搜索失败或超时，请重试" : "分析失败"
                                     : "占位专家执行失败";
                             outputs.put(step.id(), summary);
                             return outcome(runId, seq, step.id(), callId, name, false, summary, false, List.of(), started);
