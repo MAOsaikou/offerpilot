@@ -150,6 +150,7 @@ async function start(save: boolean) {
         runningId.value = id
         void refresh()
       },
+      props.jobId,
     )
     await reveal(value, jd, request)
   } catch (cause) {

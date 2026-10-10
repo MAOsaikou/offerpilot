@@ -1,4 +1,5 @@
 import { createApp, nextTick } from 'vue'
+import { createRouter, createMemoryHistory } from 'vue-router'
 import { afterEach, expect, it } from 'vitest'
 import type { EvidenceMatch } from '@/shared/types/jobs'
 import EvidenceMatchReport from './EvidenceMatchReport.vue'
@@ -80,7 +81,12 @@ const report: EvidenceMatch = {
 const mounted: { app: ReturnType<typeof createApp>; root: HTMLDivElement }[] = []
 function mountReport(payload: EvidenceMatch = report) {
   const root = document.createElement('div')
-  const app = createApp(EvidenceMatchReport, { payload })
+  const app = createApp(EvidenceMatchReport, { payload }).use(
+    createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/resumes/:id', component: { render: () => null } }],
+    }),
+  )
   document.body.append(root)
   app.mount(root)
   mounted.push({ app, root })
@@ -95,6 +101,9 @@ afterEach(() => {
 
 it('switches the original quote and status when navigating to missing JD evidence, then closes', async () => {
   const root = mountReport()
+  expect(root.querySelector('a')?.getAttribute('href')).toContain(
+    '/resumes/resume-1?tab=optimize&jobId=job-1&resumeVersionId=version-2',
+  )
   ;[...root.querySelectorAll<HTMLButtonElement>('.requirement-row button')]
     .find((button) => button.textContent?.includes('简历依据'))!
     .click()

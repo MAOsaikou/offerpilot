@@ -52,6 +52,8 @@ export interface ApplicationDetail {
     resumeId: string
     resumeVersionId: string
     createdAt: string
+    status: string
+    viewUrl: string
     pdfAvailable: boolean
     exportUrl: string | null
   }[]

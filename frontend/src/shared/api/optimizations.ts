@@ -38,6 +38,7 @@ export async function optimizeResume(
   jobDescription: string,
   signal: AbortSignal,
   started: (id: string) => void,
+  jobId?: string,
 ): Promise<OptimizationReport> {
   const response = await fetchWithIdentity(apiUrl(`${versionPath(id, version)}/optimize`), {
     method: 'POST',
@@ -45,7 +46,7 @@ export async function optimizeResume(
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
     }),
-    body: JSON.stringify({ requestId, jobDescription }),
+    body: JSON.stringify({ requestId, jobDescription, jobId }),
     signal,
   })
   if (!response.ok || !response.body) throw await toApiError(response)

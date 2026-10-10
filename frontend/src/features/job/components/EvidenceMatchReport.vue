@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, nextTick } from 'vue'
+import { RouterLink } from 'vue-router'
 import type { EvidenceMatch, MatchRequirement } from '@/shared/types/jobs'
 const props = defineProps<{ payload: unknown }>()
 const data = computed(() => props.payload as EvidenceMatch)
@@ -60,6 +61,14 @@ const excerpt = computed(() => {
 </script>
 <template>
   <article class="panel form-stack evidence-report">
+    <RouterLink
+      class="btn"
+      :to="{
+        path: '/resumes/' + data.resumeId,
+        query: { tab: 'optimize', jobId: data.jobId, resumeVersionId: data.resumeVersionId },
+      }"
+      >按此岗位改写</RouterLink
+    >
     <div class="section-heading">
       <div>
         <p class="subtle">岗位要求的简历证据覆盖率</p>

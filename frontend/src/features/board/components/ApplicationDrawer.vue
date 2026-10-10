@@ -83,6 +83,14 @@ async function openReport() {
     if (active) evaluation.value = report.evaluation
   })
 }
+const rewriteStates: Record<string, string> = {
+  RUNNING: '生成中',
+  SUCCEEDED: '已完成',
+  FAILED: '失败',
+  CANCELLED: '已取消',
+}
+const interviewStates: Record<string, string> = { IN_PROGRESS: '练习中', COMPLETED: '已完成' }
+
 function eventText(event: ApplicationEvent) {
   if (event.kind === 'STATUS_CHANGED')
     return `${applicationStages[event.fromStatus!]} → ${applicationStages[event.toStatus!]}`
@@ -217,7 +225,10 @@ function eventText(event: ApplicationEvent) {
         <section class="panel form-stack">
           <h3>定向改写与简历 PDF</h3>
           <article v-for="resume in query.data.value.resumeOptimizations" :key="resume.id">
-            <p>{{ resume.createdAt.slice(0, 10) }} · {{ resume.id }}</p>
+            <p>
+              {{ resume.createdAt.slice(0, 10) }} ·
+              {{ rewriteStates[resume.status] || '状态待更新' }}
+            </p>
             <div class="artifact-actions">
               <RouterLink
                 :to="{
@@ -230,28 +241,37 @@ function eventText(event: ApplicationEvent) {
                   },
                 }"
                 class="btn"
-                >打开改写建议</RouterLink
+                >{{ resume.status === 'SUCCEEDED' ? '打开改写建议' : '查看改写记录' }}</RouterLink
               ><button
                 v-if="resume.pdfAvailable"
                 class="btn"
                 :disabled="actionBusy"
                 @click="action(() => exportResumePdf(resume.resumeId))"
               >
-                下载简历 PDF
+                下载当前简历 PDF
               </button>
             </div>
           </article>
+          <p v-if="query.data.value.resumeOptimizations.length" class="subtle">
+            PDF 导出当前保存版本；改写建议需核对并采纳后才会进入保存版本。
+          </p>
           <p v-if="!query.data.value.resumeOptimizations.length" class="subtle">
             尚无可确认属于此岗位的改写版本 →
-            <RouterLink to="/resumes">去改写简历</RouterLink>，核对并采纳后导出
+            <RouterLink :to="'/jobs/' + app.jobId">按此岗位改写简历</RouterLink>，核对并采纳后导出
             PDF。已有改写记录仍可在简历页查看。
           </p>
         </section>
         <section class="panel form-stack">
           <h3>面试练习与复盘</h3>
+          <RouterLink
+            class="btn"
+            :to="{ path: '/interviews', query: { jobId: app.jobId, role: app.job.title } }"
+            >针对该岗位模拟面试</RouterLink
+          >
           <article v-for="interview in query.data.value.interviews" :key="interview.id">
             <p>
-              {{ interview.createdAt.slice(0, 10) }} · {{ interview.status }} ·
+              {{ interview.createdAt.slice(0, 10) }} ·
+              {{ interviewStates[interview.status] || '状态待更新' }} ·
               {{ interview.overallScore ?? '尚未评分' }}
             </p>
             <div class="artifact-actions">
@@ -268,7 +288,10 @@ function eventText(event: ApplicationEvent) {
           </article>
           <p v-if="!query.data.value.interviews.length" class="subtle">
             尚无可确认属于此岗位的面试 →
-            <RouterLink to="/interviews">去练习面试</RouterLink>，用真实项目回答并复盘。
+            <RouterLink
+              :to="{ path: '/interviews', query: { jobId: app.jobId, role: app.job.title } }"
+              >去练习面试</RouterLink
+            >，用真实项目回答并复盘。
           </p>
           <h4>STAR 故事</h4>
           <p v-for="story in query.data.value.starStories" :key="story.id">{{ story.title }}</p>
