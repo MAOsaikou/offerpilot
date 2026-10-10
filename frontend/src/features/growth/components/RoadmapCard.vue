@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import GrowthEvidenceChips from './GrowthEvidenceChips.vue'
 import type { RoadmapPayload } from '@/shared/types/cards'
 const props = defineProps<{ payload: RoadmapPayload; interactive?: boolean; disabled?: boolean }>()
 const emit = defineEmits<{ adoptGrowth: [taskTitles: string[]] }>()
@@ -24,6 +25,7 @@ const hasItems = computed(() => props.payload.weeks.some((week) => week.items.le
     <ol class="mt-3 space-y-4">
       <li v-for="week in payload.weeks" :key="week.index" class="min-w-0">
         <h4 class="break-words font-medium">第 {{ week.index }} 周 · {{ week.theme }}</h4>
+        <GrowthEvidenceChips v-if="week.evidenceSources?.length" :sources="week.evidenceSources" />
         <ul class="mt-2 space-y-2">
           <li
             v-for="item in week.items"

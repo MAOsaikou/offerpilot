@@ -233,6 +233,14 @@ export interface InterviewReportPayload {
 
 /* ---------- 职业规划 ---------- */
 
+export interface GrowthEvidence {
+  type: 'JOB_MATCH' | 'INTERVIEW' | 'OCCUPATION' | 'RESUME'
+  id: string | null
+  label: string
+  excerpt: string
+  jobId?: string | null
+}
+
 export interface SkillGapPayload {
   id: string
   target: { type: 'JOB' | 'OCCUPATION'; id: string; title: string }
@@ -242,6 +250,8 @@ export interface SkillGapPayload {
     current: number
     gap: number
     evidence: string[]
+    id?: string
+    evidenceSources?: GrowthEvidence[]
     learnFirst?: boolean
   }>
   summary: string
@@ -256,6 +266,8 @@ export interface RoadmapPayload {
   weeks: Array<{
     index: number
     theme: string
+    gapIds?: string[]
+    evidenceSources?: GrowthEvidence[]
     items: Array<{
       id: string
       title: string

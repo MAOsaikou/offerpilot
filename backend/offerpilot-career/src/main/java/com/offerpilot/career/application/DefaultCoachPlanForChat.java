@@ -19,12 +19,21 @@ public class DefaultCoachPlanForChat implements CoachPlanForChat {
     private final ObjectMapper json;
     private final ObjectProvider<CoachResumeSkills> resumes;
 
+    private CoachEvidence evidence;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setEvidence(CoachEvidence evidence) { this.evidence = evidence; }
+
     public DefaultCoachPlanForChat(CareerProfileService profiles, OccupationRecommender occupations,
                                   JdbcTemplate jdbc, ObjectMapper json, ObjectProvider<CoachResumeSkills> resumes) {
         this.profiles = profiles; this.occupations = occupations; this.jdbc = jdbc; this.json = json; this.resumes = resumes;
     }
 
     @Override public Result plan(String owner, String resumeId, String versionId, String requestId) {
+        return plan(owner, resumeId, versionId, requestId, null, null);
+    }
+
+    @Override public Result plan(String owner, String resumeId, String versionId, String requestId,
+                                 String jobId, String applicationId) {
         var profile = profiles.get(owner);
         if (profile.target() == null || profile.target().isBlank()) return new Result(
                 "请先在探索页选择职业并点击「设为目标」，批准后再来分析技能差距与制定学习计划。", null, null);
@@ -40,24 +49,79 @@ public class DefaultCoachPlanForChat implements CoachPlanForChat {
         catch (Exception ex) { throw new IllegalStateException("Invalid stored occupation skills", ex); }
         var reader = resumes.getIfAvailable();
         var resume = reader == null ? new CoachResumeSkills.Snapshot(false, List.of()) : reader.read(owner, resumeId, versionId);
-        var skills = gaps(required, profile.skills(), resume.skills());
+        var signals = evidence == null ? new CoachEvidence.Snapshot(false, false, List.of())
+                : evidence.read(owner, jobId, applicationId, occupation.name());
+        var skills = ranked(gaps(required, profile.skills(), resume.skills()), signals, occupation, resume.sourceId(), requestId);
+        String availability = (signals.matchAvailable() ? "已参考目标/所选岗位最新完成的 A–F 匹配报告。"
+                : "暂无目标/所选岗位的已完成匹配报告，建议去匹配。")
+                + (signals.interviewAvailable() ? "已参考最近完成面试的文字规则评分，来源岗位见标签，不推断与所选岗位的关联。"
+                : "暂无已完成面试，建议去模拟面试并完成复盘。");
         String summary = "面向「" + occupation.name() + "」的技能证据差距与四周学习建议。"
                 + (resume.available() ? "已参考保存的结构化简历。" : "未读取到可用简历，仅参考档案技能；可上传或选择已保存简历补充证据。")
-                + "等级为规则参考：档案提及=2、简历列出=3；无证据=0，不代表没有能力。职业库技能可能为通用技能，不代表完整岗位要求。"
-                + (skills.isEmpty() ? "当前职业未录入核心技能，暂不能判断具体差距；先梳理目标岗位要求。" : "优先补齐证据差距最大的技能。")
+                + availability
+                + "等级为规则参考：职业技能档案提及=2、简历列出=3；报告弱项按文本分映射为0–5；无证据=0，不代表没有能力。职业库技能可能为通用技能，不代表完整岗位要求。"
+                + (skills.isEmpty() ? "当前职业未录入核心技能，暂不能判断具体差距；先梳理目标岗位要求。" : "优先处理未体现岗位要求、面试弱项，再补部分命中、岗位弱维度与职业技能；未体现不代表没有能力。")
                 + "卡片未写入成长任务；仅勾选已完成的任务并批准同步后记录完成状态。";
-        var themes = skills.stream().filter(s -> s.gap() > 0).limit(2).map(Skill::name).toList();
+        var jobSkills = skills.stream().filter(s -> s.evidenceSources().stream()
+                .noneMatch(e -> "INTERVIEW".equals(e.type()))).toList();
+        var interviewSkills = skills.stream().filter(s -> s.evidenceSources().stream()
+                .anyMatch(e -> "INTERVIEW".equals(e.type()))).toList();
         var weeks = List.of(
-                new Week(1, themes.isEmpty() ? "梳理目标岗位要求" : "补齐 " + themes.get(0),
+                week(1, "梳理目标岗位要求", jobSkills.stream().limit(2).toList(),
                         List.of(item(requestId, 0, 2, profile), item(requestId, 2, 4, profile))),
-                new Week(2, themes.size() < 2 ? "项目证据" : "补齐 " + themes.get(1) + " · 项目证据",
-                        List.of(item(requestId, 1, 3, profile))),
-                new Week(3, "整理项目成果与面试表达", List.of(item(requestId, 3, 3, profile), item(requestId, 4, 2, profile))),
-                new Week(4, "复盘与调整", List.of(item(requestId, 5, 2, profile))));
+                week(2, "项目证据", jobSkills.stream().skip(2).toList(), List.of(item(requestId, 1, 3, profile))),
+                week(3, "整理项目成果与面试表达", interviewSkills,
+                        List.of(item(requestId, 3, 3, profile), item(requestId, 4, 2, profile))),
+                week(4, "复盘与调整", skills, List.of(item(requestId, 5, 2, profile))));
         return new Result(summary,
                 new SkillGapPayload(requestId, new Target("OCCUPATION", occupation.id(), occupation.name()), skills, summary, List.of()),
                 new RoadmapPayload(weeks, List.of(new Milestone("完成核心技能复盘与项目证据整理", "第2周末"),
                         new Milestone("完成文字面试并调整下一轮计划", "第4周末"))));
+    }
+
+    /** Priority comes from source rules, never a model; equal normalized keys merge citations only. */
+    static List<Skill> ranked(List<Skill> occupationSkills, CoachEvidence.Snapshot signals,
+                              OccupationRecommender.Ranked occupation, String resumeId, String requestId) {
+        record Candidate(Skill skill, int priority, int score) {}
+        var candidates = new ArrayList<Candidate>();
+        for (var signal : signals.gaps()) {
+            int current = Math.max(0, Math.min(5, signal.score() / 20));
+            candidates.add(new Candidate(new Skill(signal.name(), 5, current, 5-current,
+                    List.of(signal.source().excerpt()), false, null, List.of(signal.source())), signal.priority(), signal.score()));
+        }
+        for (var skill : occupationSkills) {
+            var sources = new ArrayList<Evidence>();
+            sources.add(new Evidence("OCCUPATION", occupation.id(), "职业核心技能 · " + occupation.name(),
+                    skill.name() + "：参考要求 " + skill.required() + "/5"));
+            if (skill.current() == 3) sources.add(new Evidence("RESUME", resumeId, "已保存简历", "技能或项目技术列出：" + skill.name()));
+            candidates.add(new Candidate(new Skill(skill.name(), skill.required(), skill.current(), skill.gap(),
+                    skill.evidence(), false, null, List.copyOf(sources)), 40, -skill.gap()));
+        }
+        candidates.sort(Comparator.comparingInt(Candidate::priority).thenComparingInt(Candidate::score)
+                .thenComparing(c -> normalize(c.skill().name())));
+        var unique = new LinkedHashMap<String, Skill>();
+        for (var candidate : candidates) {
+            var skill = candidate.skill();
+            unique.merge(normalize(skill.name()), skill, (first, next) -> {
+                var sources = new LinkedHashSet<>(first.evidenceSources()); sources.addAll(next.evidenceSources());
+                var texts = new LinkedHashSet<>(first.evidence()); texts.addAll(next.evidence());
+                return new Skill(first.name(), first.required(), first.current(), first.gap(), List.copyOf(texts),
+                        false, null, List.copyOf(sources));
+            });
+        }
+        var result = new ArrayList<Skill>();
+        for (var skill : unique.values()) {
+            if (result.size() == 8) break;
+            result.add(new Skill(skill.name(), skill.required(), skill.current(), skill.gap(), skill.evidence(),
+                    result.size() < 2 && skill.gap() > 0, requestId + "-gap-" + result.size(), skill.evidenceSources()));
+        }
+        return List.copyOf(result);
+    }
+    private static Week week(int index, String fallback, List<Skill> skills, List<Item> items) {
+        String theme = skills.isEmpty() ? fallback : fallback + " · "
+                + String.join("、", skills.stream().limit(2).map(Skill::name).toList());
+        return new Week(index, theme, items, skills.stream().map(Skill::id).toList(),
+                skills.stream().flatMap(s -> s.evidenceSources().stream()).distinct().toList());
     }
 
     static List<Skill> gaps(JsonNode required, String profile, List<String> resume) {
@@ -90,7 +154,7 @@ public class DefaultCoachPlanForChat implements CoachPlanForChat {
         }
         return List.copyOf(result);
     }
-    private static String normalize(String name) { return name.strip().toLowerCase(Locale.ROOT); }
+    private static String normalize(String name) { return java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFKC).strip().toLowerCase(Locale.ROOT).replaceAll("\\s+", " "); }
     private static Item item(String id, int index, int hours, CareerProfileService.Profile profile) {
         String title = GrowthTaskCatalog.TITLES.get(index);
         return new Item(id + "-task-" + index, title, hours,
