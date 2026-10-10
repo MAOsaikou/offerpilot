@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import BrandMark from '@/shared/components/BrandMark.vue'
+import PageBoundary from './PageBoundary.vue'
 import { useWorkspace } from '@/shared/stores/workspace'
 import { useAuthStore } from '@/shared/stores/auth'
 const route = useRoute()
@@ -108,9 +109,16 @@ watch(
         <p v-if="workspace.storageError" class="error-banner" role="alert">
           {{ workspace.storageError }}
         </p>
-        <RouterView v-slot="{ Component }">
-          <Transition name="page" mode="out-in">
-            <component :is="Component" />
+        <RouterView v-slot="{ Component, route: pageRoute }">
+          <!-- Keep enter motion, but remove the old page without waiting on CSS. -->
+          <Transition name="page" @leave="(_, done) => done()">
+            <PageBoundary
+              v-if="Component"
+              :key="pageRoute.name ?? pageRoute.path"
+              :reset-key="pageRoute.fullPath"
+            >
+              <component :is="Component" />
+            </PageBoundary>
           </Transition>
         </RouterView>
       </main>
