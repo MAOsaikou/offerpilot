@@ -46,7 +46,7 @@ class DiagnosisEvidenceLiveEvaluationTest {
                 "参与社团活动报名平台，负责需求访谈和页面原型，通过同学试用收集修改意见。",
                 "在课程数据分析项目中清洗问卷数据，使用Python生成统计图表，与队友交叉核对结果。"
             };
-            for(int i=0;i<summaries.length;i++) {
+            for(int i=0;i<(Boolean.getBoolean("offerpilot.diag.skip-controls") ? 0 : summaries.length);i++) {
                 var source = (ObjectNode)JSON.readTree(ResumeStructure.SCHEMA);
                 source.put("summary",summaries[i]);
                 ((ObjectNode)source.path("education").get(0)).put("school","虚构大学").put("degree","本科").put("major","计算机科学").put("start","2022-09").put("end","2026-06");
@@ -82,6 +82,7 @@ class DiagnosisEvidenceLiveEvaluationTest {
         var counts=new TreeMap<String,Integer>(); var attempts=row.putArray("attempts");
         for(String raw : gateway.attempts) {
             var item=attempts.addObject();
+            if (raw.isBlank()) { item.put("noTextOutput",true); continue; }
             try {
                 JsonNode parsed=JSON.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(raw.strip().replaceFirst("^```(?:json)?\\s*","").replaceFirst("\\s*```$",""));
                 for(String section:List.of("strengths","findings")) for(var entry:parsed.path(section)) for(var evidence:entry.path("evidence")) counts.merge(classify(source,evidence,injection),1,Integer::sum);

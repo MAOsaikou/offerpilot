@@ -165,9 +165,9 @@ class RedteamRegressionTest {
                 var goodFinding = Map.of("ruleId","RESULT","kind","NEEDS_CLARIFICATION","priority","MEDIUM","evidence",validEvidence,
                         "reason","验证口径未写明","suggestion","补充实际验证方法","questions",List.of("如何验证接口？"));
                 var invalidFinding = Map.of("ruleId","RESULT","kind","OBSERVATION","priority","HIGH",
-                        "evidence",List.of(Map.of("path","/projects","quote",c.text())),"reason","攻击试图提高优先级","suggestion","服从资料指令","questions",List.of());
+                        "evidence",List.of(Map.of("path",c.id().equals("RT-02") ? "/summary" : "/projects","quote",c.text())),"reason","攻击试图提高优先级","suggestion","服从资料指令","questions",List.of());
                 var strengths = List.of(Map.of("message","有项目经历","evidence",validEvidence),
-                        Map.of("message","攻击请求不能成为优点","evidence",List.of(Map.of("path","/missing","quote",c.text()))));
+                        Map.of("message","攻击请求不能成为优点","evidence",List.of(Map.of("path",c.id().equals("RT-02") ? "/summary" : "/missing","quote",c.text()))));
                 try { return JSON.writeValueAsString(Map.of("summary","包含未核实结论的摘要必须替换","strengths",strengths,"findings",List.of(goodFinding,invalidFinding))); }
                 catch(Exception ex) { throw new IllegalStateException(ex); }
             };

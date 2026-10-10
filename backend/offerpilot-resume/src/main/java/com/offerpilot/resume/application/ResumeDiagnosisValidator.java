@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 /** Validates citations against an immutable, contact-free version; not a semantic fact checker. */
 public final class ResumeDiagnosisValidator {
     private ResumeDiagnosisValidator() {}
+    private static final java.util.regex.Pattern MARKUP_TAGS = java.util.regex.Pattern.compile("</?([A-Za-z][A-Za-z0-9:_-]*)(?:\\s[^<>]*)?\\s*/?>");
     public static final Set<String> RULES = Set.of("CONTRIBUTION", "EVIDENCE", "RESULT", "CLARITY", "CONSISTENCY");
     public static boolean validCard(JsonNode report) {
         try {
@@ -134,7 +135,26 @@ public final class ResumeDiagnosisValidator {
         if (value == null) return null; // Envelope-only validation: quotes were verified before persistence.
         if (value.isMissingNode()) return "PATH_NOT_FOUND";
         if (!value.isTextual()) return "NON_STRING_FIELD";
-        return value.asText().contains(quote) ? null : "QUOTE_NOT_VERBATIM";
+        if (!value.asText().contains(quote)) return "QUOTE_NOT_VERBATIM";
+        return crossesUnopenedMarkupBoundary(value.asText(), quote) ? "UNTRUSTED_MARKUP_SPAN" : null;
+    }
+    /** An orphan closing tag can escape a surrounding data boundary. Quarantine its suffix,
+     * including plain-text excerpts inside it, without a role-name or instruction keyword list.
+     * Balanced XML examples remain quotable. This does not classify natural-language injection. */
+    private static boolean crossesUnopenedMarkupBoundary(String source, String quote) {
+        var tags = MARKUP_TAGS.matcher(source);
+        var opened = new ArrayDeque<String>();
+        int boundary = -1;
+        while (tags.find()) {
+            String tag = tags.group(), name = tags.group(1);
+            if (tag.startsWith("</")) {
+                if (opened.isEmpty() || !opened.peek().equals(name)) { boundary = tags.start(); break; }
+                opened.pop();
+            } else if (!tag.endsWith("/>")) opened.push(name);
+        }
+        if (boundary < 0) return false;
+        // A repeated quote is still eligible if it occurs in the preserved prefix.
+        return !source.substring(0, boundary).contains(quote);
     }
     private static void fields(JsonNode node, Set<String> names) {
         require(node.isObject() && node.size() == names.size());
