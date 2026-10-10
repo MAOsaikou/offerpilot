@@ -51,7 +51,15 @@ final class CardNarrationDigest {
                         turns.add(view);
                     }
                 }
-                case "interview_session" -> row.set("turn", fields(payload, "state", "questionIndex", "total", "question", "note"));
+                case "interviewer_state", "interview_session" -> row.set("turn", fields(payload, "state", "questionIndex", "total", "question", "note"));
+                case "star_story_citations" -> {
+                    row.set("count", payload.path("count"));
+                    var items = row.putArray("items");
+                    for (var item : payload.path("items")) {
+                        if (items.size() == 3) break;
+                        items.add(fields(item, "id", "title", "role", "starCount", "excerpt"));
+                    }
+                }
                 case "career_recommendation" -> {
                     row.set("hollandCode", payload.path("hollandCode"));
                     var recommendations = row.putArray("recommendations");

@@ -88,7 +88,8 @@ public class InterviewService {
     @Transactional
     public Session saveAnswer(String owner, String id, int index, String answerText) {
         validateIndex(index);
-        if (answerText == null || answerText.codePointCount(0, answerText.length()) > 12000) invalid();
+        if (answerText == null || answerText.codePointCount(0, answerText.length()) > 12000)
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请提供 answerText，最多12000个字符，可为空字符串。");
         lock(owner, id);
         jdbc.update("""
                 UPDATE interview_answers SET answer_text=? WHERE session_id=? AND question_index=?
@@ -112,7 +113,8 @@ public class InterviewService {
     }
 
     private void validateIndex(int index) {
-        if (index < 0 || index >= QUESTIONS.size()) invalid();
+        if (index < 0 || index >= QUESTIONS.size())
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题目序号必须为0到4。");
     }
 
     private void invalid() { throw new BusinessException(ErrorCode.VALIDATION_FAILED); }

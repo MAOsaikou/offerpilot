@@ -18,5 +18,14 @@ public record ChatRequest(
     }
 
     public record Options(String modelTier, Boolean enableReasoning, Map<String, Object> context) {
+        public Options {
+            context = new java.util.LinkedHashMap<>(context == null ? Map.of() : context);
+        }
+
+        @com.fasterxml.jackson.annotation.JsonAnySetter
+        public void legacyInterviewOption(String name, Object value) {
+            if (java.util.Set.of("interviewAction", "interviewSessionId").contains(name))
+                context.putIfAbsent(name, value);
+        }
     }
 }

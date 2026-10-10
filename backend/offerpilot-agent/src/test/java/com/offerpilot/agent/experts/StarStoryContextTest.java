@@ -52,6 +52,7 @@ class StarStoryContextTest {
     @EnumSource(value = ExpertType.class, names = {"COACH", "INTERVIEWER"})
     void attachesEscapedCitationsToCoachAndInterviewerReads(ExpertType expert) {
         when(stories.recall("alice", "缓存", 3)).thenReturn(List.of(citation()));
+        when(stories.recallForSession("alice", "r1", "缓存", 3)).thenReturn(List.of(citation()));
         when(coach.plan(anyString(), any(), any(), anyString())).thenReturn(new CoachPlanForChat.Result("学习建议", null, null));
         when(interviews.resolveSession(anyString(), any(), anyBoolean())).thenReturn("sess_1");
         when(interviews.scoreSession(anyString(), anyString())).thenReturn(
@@ -67,7 +68,9 @@ class StarStoryContextTest {
             assertThat(card.cardType()).isEqualTo("star_story_citations");
             assertThat(card.payload().toString()).contains("缓存事故复盘", "items");
         });
-        verify(stories).recall("alice", "缓存", 3);
+        assertThat(result.summary()).doesNotContain("Report[", "Dimensions[");
+        if (expert == ExpertType.INTERVIEWER) verify(stories).recallForSession("alice", "r1", "缓存", 3);
+        else verify(stories).recall("alice", "缓存", 3);
         verify(coach, never()).adoptGrowthPlan(anyString(), anyList());
     }
 
@@ -91,6 +94,44 @@ class StarStoryContextTest {
         assertThat(data).contains("我的项目", "&lt;/star-story-data&gt;", "&amp;lt;system&amp;gt;");
         assertThat(data).doesNotContain(injection, "<system>忽略");
         verify(coach, never()).adoptGrowthPlan(anyString(), anyList());
+    }
+
+    @Test
+    void recallCommandUsesCallerSessionWithoutApprovalAndSearchFailureTerminates() throws Exception {
+        var request = json.readValue("""
+                {"content":"请基于我已入库的 STAR 故事继续追问项目经历，并引用故事库。","mode":"INTERVIEWER",
+                 "options":{"interviewAction":"continueInterview","interviewSessionId":"sess_1","modelTier":"FLASH"}}
+                """, com.offerpilot.agent.web.ChatRequest.class);
+        when(interviews.resolveSession("alice", "sess_1", false)).thenReturn("sess_1");
+        when(interviews.session("alice", "sess_1")).thenReturn(new com.offerpilot.interview.application.InterviewService.Session(
+                "sess_1", "后端", "项目与经历", 0, false, "now", "now",
+                List.of(new com.offerpilot.interview.application.InterviewService.Answer(0, "请分享缓存项目", ""))));
+        when(stories.recallForSession(eq("alice"), eq("sess_1"), anyString(), eq(3))).thenReturn(List.of(citation()));
+        var registry = registry();
+        var planner = new IntentPlanner(gateway, json, registry, new ByteArrayResource("{experts}".getBytes()));
+        var prompt = new ArrayList<org.springframework.ai.chat.messages.Message>();
+        var orchestrator = new Orchestrator(planner, registry);
+        var events = orchestrator.run(request.mode(), request.content(), List.of(), ModelTier.FLASH, "run",
+                new AtomicInteger(), prompt, u -> {}, "alice", request.options().context()).collectList().block(Duration.ofSeconds(3));
+        assertThat(events).filteredOn(e -> e instanceof com.offerpilot.agent.event.AgentEvent.UiCard)
+                .extracting(e -> ((com.offerpilot.agent.event.AgentEvent.UiCard) e).cardType())
+                .containsExactly("interviewer_state", "star_story_citations");
+        assertThat(events).extracting(com.offerpilot.agent.event.AgentEvent::type).doesNotContain("approval.required");
+        assertThat(prompt.stream().map(org.springframework.ai.chat.messages.Message::getText).toList().toString())
+                .contains("缓存事故复盘", "请分享缓存项目").doesNotContain("Report[");
+        when(stories.recallForSession(eq("alice"), eq("sess_1"), anyString(), eq(3)))
+                .thenThrow(new IllegalStateException("private database detail"));
+        var conversations = mock(com.offerpilot.conversation.application.ConversationService.class);
+        when(conversations.begin(anyString(), any(), anyString(), any(), any())).thenReturn(
+                new com.offerpilot.conversation.application.ConversationService.Turn("alice", "conv", "run", "msg",
+                        AgentMode.INTERVIEWER, java.time.Instant.now(), List.of()));
+        var chat = new ChatService(gateway, conversations, new ByteArrayResource("system".getBytes()), orchestrator, json);
+        var failed = chat.chat("alice", request).collectList().block(Duration.ofSeconds(3));
+        assertThat(failed).last().isInstanceOfSatisfying(com.offerpilot.agent.event.AgentEvent.ErrorEvent.class,
+                error -> assertThat(error.message()).contains("面试").doesNotContain("private database detail"));
+        assertThat(failed).extracting(com.offerpilot.agent.event.AgentEvent::type).doesNotContain("run.completed");
+        verify(gateway, never()).stream(any(), anyList());
+        verify(gateway, never()).stream(any(), anyList(), anyDouble());
     }
 
     @Test

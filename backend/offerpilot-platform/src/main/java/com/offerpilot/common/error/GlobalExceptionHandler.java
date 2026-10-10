@@ -100,6 +100,13 @@ public class GlobalExceptionHandler {
                         TraceIdFilter.current(request)));
     }
 
+    @ExceptionHandler(org.springframework.web.HttpMediaTypeNotAcceptableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNotAcceptable(HttpServletRequest request) {
+        return ResponseEntity.status(406).contentType(MediaType.APPLICATION_JSON)
+                .body(ApiResponse.fail(ErrorCode.VALIDATION_FAILED.code(),
+                        "响应格式不支持，请使用 Accept: text/markdown 或 */* 下载复盘。", TraceIdFilter.current(request)));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnknown(Exception ex, HttpServletRequest request) {
         if (request.getDispatcherType() == jakarta.servlet.DispatcherType.ASYNC

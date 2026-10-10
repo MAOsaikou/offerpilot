@@ -24,6 +24,7 @@ class StarStoryHttpIntegrationTest extends SharedHttpIntegrationTest {
     @LocalServerPort int port;
     @Autowired GuestIdentityService guests;
     @Autowired PasswordLoginService logins;
+    @Autowired com.offerpilot.interview.application.StarStoriesForChat recall;
 
     HttpResponse<String> call(String method, String path, String token, Object body) throws Exception {
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1" + path))
@@ -57,6 +58,9 @@ class StarStoryHttpIntegrationTest extends SharedHttpIntegrationTest {
         assertThat(data(call("GET", "/star-stories", owner, null), 200).path("items").size()).isEqualTo(1);
         assertThat(call("GET", "/star-stories/candidates?sessionId=" + sessionId, other, null).statusCode()).isIn(404, 403);
         assertThat(call("POST", "/star-stories", other, Map.of("sessionId", sessionId, "questionIndex", 1)).statusCode()).isIn(404, 403);
+        String nextSession = data(call("POST", "/interviews", owner, Map.of("role", "Java 后端", "kind", "项目与经历")), 200).path("id").asText();
+        assertThat(recall.retrieveForSession(guests.require("Bearer " + owner), nextSession, "给我面试评分"))
+                .extracting(com.offerpilot.interview.application.StarStoryService.Citation::id).containsExactly(saved.path("id").asText());
         data(call("DELETE", "/star-stories/" + saved.path("id").asText(), owner, null), 200);
         assertThat(data(call("GET", "/star-stories", owner, null), 200).path("items").size()).isEqualTo(0);
     }

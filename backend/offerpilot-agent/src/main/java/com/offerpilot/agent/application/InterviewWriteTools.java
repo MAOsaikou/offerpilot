@@ -48,7 +48,10 @@ public class InterviewWriteTools {
         } else {
             String id = coach.resolveSession(owner, (String) step.inputs().get("sessionId"), true);
             args.put("sessionId", id);
-            args.put("expectedUpdatedAt", coach.session(owner, id).updatedAt());
+            var session = coach.session(owner, id);
+            if (!action.equals("completeInterview") && session.completed())
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "面试已完成，请生成评分卡或开始新面试。");
+            args.put("expectedUpdatedAt", session.updatedAt());
             if (!action.equals("completeInterview")) {
                 args.put("answer", step.inputs().get("answer"));
                 args.put("nextQuestion", step.inputs().getOrDefault("nextQuestion", false));
@@ -67,14 +70,14 @@ public class InterviewWriteTools {
             if (action.equals("completeInterview")) {
                 var report = coach.completeSession(owner, (String) args.get("sessionId"), (String) args.get("expectedUpdatedAt"));
                 return withCandidates(owner, (String) args.get("sessionId"), report,
-                        "已按批准标记面试完成。文字规则报告：" + report, runId, step.id());
+                        "已按批准标记面试完成。" + com.offerpilot.interview.application.InterviewRubric.summary(report), runId, step.id());
             }
             var turn = action.equals("startInterview") ? coach.startSession(owner, (String) args.get("role"), (String) args.get("kind"))
                     : coach.continueSession(owner, (String) args.get("sessionId"), (String) args.get("answer"), (Boolean) args.get("nextQuestion"), (String) args.get("expectedUpdatedAt"));
             if (turn.state().equals("CLOSING")) {
                 var report = coach.scoreSession(owner, turn.sessionId());
                 return withCandidates(owner, turn.sessionId(), report,
-                        turn.note() + "文字规则报告：" + report, runId, step.id());
+                        turn.note() + com.offerpilot.interview.application.InterviewRubric.summary(report), runId, step.id());
             }
             return ExpertResult.card("面试会话 " + turn.sessionId() + "，第 " + (turn.questionIndex() + 1) + " 题：" + turn.question() + " " + turn.note(),
                     com.offerpilot.agent.experts.ExpertRegistry.requestId(runId, step.id()), "interviewer_state", turn);

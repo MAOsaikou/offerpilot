@@ -70,7 +70,7 @@ public class StarStoryService {
     /** Persist only after explicit UI/approval; re-read answer from DB and re-verify STAR. */
     @Transactional
     public Story saveFromSession(String owner, String sessionId, int questionIndex) {
-        if (questionIndex < 0 || questionIndex >= InterviewService.QUESTIONS.size()) invalid("题目序号无效");
+        if (questionIndex < 0 || questionIndex >= InterviewService.QUESTIONS.size()) throw invalid("题目序号无效");
         lockOwner(owner);
         var session = interviews.get(owner, sessionId);
         var answer = session.answers().stream().filter(a -> a.questionIndex() == questionIndex).findFirst()
@@ -115,6 +115,25 @@ public class StarStoryService {
 
     @Transactional(readOnly = true)
     public List<Citation> recall(String owner, String query, int limit) {
+        return recall(owner, query, limit, "", "");
+    }
+
+    /** Query the owned session's evidence and role, rather than relying on a generic score command. */
+    @Transactional(readOnly = true)
+    public List<Citation> recallForSession(String owner, String sessionId, String query, int limit) {
+        var session = interviews.get(owner, sessionId);
+        var evidence = new StringBuilder(session.role());
+        for (var answer : session.answers()) {
+            String text = answer.answerText() == null ? "" : answer.answerText();
+            int end = text.offsetByCodePoints(0, Math.min(240, text.codePointCount(0, text.length())));
+            evidence.append(' ').append(text, 0, end);
+        }
+        evidence.append(' ').append(session.answers().get(session.questionIndex()).questionText());
+        evidence.append(' ').append(query == null ? "" : query);
+        return recall(owner, evidence.toString(), limit, session.id(), session.role());
+    }
+
+    private List<Citation> recall(String owner, String query, int limit, String sessionId, String role) {
         int size = Math.min(Math.max(limit, 1), 5);
         String q = lexicalQuery(query == null ? "" : query);
         if (q.isBlank()) {
@@ -124,11 +143,13 @@ public class StarStoryService {
         }
         return jdbc.query("""
                 SELECT *, ts_rank_cd(tsv, to_tsquery('simple',?)) AS score,
+                       CASE WHEN source_session_id=? THEN 1 ELSE 0 END AS source_hit,
                        CASE WHEN lower(role)=lower(?) THEN 1 ELSE 0 END AS role_hit
-                FROM star_stories WHERE user_id=? AND (tsv @@ to_tsquery('simple',?) OR lower(role)=lower(?))
-                ORDER BY role_hit DESC, score DESC, updated_at DESC, id LIMIT ?
-                """, (rs, row) -> cite(map(rs, row)), q, query == null ? "" : query.strip(), owner, q,
-                query == null ? "" : query.strip(), size);
+                FROM star_stories WHERE user_id=? AND
+                     (source_session_id=? OR tsv @@ to_tsquery('simple',?) OR lower(role)=lower(?))
+                ORDER BY source_hit DESC, role_hit DESC, score DESC, updated_at DESC, id LIMIT ?
+                """, (rs, row) -> cite(map(rs, row)), q, sessionId, role.isBlank() ? query.strip() : role, owner, sessionId, q,
+                role.isBlank() ? query.strip() : role, size);
     }
 
     private Story get(String owner, String id) {

@@ -24,8 +24,17 @@ public class StarStoryContext {
     }
 
     public Mono<ExpertResult> attach(String owner, String query, ExpertResult result) {
+        return attach(owner, query, result, () -> stories.retrieve(owner, query));
+    }
+
+    public Mono<ExpertResult> attachInterview(String owner, String sessionId, String query, ExpertResult result) {
+        return attach(owner, query, result, () -> stories.retrieveForSession(owner, sessionId, query));
+    }
+
+    private Mono<ExpertResult> attach(String owner, String query, ExpertResult result,
+                                     java.util.function.Supplier<List<com.offerpilot.interview.application.StarStoryService.Citation>> recall) {
         return Mono.fromCallable(() -> {
-            var citations = stories.retrieve(owner, query);
+            var citations = recall.get();
             if (citations.isEmpty()) return result;
             try {
                 String payload = json.writeValueAsString(citations)
@@ -40,7 +49,7 @@ public class StarStoryContext {
                         java.util.Map.of("items", citations, "count", citations.size())));
                 return ExpertResult.cards(summary, List.copyOf(cards));
             } catch (JsonProcessingException ex) {
-                return result;
+                throw new IllegalStateException("STAR 引用暂时无法展示，请重试。", ex);
             }
         }).subscribeOn(Schedulers.boundedElastic());
     }

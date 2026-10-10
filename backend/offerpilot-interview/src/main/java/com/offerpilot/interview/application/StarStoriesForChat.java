@@ -13,6 +13,11 @@ public class StarStoriesForChat {
 
     public StarStoriesForChat(StarStoryService stories) { this.stories = stories; }
 
+    public List<StarStoryService.Citation> retrieveForSession(String owner, String sessionId, String query) {
+        // Fail explicitly if session lookup/search fails; do not silently claim there is no evidence.
+        return stories.recallForSession(owner, sessionId, query, 3);
+    }
+
     public List<StarStoryService.Citation> retrieve(String owner, String query) {
         try {
             return stories.recall(owner, query == null ? "" : query, 3);
