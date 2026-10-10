@@ -77,6 +77,22 @@ class SseStreamHttpIntegrationTest {
             JacksonConfig.class, GlobalExceptionHandler.class, com.offerpilot.common.web.SseStreams.class})
     static class Application {
         @Bean AsyncCompletions asyncCompletions() { return new AsyncCompletions(); }
+        @Bean org.springframework.boot.web.server.WebServerFactoryCustomizer<org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory>
+        initialAsyncRequestBarrier(AsyncCompletions completions) {
+            return factory -> factory.addConnectorCustomizers(connector -> connector.addLifecycleListener(event -> {
+                if (org.apache.catalina.Lifecycle.AFTER_INIT_EVENT.equals(event.getType())) {
+                    connector.getProtocolHandler().setAdapter(new org.apache.catalina.connector.CoyoteAdapter(connector) {
+                        @Override public void service(org.apache.coyote.Request request, org.apache.coyote.Response response) throws Exception {
+                            var lifecycle = completions.requests.get(request.getMimeHeaders().getHeader(REQUEST_ID_HEADER));
+                            super.service(request, response);
+                            // MVC/filter return is still inside CoyoteAdapter.service. A reset there
+                            // can interrupt its async-state bookkeeping and omit onComplete.
+                            lifecycle.initialized().complete(null);
+                        }
+                    });
+                }
+            }));
+        }
         @Bean FilterRegistrationBean<Filter> completionFilter(AsyncCompletions completions) {
             var registration = new FilterRegistrationBean<Filter>((request, response, chain) -> {
                 var http = (HttpServletRequest) request;
@@ -96,7 +112,6 @@ class SseStreamHttpIntegrationTest {
                         return context;
                     }
                 }, response);
-                if (request.getDispatcherType() == DispatcherType.REQUEST) lifecycle.initialized().complete(null);
             });
             registration.setAsyncSupported(true);
             return registration;
@@ -255,7 +270,7 @@ class SseStreamHttpIntegrationTest {
                 while (!line.equals("event:run.started"));
                 assertThat(subscribed.get(i).await(WAIT_SECONDS, TimeUnit.SECONDS)).as(path + " subscribed").isTrue();
                 // started can be flushed while MVC is still draining early buffered frames.
-                // Wait until initialize has also registered its container callbacks before resetting TCP.
+                // Wait for Tomcat's initial service to also finish its async-state bookkeeping before resetting TCP.
                 completions.awaitInitialized(id);
                 assertThat(cancelled.get(i).getCount()).as("publisher still active before TCP reset").isEqualTo(1);
             }
