@@ -334,8 +334,13 @@ public class ExpertRegistry {
         if (step.agent() == ExpertType.COACH) {
             if (coach == null) return Mono.just(ExpertResult.text("成长教练服务暂不可用，请稍后重试。"));
             return Mono.fromCallable(() -> {
-                var result = coach.plan(owner, context == null ? null : text(context.get("resumeId")),
-                        context == null ? null : text(context.get("resumeVersionId")), requestId(runId, step.id()));
+                String resumeId = context == null ? null : text(context.get("resumeId"));
+                String versionId = context == null ? null : text(context.get("resumeVersionId"));
+                String jobId = context == null ? null : text(context.get("jobId"));
+                String applicationId = context == null ? null : text(context.get("applicationId"));
+                var result = jobId == null && applicationId == null
+                        ? coach.plan(owner, resumeId, versionId, requestId(runId, step.id()))
+                        : coach.plan(owner, resumeId, versionId, requestId(runId, step.id()), jobId, applicationId);
                 return result.skillGap() == null ? ExpertResult.text(result.summary()) : ExpertResult.cards(result.summary(),
                         new ExpertResult.Card(requestId(runId, step.id() + ":gap"), "skill_gap", result.skillGap()),
                         new ExpertResult.Card(requestId(runId, step.id() + ":roadmap"), "roadmap", result.roadmap()));

@@ -45,6 +45,16 @@ public class InterviewService {
                 this::summary, owner);
     }
 
+    /** Latest completed owned practice; role is displayed as provenance, never inferred as a job link. */
+    @Transactional(readOnly = true)
+    public Session latestCompleted(String owner) {
+        var ids = jdbc.queryForList("""
+                SELECT id FROM interview_sessions WHERE user_id=? AND completed=true
+                ORDER BY updated_at DESC,id DESC LIMIT 1
+                """, String.class, owner);
+        return ids.isEmpty() ? null : get(owner, ids.get(0));
+    }
+
     @Transactional
     public Session create(String owner, String role, String kind) {
         return create(owner,role,kind,null);

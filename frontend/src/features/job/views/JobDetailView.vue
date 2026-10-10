@@ -161,13 +161,23 @@ async function openReport(reportId: string) {
   report.value = undefined
   try {
     const value = await getJobMatch(reportId)
-    if (request === reportRequest) report.value = value
+    if (request === reportRequest) {
+      if (value.jobId !== id.value) throw new Error('报告与当前岗位不匹配，请重新选择。')
+      report.value = value
+    }
   } catch (e) {
     if (request === reportRequest) error.value = (e as Error).message
   } finally {
     if (request === reportRequest) reportLoading.value = false
   }
 }
+watch(
+  () => [id.value, route.query.matchId] as const,
+  ([, matchId]) => {
+    if (real.value && typeof matchId === 'string' && matchId) void openReport(matchId)
+  },
+  { immediate: true },
+)
 </script>
 <template>
   <LegacyJobDetail v-if="!real" />
