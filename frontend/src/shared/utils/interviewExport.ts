@@ -2,7 +2,7 @@ import type { InterviewAnswer } from '@/shared/types/interview'
 import { downloadText } from './download'
 import { apiUrl, fetchWithIdentity } from '@/shared/api/client'
 
-function localMarkdown(role: string, answers: InterviewAnswer[]) {
+function localMarkdown(answers: InterviewAnswer[]) {
   return answers
     .map((answer) => '## ' + answer.questionText + '\n\n' + (answer.answerText || '未作答'))
     .join('\n\n')
@@ -28,5 +28,5 @@ export async function exportInterview(
       /* fall through to local export */
     }
   }
-  downloadText(role + '-面试复盘.md', localMarkdown(role, answers))
+  downloadText(role + '-面试复盘.md', localMarkdown(answers))
 }
