@@ -21,12 +21,14 @@ class GenerationTaskHttpIntegrationTest extends SharedHttpIntegrationTest {
     @Autowired GuestIdentityService guests;
     @Autowired JdbcTemplate jdbc;
 
-    @Test
-    void listsRunningMatchForOwner() throws Exception {
+    private record Fixture(String token, String owner, String suffix) {}
+
+    private Fixture fixture() {
         var session = guests.create();
         String token = session.accessToken();
         String owner = guests.require("Bearer " + token);
-        String suffix = owner.replaceAll("[^a-zA-Z0-9]", "").substring(0, Math.min(12, owner.replaceAll("[^a-zA-Z0-9]", "").length()));
+        String suffix = owner.replaceAll("[^a-zA-Z0-9]", "");
+        suffix = suffix.substring(0, Math.min(12, suffix.length()));
         jdbc.update("INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256) VALUES (?,?,?,?,?,?,?,?,?)",
                 "file_gen_" + suffix, owner, "RESUME", "bucket", "key-" + suffix, "f.txt", "text/plain", 1, "sha");
         jdbc.update("INSERT INTO resumes(id,user_id,title,source_file_id,parse_status) VALUES (?,?,?,?,?)",
@@ -35,15 +37,70 @@ class GenerationTaskHttpIntegrationTest extends SharedHttpIntegrationTest {
                 "ver_gen_" + suffix, "res_gen_" + suffix, owner);
         jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES (?,?,?,?,?::jsonb)",
                 "job_gen_" + suffix, "site", "ext-" + suffix, "campus", "{}");
+        return new Fixture(token, owner, suffix);
+    }
+
+    private HttpResponse<String> get(String path, String token) throws Exception {
+        var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1" + path)).GET();
+        if (token != null) builder.header("Authorization", "Bearer " + token);
+        return HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> post(String path, String token) throws Exception {
+        var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1" + path))
+                .POST(HttpRequest.BodyPublishers.noBody());
+        if (token != null) builder.header("Authorization", "Bearer " + token);
+        return HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void listsRunningMatchForOwner() throws Exception {
+        var fx = fixture();
         jdbc.update("INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status) VALUES (?,?,?,?,?,'RUNNING')",
-                "match_gen_" + suffix, owner, "job_gen_" + suffix, "ver_gen_" + suffix, "req_gen_" + suffix);
-        var response = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/generation-tasks"))
-                .header("Authorization", "Bearer " + token).GET().build(), HttpResponse.BodyHandlers.ofString());
+                "match_gen_" + fx.suffix(), fx.owner(), "job_gen_" + fx.suffix(), "ver_gen_" + fx.suffix(), "req_gen_" + fx.suffix());
+        var response = get("/generation-tasks", fx.token());
         assertThat(response.statusCode()).withFailMessage(response.body()).isEqualTo(200);
         JsonNode data = JSON.readTree(response.body()).path("data");
-        assertThat(data.toString()).contains("match_gen_" + suffix);
-        assertThat(data.toString()).contains("JOB_MATCH");
-        assertThat(HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/generation-tasks"))
-                .GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
+        assertThat(data.toString()).contains("match_gen_" + fx.suffix()).contains("JOB_MATCH");
+        assertThat(get("/generation-tasks", null).statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void cancelsRunningMatchOptimizeAndDiagnosisForOwnerOnly() throws Exception {
+        var fx = fixture();
+        String matchId = "match_cancel_" + fx.suffix();
+        String optId = "opt_cancel_" + fx.suffix();
+        String diagId = "diag_cancel_" + fx.suffix();
+        jdbc.update("INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status) VALUES (?,?,?,?,?,'RUNNING')",
+                matchId, fx.owner(), "job_gen_" + fx.suffix(), "ver_gen_" + fx.suffix(), "req_cancel_m_" + fx.suffix());
+        jdbc.update("""
+                INSERT INTO resume_optimizations(id,user_id,resume_id,version_id,request_id,status,job_description,model_tier)
+                VALUES (?,?,?,?,?,'RUNNING','fixture jd','FLASH')
+                """, optId, fx.owner(), "res_gen_" + fx.suffix(), "ver_gen_" + fx.suffix(), "req_cancel_o_" + fx.suffix());
+        jdbc.update("""
+                INSERT INTO resume_diagnoses(id,user_id,resume_id,version_id,request_id,status,model_tier)
+                VALUES (?,?,?,?,?,'RUNNING','FLASH')
+                """, diagId, fx.owner(), "res_gen_" + fx.suffix(), "ver_gen_" + fx.suffix(), "req_cancel_d_" + fx.suffix());
+
+        assertThat(get("/generation-tasks", fx.token()).body()).contains(matchId, optId, diagId);
+
+        var stranger = guests.create();
+        assertThat(post("/generation-tasks/JOB_MATCH/" + matchId + "/cancel", stranger.accessToken()).statusCode())
+                .isEqualTo(404);
+        assertThat(post("/generation-tasks/JOB_MATCH/" + matchId + "/cancel", null).statusCode()).isEqualTo(401);
+        assertThat(post("/generation-tasks/UNKNOWN/" + matchId + "/cancel", fx.token()).statusCode()).isEqualTo(400);
+
+        assertThat(post("/generation-tasks/JOB_MATCH/" + matchId + "/cancel", fx.token()).statusCode()).isEqualTo(200);
+        assertThat(post("/generation-tasks/RESUME_OPTIMIZE/" + optId + "/cancel", fx.token()).statusCode()).isEqualTo(200);
+        assertThat(post("/generation-tasks/RESUME_DIAGNOSIS/" + diagId + "/cancel", fx.token()).statusCode()).isEqualTo(200);
+
+        // idempotent second cancel
+        assertThat(post("/generation-tasks/JOB_MATCH/" + matchId + "/cancel", fx.token()).statusCode()).isEqualTo(200);
+
+        JsonNode remaining = JSON.readTree(get("/generation-tasks", fx.token()).body()).path("data");
+        assertThat(remaining.toString()).doesNotContain(matchId, optId, diagId);
+        assertThat(jdbc.queryForObject("SELECT status FROM job_matches WHERE id=?", String.class, matchId)).isEqualTo("CANCELLED");
+        assertThat(jdbc.queryForObject("SELECT status FROM resume_optimizations WHERE id=?", String.class, optId)).isEqualTo("CANCELLED");
+        assertThat(jdbc.queryForObject("SELECT status FROM resume_diagnoses WHERE id=?", String.class, diagId)).isEqualTo("CANCELLED");
     }
 }

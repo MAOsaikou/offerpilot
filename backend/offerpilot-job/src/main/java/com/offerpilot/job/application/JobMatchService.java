@@ -69,6 +69,16 @@ public class JobMatchService {
         return withEvaluation(rows.get(0));
     }
 
+
+    /** Marks RUNNING match cancelled so the progress dock can drop it; in-flight save becomes no-op. */
+    public void cancel(String owner, String id) {
+        int n = jdbc.update("UPDATE job_matches SET status='CANCELLED',updated_at=now() WHERE id=? AND user_id=? AND status='RUNNING'", id, owner);
+        if (n == 0) {
+            var rows = jdbc.queryForList("SELECT status FROM job_matches WHERE id=? AND user_id=?", id, owner);
+            if (rows.isEmpty()) throw new BusinessException(ErrorCode.MATCH_NOT_FOUND);
+            // already finished — idempotent no-op for dock cancel
+        }
+    }
     /** Derived view for API/UI; not persisted separately. */
     static JsonNode withEvaluation(JsonNode report) {
         if (!(report instanceof ObjectNode node)) return report;
