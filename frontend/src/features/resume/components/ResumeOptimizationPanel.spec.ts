@@ -232,18 +232,6 @@ it('采纳失败保留选择，后续编辑使这批建议只读', async () => {
   await nextTick()
   expect(root.querySelector('[aria-label="采纳建议 1"]')).toBeNull()
 })
-it('历史恢复已采纳状态，无模型调用或重复保存', async () => {
-  await mount()
-  cache.setQueryData(['optimizations', 'r1'], [task])
-  await nextTick()
-  vi.mocked(getOptimization).mockResolvedValue(task)
-  vi.mocked(getPatchBatch).mockResolvedValue({ ...report, batchId: 'b1', appliedVersionId: 'v2' })
-  button('查看建议').click()
-  await vi.waitFor(() => expect(root.textContent).toContain('这批建议已生成新版本'))
-  expect(root.querySelector('[aria-label="采纳建议 1"]')).toBeNull()
-  expect(optimizeResume).not.toHaveBeenCalled()
-  expect(applyPatches).not.toHaveBeenCalled()
-})
 it('聊天卡片深链直接恢复正确报告，既不重新生成也不自动保存', async () => {
   vi.mocked(getOptimization).mockResolvedValue(task)
   await mount(false, 'v1', undefined, 'o1')

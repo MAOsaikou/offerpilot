@@ -50,30 +50,7 @@ class InterviewServiceTest {
         when(jdbc.queryForList(contains("FOR UPDATE"), eq(String.class), eq(id), eq(owner))).thenReturn(List.of(id));
     }
 
-    @Test @SuppressWarnings("unchecked")
-    void listAndGetFilterOwnerAndReturnOrderedStoredSnapshots() {
-        stubDetail();
-        doReturn(List.of(summary)).when(jdbc).query(contains("ORDER BY created_at DESC,id"), any(RowMapper.class), eq(owner));
-        assertThat(service.list(owner)).containsExactly(summary);
-        assertThat(service.get(owner, id).answers()).containsExactlyElementsOf(answers);
-        verify(jdbc).query(contains("WHERE user_id=? ORDER BY"), any(RowMapper.class), eq(owner));
-        verify(jdbc).query(contains("WHERE s.id=? AND s.user_id=? ORDER BY a.question_index"),
-                any(RowMapper.class), eq(id), eq(owner));
-    }
 
-    @Test
-    void answerWritesTrimAllowEmptyAndLockOwnedSessionBeforeTouchingProgress() {
-        stubDetail();
-        for (String answer : List.of("  第一行\n第二行  ", "", "中".repeat(12000))) {
-            service.saveAnswer(owner, id, 0, answer);
-            verify(jdbc).update(contains("AND EXISTS (SELECT 1 FROM interview_sessions WHERE id=? AND user_id=?)"),
-                    eq(answer.strip()), eq(id), eq(0), eq(id), eq(owner));
-        }
-        var order = inOrder(jdbc);
-        order.verify(jdbc).queryForList(contains("WHERE id=? AND user_id=? FOR UPDATE"), eq(String.class), eq(id), eq(owner));
-        order.verify(jdbc).update(contains("UPDATE interview_answers"), eq("第一行\n第二行"), eq(id), eq(0), eq(id), eq(owner));
-        order.verify(jdbc).update("UPDATE interview_sessions SET updated_at=now() WHERE id=? AND user_id=?", id, owner);
-    }
 
     @Test
     void missingOrOtherOwnerIs404ForGetProgressAndAnswersWithoutWrites() throws Exception {

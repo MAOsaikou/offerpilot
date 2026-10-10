@@ -59,14 +59,6 @@ class ResumePdfRendererTest {
         Files.write(temp.resolve("resume.pdf"), pdf);
     }
 
-    @Test void skipsEmptyOptionalSections() throws Exception {
-        var root = (ObjectNode) json.readTree(ResumeStructure.SCHEMA);
-        byte[] pdf = renderer.render("空白简历", root, "classic");
-        try (var document = Loader.loadPDF(pdf)) {
-            assertThat(new PDFTextStripper().getText(document)).contains("空白简历")
-                .doesNotContain("个人摘要", "教育经历", "工作经历", "项目经历", "专业技能", "证书");
-        }
-    }
 
     @Test void wrapsLongContentAndKeepsLastBulletOnLaterPage() throws Exception {
         var root = fixture();

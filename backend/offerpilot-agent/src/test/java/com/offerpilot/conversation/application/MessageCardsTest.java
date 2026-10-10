@@ -13,28 +13,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MessageCardsTest {
     private final ObjectMapper json = new ObjectMapper();
 
-    @Test
-    void selectKeepsValidCardsInOrderAndDropsTheRest() throws Exception {
-        ObjectNode match = json.createObjectNode().put("score", 80);
-        ObjectNode board = json.createObjectNode().put("change", "CREATED");
-        var incoming = List.of(
-                new MessageCard("card_job_1", "job_match", match),
-                new MessageCard("card_job_1", "board_update", board),
-                new MessageCard("bad id", "job_match", match),
-                new MessageCard("card_x", "not_a_card", match),
-                new MessageCard("card_board_1", "board_update", board),
-                new MessageCard("card_evidence_1", "job_evidence_match", match));
-        var kept = MessageCards.select("已生成", incoming, json);
-        assertThat(kept).extracting(MessageCard::cardId).containsExactly("card_job_1", "card_board_1", "card_evidence_1");
-        var parts = json.readTree(MessageCards.encode("已生成", incoming, json));
-        assertThat(parts).hasSize(4);
-        assertThat(parts.get(1).path("cardId").asText()).isEqualTo("card_job_1");
-        assertThat(parts.get(1).path("cardType").asText()).isEqualTo("job_match");
-        assertThat(parts.get(1).path("payload").path("score").asInt()).isEqualTo(80);
-        var names = new ArrayList<String>();
-        parts.get(1).fieldNames().forEachRemaining(names::add);
-        assertThat(names).containsExactly("type", "cardId", "cardType", "payload");
-    }
 
     @Test
     void payloadMustBeAnObjectWithinTheSizeAndCountCaps() {

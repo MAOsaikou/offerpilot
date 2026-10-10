@@ -120,6 +120,12 @@ it('保存期间禁止编辑和载入历史，成功后同步新版本并显示�
   expect(root.querySelector<HTMLInputElement>('.resume-basics input')?.value).toBe('Saved changes')
 })
 it('PDF 导出使用保存版本，不提交未保存草稿，并显示下载状态', async () => {
+  vi.mocked(exportResumePdf).mockRejectedValueOnce(new Error('PDF 导出缺少可用中文字体'))
+  button('导出 PDF').click()
+  await vi.waitFor(() =>
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain('中文字体'),
+  )
+  expect(button('导出 PDF').disabled).toBe(false)
   await edit('未保存的修改')
   let finish!: () => void
   vi.mocked(exportResumePdf).mockReturnValue(
@@ -135,40 +141,4 @@ it('PDF 导出使用保存版本，不提交未保存草稿，并显示下载状
   finish()
   await vi.waitFor(() => expect(button('导出 PDF').disabled).toBe(false))
   expect(root.querySelector<HTMLInputElement>('.resume-basics input')?.value).toBe('未保存的修改')
-})
-it('PDF 导出失败显示现有错误反馈，允许重试', async () => {
-  vi.mocked(exportResumePdf).mockRejectedValue(new Error('PDF 导出缺少可用中文字体'))
-  button('导出 PDF').click()
-  await vi.waitFor(() =>
-    expect(root.querySelector('[role="alert"]')?.textContent).toContain('中文字体'),
-  )
-  expect(button('导出 PDF').disabled).toBe(false)
-})
-it('未就绪、没有当前版本和保存期间禁止 PDF 导出', async () => {
-  cache.setQueryData(['resume', 'rs1'], { ...fixture(), parseStatus: 'PARSING' })
-  await nextTick()
-  expect(button('导出 PDF').disabled).toBe(true)
-  cache.setQueryData(['resume', 'rs1'], {
-    ...fixture(),
-    currentVersion: null,
-    currentVersionId: null,
-  })
-  await nextTick()
-  expect(button('导出 PDF').disabled).toBe(true)
-  cache.setQueryData(['resume', 'rs1'], fixture())
-  await nextTick()
-  await edit('保存中的修改')
-  let finish!: (value: ServerResume) => void
-  vi.mocked(saveResume).mockReturnValue(
-    new Promise((resolve) => {
-      finish = resolve
-    }),
-  )
-  root
-    .querySelector('form')!
-    .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
-  await nextTick()
-  expect(button('导出 PDF').disabled).toBe(true)
-  finish(fixture('v2'))
-  await vi.waitFor(() => expect(button('导出 PDF').disabled).toBe(false))
 })

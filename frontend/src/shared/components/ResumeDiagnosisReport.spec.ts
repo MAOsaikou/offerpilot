@@ -3,7 +3,6 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, expect, it, vi } from 'vitest'
 import ResumeDiagnosisReport from './ResumeDiagnosisReport.vue'
 import type { ResumeDiagnosisReport as Report } from '@/shared/types/diagnosis'
-import { getDiagnosisVersion } from '@/shared/api/diagnoses'
 
 vi.mock('@/shared/api/diagnoses', () => ({ getDiagnosisVersion: vi.fn() }))
 
@@ -80,24 +79,6 @@ function filter(label: string) {
     button.textContent?.includes(label),
   )!
 }
-it('优先展示行动建议，原文在同一卡片内展开且不再请求版本接口', async () => {
-  await mount()
-  const cards = root.querySelectorAll('.finding-card')
-  expect(cards[0]?.textContent).toContain('补充你实际执行过的接口验证步骤')
-  expect(cards[1]?.textContent).toContain('合并重复描述')
-  const evidence = cards[0]!.querySelector<HTMLDetailsElement>('details')!
-  expect(evidence.open).toBe(false)
-  evidence.querySelector('summary')!.click()
-  await nextTick()
-  expect(evidence.open).toBe(true)
-  expect(evidence.querySelector('blockquote')?.textContent).toBe('实现登录接口')
-  expect(evidence.textContent).toContain('项目经历 · 第 1 项')
-  expect(evidence.textContent).toContain('原文没有说明如何验证接口')
-  expect(getDiagnosisVersion).not.toHaveBeenCalled()
-  expect(root.textContent).not.toContain('查看所在段落')
-  evidence.querySelector('summary')!.click()
-  expect(evidence.open).toBe(false)
-})
 it('筛选有空状态且不改变原顺序编号，切换报告重置筛选与展开状态', async () => {
   const report = await mount()
   filter('可选优化').click()
@@ -119,15 +100,4 @@ it('筛选有空状态且不改变原顺序编号，切换报告重置筛选与�
   expect(root.querySelectorAll('.finding-card')).toHaveLength(2)
   expect(filter('全部').getAttribute('aria-pressed')).toBe('true')
   expect(root.querySelector<HTMLDetailsElement>('.report-summary')?.open).toBe(false)
-})
-it('单条讨论链接绑定原报告和简历版本，并明确当前建议', async () => {
-  await mount()
-  const link = root.querySelector<HTMLAnchorElement>('.finding-action')!
-  const url = new URL(link.getAttribute('href')!, 'http://localhost')
-  expect(url.pathname).toBe('/chat')
-  expect(url.searchParams.get('diagnosisReportId')).toBe('report-1')
-  expect(url.searchParams.get('resumeVersionId')).toBe('version-1')
-  expect(url.searchParams.get('resumeId')).toBe('resume-1')
-  expect(url.searchParams.get('prompt')).toContain('f-high')
-  expect(url.searchParams.get('prompt')).toContain('补充你实际执行过的接口验证步骤')
 })

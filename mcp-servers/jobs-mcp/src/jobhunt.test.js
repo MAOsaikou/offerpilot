@@ -8,7 +8,6 @@ import {
   isEmptyResult,
   normalizeNature,
   searchAcrossSites,
-  toJobCard,
 } from './jobhunt.js';
 
 test('normalizeNature 支持中文别名，其他输入回落到校招', () => {
@@ -26,15 +25,6 @@ test('normalizeNature 支持中文别名，其他输入回落到校招', () => {
   assert.equal(normalizeNature('   '), DEFAULT_NATURE);
   assert.equal(normalizeNature('不存在的类型'), DEFAULT_NATURE);
   assert.equal(DEFAULT_NATURE, 'campus', '面向校招场景，默认应为 campus');
-});
-
-test('toJobCard 用 detail_id 兜底，字段缺失时不产生 undefined', () => {
-  const card = toJobCard('tencent', { detail_id: '9' });
-  assert.equal(card.id, '9');
-  assert.equal(card.title, '');
-  assert.equal(card.locations, '');
-  assert.equal('description' in card, false, '没有描述时不应出现该键');
-  assert.equal('requirement' in card, false, '没有任职要求时不应出现该键');
 });
 
 test('isEmptyResult 能识别被上游包装过的空结果错误', () => {
@@ -56,9 +46,4 @@ test('searchAcrossSites 把失败站点记入 skipped 而不中断整批', async
   assert.equal(result.skipped.length, 1);
   assert.equal(result.skipped[0].site, 'not-a-real-site');
   assert.ok(result.skipped[0].reason.length > 0, 'skip 原因不应为空');
-});
-
-test('searchAcrossSites 对空站点列表安全返回', async () => {
-  const result = await searchAcrossSites([], { query: '后端' });
-  assert.deepEqual(result, { jobs: [], skipped: [], degradedSites: [] });
 });

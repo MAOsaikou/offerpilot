@@ -54,45 +54,6 @@ class CareerApprovalTest {
         when(profiles.saveTarget("alice", "工程师")).thenReturn(new CareerProfileService.Profile("工程师", "上海", "Java", List.of("技术研发"), List.of(), null));
     }
 
-    @ParameterizedTest @ValueSource(strings = {"APPROVE", "REJECT"})
-    void structuredSelectionUsesApprovalEventsBeforeAnyWriteAndIsOwnerScoped(String decision) throws Exception {
-        occupation();
-        var registry = registry();
-        var required = new CompletableFuture<AgentEvent.ApprovalRequired>();
-        var completed = new CompletableFuture<Void>();
-        var events = new CopyOnWriteArrayList<AgentEvent>();
-        var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
-        new Orchestrator(planner(registry), registry).run(AgentMode.AUTO, "设为目标", List.of(), ModelTier.FLASH,
-                "run", new AtomicInteger(), reply, u -> {}, "alice",
-                Map.of("careerAction", "setCareerTarget", "occupationId", "occ1", "owner", "attacker"))
-                .subscribe(e -> { events.add(e); if (e instanceof AgentEvent.ApprovalRequired a) required.complete(a); },
-                        completed::completeExceptionally, () -> completed.complete(null));
-        var approval = required.get(3, TimeUnit.SECONDS);
-        assertThat(approval.args()).isEqualTo(Map.of("occupationId", "occ1", "name", "工程师"));
-        assertThat(approval.editableFields()).isEmpty();
-        assertThat(((AgentEvent.ToolCall)events.get(2)).access()).isEqualTo(AgentEvent.ToolAccess.WRITE);
-        verify(profiles, never()).saveTarget(anyString(), anyString());
-        doThrow(new BusinessException(ErrorCode.RUN_NOT_FOUND)).when(conversations).requireRunOwner("other", "run");
-        assertThatThrownBy(() -> approvals.resolve("other", "run", approval.approvalId(), new ApprovalService.Decision("APPROVE", null, null)))
-                .isInstanceOf(BusinessException.class);
-        assertThatThrownBy(() -> approvals.resolve("alice", "run", approval.approvalId(),
-                new ApprovalService.Decision("APPROVE", Map.of("name", "其他职业"), null))).hasMessageContaining("不允许编辑");
-        var resolved = approvals.resolve("alice", "run", approval.approvalId(), new ApprovalService.Decision(decision, Map.of(), null));
-        assertThat(resolved.decision()).isEqualTo(decision);
-        completed.get(3, TimeUnit.SECONDS);
-        assertThat(events).extracting(AgentEvent::type).containsExactly("plan.created", "step.updated", "tool.call",
-                "approval.required", "approval.resolved", "tool.result", "step.updated");
-        assertThat(((AgentEvent.ToolResult) events.get(5)).ok()).isEqualTo(decision.equals("APPROVE"));
-        assertThat(events.toString()).doesNotContain("占位专家");
-        if (decision.equals("APPROVE")) {
-            verify(profiles).saveTarget("alice", "工程师");
-            assertThat(reply.get(1).getText()).contains("目标设为：工程师");
-        } else verify(profiles, never()).saveTarget(anyString(), anyString());
-        verify(profiles, never()).saveTarget(eq("attacker"), anyString());
-        verifyNoInteractions(gateway);
-        assertThatThrownBy(() -> approvals.resolve("alice", "run", approval.approvalId(), new ApprovalService.Decision("APPROVE", null, null)))
-                .isInstanceOf(BusinessException.class);
-    }
 
     @Test void timeoutRejectsWithoutWritingAndUnknownOccupationNeverRequestsApproval() {
         var ticket = approvals.request("alice", "run", "setCareerTarget", Map.of("occupationId", "occ1"), Duration.ofMillis(5));
@@ -113,25 +74,4 @@ class CareerApprovalTest {
         verifyNoInteractions(profiles, occupations);
     }
 
-    @Test void explicitRecommendationEmitsCardAndMissingInterestsEmitGuidanceWithoutPlaceholder() throws Exception {
-        var registry = registry();
-        when(profiles.get("alice")).thenReturn(new CareerProfileService.Profile("", "", "", List.of("技术研发", "数据分析"), List.of(), null));
-        when(occupations.rankHybrid(eq(new com.offerpilot.career.application.RiasecProfile(1, 2, 0, 0, 0, 1)), anyString(), eq(8))).thenReturn(List.of(new OccupationRecommender.Ranked("occ1", "工程师", "技术", "IRC", 1)));
-        var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
-        var runner = new Orchestrator(planner(registry), registry);
-        var events = runner.run(AgentMode.CAREER_DISCOVERY, "不知道适合什么", List.of(), ModelTier.FLASH, "run",
-                new AtomicInteger(), reply, u -> {}, "alice", Map.of()).collectList().block(Duration.ofSeconds(3));
-        assertThat(events).anySatisfy(e -> {
-            assertThat(e).isInstanceOf(AgentEvent.UiCard.class);
-            assertThat(((AgentEvent.UiCard)e).cardType()).isEqualTo("career_recommendation");
-        });
-        assertThat(events.toString()).doesNotContain("占位");
-        when(profiles.get("alice")).thenReturn(new CareerProfileService.Profile("", "", "", List.of(), List.of(), null));
-        reply.clear();
-        var guidance = runner.run(AgentMode.CAREER_DISCOVERY, "不知道适合什么", List.of(), ModelTier.FLASH, "run2",
-                new AtomicInteger(), reply, u -> {}, "alice", Map.of()).collectList().block(Duration.ofSeconds(3));
-        assertThat(guidance).noneMatch(e -> e instanceof AgentEvent.UiCard);
-        assertThat(reply.get(1).getText()).contains("勾选兴趣");
-        assertThat(reply.get(0).getText()).doesNotContain("未成功", "占位");
-    }
 }

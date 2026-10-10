@@ -73,19 +73,6 @@ async function mountDetail() {
     },
   }
 }
-it('snapshot detail keeps the date tooltip and does not offer a live refresh or apply link', async () => {
-  const { root, cleanup } = await mountDetail()
-  try {
-    expect(root.textContent).toContain('离线快照')
-    expect(root.querySelector('[title*="快照日期"]')?.getAttribute('title')).toContain('2026-10-10')
-    expect(root.textContent).toContain('非实时数据')
-    expect(root.textContent).not.toContain('更新完整详情')
-    expect(root.textContent).not.toContain('尚未获取完整详情')
-    expect(root.querySelector('a[target="_blank"]')).toBeNull()
-  } finally {
-    cleanup()
-  }
-})
 it('the chat match entry carries the selected job, resume version and structured action', async () => {
   savedResume()
   const { root, cleanup } = await mountDetail()

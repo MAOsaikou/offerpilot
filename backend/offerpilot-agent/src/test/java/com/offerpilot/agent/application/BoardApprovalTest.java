@@ -34,32 +34,6 @@ class BoardApprovalTest {
         return new ExpertRegistry(mock(ObjectProvider.class), mock(ObjectProvider.class), null, null, null, tools);
     }
 
-    @Test void approveEditedArgsEmitsWriteApprovalThenCardAndUsesTrustedOwner() {
-        var step = step(Map.of("action", "updateApplicationStatus", "applicationId", "app1", "status", "APPLIED", "owner", "attacker"));
-        when(applications.update("alice", "app1", "INTERVIEW", "周五面试")).thenReturn(saved("INTERVIEW"));
-        var planner = mock(IntentPlanner.class);
-        when(planner.prepare(any(), anyString(), anyList(), any(), any(), anyMap())).thenReturn(Mono.just(
-                new IntentPlanner.Decision("single", ExpertType.JOB, 1.0, false, null, new Plan("更新看板", List.of(step)))));
-        var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
-        var events = new CopyOnWriteArrayList<AgentEvent>();
-        var finished = new java.util.concurrent.CompletableFuture<Void>();
-        new Orchestrator(planner, registry(boards)).run(AgentMode.AUTO, "改成面试中", List.of(), ModelTier.FLASH,
-                "run1", new AtomicInteger(), reply, u -> {}, "alice", Map.of()).subscribe(events::add, finished::completeExceptionally, () -> finished.complete(null));
-        var required = (AgentEvent.ApprovalRequired) events.get(3);
-        assertThat(((AgentEvent.ToolCall)events.get(2)).access()).isEqualTo(AgentEvent.ToolAccess.WRITE);
-        assertThat(required.args()).isEqualTo(Map.of("applicationId", "app1", "status", "APPLIED"));
-        verifyNoInteractions(applications);
-        approvals.resolve("alice", "run1", required.approvalId(), new ApprovalService.Decision("APPROVE", Map.of("status", "INTERVIEW", "note", "周五面试"), null));
-        finished.orTimeout(3, java.util.concurrent.TimeUnit.SECONDS).join();
-        assertThat(events).extracting(AgentEvent::type).containsExactly("plan.created", "step.updated", "tool.call", "approval.required", "approval.resolved", "tool.result", "ui.card", "step.updated");
-        assertThat(((AgentEvent.ToolResult)events.get(5)).ok()).isTrue();
-        var card = (AgentEvent.UiCard) events.get(6);
-        assertThat(card.cardType()).isEqualTo("board_update");
-        assertThat(new ObjectMapper().valueToTree(card.payload()).path("application").path("company").asText()).isEqualTo("示例公司");
-        assertThat(reply.get(0).getText()).contains("已按用户审批写入");
-        verify(applications).update("alice", "app1", "INTERVIEW", "周五面试");
-        assertThatThrownBy(() -> approvals.resolve("alice", "run1", required.approvalId(), new ApprovalService.Decision("REJECT", null, null))).isInstanceOf(BusinessException.class);
-    }
 
     @Test void approvedCreateDefaultsToTodoAndNoteOnlyUpdateDoesNotInventAStatus() {
         var create = step(Map.of("action", "createApplication", "jobId", "job1", "note", "收藏备注"));

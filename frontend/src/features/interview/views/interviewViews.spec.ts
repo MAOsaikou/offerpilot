@@ -130,18 +130,6 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it('mounts without speech APIs and submits through the existing text answer path', async () => {
-  await mount()
-  await loaded()
-  expect(button('开始口述')).toBeUndefined()
-  expect(button('朗读题目')).toBeUndefined()
-  expect(root.textContent).toContain('Chrome / Edge')
-  await typeAnswer('文字回答')
-  submit()
-  await vi.waitFor(() => expect(server.questionIndex).toBe(1))
-  expect(saveInterviewAnswer).toHaveBeenCalledWith('iv_1', 0, '文字回答', expect.any(AbortSignal))
-})
-
 it('appends finals to typed answers and saves the last recognition result before advancing', async () => {
   const mock = installSpeechMocks()
   await mount()

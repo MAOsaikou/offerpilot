@@ -119,6 +119,15 @@ class JobsHttpIntegrationTest {
         assertThat(request("GET","/jobs/matches/"+report.path("id").asText(),other,null).statusCode()).isEqualTo(404);
         assertThat(request("POST","/jobs/"+job+"/matches",other,body).statusCode()).isEqualTo(404);
         assertThat(data(request("GET","/jobs/"+job+"/matches",other,null))).isEmpty();
+        String exportPath="/jobs/matches/"+report.path("id").asText()+"/eval.md";
+        var export=request("GET",exportPath,token,null);
+        assertThat(export.statusCode()).withFailMessage(export.body()).isEqualTo(200);
+        assertThat(export.headers().firstValue("Content-Type").orElse("")).contains("text/markdown");
+        assertThat(export.body()).contains("Java工程师", "测试企业", "要求覆盖", "不是录用预测");
+        assertThat(request("GET",exportPath,other,null).statusCode()).isEqualTo(404);
+        assertThat(request("GET",exportPath,null,null).statusCode()).isEqualTo(401);
+        assertThat(request("GET","/jobs/matches/missing/eval.md",token,null).statusCode()).isEqualTo(404);
+
     }
     @Test void controlledSlowProRequestKeepsOwnershipAndSavesExactlyOnce() throws Exception {
         String token=identities.create().accessToken(), other=identities.create().accessToken();
