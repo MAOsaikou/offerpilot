@@ -110,6 +110,12 @@ it('loads the server profile, debounces text, saves interest and target, then re
   expect(profileWrites).toHaveLength(0)
   await vi.waitFor(() => expect(profiles['career-owner']!.target).toBe('数据分析师'))
   expect(profileWrites).toHaveLength(1)
+  expect(profileWrites[0]).toEqual({
+    target: '数据分析师',
+    city: '上海',
+    skills: 'SQL',
+    interests: ['技术研发'],
+  })
   root.querySelectorAll<HTMLInputElement>('.chip input')[2]!.click()
   await vi.waitFor(() => expect(profiles['career-owner']!.interests).toContain('数据分析'))
   clickButton('设为探索目标')

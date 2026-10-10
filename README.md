@@ -171,6 +171,8 @@ java -jar offerpilot-bootstrap/target/offerpilot-bootstrap-0.1.0-SNAPSHOT.jar --
 cd frontend && pnpm install && pnpm dev
 ```
 
+常规测试：在 `backend/` 运行 `SPRING_PROFILES_ACTIVE=test bash ./mvnw -q -pl offerpilot-bootstrap -am test`，在 `frontend/` 运行 `pnpm test -- --run`。后端默认不编译或发现 `*LiveEvaluation*`，保留 PII、离线红队、安全与关键 HTTP 集成测试；需要真实模型时加 `-Plive`，再设置目标套件原有的 `OFFERPILOT_RUN_LIVE_*` 开关和非空 `DEEPSEEK_API_KEY`（例如 `OFFERPILOT_RUN_LIVE_INTENT=true bash ./mvnw -q -Plive -pl offerpilot-bootstrap -am -Dtest=IntentLiveEvaluationTest -Dsurefire.failIfNoSpecifiedTests=false test`）。`-Plive` 本身不会启用收费调用。
+
 ### 6.3 评审体验账号
 
 登录页点击「体验账号一键登录」，无需填写邮箱或密码即可进入共享的虚构 USER 旅程：2 份 READY 简历（附 DOCX 原件）、10 个虚构岗位、6 条投递看板记录、2 场文字面试、1 份职业画像和 3 项已完成成长任务。岗位仅供演示，不能实际投递；请勿填入个人信息。

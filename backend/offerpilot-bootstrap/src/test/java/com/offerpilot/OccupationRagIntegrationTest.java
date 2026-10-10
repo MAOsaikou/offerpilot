@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -35,7 +34,7 @@ import static org.mockito.Mockito.*;
 @Import(OccupationMockEmbeddingConfiguration.class)
 @Testcontainers
 @Transactional
-class OccupationRagIntegrationTest {
+class OccupationRagIntegrationTest extends OccupationRecommendationTest {
     @Container static PostgreSQLContainer<?> db = new PostgreSQLContainer<>(
             DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
     @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
@@ -43,11 +42,9 @@ class OccupationRagIntegrationTest {
         registry.add("spring.datasource.username", db::getUsername);
         registry.add("spring.datasource.password", db::getPassword);
     }
-    @Autowired JdbcTemplate jdbc;
     @Autowired OccupationEmbeddingJob job;
     @Autowired OccupationEmbeddings embeddings;
     @Autowired OccupationHybridRetriever retrieval;
-    @Autowired OccupationRecommender recommender;
     @Autowired OccupationSeeder seeder;
 
     @Test void startupFillsV9AndSecondRunAndUnchangedSeedAreNoOps() throws Exception {
@@ -94,6 +91,9 @@ class OccupationRagIntegrationTest {
     }
 
     @Test void vectorAndFulltextFuseWithStableOrderAndHybridChat() {
+        // Rollback restores rows, but catalog cases that delete/clear vectors leave dead HNSW
+        // entries. Rebuild the tiny fixture index before asserting nearest-neighbor order.
+        jdbc.execute("REINDEX INDEX idx_occupations_embedding");
         var query = jdbc.queryForObject("SELECT description FROM occupations WHERE id='occ_backend_dev'", String.class);
         var fused = retrieval.search(query, 5);
         assertThat(fused.vectorAvailable()).isTrue();
