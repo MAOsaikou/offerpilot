@@ -34,8 +34,8 @@ public class Orchestrator {
                                String runId, AtomicInteger seq, List<Message> replyPrompt, Consumer<Usage> onUsage,
                                String owner, Map<String, Object> context) {
         var selected=context==null ? Map.<String,Object>of() : context;
-        if (!selected.containsKey("jobId") && (selected.containsKey("applicationId") || selected.containsKey("matchId") || selected.containsKey("jobMatchId")))
-            return Mono.fromCallable(() -> experts.withJobContext(owner,selected)).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+        if (selected.containsKey("jobId") || selected.containsKey("applicationId") || selected.containsKey("matchId") || selected.containsKey("jobMatchId"))
+            return experts.withJobContext(owner,selected)
                 .flatMapMany(resolved -> runSelected(mode,content,history,tier,runId,seq,replyPrompt,onUsage,owner,resolved));
         return runSelected(mode,content,history,tier,runId,seq,replyPrompt,onUsage,owner,selected);
     }

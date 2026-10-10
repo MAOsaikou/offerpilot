@@ -37,13 +37,23 @@ public class ExpertRegistry {
     private com.offerpilot.common.artifact.JobArtifacts artifacts;
     @Autowired(required = false)
     public void setArtifacts(com.offerpilot.common.artifact.JobArtifacts artifacts) { this.artifacts=artifacts; }
-    public Map<String,Object> withJobContext(String owner,Map<String,Object> context) {
-        if (artifacts==null) return context;
-        String job=artifacts.selectedJob(owner,text(context.get("jobId")),text(context.get("applicationId")),
-            text(context.getOrDefault("matchId",context.get("jobMatchId"))));
-        if (job==null) return context;
+    public Mono<Map<String,Object>> withJobContext(String owner,Map<String,Object> context) {
+        if (artifacts==null) return Mono.just(context);
+        return Mono.fromCallable(() -> resolveJobContext(owner,context)).subscribeOn(Schedulers.boundedElastic());
+    }
+    private Map<String,Object> resolveJobContext(String owner,Map<String,Object> context) {
         var selected=new java.util.LinkedHashMap<String,Object>(context);
-        selected.put("jobId",job);
+        selected.remove("jobId");
+        try {
+            String job=artifacts.selectedJob(owner,text(context.get("jobId")),text(context.get("applicationId")),
+                text(context.getOrDefault("matchId",context.get("jobMatchId"))));
+            if (job!=null) selected.put("jobId",job);
+        } catch (BusinessException ex) {
+            if (ex.errorCode()!=ErrorCode.JOB_NOT_FOUND && ex.errorCode()!=ErrorCode.APPLICATION_NOT_FOUND
+                    && ex.errorCode()!=ErrorCode.MATCH_NOT_FOUND) throw ex;
+            // Optional provenance is unavailable. Keep opaque board targets on their existing
+            // approval/owner-check path, but never use them as a selected job or expose existence.
+        }
         return selected;
     }
     private final JobMatchForChat matches;

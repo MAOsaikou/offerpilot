@@ -447,7 +447,7 @@ class ResumeHttpIntegrationTest {
     @Test void optimizeRejectsUnknownInputConcurrentWorkCancelledAndExpiredResults() throws Exception {
         String token=identities.create().accessToken();var resume=patchFixture(token);String path=applyPath(resume).replace("apply-patches","optimize");
         var input=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(optimizeBody("optimize-request-fields"));input.put("jobId","guessed");
-        assertThat(request("POST",path,token,input.toString()).statusCode()).isEqualTo(400);
+        assertThat(request("POST",path,token,input.toString()).statusCode()).isEqualTo(404);
         assertThat(request("POST",path,token,optimizeBody("short")).statusCode()).isEqualTo(400);
         var work=optimizations.begin(owner(token),resume.id(),resume.currentVersionId(),new ResumeOptimizationService.Input("optimize-request-cancel",OPTIMIZE_JD));
         assertThat(request("POST",path,token,optimizeBody("optimize-request-other")).statusCode()).isEqualTo(429);
