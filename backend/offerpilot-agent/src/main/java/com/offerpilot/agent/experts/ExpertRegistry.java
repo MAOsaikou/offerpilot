@@ -6,6 +6,7 @@ import com.offerpilot.agent.application.BoardWriteTools;
 import com.offerpilot.agent.application.CareerWriteTools;
 import com.offerpilot.agent.application.InterviewWriteTools;
 import com.offerpilot.interview.application.InterviewCoachForChat;
+import com.offerpilot.interview.application.InterviewRubric;
 import com.offerpilot.career.application.CareerRecommendForChat;
 import com.offerpilot.agent.domain.ExpertType;
 import com.offerpilot.agent.domain.PlanStep;
@@ -29,6 +30,7 @@ import java.util.UUID;
 /** 已接入文字面试与规则评分、职业推荐与目标审批、岗位搜索、匹配、审批看板写入、简历诊断与定向改写；成长教练输出确定性技能差距与学习路线及审批任务写入，并可引用已入库 STAR 故事。 */
 @Component
 public class ExpertRegistry {
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
     private static final Map<ExpertType, String> LABELS = Map.of(
             ExpertType.CAREER_DISCOVERY, "职业探索", ExpertType.RESUME, "简历指导",
             ExpertType.JOB, "岗位分析", ExpertType.INTERVIEWER, "面试练习", ExpertType.COACH, "成长教练");
@@ -71,7 +73,17 @@ public class ExpertRegistry {
         if (starContext == null) return work;
         if (step.agent() != ExpertType.INTERVIEWER && step.agent() != ExpertType.COACH) return work;
         String query = storyQuery(step);
-        return work.flatMap(result -> starContext.attach(owner, query, result));
+        return work.flatMap(result -> {
+            if (step.agent() != ExpertType.INTERVIEWER || interviews == null) return starContext.attach(owner, query, result);
+            // Use the actual outcome session, including a newly created/advanced session after approval.
+            String id = text(step.inputs().get("sessionId"));
+            for (var card : result.cards()) {
+                if (card.payload() instanceof InterviewRubric.Report report) id = report.id();
+                if (card.payload() instanceof InterviewCoachForChat.Turn turn) id = turn.sessionId();
+            }
+            if (id == null) return Mono.just(result);
+            return starContext.attachInterview(owner, id, query, result);
+        });
     }
 
     /** Prefer current-turn noteQuery (bounded), then role; coach falls back to skill/STAR practice terms. */
@@ -299,21 +311,31 @@ public class ExpertRegistry {
         }
         if (step.agent() == ExpertType.INTERVIEWER) {
             if (interviews == null) return Mono.just(ExpertResult.text("文字面试服务暂不可用，请稍后重试。"));
+            if ("recallStarStories".equals(step.inputs().get("action"))) {
+                return Mono.fromCallable(() -> {
+                    String id = interviews.resolveSession(owner, text(step.inputs().get("sessionId")), false);
+                    var session = interviews.session(owner, id);
+                    var answer = session.answers().get(session.questionIndex());
+                    var turn = new InterviewCoachForChat.Turn(id, "ASKING", session.questionIndex(), session.answers().size(),
+                            answer.questionText(), "请参考已确认的故事，补充本题的真实背景、职责、行动和结果。未保存或推进答案。");
+                    return ExpertResult.card(turn.note(), requestId(runId, step.id()), "interviewer_state", turn);
+                }).subscribeOn(Schedulers.boundedElastic());
+            }
             if (!java.util.Set.of("scoreInterview", "generateReport").contains(String.valueOf(step.inputs().get("action"))))
                 return Mono.just(ExpertResult.text("请开始文字模拟面试，或请求面试评分卡。"));
             return Mono.fromCallable(() -> {
                 String id = interviews.resolveSession(owner, (String) step.inputs().get("sessionId"), false);
                 var report = interviews.scoreSession(owner, id);
                 if (starStories == null) {
-                    return ExpertResult.card("当前会话的文字规则评分（未修改完成状态）：" + report,
+                    return ExpertResult.card("当前会话的文字规则评分（未修改完成状态）。" + InterviewRubric.summary(report),
                             requestId(runId, step.id()), "interview_report", report);
                 }
                 var candidates = starStories.candidates(owner, id).stream().filter(c -> !c.alreadySaved()).toList();
                 if (candidates.isEmpty()) {
-                    return ExpertResult.card("当前会话的文字规则评分（未修改完成状态）：" + report,
+                    return ExpertResult.card("当前会话的文字规则评分（未修改完成状态）。" + InterviewRubric.summary(report),
                             requestId(runId, step.id()), "interview_report", report);
                 }
-                return ExpertResult.cards("当前会话的文字规则评分（未修改完成状态）。可审批入库的 STAR 候选：" + candidates.size() + " 条。",
+                return ExpertResult.cards("当前会话的文字规则评分（未修改完成状态）。" + InterviewRubric.summary(report) + " 可审批入库的 STAR 候选：" + candidates.size() + " 条。",
                         new ExpertResult.Card(requestId(runId, step.id()), "interview_report", report),
                         new ExpertResult.Card(requestId(runId, step.id() + ":stars"), "star_story_candidates", java.util.Map.of("items", candidates, "count", candidates.size())));
             }).subscribeOn(Schedulers.boundedElastic());
@@ -323,7 +345,7 @@ public class ExpertRegistry {
             return Mono.fromCallable(() -> {
                 var result = careers.recommend(owner, text(step.inputs().get("request")));
                 return result.payload() == null ? ExpertResult.text(result.guidance())
-                        : ExpertResult.card("根据已保存兴趣生成的规则推荐（未设置目标）：" + result.payload(),
+                        : ExpertResult.card("根据已保存兴趣生成的规则推荐（未设置目标）。",
                                 requestId(runId, step.id()), "career_recommendation", result.payload());
             }).subscribeOn(Schedulers.boundedElastic());
         }
@@ -339,7 +361,7 @@ public class ExpertRegistry {
                 String sourceLabel = "LOCAL_SNAPSHOT".equals(card.path("meta").path("source").asText())
                         ? "离线示例岗位快照（人工整理，非实时数据，不代表当前开放岗位）："
                         : "企业官网岗位搜索结果（仅含本次返回结果，不是全站总数）：";
-                return ExpertResult.card(sourceLabel + card,
+                return ExpertResult.card(sourceLabel + jsonSummary(card),
                         requestId(runId, step.id()), "job_card", card);
             }).subscribeOn(Schedulers.boundedElastic());
         }
@@ -349,7 +371,7 @@ public class ExpertRegistry {
                     ? optimizations.report(owner, resumeId, versionId, text(context.get("optimizationReportId")))
                     : Mono.fromCallable(() -> descriptions.description(text(context.get("jobId"))))
                         .subscribeOn(Schedulers.boundedElastic()).flatMap(jd -> optimizations.generate(owner, resumeId, versionId, jd, requestId(runId, step.id())));
-            return result.map(report -> ExpertResult.card("已保存的改写建议（本轮未执行采纳，采纳状态请在简历页查看）：" + report,
+            return result.map(report -> ExpertResult.card("已保存的改写建议（本轮未执行采纳，采纳状态请在简历页查看）：" + jsonSummary(report),
                     report.path("reportId").asText(), "resume_diff", report));
         }
         if ("advice".equals(step.inputs().get("action")) && step.agent() == ExpertType.RESUME)
@@ -357,7 +379,7 @@ public class ExpertRegistry {
         if (diagnosing(step, context)) {
             return diagnoses.execute(owner,text(context.get("resumeId")),text(context.get("resumeVersionId")),
                 text(context.get("diagnosisReportId")),requestId(runId,step.id())).map(report ->
-                    ExpertResult.card(report.toString(),report.path("reportId").asText(),"resume_diagnosis",report));
+                    ExpertResult.card("已保存的简历诊断：" + jsonSummary(report),report.path("reportId").asText(),"resume_diagnosis",report));
         }
         if (step.agent() == ExpertType.RESUME) {
             return Mono.just(ExpertResult.text("未选择已保存的简历版本。请从简历详情点击 AI 诊断或继续讨论；不能读取或猜测用户未提供的简历。"));
@@ -386,6 +408,15 @@ public class ExpertRegistry {
         }
         return Mono.fromSupplier(() -> ExpertResult.text(label(step.agent()) + "占位专家已接收任务；收到 "
                 + upstreamOutputs.size() + " 项上游结果。仅验证编排链路，未执行搜索、修改或创建业务记录。"));
+    }
+
+    /** JsonNode is intentionally serialized as JSON; arbitrary Java objects never enter tool narration. */
+    private static String jsonSummary(com.fasterxml.jackson.databind.JsonNode data) {
+        try {
+            return JSON.writeValueAsString(data);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            throw new BusinessException(ErrorCode.STRUCTURED_OUTPUT_INVALID, "工具结果暂时无法展示，请重试。");
+        }
     }
 
     private static Target read(Map<String, Object> source) {

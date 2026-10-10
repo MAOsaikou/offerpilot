@@ -27,6 +27,10 @@ const busy = ref(false)
 const starCandidates = ref<StarStoryCandidate[]>([])
 const starBusy = ref(false)
 const starMessage = ref('')
+const starLoading = ref(false)
+const starError = ref('')
+const exportBusy = ref(false)
+const exportError = ref('')
 const current = computed(() =>
   session.value?.answers.find((a) => a.questionIndex === session.value?.questionIndex),
 )
@@ -88,6 +92,13 @@ async function load() {
   controller = new AbortController()
   const requestRevision = ++revision
   loading.value = true
+  starCandidates.value = []
+  starMessage.value = ''
+  starError.value = ''
+  starLoading.value = false
+  starBusy.value = false
+  exportBusy.value = false
+  exportError.value = ''
   loadError.value = ''
   notFound.value = false
   session.value = undefined
@@ -97,15 +108,7 @@ async function load() {
     if (requestRevision !== revision) return
     session.value = loaded
     answer.value = current.value?.answerText || ''
-    starCandidates.value = []
-    starMessage.value = ''
-    if (loaded.completed) {
-      try {
-        starCandidates.value = await listStarStoryCandidates(loaded.id, controller.signal)
-      } catch {
-        /* Story bank is optional on the room page. */
-      }
-    }
+    if (loaded.completed) void loadCandidates()
   } catch (e) {
     if (requestRevision !== revision) return
     notFound.value = e instanceof ApiError && e.status === 404
@@ -120,6 +123,48 @@ onBeforeUnmount(() => {
   revision++
   controller.abort()
 })
+
+async function loadCandidates() {
+  if (!session.value || starLoading.value) return
+  const requestRevision = revision
+  const id = session.value.id
+  starLoading.value = true
+  starError.value = ''
+  try {
+    const items = await listStarStoryCandidates(id, controller.signal)
+    if (requestRevision === revision) starCandidates.value = items
+  } catch (e) {
+    if (requestRevision === revision) starError.value = (e as Error).message
+  } finally {
+    if (requestRevision === revision) starLoading.value = false
+  }
+}
+
+watch(
+  () => session.value?.completed,
+  (completed) => {
+    if (completed) void loadCandidates()
+  },
+)
+
+async function downloadRecap() {
+  if (!session.value || exportBusy.value || dirty.value) return
+  const requestRevision = revision
+  exportBusy.value = true
+  exportError.value = ''
+  try {
+    await exportInterview(
+      session.value.role,
+      session.value.answers,
+      session.value.id,
+      controller.signal,
+    )
+  } catch (e) {
+    if (requestRevision === revision) exportError.value = (e as Error).message
+  } finally {
+    if (requestRevision === revision) exportBusy.value = false
+  }
+}
 
 async function persist(questionIndex?: number, completed?: boolean): Promise<boolean> {
   if (!session.value || busy.value) return false
@@ -172,16 +217,23 @@ async function saveCandidate(candidate: StarStoryCandidate) {
   if (!session.value || starBusy.value || candidate.alreadySaved) return
   starBusy.value = true
   starMessage.value = ''
-  error.value = ''
+  starError.value = ''
+  const requestRevision = revision
+  const id = session.value.id
   try {
-    await saveStarStory({ sessionId: session.value.id, questionIndex: candidate.questionIndex })
-    starCandidates.value = await listStarStoryCandidates(session.value.id)
+    await saveStarStory(
+      { sessionId: id, questionIndex: candidate.questionIndex },
+      controller.signal,
+    )
+    if (requestRevision !== revision) return
+    candidate.alreadySaved = true
     starMessage.value = '已保存到 STAR 故事库。'
     void cache.invalidateQueries({ queryKey: ['star-stories'] })
+    await loadCandidates()
   } catch (e) {
-    error.value = (e as Error).message
+    if (requestRevision === revision) starError.value = (e as Error).message
   } finally {
-    starBusy.value = false
+    if (requestRevision === revision) starBusy.value = false
   }
 }
 
@@ -214,12 +266,14 @@ onBeforeRouteUpdate(saveBeforeLeave)
       <RouterLink to="/interviews" class="btn">返回练习列表</RouterLink>
       <button
         class="btn"
-        :disabled="busy || dirty"
-        @click="exportInterview(session.role, session.answers, session.id)"
+        :disabled="busy || dirty || exportBusy"
+        :aria-busy="exportBusy"
+        @click="downloadRecap"
       >
-        导出复盘
+        {{ exportBusy ? '正在导出…' : '导出复盘' }}
       </button>
     </PageHeading>
+    <p v-if="exportError" role="alert">{{ exportError }}</p>
     <p v-if="error" role="alert">{{ error }} · 回答已保留，请重试保存。</p>
     <template v-if="!session.completed">
       <section class="panel interview-stage">
@@ -324,7 +378,12 @@ onBeforeRouteUpdate(saveBeforeLeave)
             把 STAR 线索齐全的回答保存下来，之后面试练习会引用这些故事。保存需你确认，不会自动入库。
           </p>
           <p v-if="starMessage" class="success-banner" role="status">{{ starMessage }}</p>
-          <div v-if="!starCandidates.length" class="helper-note">
+          <p v-if="starLoading" role="status">正在加载 STAR 候选…</p>
+          <div v-else-if="starError" role="alert">
+            <p>{{ starError }}</p>
+            <button class="btn" :disabled="starBusy" @click="loadCandidates">重新加载候选</button>
+          </div>
+          <div v-else-if="!starCandidates.length" class="helper-note">
             本题练习暂无满足 3 项 STAR 线索的候选。
           </div>
           <article v-for="item in starCandidates" :key="item.questionIndex" class="answer-card">
@@ -336,7 +395,7 @@ onBeforeRouteUpdate(saveBeforeLeave)
             <button
               type="button"
               class="btn primary"
-              :disabled="starBusy || item.alreadySaved"
+              :disabled="starBusy || starLoading || item.alreadySaved"
               @click="saveCandidate(item)"
             >
               {{ item.alreadySaved ? '已入库' : starBusy ? '保存中…' : '保存到故事库' }}
@@ -351,6 +410,8 @@ onBeforeRouteUpdate(saveBeforeLeave)
               path: '/chat',
               query: {
                 mode: 'INTERVIEWER',
+                interviewSessionId: session.id,
+                interviewAction: 'recallStarStories',
                 prompt: '我正在准备' + session.role + '的面试，请帮我练习回答项目经历类问题。',
               },
             }"

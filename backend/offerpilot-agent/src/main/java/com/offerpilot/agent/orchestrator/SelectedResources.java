@@ -17,6 +17,7 @@ final class SelectedResources {
         var selected = new LinkedHashMap<String, Boolean>();
         for (String key : List.of("jobId", "resumeId", "resumeVersionId", "applicationId"))
             selected.put(key, context.get(key) instanceof String value && !value.isBlank() && value.length() <= 80);
-        return "调用方资源选择状态（true=已选择，标识由服务端绑定，不要求用户再粘贴）：" + selected;
+        return "调用方资源选择状态（true=已选择，标识由服务端绑定，不要求用户再粘贴）：" + selected.entrySet().stream().map(e -> e.getKey() + "：" + e.getValue())
+                .collect(java.util.stream.Collectors.joining("；"));
     }
 }

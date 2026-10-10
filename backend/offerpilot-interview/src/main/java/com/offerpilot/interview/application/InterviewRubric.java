@@ -25,6 +25,13 @@ public final class InterviewRubric {
     public record Report(String id, int overall, Dimensions dimensions, List<Turn> turns, List<String> strengths,
                          List<String> weaknesses, List<String> advice, List<Learning> recommendedLearning,
                          String note) {}
+    /** Deliberate compact tool narration; never concatenate a Java record into a prompt. */
+    public static String summary(Report report) {
+        var d = report.dimensions();
+        return "综合线索分 " + report.overall() + "/100；专业 " + d.professional()
+                + "，表达 " + d.expression() + "，逻辑 " + d.logic() + "，岗位关联 " + d.jobFit()
+                + "。" + report.note();
+    }
     private static final Pattern NUMBER = Pattern.compile("\\d+(?:\\.\\d+)?\\s*(?:%|％|ms|秒|分钟|小时|天|次|个|人|倍|percent)", Pattern.CASE_INSENSITIVE);
     private InterviewRubric() {}
     public static Star detect(String answer) {

@@ -58,7 +58,7 @@ class BoardIntentParserTest {
         when(gateway.stream(any(), anyList(), eq(0.1))).thenAnswer(invocation -> {
             List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(1);
             String request = messages.get(messages.size() - 1).getText();
-            assertThat(request).contains("jobId=true", "resumeId=true", "resumeVersionId=false", "applicationId=false")
+            assertThat(request).contains("jobId：true", "resumeId：true", "resumeVersionId：false", "applicationId：false")
                     .doesNotContain("private-selected-id", "x".repeat(81));
             String output = messages.get(0).getText().equals("planner")
                     ? "{\"kind\":\"single\",\"expert\":\"JOB\",\"confidence\":1,\"needsClarification\":false}"
@@ -78,9 +78,9 @@ class BoardIntentParserTest {
         }
     }
     @Test void absentBlankAndNonStringResourcesAreNeverAdvertisedAsSelected() {
-        assertThat(SelectedResources.describe(Map.of())).contains("jobId=false", "resumeId=false", "resumeVersionId=false", "applicationId=false");
+        assertThat(SelectedResources.describe(Map.of())).contains("jobId：false", "resumeId：false", "resumeVersionId：false", "applicationId：false");
         assertThat(SelectedResources.describe(Map.of("jobId", "  ", "resumeId", 12, "resumeVersionId", "x".repeat(81))))
-                .contains("jobId=false", "resumeId=false", "resumeVersionId=false");
+                .contains("jobId：false", "resumeId：false", "resumeVersionId：false");
     }
 
 }

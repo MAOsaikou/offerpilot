@@ -515,6 +515,8 @@ class ChatHttpIntegrationTest {
         String id = json.readTree(created.body()).path("data").path("id").asText();
         assertThat(request("PUT", "/interviews/" + id + "/answers/0", token,
                 "{\"answerText\":\"当时在项目中，我负责Java工程师接口目标。我实现缓存，最终降低延迟20%。\"}").statusCode()).isEqualTo(200);
+        var story = request("POST", "/star-stories", token, json.writeValueAsString(java.util.Map.of("sessionId", id, "questionIndex", 0)));
+        assertThat(story.statusCode()).isEqualTo(200);
         var response = request("POST", "/agent/chat", token, "{\"content\":\"面试评分验收：评价刚才的面试\"}");
         assertThat(response.statusCode()).isEqualTo(200);
         var events = response.body().lines().filter(line -> line.startsWith("data:")).map(line -> {
@@ -529,7 +531,10 @@ class ChatHttpIntegrationTest {
         assertThat(payload.path("dimensions").has("presence")).isFalse();
         assertThat(payload.path("turns")).hasSize(5);
         assertThat(payload.path("turns").get(0).path("star").path("action").asBoolean()).isTrue();
-        assertThat(response.body()).doesNotContain("占位专家", "placeholder.INTERVIEWER", "approval.required");
+        assertThat(response.body()).doesNotContain("占位专家", "placeholder.INTERVIEWER", "approval.required", "Report[", "Dimensions[");
+        var citations = events.stream().filter(e -> e.path("cardType").asText().equals("star_story_citations")).findFirst().orElseThrow();
+        assertThat(citations.path("payload").path("items").get(0).path("id"))
+                .isEqualTo(json.readTree(story.body()).path("data").path("id"));
         var saved = conversations.messages(owner(token), events.get(0).path("conversationId").asText(), null, 30).items().get(1);
         assertThat(saved.parts().get(1).path("payload")).isEqualTo(payload);
         assertThat(json.readTree(request("GET", "/interviews/" + id, token, null).body()).path("data").path("completed").asBoolean()).isFalse();
