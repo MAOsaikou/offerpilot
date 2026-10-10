@@ -50,14 +50,49 @@ function New-BackendBuildDirectory {
 function Build-Backend {
     Invoke-Step '编译并测试后端' {
         $buildRoot = New-BackendBuildDirectory
+        $buildLog = Join-Path $buildRoot 'maven-build.log'
+        $writer = New-Object IO.StreamWriter($buildLog, $false, (New-Object Text.UTF8Encoding($false)))
+        $writer.AutoFlush = $true
+        $currentStage = $null
+        $errors = New-Object 'Collections.Generic.Queue[string]'
+        Write-Host '  正在准备后端构建…' -ForegroundColor DarkGray
         Push-Location $buildRoot
         try {
-            & './mvnw.cmd' -q -B -pl offerpilot-bootstrap -am package | Out-Host
-            if ($LASTEXITCODE -ne 0) { throw 'Backend build failed; the existing backend was preserved.' }
+            $previousPreference = $ErrorActionPreference
+            try {
+                # Native stderr must reach the log; check Maven's exit code after the pipeline.
+                $ErrorActionPreference = 'Continue'
+                & './mvnw.cmd' -B -pl offerpilot-bootstrap -am package 2>&1 | ForEach-Object {
+                    $line = $_.ToString()
+                    $writer.WriteLine($line)
+                    $stage = $null
+                    if ($line -match 'Downloading from') { $stage = '正在下载依赖…' }
+                    elseif ($line -match '--- (?:maven-)?compiler:|Compiling \d+') { $stage = '正在编译后端…' }
+                    elseif ($line -match '--- (?:maven-)?surefire:|\[INFO\] Running ') { $stage = '正在运行测试…' }
+                    elseif ($line -match '--- (?:maven-)?jar:|--- spring-boot:|Building jar:') { $stage = '正在打包后端…' }
+                    if ($stage -and $stage -ne $currentStage) {
+                        $currentStage = $stage
+                        Write-Progress -Activity '后端构建' -Status $stage
+                    }
+                    if ($line -match '^\[ERROR\] .+' -and $errors.Count -lt 5) {
+                        $errors.Enqueue($line)
+                    }
+                }
+                $buildExitCode = $LASTEXITCODE
+            } finally { $ErrorActionPreference = $previousPreference }
+            if ($buildExitCode -ne 0) {
+                foreach ($line in $errors) { Write-Host ('  ' + $line) -ForegroundColor Red }
+                throw ('后端构建失败；详细日志：' + $buildLog)
+            }
             $builtJar = Join-Path $buildRoot 'offerpilot-bootstrap/target/offerpilot-bootstrap-0.1.0-SNAPSHOT.jar'
             if (-not (Test-Path -LiteralPath $builtJar)) { throw 'Backend build produced no JAR; the existing backend was preserved.' }
+            Write-Host '  后端构建完成。' -ForegroundColor Green
             return $builtJar
-        } finally { Pop-Location }
+        } finally {
+            Write-Progress -Activity '后端构建' -Completed
+            $writer.Dispose()
+            Pop-Location
+        }
     }
 }
 
