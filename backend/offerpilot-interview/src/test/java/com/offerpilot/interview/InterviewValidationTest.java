@@ -3,6 +3,7 @@ package com.offerpilot.interview;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.offerpilot.auth.application.CurrentUser;
 import com.offerpilot.common.error.GlobalExceptionHandler;
+import com.offerpilot.interview.application.InterviewRecapExporter;
 import com.offerpilot.interview.application.InterviewService;
 import com.offerpilot.interview.web.InterviewController;
 import org.junit.jupiter.api.AfterEach;
@@ -33,7 +34,7 @@ class InterviewValidationTest {
     void setup() {
         validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
-        mvc = MockMvcBuilders.standaloneSetup(new InterviewController(service, users))
+        mvc = MockMvcBuilders.standaloneSetup(new InterviewController(service, new InterviewRecapExporter(service), users))
                 .setValidator(validator).setControllerAdvice(new GlobalExceptionHandler()).build();
     }
     @AfterEach void close() { validator.close(); }
