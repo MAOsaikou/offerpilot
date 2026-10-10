@@ -1,0 +1,43 @@
+import { apiRequest } from './client'
+export const memoryKinds = {
+  GOAL: '目标岗位',
+  LOCATION: '目标城市',
+  SKILL: '技术与技能',
+  PREFERENCE: '偏好',
+  CONSTRAINT: '约束',
+  OTHER: '其他',
+} as const
+export type MemoryKind = keyof typeof memoryKinds
+export interface MemoryDraft {
+  kind: MemoryKind
+  fact: string
+}
+export interface UserMemory extends MemoryDraft {
+  id: string
+  source: 'EXPLICIT' | 'SUGGESTED_ACCEPTED' | 'MANUAL'
+  sourceConversationId: string | null
+  sourceMessageId: string | null
+  createdAt: string
+  updatedAt: string
+}
+export interface MemoryInventory {
+  items: UserMemory[]
+  memoryEnabled: boolean
+  limit: number
+}
+export const listMemories = () => apiRequest<MemoryInventory>('/memories')
+export const addMemory = (draft: MemoryDraft) =>
+  apiRequest<UserMemory>('/memories', { method: 'POST', body: JSON.stringify(draft) })
+export const editMemory = (id: string, draft: MemoryDraft) =>
+  apiRequest<UserMemory>(`/memories/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(draft),
+  })
+export const deleteMemory = (id: string) =>
+  apiRequest<null>(`/memories/${encodeURIComponent(id)}`, { method: 'DELETE' })
+export const clearMemories = () => apiRequest<null>('/memories', { method: 'DELETE' })
+export const setMemoryEnabled = (memoryEnabled: boolean) =>
+  apiRequest<{ memoryEnabled: boolean }>('/memories/settings', {
+    method: 'PUT',
+    body: JSON.stringify({ memoryEnabled }),
+  })

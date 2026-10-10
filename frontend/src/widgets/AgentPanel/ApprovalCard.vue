@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { submitApproval } from '@/shared/api/agent'
+import { memoryKinds, type MemoryKind } from '@/shared/api/memories'
 import { queryClient } from '@/shared/api/queryClient'
 import { applicationStages, type ApplicationStatus } from '@/shared/types/board'
 import type { ApprovalStatus, ApprovalView } from '@/shared/stores/agentRun'
@@ -36,6 +37,17 @@ const labelOf: Record<ApprovalStatus, string> = {
   APPROVED: '已批准',
   REJECTED: '已拒绝',
   TIMEOUT: '已超时',
+}
+function memoryArgs(approval: ApprovalView) {
+  if (approval.name !== 'saveUserFact' || !approval.args || typeof approval.args !== 'object')
+    return null
+  const args = approval.args as { kind?: string; fact?: string; source?: string }
+  if (typeof args.fact !== 'string') return null
+  return {
+    fact: args.fact,
+    kind: memoryKinds[args.kind as MemoryKind] ?? '其他',
+    suggested: args.source === 'SUGGESTED_ACCEPTED',
+  }
 }
 function keyOf(approval: ApprovalView) {
   return `${props.runId}:${approval.approvalId}`
@@ -93,13 +105,28 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
         "
       >
         <div class="flex flex-wrap items-center gap-2">
-          <span class="break-all font-mono text-xs">{{ approval.name }}</span>
+          <span class="break-all text-xs" :class="{ 'font-mono': !memoryArgs(approval) }">{{
+            memoryArgs(approval)
+              ? memoryArgs(approval)?.suggested
+                ? '记忆保存建议'
+                : '保存长期记忆'
+              : approval.name
+          }}</span>
           <span class="ml-auto text-xs text-muted-foreground">{{
             labelOf[statusOf(approval)]
           }}</span>
         </div>
         <p class="mt-1.5 text-xs leading-relaxed text-muted-foreground">{{ approval.reason }}</p>
+        <div v-if="memoryArgs(approval)" class="mt-2 space-y-1 text-xs">
+          <p class="text-muted-foreground">{{ memoryArgs(approval)?.kind }} · 来自本轮你的原话</p>
+          <p class="break-words">{{ memoryArgs(approval)?.fact }}</p>
+          <p class="text-muted-foreground">确认后用于新对话；可在设置中编辑、删除或关闭。</p>
+          <p v-if="statusOf(approval) === 'APPROVED'" class="text-muted-foreground">
+            已提交确认，是否保存成功请查看工具结果。
+          </p>
+        </div>
         <pre
+          v-else
           class="mt-2 max-h-32 overflow-auto rounded-lg bg-foreground/5 p-2 font-mono text-xs leading-relaxed"
           >{{ JSON.stringify(approval.args, null, 2) }}</pre>
         <fieldset
@@ -135,14 +162,14 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
               class="rounded bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50"
               @click="decide(approval, 'APPROVE')"
             >
-              {{ busy[keyOf(approval)] ? '提交中…' : '批准' }}
+              {{ busy[keyOf(approval)] ? '提交中…' : memoryArgs(approval) ? '确认保存' : '批准' }}
             </button>
             <button
               type="button"
               class="rounded border px-3 py-2 disabled:opacity-50"
               @click="decide(approval, 'REJECT')"
             >
-              拒绝
+              {{ memoryArgs(approval) ? '不保存' : '拒绝' }}
             </button>
           </div>
         </fieldset>

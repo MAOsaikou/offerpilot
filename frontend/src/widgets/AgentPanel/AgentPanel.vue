@@ -13,10 +13,15 @@ const props = defineProps<{
 const reasoningOpen = ref(false)
 
 const hasRun = computed(() => props.run !== null)
+const awaitingMemory = computed(() =>
+  props.run?.approvals.some(
+    (approval) => approval.name === 'saveUserFact' && approval.status === 'PENDING',
+  ),
+)
 const statusLabel = computed(() => {
   switch (props.run?.status) {
     case 'RUNNING':
-      return '执行中'
+      return awaitingMemory.value ? '等待记忆确认' : '执行中'
     case 'COMPLETED':
       return '已完成'
     case 'CANCELLED':
@@ -50,7 +55,7 @@ const statusLabel = computed(() => {
         <PlanSteps
           :goal="run?.goal ?? null"
           :steps="run?.steps ?? []"
-          :running="run?.status === 'RUNNING'"
+          :running="run?.status === 'RUNNING' && !awaitingMemory"
         />
 
         <section v-if="run?.reasoning">

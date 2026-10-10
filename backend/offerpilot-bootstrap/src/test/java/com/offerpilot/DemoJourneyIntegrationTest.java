@@ -91,6 +91,17 @@ class DemoJourneyIntegrationTest {
         bootstrap.run(new DefaultApplicationArguments());
     }
 
+    @Test void resetRestoresFictionalMemoriesAndOptIn() {
+        String owner = owner();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_memories WHERE user_id=?", Integer.class, owner)).isEqualTo(3);
+        jdbc.update("DELETE FROM user_memories WHERE user_id=?", owner);
+        jdbc.update("UPDATE user_preferences SET memory_enabled=false WHERE user_id=?", owner);
+        assertThat(resets.reset().memoryCount()).isEqualTo(3);
+        assertThat(jdbc.queryForList("SELECT fact FROM user_memories WHERE user_id=?", String.class, owner))
+                .hasSize(3).allSatisfy(fact -> assertThat(fact).contains("虚构演示"));
+        assertThat(jdbc.queryForObject("SELECT memory_enabled FROM user_preferences WHERE user_id=?", Boolean.class, owner)).isTrue();
+    }
+
     private String owner() {
         return jdbc.queryForObject("SELECT id FROM users WHERE email='demo@offerpilot.local'", String.class);
     }
