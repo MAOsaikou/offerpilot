@@ -1,4 +1,11 @@
-import { apiUrl, authHeaders, fetchWithIdentity, readApiData, toApiError } from './client'
+import {
+  apiRequest,
+  apiUrl,
+  authHeaders,
+  fetchWithIdentity,
+  readApiData,
+  toApiError,
+} from './client'
 import { getStoredToken } from '@/shared/utils/authSession'
 import type { LoginResult, VerifyResult } from '@/shared/types/auth'
 
@@ -106,4 +113,13 @@ export async function setUserStatus(
   )
   if (!response.ok) throw await toApiError(response)
   return readApiData<StaffUserRow>(response)
+}
+
+/** Deletes the caller account; no owner id can be sent by the client. */
+export function deleteMyData(confirm: string): Promise<null> {
+  return apiRequest<null>('/users/me/data', {
+    method: 'DELETE',
+    body: JSON.stringify({ confirm }),
+    signal: AbortSignal.timeout(120_000),
+  })
 }

@@ -123,6 +123,9 @@ function switchMode() {
           </p>
         </header>
 
+        <p v-if="route.query.deleted === '1'" class="success-banner" role="status">
+          账号和服务端数据已删除，文件清理失败时会自动重试；当前浏览器工作区已清除。
+        </p>
         <div v-if="mode === 'login'" class="demo-entry">
           <button
             type="button"

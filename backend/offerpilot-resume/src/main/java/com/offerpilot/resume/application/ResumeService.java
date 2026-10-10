@@ -44,17 +44,22 @@ public class ResumeService {
         String id = IdGenerator.next("rs"), fileId = IdGenerator.next("file"), key = "resumes/" + owner + "/" + fileId;
         String finalName = name, finalTitle = resolvedTitle;
         var selection = models.selection(owner);
-        storage.put(key, bytes, mime);
         try {
             String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
             tx.executeWithoutResult(status -> {
+                // Serialize object upload and file registration with account deletion's owner lock.
+                if (jdbc.queryForList("SELECT id FROM users WHERE id=? AND status='ACTIVE' FOR KEY SHARE", String.class, owner).isEmpty())
+                    throw new BusinessException(ErrorCode.UNAUTHENTICATED);
+                storage.put(key, bytes, mime);
                 jdbc.update("INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256) VALUES (?,?,'RESUME',?,?,?,?,?,?)",
                     fileId, owner, storage.bucket(), key, finalName, mime, bytes.length, hash);
                 jdbc.update("INSERT INTO resumes(id,user_id,title,source_file_id,text_model_tier,vision_model_tier) VALUES (?,?,?,?,?,?)",
                     id, owner, finalTitle, fileId, selection.textTier(), selection.visionTier());
             });
         } catch (Exception ex) {
-            try { storage.remove(storage.bucket(), key); } catch (Exception cleanup) { ex.addSuppressed(cleanup); }
+            try { storage.remove(storage.bucket(), key); } catch (Exception cleanup) {
+                org.slf4j.LoggerFactory.getLogger(getClass()).warn("Resume upload orphan bucket={} key={}", storage.bucket(), key);
+            }
             if (ex instanceof RuntimeException runtime) throw runtime;
             throw new IllegalStateException(ex);
         }

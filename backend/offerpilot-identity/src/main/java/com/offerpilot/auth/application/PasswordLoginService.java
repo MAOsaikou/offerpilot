@@ -39,14 +39,14 @@ public class PasswordLoginService {
         this.tokens = tokens;
     }
 
-    public record UserView(String id, String email, String nickname, List<String> roles) {}
+    public record UserView(String id, String email, String nickname, List<String> roles, boolean isDemo) {}
 
     public record LoginResponse(String accessToken, long expiresIn, UserView user) {}
 
     public record VerifyResponse(boolean valid, String userId, List<String> roles, String nickname,
                                  Instant issuedAt, Instant expiresAt) {}
 
-    private record Account(String id, String email, String passwordHash, String nickname, List<String> roles, String status) {}
+    private record Account(String id, String email, String passwordHash, String nickname, List<String> roles, String status, boolean isDemo) {}
 
     private record StaffAuthorization(String status, List<String> roles) {}
 
@@ -134,7 +134,7 @@ public class PasswordLoginService {
         } catch (DuplicateKeyException ex) {
             throw new BusinessException(ErrorCode.EMAIL_TAKEN);
         }
-        return issue(new Account(userId, normalized, passwordHash, nickname, List.of(ROLE_USER), "ACTIVE"));
+        return issue(new Account(userId, normalized, passwordHash, nickname, List.of(ROLE_USER), "ACTIVE", false));
     }
 
     private Account loadAndVerify(String email, String password) {
@@ -143,12 +143,12 @@ public class PasswordLoginService {
         }
         validatePassword(password);
         List<Account> found = jdbc.query("""
-                SELECT id, email, password_hash, nickname, array_to_string(roles, ',') AS roles_csv, status
+                SELECT id, email, password_hash, nickname, array_to_string(roles, ',') AS roles_csv, status, is_demo
                 FROM users WHERE email = ?
                 """, (rs, i) -> new Account(rs.getString("id"), rs.getString("email"),
                 rs.getString("password_hash"), rs.getString("nickname"),
                 Arrays.stream(rs.getString("roles_csv").split(",")).filter(s -> !s.isBlank()).toList(),
-                rs.getString("status")), email.trim());
+                rs.getString("status"), rs.getBoolean("is_demo")), email.trim());
         String hash = found.isEmpty() ? DUMMY_PASSWORD_HASH : found.get(0).passwordHash();
         boolean passwordMatches = passwordEncoder.matches(password, hash);
         if (found.isEmpty() || !passwordMatches) {
@@ -193,7 +193,7 @@ public class PasswordLoginService {
     private LoginResponse issue(Account account) {
         String token = tokens.issue(account.id(), account.roles(), account.nickname());
         return new LoginResponse(token, tokens.accessTtl().toSeconds(),
-                new UserView(account.id(), account.email(), account.nickname(), account.roles()));
+                new UserView(account.id(), account.email(), account.nickname(), account.roles(), account.isDemo()));
     }
 
     @SuppressWarnings("unchecked")

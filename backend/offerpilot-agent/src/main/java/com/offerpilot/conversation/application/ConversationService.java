@@ -148,8 +148,9 @@ public class ConversationService {
     /** Checkpoints preserve partial output; terminal compare-and-set prevents late chunks overwriting cancellation. */
     @Transactional
     public boolean checkpoint(Turn turn, String text) {
-        var state = jdbc.queryForObject("SELECT status FROM agent_runs WHERE id=? FOR UPDATE", String.class, turn.runId());
-        if (!"RUNNING".equals(state)) return false;
+        var states = jdbc.queryForList("SELECT status FROM agent_runs WHERE id=? FOR UPDATE", String.class, turn.runId());
+        if (states.isEmpty()) return false;
+        if (!"RUNNING".equals(states.get(0))) return false;
         writeMessage(turn.messageId(), text, "RUNNING", null, List.of());
         return true;
     }
@@ -161,7 +162,9 @@ public class ConversationService {
 
     @Transactional
     public String finish(Turn turn, String text, String status, Map<String, Object> usage, String error, List<MessageCard> cards) {
-        String current = jdbc.queryForObject("SELECT status FROM agent_runs WHERE id=? FOR UPDATE", String.class, turn.runId());
+        var states = jdbc.queryForList("SELECT status FROM agent_runs WHERE id=? FOR UPDATE", String.class, turn.runId());
+        if (states.isEmpty()) return "CANCELLED"; // Account deletion: ignore late SSE completion.
+        String current = states.get(0);
         if (!"RUNNING".equals(current)) return current;
         writeMessage(turn.messageId(), text, status, usage, cards);
         jdbc.update("UPDATE agent_runs SET status=?,finished_at=CURRENT_TIMESTAMP,error=CAST(? AS jsonb) WHERE id=?",
