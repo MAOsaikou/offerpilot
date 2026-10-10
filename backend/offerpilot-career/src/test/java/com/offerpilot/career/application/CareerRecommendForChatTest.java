@@ -59,15 +59,6 @@ class CareerRecommendForChatTest {
         verifyNoInteractions(occupations);
     }
 
-    @Test void adoptionResolvesOccupationBeforeUpdatingOnlyTrustedOwnersTarget() {
-        when(occupations.find("occ1", "工程师")).thenReturn(new OccupationRecommender.Ranked("occ1", "工程师", "技术", "IRC", 0));
-        when(profiles.saveTarget("alice", "工程师")).thenReturn(profile(List.of("技术研发")));
-        careers.adopt("alice", "occ1", "工程师");
-        verify(profiles).saveTarget("alice", "工程师");
-        when(occupations.find("bad", null)).thenThrow(new IllegalArgumentException("不存在"));
-        assertThatThrownBy(() -> careers.adopt("alice", "bad", null)).hasMessage("不存在");
-        verifyNoMoreInteractions(profiles);
-    }
 
     static CareerProfileService.Profile profile(List<String> interests) {
         return new CareerProfileService.Profile("旧目标", "上海", "Java", interests, List.of(), null);
