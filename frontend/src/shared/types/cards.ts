@@ -12,6 +12,7 @@ export type CardType =
   | 'job_card'
   | 'job_match'
   | 'job_evidence_match'
+  | 'job_eval_report'
   | 'campus_calendar'
   | 'board_update'
   | 'interviewer_state'

@@ -26,6 +26,10 @@ public final class JobMatchCards {
             throw new BusinessException(ErrorCode.STRUCTURED_OUTPUT_INVALID, "匹配报告缺少标识");
         }
         ObjectNode payload = source.deepCopy();
+        JsonNode job = payload.path("jobSnapshot");
+        if (!job.isMissingNode() && !job.isNull()) {
+            payload.set("evaluation", JobEvalReport.evaluate(payload, job));
+        }
         payload.remove("jobSnapshot");
         payload.remove("resumeSnapshot");
         ArrayNode matched = payload.putArray("matched");

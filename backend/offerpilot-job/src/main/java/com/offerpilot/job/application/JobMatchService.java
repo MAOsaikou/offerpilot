@@ -57,7 +57,7 @@ public class JobMatchService {
             report.set("jobSnapshot",job); report.set("resumeSnapshot",resume.structured());
             int saved=jdbc.update("UPDATE job_matches SET status='COMPLETED',report=?::jsonb,updated_at=now() WHERE id=? AND status='RUNNING'",report.toString(),id);
             if(saved!=1) throw new BusinessException(ErrorCode.MODEL_TIMEOUT,"本次匹配已过期，请重新分析");
-            return report;
+            return withEvaluation(report);
         } catch(RuntimeException ex) {
             jdbc.update("UPDATE job_matches SET status='FAILED',updated_at=now() WHERE id=? AND status='RUNNING'",id);
             throw ex;
@@ -66,7 +66,17 @@ public class JobMatchService {
     public JsonNode get(String owner,String id) {
         var rows=jdbc.query("SELECT report FROM job_matches WHERE id=? AND user_id=? AND status='COMPLETED'",(rs,n)->parse(rs.getString(1)),id,owner);
         if(rows.isEmpty()) throw new BusinessException(ErrorCode.MATCH_NOT_FOUND);
-        return rows.get(0);
+        return withEvaluation(rows.get(0));
+    }
+
+    /** Derived view for API/UI; not persisted separately. */
+    static JsonNode withEvaluation(JsonNode report) {
+        if (!(report instanceof ObjectNode node)) return report;
+        ObjectNode copy = node.deepCopy();
+        JsonNode job = copy.path("jobSnapshot");
+        if (job.isMissingNode() || job.isNull()) job = copy;
+        copy.set("evaluation", JobEvalReport.evaluate(copy, job));
+        return copy;
     }
     public List<JsonNode> list(String owner,String jobId) {
         jdbc.update("UPDATE job_matches SET status='FAILED',updated_at=now() WHERE user_id=? AND status='RUNNING' AND created_at<now()-interval '5 minutes'",owner);
