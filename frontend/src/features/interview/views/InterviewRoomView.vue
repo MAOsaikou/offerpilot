@@ -274,7 +274,8 @@ onBeforeRouteUpdate(saveBeforeLeave)
     </template>
     <template v-else>
       <div class="success-banner">
-        已完成全部 {{ session.answers.length }} 题。下面是原始回答；点「导出复盘」可下载含 STAR 线索分的复盘包。
+        已完成全部 {{ session.answers.length }} 题。下面是原始回答；点「导出复盘」可下载含 STAR
+        线索分的复盘包。
       </div>
       <div class="split-content">
         <section class="panel">
