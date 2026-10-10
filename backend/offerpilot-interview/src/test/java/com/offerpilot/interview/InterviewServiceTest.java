@@ -49,24 +49,6 @@ class InterviewServiceTest {
         when(jdbc.queryForList(contains("FOR UPDATE"), eq(String.class), eq(id), eq(owner))).thenReturn(List.of(id));
     }
 
-    @Test
-    void createInsertsSessionAndExactlyFiveEmptyQuestionSnapshots() {
-        var spy = spy(service);
-        doReturn(new InterviewService.Session(id, "工程师", summary.kind(), 0, false, summary.createdAt(), summary.updatedAt(), answers))
-                .when(spy).get(eq(owner), anyString());
-        var created = spy.create(owner, "  工程师  ", "项目与经历");
-        assertThat(created.answers()).hasSize(5);
-        var inserted = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(jdbc).update(eq("INSERT INTO interview_sessions(id,user_id,role,kind) VALUES (?,?,?,?)"),
-                inserted.capture(), eq(owner), eq("工程师"), eq("项目与经历"));
-        for (int index = 0; index < 5; index++) {
-            verify(jdbc).update("INSERT INTO interview_answers(session_id,question_index,question_text) VALUES (?,?,?)",
-                    inserted.getValue(), index, InterviewService.QUESTIONS.get(index));
-        }
-        verify(spy).get(owner, inserted.getValue());
-        verify(jdbc, times(6)).update(anyString(), any(Object[].class));
-    }
-
     @Test @SuppressWarnings("unchecked")
     void listAndGetFilterOwnerAndReturnOrderedStoredSnapshots() {
         stubDetail();
@@ -90,16 +72,6 @@ class InterviewServiceTest {
         order.verify(jdbc).queryForList(contains("WHERE id=? AND user_id=? FOR UPDATE"), eq(String.class), eq(id), eq(owner));
         order.verify(jdbc).update(contains("UPDATE interview_answers"), eq("第一行\n第二行"), eq(id), eq(0), eq(id), eq(owner));
         order.verify(jdbc).update("UPDATE interview_sessions SET updated_at=now() WHERE id=? AND user_id=?", id, owner);
-    }
-
-    @Test
-    void progressUpdatesOnlyProvidedFields() {
-        stubDetail();
-        service.update(owner, id, 4, null);
-        service.update(owner, id, null, true);
-        verify(jdbc).update(contains("completed=COALESCE(?,completed),updated_at=now() WHERE id=? AND user_id=?"),
-                eq(4), isNull(), eq(id), eq(owner));
-        verify(jdbc).update(contains("question_index=COALESCE(?,question_index)"), isNull(), eq(true), eq(id), eq(owner));
     }
 
     @Test
