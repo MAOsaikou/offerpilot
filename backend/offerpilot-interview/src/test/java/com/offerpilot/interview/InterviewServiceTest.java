@@ -4,6 +4,7 @@ import com.offerpilot.auth.application.CurrentUser;
 import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
 import com.offerpilot.common.error.GlobalExceptionHandler;
+import com.offerpilot.interview.application.InterviewRecapExporter;
 import com.offerpilot.interview.application.InterviewService;
 import com.offerpilot.interview.web.InterviewController;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +38,7 @@ class InterviewServiceTest {
         CurrentUser users = mock(CurrentUser.class);
         when(users.require("Bearer b")).thenReturn("owner-b");
         when(users.require(null)).thenThrow(new BusinessException(ErrorCode.UNAUTHENTICATED));
-        mvc = MockMvcBuilders.standaloneSetup(new InterviewController(service, users))
+        mvc = MockMvcBuilders.standaloneSetup(new InterviewController(service, new InterviewRecapExporter(service), users))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 

@@ -181,7 +181,7 @@ onBeforeRouteUpdate(saveBeforeLeave)
       <button
         class="btn"
         :disabled="busy || dirty"
-        @click="exportInterview(session.role, session.answers)"
+        @click="exportInterview(session.role, session.answers, session.id)"
       >
         导出复盘
       </button>
@@ -274,7 +274,8 @@ onBeforeRouteUpdate(saveBeforeLeave)
     </template>
     <template v-else>
       <div class="success-banner">
-        已完成全部 {{ session.answers.length }} 题。下面是你的原始回答，不含 AI 评分。
+        已完成全部 {{ session.answers.length }} 题。下面是原始回答；点「导出复盘」可下载含 STAR
+        线索分的复盘包。
       </div>
       <div class="split-content">
         <section class="panel">

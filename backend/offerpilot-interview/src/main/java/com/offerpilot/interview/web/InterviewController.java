@@ -5,20 +5,26 @@ import com.offerpilot.common.api.ApiResponse;
 import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
 import com.offerpilot.common.web.TraceIdFilter;
+import com.offerpilot.interview.application.InterviewRecapExporter;
 import com.offerpilot.interview.application.InterviewService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/interviews")
 public class InterviewController {
     private final InterviewService interviews;
+    private final InterviewRecapExporter recaps;
     private final CurrentUser users;
 
-    public InterviewController(InterviewService interviews, CurrentUser users) {
+    public InterviewController(InterviewService interviews, InterviewRecapExporter recaps, CurrentUser users) {
         this.interviews = interviews;
+        this.recaps = recaps;
         this.users = users;
     }
 
@@ -62,6 +68,16 @@ public class InterviewController {
     public ApiResponse<?> saveAnswer(@PathVariable String id, @PathVariable String index,
                                      @Valid @RequestBody AnswerRequest body, HttpServletRequest request) {
         return ok(interviews.saveAnswer(owner(request), id, parseIndex(index), body.answerText()), request);
+    }
+
+    @GetMapping(value = "/{id}/recap.md", produces = "text/markdown;charset=UTF-8")
+    public ResponseEntity<String> recapMarkdown(@PathVariable String id, HttpServletRequest request) {
+        String markdown = recaps.markdown(owner(request), id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"interview-recap.md\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .contentType(new MediaType("text", "markdown", java.nio.charset.StandardCharsets.UTF_8))
+                .body(markdown);
     }
 
     private int parseIndex(String index) {

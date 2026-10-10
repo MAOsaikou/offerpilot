@@ -266,9 +266,11 @@ it('saves drafts and previous/next progress, reloads and exports stored question
   await loaded()
   expect(root.querySelector('textarea')!.value).toBe('第一题回答')
   button('导出复盘').click()
-  expect(downloadText).toHaveBeenCalledWith(
-    '服务端工程师-面试复盘.md',
-    expect.stringContaining('## 服务端题目快照\n\n第一题回答'),
+  await vi.waitFor(() =>
+    expect(downloadText).toHaveBeenCalledWith(
+      '服务端工程师-面试复盘.md',
+      expect.stringContaining('## 服务端题目快照\n\n第一题回答'),
+    ),
   )
 })
 it('keeps drafts and does not advance on failed saves, then permits retry', async () => {
@@ -312,9 +314,11 @@ it('completes after saving the final answer and restores the review', async () =
   await mount()
   await vi.waitFor(() => expect(root.textContent).toContain('学习计划'))
   button('导出复盘').click()
-  expect(downloadText).toHaveBeenCalledWith(
-    '服务端工程师-面试复盘.md',
-    expect.stringContaining('学习计划'),
+  await vi.waitFor(() =>
+    expect(downloadText).toHaveBeenCalledWith(
+      '服务端工程师-面试复盘.md',
+      expect.stringContaining('学习计划'),
+    ),
   )
 })
 it('saves before navigation and blocks leaving when saving fails', async () => {
