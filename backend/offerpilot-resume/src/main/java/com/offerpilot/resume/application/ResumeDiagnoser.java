@@ -29,16 +29,17 @@ public class ResumeDiagnoser {
             ObjectNode source = original.deepCopy(); source.remove(List.of("basics", "confidence"));
             AtomicInteger input = new AtomicInteger(), output = new AtomicInteger();
             long started = System.nanoTime();
-            return attempt(source, tier, false, input, output)
+            return attempt(source, tier, "", input, output)
                 .onErrorResume(BusinessException.class, ex -> ex.errorCode() == ErrorCode.STRUCTURED_OUTPUT_INVALID
-                    ? attempt(source, tier, true, input, output) : Mono.error(ex))
+                    ? attempt(source, tier, ex instanceof ResumeDiagnosisValidator.ValidationFailure failure ? failure.feedback() : "REPORT_JSON_INVALID: 输出合法完整 JSON 对象；只使用规定字段及原文字符串叶子引用。", input, output) : Mono.error(ex))
                 .timeout(Duration.ofSeconds(90))
                 .map(report -> {
-                    report.put("schemaVersion", 2).put("promptVersion", "resume-diagnosis-v1").put("ruleVersion", "campus-v1")
+                    report.put("schemaVersion", 2).put("promptVersion", "resume-diagnosis-v2").put("ruleVersion", "campus-v1")
                         .put("model", gateway.modelName(tier)).put("modelTier", tier.name())
                         .put("durationMs", (System.nanoTime() - started) / 1_000_000)
                         .put("inputTokens", input.get()).put("outputTokens", output.get());
-                    report.putArray("limitations").add("基于此保存版本的内容分析；未评估原文件排版，也不预测录用结果。")
+                    var limitations = report.withArray("limitations");
+                    limitations.add("基于此保存版本的内容分析；未评估原文件排版，也不预测录用结果。")
                         .add("未选择目标岗位，本报告不评价岗位匹配度。建议需结合真实经历核对。");
                     var checks = report.putArray("checks");
                     boolean contact = !original.path("basics").path("phone").asText().isBlank()
@@ -55,9 +56,9 @@ public class ResumeDiagnoser {
                 });
         });
     }
-    private Mono<ObjectNode> attempt(JsonNode source, ModelTier tier, boolean repair, AtomicInteger input, AtomicInteger output) {
+    private Mono<ObjectNode> attempt(JsonNode source, ModelTier tier, String feedback, AtomicInteger input, AtomicInteger output) {
         return Mono.defer(() -> {
-            var messages = List.<Message>of(new SystemMessage(prompt + (repair ? "\n上次结构或引文校验失败。重新分析原文，严格遵守字段和逐字引用要求。" : "")),
+            var messages = List.<Message>of(new SystemMessage(prompt + (feedback.isEmpty() ? "" : "\n上次报告没有可交付的核实条目。按以下校验结果重新生成，不补造引用：\n" + feedback)),
                 new UserMessage(source.toString()));
             AtomicInteger in = new AtomicInteger(), out = new AtomicInteger();
             return gateway.stream(tier, messages, 0.0).doOnNext(response -> {
@@ -71,9 +72,12 @@ public class ResumeDiagnoser {
                     try {
                         String text = all.toString().strip().replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "");
                         var report = json.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(text);
-                        ResumeDiagnosisValidator.validate(report, source);
-                        return (ObjectNode) report;
-                    } catch (Exception ex) { throw ResumeDiagnosisValidator.invalid(); }
+                        var result = ResumeDiagnosisValidator.salvage(report, source);
+                        var verified = result.report();
+                        if (result.omittedItems() > 0) verified.putArray("limitations").add("已省略 " + result.omittedItems() + " 项结构或引用未通过校验的优点或发现；报告只包含保留条目，不代表完整诊断。");
+                        return verified;
+                    } catch (ResumeDiagnosisValidator.ValidationFailure ex) { throw ex; }
+                    catch (Exception ex) { throw ResumeDiagnosisValidator.invalid(); }
                 }).doOnSuccess(value -> { input.addAndGet(in.get()); output.addAndGet(out.get()); })
                   .doOnError(error -> { input.addAndGet(in.get()); output.addAndGet(out.get()); });
         });

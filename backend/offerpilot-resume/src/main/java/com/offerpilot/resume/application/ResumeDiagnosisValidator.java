@@ -3,7 +3,8 @@ package com.offerpilot.resume.application;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
-import java.util.Set;
+import java.util.*;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /** Validates citations against an immutable, contact-free version; not a semantic fact checker. */
 public final class ResumeDiagnosisValidator {
@@ -28,40 +29,112 @@ public final class ResumeDiagnosisValidator {
             return true;
         } catch (Exception ex) { return false; }
     }
-    public static void validate(JsonNode report, JsonNode source) {
+    private static void envelope(JsonNode report) {
         require(report != null && report.isObject() && report.toString().length() <= 22000);
         fields(report, Set.of("summary", "strengths", "findings"));
         text(report, "summary", 1200);
-        array(report.path("strengths"), 5);
-        for (var strength : report.path("strengths")) {
-            fields(strength, Set.of("message", "evidence")); text(strength, "message", 600);
-            evidence(strength.path("evidence"), source);
-        }
-        array(report.path("findings"), 12);
-        for (var finding : report.path("findings")) {
-            fields(finding, Set.of("ruleId", "kind", "priority", "evidence", "reason", "suggestion", "questions"));
-            require(RULES.contains(finding.path("ruleId").asText()));
-            require(Set.of("OBSERVATION", "NEEDS_CLARIFICATION").contains(finding.path("kind").asText()));
-            require(Set.of("HIGH", "MEDIUM", "LOW").contains(finding.path("priority").asText()));
-            evidence(finding.path("evidence"), source);
-            text(finding, "reason", 1000); text(finding, "suggestion", 1000);
-            array(finding.path("questions"), 3);
-            for (var question : finding.path("questions")) require(question.isTextual() && !question.asText().isBlank() && question.asText().length() <= 300);
-            if ("NEEDS_CLARIFICATION".equals(finding.path("kind").asText())) require(!finding.path("questions").isEmpty());
-        }
+        array(report.path("strengths"), 5); array(report.path("findings"), 12);
     }
-    private static void evidence(JsonNode evidence, JsonNode source) {
+    private static void structure(JsonNode report) {
+        envelope(report);
+        for (String section : List.of("strengths", "findings")) for (var item : report.path(section)) itemStructure(item, section);
+    }
+    private static void itemStructure(JsonNode item, String section) {
+        if (section.equals("strengths")) {
+            fields(item, Set.of("message", "evidence")); text(item, "message", 600);
+        } else {
+            fields(item, Set.of("ruleId", "kind", "priority", "evidence", "reason", "suggestion", "questions"));
+            require(RULES.contains(item.path("ruleId").asText()));
+            require(Set.of("OBSERVATION", "NEEDS_CLARIFICATION").contains(item.path("kind").asText()));
+            require(Set.of("HIGH", "MEDIUM", "LOW").contains(item.path("priority").asText()));
+            text(item, "reason", 1000); text(item, "suggestion", 1000);
+            array(item.path("questions"), 3);
+            for (var question : item.path("questions")) require(question.isTextual() && !question.asText().isBlank() && question.asText().length() <= 300);
+            if ("NEEDS_CLARIFICATION".equals(item.path("kind").asText())) require(!item.path("questions").isEmpty());
+        }
+        evidenceShape(item.path("evidence"));
+    }
+    public record CitationFailure(String outputPointer, String sourcePointer, String kind) {}
+    public record Salvaged(ObjectNode report, int omittedItems, List<CitationFailure> failures) {}
+    public static final class ValidationFailure extends BusinessException {
+        private final String feedback;
+        private ValidationFailure(String feedback) {
+            super(ErrorCode.STRUCTURED_OUTPUT_INVALID, invalid().getMessage());
+            this.feedback = feedback;
+        }
+        public String feedback() { return feedback; }
+    }
+    /** Strict verification remains available for persisted evidence and test assertions. */
+    public static void validate(JsonNode report, JsonNode source) {
+        structure(report);
+        require(citations(report, source).isEmpty());
+    }
+    /** Never relocate, paraphrase or fabricate a quote. One bad citation removes its whole item. */
+    public static Salvaged salvage(JsonNode report, JsonNode source) {
+        require(source != null);
+        try { envelope(report); }
+        catch (BusinessException ex) { throw new ValidationFailure("REPORT_STRUCTURE_INVALID: 仅允许规定字段、类型和数量；不得添加 score。输出完整 JSON 对象。"); }
+        List<CitationFailure> failures = citations(report, source);
+        ObjectNode verified = report.deepCopy();
+        int omitted = 0;
+        for (String section : List.of("strengths", "findings")) {
+            var kept = verified.arrayNode();
+            int index = 0;
+            for (var item : report.path(section)) {
+                String pointer = "/" + section + "/" + index++;
+                try { itemStructure(item, section); }
+                catch (BusinessException ex) { failures.add(new CitationFailure(pointer, "[item]", "ITEM_STRUCTURE_INVALID")); }
+                if (failures.stream().anyMatch(f -> f.outputPointer().equals(pointer) || f.outputPointer().startsWith(pointer + "/"))) omitted++;
+                else kept.add(item.deepCopy());
+            }
+            verified.set(section, kept);
+        }
+        if (verified.path("strengths").isEmpty() && verified.path("findings").isEmpty()) {
+            StringBuilder feedback = new StringBuilder("NO_VERIFIED_ITEMS: 至少保留一项有逐字依据的优点或发现。以下为校验数据（不含引文）：");
+            for (var failure : failures) feedback.append("\n").append(failure.outputPointer()).append(" source=")
+                    .append(failure.sourcePointer()).append(" kind=").append(failure.kind());
+            throw new ValidationFailure(feedback.toString());
+        }
+        if (omitted > 0) verified.put("summary", "已保留 " + (verified.path("strengths").size() + verified.path("findings").size())
+                + " 项具有原文依据的观察；部分条目未通过结构或引用校验，已省略。请结合真实经历逐项核对建议。");
+        return new Salvaged(verified, omitted, List.copyOf(failures));
+    }
+    private static void evidenceShape(JsonNode evidence) {
         array(evidence, 3); require(!evidence.isEmpty());
-        var seen = new java.util.HashSet<String>();
         for (var entry : evidence) {
             fields(entry, Set.of("path", "quote")); text(entry, "path", 200); text(entry, "quote", 1000);
-            String path = entry.path("path").asText(), quote = entry.path("quote").asText();
-            require(path.startsWith("/") && !path.startsWith("/basics") && !path.startsWith("/confidence") && seen.add(path + "\n" + quote));
-            if (source == null) continue; // Persisted card envelope; original citations were checked before saving the report.
-            JsonNode value;
-            try { value = source.at(path); } catch (IllegalArgumentException ex) { throw invalid(); }
-            require(value.isTextual() && value.asText().contains(quote));
         }
+    }
+    private static List<CitationFailure> citations(JsonNode report, JsonNode source) {
+        var failures = new ArrayList<CitationFailure>();
+        for (String section : List.of("strengths", "findings")) {
+            int itemIndex = 0;
+            for (var item : report.path(section)) {
+                var seen = new HashSet<String>(); int citationIndex = 0;
+                for (var entry : item.path("evidence")) {
+                    if (citationIndex == 3) break; // Invalid oversized items are omitted by itemStructure.
+                    String path = entry.path("path").asText(), quote = entry.path("quote").asText();
+                    String kind = citationKind(path, quote, source);
+                    if (!seen.add(path + "\n" + quote)) kind = "DUPLICATE_CITATION";
+                    if (kind != null) failures.add(new CitationFailure("/" + section + "/" + itemIndex + "/evidence/" + citationIndex,
+                            path.matches("/[A-Za-z0-9_/~.\\-]{0,199}") ? path : "[invalid-pointer]", kind));
+                    citationIndex++;
+                }
+                itemIndex++;
+            }
+        }
+        return failures;
+    }
+    private static String citationKind(String path, String quote, JsonNode source) {
+        if (quote.isBlank()) return "EMPTY_QUOTE";
+        if (!path.startsWith("/")) return "INVALID_POINTER";
+        if (path.equals("/basics") || path.startsWith("/basics/") || path.equals("/confidence") || path.startsWith("/confidence/")) return "EXCLUDED_FIELD";
+        JsonNode value;
+        try { value = source == null ? null : source.at(path); } catch (IllegalArgumentException ex) { return "INVALID_POINTER"; }
+        if (value == null) return null; // Envelope-only validation: quotes were verified before persistence.
+        if (value.isMissingNode()) return "PATH_NOT_FOUND";
+        if (!value.isTextual()) return "NON_STRING_FIELD";
+        return value.asText().contains(quote) ? null : "QUOTE_NOT_VERBATIM";
     }
     private static void fields(JsonNode node, Set<String> names) {
         require(node.isObject() && node.size() == names.size());
