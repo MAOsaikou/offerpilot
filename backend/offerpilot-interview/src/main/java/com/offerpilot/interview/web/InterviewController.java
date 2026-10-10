@@ -39,9 +39,9 @@ public class InterviewController {
     // Regex bounds count Unicode code points, matching PostgreSQL char_length.
     public record CreateRequest(
             @NotBlank @Pattern(regexp = "(?s).{1,100}") String role,
-            @NotNull @Pattern(regexp = "项目与经历|表达与结构|职业动机") String kind) {}
+            @NotNull @Pattern(regexp = "项目与经历|表达与结构|职业动机", message = "练习类型必须为项目与经历、表达与结构或职业动机") String kind) {}
     public record ProgressRequest(@Min(0) @Max(4) Integer questionIndex, Boolean completed) {}
-    public record AnswerRequest(@NotNull @Pattern(regexp = "(?s).{0,12000}") String answerText) {}
+    public record AnswerRequest(@NotNull(message = "请提供 answerText，可为空字符串") @Pattern(regexp = "(?s).{0,12000}", message = "回答不能超过12000个字符") String answerText) {}
 
     @GetMapping
     public ApiResponse<?> list(HttpServletRequest request) {
@@ -71,13 +71,14 @@ public class InterviewController {
     }
 
     @GetMapping(value = "/{id}/recap.md", produces = "text/markdown;charset=UTF-8")
-    public ResponseEntity<String> recapMarkdown(@PathVariable String id, HttpServletRequest request) {
+    public ResponseEntity<byte[]> recapMarkdown(@PathVariable String id, HttpServletRequest request) {
         String markdown = recaps.markdown(owner(request), id);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"interview-recap.md\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, org.springframework.http.ContentDisposition.attachment()
+                        .filename("面试复盘.md", java.nio.charset.StandardCharsets.UTF_8).build().toString())
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .contentType(new MediaType("text", "markdown", java.nio.charset.StandardCharsets.UTF_8))
-                .body(markdown);
+                .body(markdown.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     private int parseIndex(String index) {

@@ -84,8 +84,9 @@ class OrchestratorTest {
     @Test void explicitModeSkipsModelRecognition() {
         for (var mode : AgentMode.values()) {
             if (mode == AgentMode.AUTO) continue;
-            var events = run(mode).collectList().block(Duration.ofSeconds(3));
-            assertThat(((AgentEvent.PlanCreated)events.get(0)).steps().get(0).agent().name()).isEqualTo(mode.name());
+            var decision = planner.prepare(mode, "分析岗位并指导简历", List.of(), ModelTier.FLASH,
+                    u -> {}, Map.of()).block(Duration.ofSeconds(3));
+            assertThat(decision.plan().steps().get(0).agent().name()).isEqualTo(mode.name());
         }
         verifyNoInteractions(gateway);
     }
@@ -144,7 +145,7 @@ class OrchestratorTest {
             String failedSteps = reply.get(1).getText().split("失败或跳过的步骤：", 2)[1];
             assertThat(failedSteps).contains("s1", "s2", "s3");
         } else {
-            assertThat(reply.get(1).getText()).contains("失败或跳过的步骤：[]");
+            assertThat(reply.get(1).getText()).endsWith("失败或跳过的步骤：\n</orchestrator-data>");
         }
     }
 

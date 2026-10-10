@@ -1,6 +1,12 @@
 import type { InterviewAnswer } from '@/shared/types/interview'
 import { downloadText } from './download'
-import { apiUrl, fetchWithIdentity } from '@/shared/api/client'
+import {
+  apiUrl,
+  authenticatedHeaders,
+  assertResponseIdentity,
+  fetchWithIdentity,
+  toApiError,
+} from '@/shared/api/client'
 
 function localMarkdown(answers: InterviewAnswer[]) {
   return answers
@@ -8,25 +14,27 @@ function localMarkdown(answers: InterviewAnswer[]) {
     .join('\n\n')
 }
 
-/** Prefer server recap package (STAR + dimensions); fall back to local Q&A for legacy/offline. */
+/** Server sessions export authenticated recaps; only legacy sessions use local Q&A. */
 export async function exportInterview(
   role: string,
   answers: InterviewAnswer[],
   sessionId?: string,
+  signal?: AbortSignal,
 ) {
   if (sessionId) {
-    try {
-      const response = await fetchWithIdentity(apiUrl(`/interviews/${sessionId}/recap.md`), {
-        headers: { Accept: 'text/markdown' },
-      })
-      if (response.ok) {
-        const markdown = await response.text()
-        downloadText(role + '-面试复盘包.md', markdown)
-        return
-      }
-    } catch {
-      /* fall through to local export */
-    }
+    const response = await fetchWithIdentity(
+      apiUrl(`/interviews/${encodeURIComponent(sessionId)}/recap.md`),
+      {
+        headers: await authenticatedHeaders({ Accept: 'text/markdown' }),
+        signal,
+      },
+    )
+    if (!response.ok) throw await toApiError(response)
+    const markdown = await response.text()
+    assertResponseIdentity(response)
+    signal?.throwIfAborted()
+    downloadText(role + '-面试复盘包.md', markdown)
+    return
   }
   downloadText(role + '-面试复盘.md', localMarkdown(answers))
 }

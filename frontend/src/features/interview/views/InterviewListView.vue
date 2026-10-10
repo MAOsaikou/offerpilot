@@ -26,14 +26,17 @@ const stories = useQuery({
   retry: false,
 })
 const storyBusy = ref('')
+const storyError = ref('')
 async function removeStory(id: string) {
   if (storyBusy.value) return
   storyBusy.value = id
+  storyError.value = ''
   try {
-    await deleteStarStory(id)
+    await deleteStarStory(id, controller.signal)
+    if (controller.signal.aborted) return
     void cache.invalidateQueries({ queryKey: ['star-stories'] })
   } catch (e) {
-    error.value = (e as Error).message
+    if (!controller.signal.aborted) storyError.value = (e as Error).message
   } finally {
     storyBusy.value = ''
   }
@@ -173,6 +176,7 @@ function exportLegacy(session: Interview) {
       <p class="helper-note">
         从已完成练习中确认保存的 STAR 回答，会在后续面试对话中作为可引用证据。
       </p>
+      <p v-if="storyError" role="alert">{{ storyError }}</p>
       <p v-if="stories.isPending.value" role="status">正在加载故事库…</p>
       <div v-else-if="stories.isError.value" class="empty-state" role="alert">
         <p>{{ stories.error.value?.message }}</p>
@@ -196,7 +200,7 @@ function exportLegacy(session: Interview) {
         <button
           type="button"
           class="btn"
-          :disabled="storyBusy === story.id"
+          :disabled="Boolean(storyBusy)"
           @click="removeStory(story.id)"
         >
           {{ storyBusy === story.id ? '删除中…' : '删除' }}
