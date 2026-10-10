@@ -148,6 +148,10 @@ async function onSend(content: string) {
     }
     const submittedMode = mode.value
     const matchAction = matchingSelection.value
+    const interviewAction =
+      submittedMode === 'INTERVIEWER' && route.query.interviewAction === 'recallStarStories'
+        ? 'recallStarStories'
+        : undefined
     lastAttempt.value = content
     seed.value = ''
     let context: Record<string, string> = {}
@@ -157,12 +161,18 @@ async function onSend(content: string) {
       'resumeVersionId',
       'diagnosisReportId',
       'optimizationReportId',
+      'interviewSessionId',
     ]) {
       if (typeof route.query[key] === 'string') context[key] = route.query[key]
     }
     context = optimizationContext(viewMessages.value, context)
     // Consume the selected action once; keep resource IDs for ordinary follow-up questions.
     if (route.query.jobAction === 'match') await clearMatchAction()
+    if (interviewAction) {
+      const query = { ...route.query }
+      delete query.interviewAction
+      await router.replace({ path: route.path, query })
+    }
     if (current.value && context.optimizationReportId)
       await router.replace({
         path: `/chat/${encodeURIComponent(current.value.id)}`,
@@ -178,9 +188,11 @@ async function onSend(content: string) {
       },
       matchAction
         ? { ...context, jobAction: 'match' }
-        : Object.keys(context).length
-          ? context
-          : undefined,
+        : interviewAction
+          ? { ...context, interviewAction }
+          : Object.keys(context).length
+            ? context
+            : undefined,
     )
     await nextTick()
     if (scrollArea.value) scrollArea.value.scrollTop = scrollArea.value.scrollHeight

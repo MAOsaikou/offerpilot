@@ -13,6 +13,7 @@ import {
   updateInterview,
 } from '@/shared/api/interviews'
 import { ApiError } from '@/shared/api/client'
+import { listStarStoryCandidates, listStarStories, saveStarStory } from '@/shared/api/starStories'
 import type { InterviewSession } from '@/shared/types/interview'
 import { questions } from '@/shared/utils/interviewQuestions'
 import { downloadText } from '@/shared/utils/download'
@@ -26,7 +27,22 @@ vi.mock('@/shared/api/interviews', () => ({
   saveInterviewAnswer: vi.fn(),
   updateInterview: vi.fn(),
 }))
+vi.mock('@/shared/api/starStories', () => ({
+  listStarStoryCandidates: vi.fn(),
+  listStarStories: vi.fn(),
+  saveStarStory: vi.fn(),
+  deleteStarStory: vi.fn(),
+}))
 vi.mock('@/shared/utils/download', () => ({ downloadText: vi.fn() }))
+vi.mock('@/shared/api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/shared/api/client')>()),
+  fetchWithIdentity: vi.fn(
+    async () =>
+      new Response('# 面试复盘包\n\n服务端题目快照\n第一题回答\n学习计划\nSTAR', {
+        headers: { 'Content-Type': 'text/markdown' },
+      }),
+  ),
+}))
 const fixture = (id = 'iv_1'): InterviewSession => ({
   id,
   role: '服务端工程师',
@@ -89,10 +105,13 @@ function submit() {
 }
 beforeEach(() => {
   localStorage.clear()
-  vi.resetAllMocks()
+  localStorage.setItem('offerpilot-guest-v1', 'fixture')
+  vi.clearAllMocks()
   vi.stubGlobal('SpeechRecognition', undefined)
   vi.stubGlobal('webkitSpeechRecognition', undefined)
   vi.stubGlobal('speechSynthesis', undefined)
+  vi.mocked(listStarStoryCandidates).mockResolvedValue([])
+  vi.mocked(listStarStories).mockResolvedValue({ items: [], limit: 30 })
   server = fixture()
   vi.mocked(listInterviews).mockImplementation(async () => [structuredClone(server)])
   vi.mocked(createInterview).mockImplementation(async () => structuredClone(server))
@@ -268,8 +287,8 @@ it('saves drafts and previous/next progress, reloads and exports stored question
   button('导出复盘').click()
   await vi.waitFor(() =>
     expect(downloadText).toHaveBeenCalledWith(
-      '服务端工程师-面试复盘.md',
-      expect.stringContaining('## 服务端题目快照\n\n第一题回答'),
+      '服务端工程师-面试复盘包.md',
+      expect.stringContaining('第一题回答'),
     ),
   )
 })
@@ -305,18 +324,43 @@ it('completes after saving the final answer and restores the review', async () =
   await mount()
   await loaded()
   await typeAnswer('学习计划')
+  const candidate = {
+    questionIndex: 4,
+    questionText: 'q',
+    title: '学习故事',
+    body: '当时负责，我通过实现，最终完成',
+    role: '后端',
+    starCount: 4,
+    situation: true,
+    task: true,
+    action: true,
+    result: true,
+    alreadySaved: false,
+  }
+  vi.mocked(listStarStoryCandidates).mockRejectedValueOnce(new Error('候选加载失败'))
   submit()
   await vi.waitFor(() => expect(root.textContent).toContain('已完成全部 5 题'))
   expect(server.completed).toBe(true)
   expect(server.answers[4]!.answerText).toBe('学习计划')
   expect(root.querySelector('textarea')).toBeNull()
+  await vi.waitFor(() => expect(root.textContent).toContain('候选加载失败'))
+  expect(root.textContent).not.toContain('暂无满足')
+  vi.mocked(listStarStoryCandidates).mockResolvedValue([candidate])
+  button('重新加载候选').click()
+  await vi.waitFor(() => expect(root.textContent).toContain('学习故事'))
+  button('保存到故事库').click()
+  await vi.waitFor(() => expect(root.textContent).toContain('已入库'))
+  expect(saveStarStory).toHaveBeenCalledWith(
+    { sessionId: 'iv_1', questionIndex: 4 },
+    expect.any(AbortSignal),
+  )
   unmount()
   await mount()
   await vi.waitFor(() => expect(root.textContent).toContain('学习计划'))
   button('导出复盘').click()
   await vi.waitFor(() =>
     expect(downloadText).toHaveBeenCalledWith(
-      '服务端工程师-面试复盘.md',
+      '服务端工程师-面试复盘包.md',
       expect.stringContaining('学习计划'),
     ),
   )
