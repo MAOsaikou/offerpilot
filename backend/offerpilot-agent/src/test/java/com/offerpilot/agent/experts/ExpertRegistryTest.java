@@ -1,5 +1,6 @@
 package com.offerpilot.agent.experts;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.offerpilot.agent.domain.ExpertType;
@@ -47,7 +48,11 @@ class ExpertRegistryTest {
                 List.of("owner", "job_ctx", "res_ctx", "ver_ctx"),
                 List.of("owner", "job_ctx", "res_ctx", "ver_ctx"));
         assertThat(fromContext.card().cardId()).isEqualTo("match_01abc");
-        assertThat(fromContext.card().payload().toString()).doesNotContain("快照");
+        JsonNode payload = (JsonNode) fromContext.card().payload();
+        assertThat(payload.has("jobSnapshot")).isFalse();
+        assertThat(payload.has("resumeSnapshot")).isFalse();
+        assertThat(payload.toString()).doesNotContain("快照");
+        assertThat(payload.path("evaluation").path("title").asText()).isEqualTo("公开岗位");
         assertThat(fromInputs.card().cardType()).isEqualTo("job_match");
         assertThat(resume.card()).isNull();
         assertThat(resume.summary()).contains("未选择已保存的简历版本");
@@ -69,7 +74,8 @@ class ExpertRegistryTest {
             assertThat(requestId).isEqualTo(ExpertRegistry.requestId("run", "s1"));
             ObjectNode report = json.createObjectNode().put("id", "match_01abc").put("score", 10).put("summary", "可用");
             report.set("requirements", json.createArrayNode());
-            report.set("jobSnapshot", json.createObjectNode().put("title", "快照"));
+            // title may surface on A–F evaluation; canary must be snapshot-only and stripped with jobSnapshot
+            report.set("jobSnapshot", json.createObjectNode().put("title", "公开岗位").put("internalDebug", "快照"));
             return JobMatchCards.fromReport(report);
         });
     }
