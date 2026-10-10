@@ -38,7 +38,7 @@ public class KnowledgeNoteSearch {
         boolean available = false;
         if (embeddings.configured() && Boolean.TRUE.equals(jdbc.queryForObject(
                 "SELECT EXISTS(SELECT 1 FROM knowledge_notes WHERE user_id=? AND embedding IS NOT NULL)", Boolean.class, owner))) {
-            var embedded = embeddings.embed(List.of(query.strip()));
+            var embedded = com.offerpilot.llm.quota.LlmUserContext.asUser(owner, () -> embeddings.embed(List.of(query.strip())));
             if (!embedded.isEmpty()) {
                 vector = jdbc.query("""
                         SELECT id,title,category,content,updated_at FROM knowledge_notes

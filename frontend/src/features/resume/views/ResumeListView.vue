@@ -4,6 +4,7 @@ import { RouterLink, useRouter } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
+import { checkPrivacyFile } from '@/shared/api/privacy-settings'
 import { listResumes, uploadResume } from '@/shared/api/resumes'
 import { resumeStatus } from '@/shared/types/resume'
 import { useWorkspace } from '@/shared/stores/workspace'
@@ -46,9 +47,13 @@ async function importFile(event: Event) {
   error.value = ''
   importing.value = true
   try {
+    const risk = await checkPrivacyFile(file)
     const uploaded = await uploadResume(file)
     void cache.invalidateQueries({ queryKey: ['resumes'] })
-    await router.push('/resumes/' + uploaded.id)
+    await router.push({
+      path: '/resumes/' + uploaded.id,
+      query: risk.warning ? { piiWarning: '1' } : {},
+    })
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '上传失败，请重试。'
   } finally {

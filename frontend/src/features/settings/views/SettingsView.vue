@@ -7,6 +7,7 @@ import { getStoredTheme, setTheme, type ThemeMode } from '@/shared/utils/theme'
 import { downloadText } from '@/shared/utils/download'
 import { API_BASE } from '@/shared/api/client'
 import DeleteMyData from '../components/DeleteMyData.vue'
+import PrivacySettings from '../components/PrivacySettings.vue'
 import ResumeModelSettings from '../components/ResumeModelSettings.vue'
 const workspace = useWorkspace()
 const route = useRoute()
@@ -137,7 +138,9 @@ function exportWorkspace() {
       </aside>
     </section>
     <section v-else class="panel form-stack" style="max-width: 800px">
-      <h2>你的内容保存在哪里</h2>
+      <h2>数据与隐私</h2>
+      <PrivacySettings />
+      <h3>你的内容保存在哪里</h3>
       <p class="subtle">
         本地简历草稿、旧看板归档、旧练习回答和未导入的知识笔记保存在此浏览器。职业档案、成长任务、已导入知识笔记与向量、新面试练习、岗位收藏、求职阶段和跟进备注、已上传的简历原件、解析结果、版本和
         AI

@@ -29,6 +29,8 @@ public class OccupationEmbeddings {
                 || key.isBlank() || "sk-not-configured".equals(key));
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.offerpilot.llm.privacy.PiiMaskingPreference privacy;
     public List<float[]> embed(List<String> documents) {
         if (!configured()) {
             log.warn("职业向量不可用：embedding 已关闭或未配置 Bailian Key；保留全文索引与规则推荐");
@@ -40,7 +42,10 @@ public class OccupationEmbeddings {
                 log.warn("职业向量不可用：无 EmbeddingModel；保留规则推荐");
                 return List.of();
             }
-            var vectors = model.embed(documents);
+            String owner = com.offerpilot.llm.quota.LlmUserContext.current();
+            var outbound = owner == null || privacy == null || privacy.enabled(owner)
+                    ? documents.stream().map(text -> new com.offerpilot.llm.privacy.PiiMasker.Session(List.of(text)).mask(text)).toList() : documents;
+            var vectors = model.embed(outbound);
             if (vectors.size() != documents.size()) throw new IllegalArgumentException("Embedding batch size mismatch");
             vectors.forEach(OccupationEmbeddings::literal);
             return vectors;

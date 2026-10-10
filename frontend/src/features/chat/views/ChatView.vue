@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { checkPrivacyText } from '@/shared/api/privacy-settings'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Composer from '../components/Composer.vue'
@@ -13,6 +14,7 @@ import type { AgentMode } from '@/shared/types/agent-events'
 import type { Conversation } from '@/shared/types/conversation'
 import type { PatchDecision } from '@/shared/types/optimization'
 import type { CareerTargetSelection } from '@/shared/types/cards'
+const privacyWarning = ref('')
 const route = useRoute()
 const router = useRouter()
 const chat = useConversationChat()
@@ -134,6 +136,16 @@ async function onSend(content: string) {
   if (preparingSend.value || busy.value || missingConversation.value) return
   preparingSend.value = true
   try {
+    privacyWarning.value = ''
+    // The server applies the checksum-aware recognizers; this cheap screen avoids extra IO for ordinary turns.
+    if (/@|1[3-9]\d{9}|\d{17}[0-9Xx]/.test(content)) {
+      try {
+        privacyWarning.value = (await checkPrivacyText(content)).warning ?? ''
+      } catch {
+        privacyWarning.value =
+          '隐私风险检查暂不可用；模型端仍按你的脱敏设置处理。建议在设置中确认已开启。'
+      }
+    }
     const submittedMode = mode.value
     const matchAction = matchingSelection.value
     lastAttempt.value = content
@@ -297,6 +309,9 @@ async function remove(id: string) {
         />
         <div ref="scrollArea" class="chat-scroll" aria-live="polite" aria-relevant="additions text">
           <div class="chat-column">
+            <p v-if="privacyWarning" class="helper-note" role="status">
+              {{ privacyWarning }} <RouterLink to="/settings/privacy">隐私设置</RouterLink>
+            </p>
             <p v-if="typeof route.query.jobId === 'string'" class="helper-note">
               已关联选定岗位和简历版本。可发送匹配或定向改写请求，生成建议后仍需逐条核对采纳；搜索新岗位按本轮条件执行。
               <RouterLink :to="'/jobs/' + encodeURIComponent(route.query.jobId)"
