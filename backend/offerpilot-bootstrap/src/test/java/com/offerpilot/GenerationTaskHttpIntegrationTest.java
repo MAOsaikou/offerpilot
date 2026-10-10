@@ -53,17 +53,6 @@ class GenerationTaskHttpIntegrationTest extends SharedHttpIntegrationTest {
         return HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.ofString());
     }
 
-    @Test
-    void listsRunningMatchForOwner() throws Exception {
-        var fx = fixture();
-        jdbc.update("INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status) VALUES (?,?,?,?,?,'RUNNING')",
-                "match_gen_" + fx.suffix(), fx.owner(), "job_gen_" + fx.suffix(), "ver_gen_" + fx.suffix(), "req_gen_" + fx.suffix());
-        var response = get("/generation-tasks", fx.token());
-        assertThat(response.statusCode()).withFailMessage(response.body()).isEqualTo(200);
-        JsonNode data = JSON.readTree(response.body()).path("data");
-        assertThat(data.toString()).contains("match_gen_" + fx.suffix()).contains("JOB_MATCH");
-        assertThat(get("/generation-tasks", null).statusCode()).isEqualTo(401);
-    }
 
     @Test
     void cancelsRunningMatchOptimizeAndDiagnosisForOwnerOnly() throws Exception {
@@ -83,6 +72,7 @@ class GenerationTaskHttpIntegrationTest extends SharedHttpIntegrationTest {
                 """, diagId, fx.owner(), "res_gen_" + fx.suffix(), "ver_gen_" + fx.suffix(), "req_cancel_d_" + fx.suffix());
 
         assertThat(get("/generation-tasks", fx.token()).body()).contains(matchId, optId, diagId);
+        assertThat(get("/generation-tasks", null).statusCode()).isEqualTo(401);
 
         var stranger = guests.create();
         assertThat(post("/generation-tasks/JOB_MATCH/" + matchId + "/cancel", stranger.accessToken()).statusCode())

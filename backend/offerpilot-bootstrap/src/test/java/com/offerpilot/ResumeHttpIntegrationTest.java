@@ -532,17 +532,7 @@ class ResumeHttpIntegrationTest {
             assertThat(resumes.versions(owner(token), id)).isEmpty();
         }
     }
-    @Test void legacyResumeModelPreferencesRemainReadableAndWritable() throws Exception {
-        String token = identities.create().accessToken(), user = owner(token);
-        jdbc.update("INSERT INTO resume_model_preferences(user_id,text_tier,vision_tier) VALUES (?,?,?)", user, "CHEAP", "cheap");
-        var selection = data(request("GET", "/resume-model-settings", token, null)).path("selection");
-        assertThat(selection.path("textTier").asText()).isEqualTo("FLASH");
-        assertThat(selection.path("visionTier").asText()).isEqualTo("FLASH");
-        var saved = request("PUT", "/resume-model-settings", token, "{\"textTier\":\"CHEAP\",\"visionTier\":\"CHEAP\"}");
-        assertThat(saved.statusCode()).isEqualTo(200);
-        assertThat(data(saved).path("selection").path("textTier").asText()).isEqualTo("FLASH");
-        assertThat(jdbc.queryForObject("SELECT vision_tier FROM resume_model_preferences WHERE user_id=?", String.class, user)).isEqualTo("FLASH");
-    }
+
 
     @Test void modelSettingsArePrivateValidatedAndSnapshottedForEachJob() throws Exception {
         String token = identities.create().accessToken(), stranger = identities.create().accessToken();
@@ -568,5 +558,16 @@ class ResumeHttpIntegrationTest {
         String nextId = data(upload(token, "after.txt", "新简历".getBytes(StandardCharsets.UTF_8))).path("id").asText();
         worker.processNext();
         assertThat(resumes.get(owner(token), nextId).currentVersion().parseMeta().path("tier").asText()).isEqualTo("VISION_ALT");
+
+        String legacyToken = identities.create().accessToken(), legacyOwner = owner(legacyToken);
+        jdbc.update("INSERT INTO resume_model_preferences(user_id,text_tier,vision_tier) VALUES (?,?,?)", legacyOwner, "CHEAP", "cheap");
+        var selection = data(request("GET", "/resume-model-settings", legacyToken, null)).path("selection");
+        assertThat(selection.path("textTier").asText()).isEqualTo("FLASH");
+        assertThat(selection.path("visionTier").asText()).isEqualTo("FLASH");
+        var saved = request("PUT", "/resume-model-settings", legacyToken, "{\"textTier\":\"CHEAP\",\"visionTier\":\"CHEAP\"}");
+        assertThat(saved.statusCode()).isEqualTo(200);
+        assertThat(data(saved).path("selection").path("textTier").asText()).isEqualTo("FLASH");
+        assertThat(jdbc.queryForObject("SELECT vision_tier FROM resume_model_preferences WHERE user_id=?", String.class, legacyOwner)).isEqualTo("FLASH");
+
     }
 }
