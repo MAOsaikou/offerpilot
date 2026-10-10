@@ -14,13 +14,14 @@ import java.util.List;
 @Service
 public class JobMatchService {
     private final JobService jobs;
+    private final com.offerpilot.board.application.ApplicationTimeline timeline;
     private final ResumeMatchSource resumes;
     private final JobMatcher matcher;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
     private final ObjectMapper json;
-    public JobMatchService(JobService jobs,ResumeMatchSource resumes,JobMatcher matcher,JdbcTemplate jdbc,TransactionTemplate tx,ObjectMapper json) {
-        this.jobs=jobs; this.resumes=resumes; this.matcher=matcher; this.jdbc=jdbc; this.tx=tx; this.json=json;
+    public JobMatchService(JobService jobs,ResumeMatchSource resumes,JobMatcher matcher,JdbcTemplate jdbc,TransactionTemplate tx,ObjectMapper json,com.offerpilot.board.application.ApplicationTimeline timeline) {
+        this.jobs=jobs; this.resumes=resumes; this.matcher=matcher; this.jdbc=jdbc; this.tx=tx; this.json=json; this.timeline=timeline;
     }
     public JsonNode create(String owner,String jobId,String resumeId,String versionId,String requestId) {
         return create(owner, jobId, resumeId, versionId, requestId, null);
@@ -55,7 +56,12 @@ public class JobMatchService {
             report.put("id",id).put("jobId",jobId).put("resumeId",resumeId).put("resumeTitle",resume.title())
                 .put("resumeVersionId",versionId).put("resumeVersionNo",resume.versionNo()).put("createdAt",Instant.now().toString());
             report.set("jobSnapshot",job); report.set("resumeSnapshot",resume.structured());
-            int saved=jdbc.update("UPDATE job_matches SET status='COMPLETED',report=?::jsonb,updated_at=now() WHERE id=? AND status='RUNNING'",report.toString(),id);
+            int saved=tx.execute(transaction -> {
+                if (jdbc.queryForList("SELECT id FROM users WHERE id=? FOR UPDATE",String.class,owner).isEmpty()) return 0;
+                int count=jdbc.update("UPDATE job_matches SET status='COMPLETED',report=?::jsonb,updated_at=now() WHERE id=? AND status='RUNNING'",report.toString(),id);
+                if (count==1) timeline.linkMatches(owner,jobId);
+                return count;
+            });
             if(saved!=1) throw new BusinessException(ErrorCode.MODEL_TIMEOUT,"本次匹配已过期，请重新分析");
             return withEvaluation(report);
         } catch(RuntimeException ex) {

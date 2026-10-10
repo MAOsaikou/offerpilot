@@ -880,7 +880,7 @@ class ChatHttpIntegrationTest {
                 assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\",\"args\":{\"applicationId\":\"other\"}}").statusCode()).isEqualTo(400);
                 boolean reject = operation.equals("拒绝");
                 var decision = reject ? "{\"decision\":\"REJECT\"}" : json.writeValueAsString(java.util.Map.of(
-                        "decision", "APPROVE", "args", java.util.Map.of("status", operation.equals("新建") ? "APPLIED" : "INTERVIEW", "note", "审批备注")));
+                        "decision", "APPROVE", "args", java.util.Map.of("status", operation.equals("新建") ? "APPLIED" : "INTERVIEW", "note", "审批备注", "nextAction", "准备项目复盘", "nextActionAt", "2026-10-12")));
                 assertThat(request("POST", path, token, decision).statusCode()).isEqualTo(200);
                 assertThat(request("POST", path, token, decision).statusCode()).isEqualTo(409);
                 for (String line; (line = reader.readLine()) != null;)
@@ -900,13 +900,14 @@ class ChatHttpIntegrationTest {
                     assertThat(cards.get(0).path("cardType").asText()).isEqualTo("board_update");
                     assertThat(cards.get(0).path("payload").path("change").asText()).isEqualTo(operation.equals("新建") ? "CREATED" : "UPDATED");
                     assertThat(cards.get(0).path("payload").path("application").path("company").asText()).isEqualTo("BoardCorp");
-                    assertThat(cards.get(0).path("payload").path("application").path("nextActionAt").isNull()).isTrue();
+                    assertThat(cards.get(0).path("payload").path("application").path("nextActionAt").asText()).isEqualTo("2026-10-12");
                 }
                 var saved = applications.list(user);
                 assertThat(saved).hasSize(1);
                 applicationId = saved.get(0).id();
                 assertThat(saved.get(0).status()).isEqualTo(operation.equals("新建") ? "APPLIED" : "INTERVIEW");
                 assertThat(saved.get(0).note()).isEqualTo("审批备注");
+                assertThat(saved.get(0).nextAction()).isEqualTo("准备项目复盘");
                 assertThat(events.stream().map(e -> e.path("id").asInt()).toList()).containsExactlyElementsOf(
                         java.util.stream.IntStream.rangeClosed(1, events.size()).boxed().toList());
                 String conv = events.get(0).path("conversationId").asText();

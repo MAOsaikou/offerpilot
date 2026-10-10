@@ -28,7 +28,7 @@ public class BoardWriteTools {
     public ApprovalService.Ticket request(String owner, String runId, PlanStep step) {
         String action = (String) step.inputs().get("action");
         var args = new LinkedHashMap<String, Object>();
-        for (String key : Set.of("jobId", "applicationId", "status", "note"))
+        for (String key : Set.of("jobId", "applicationId", "status", "note", "nextAction", "nextActionAt"))
             if (step.inputs().containsKey(key)) args.put(key, step.inputs().get(key));
         if (action.equals("createApplication") && !args.containsKey("status")) args.put("status", "TODO");
         validate(action, args);
@@ -44,10 +44,29 @@ public class BoardWriteTools {
             throw invalid("状态仅支持 TODO/APPLIED/INTERVIEW/OFFER/CLOSED");
         if (args.containsKey("note") && (!(args.get("note") instanceof String note)
                 || note.codePointCount(0, note.length()) > 2000)) throw invalid("备注须为不超过2000字的文本");
-        if (action.equals("updateApplicationStatus") && !args.containsKey("status") && !args.containsKey("note"))
-            throw invalid("请提供状态或备注");
+        for (String field : Set.of("nextAction", "nextActionAt"))
+            if (args.containsKey(field) && !(args.get(field) instanceof String)) throw invalid("行动参数须为文本");
+        if (args.containsKey("nextAction") || args.containsKey("nextActionAt"))
+            ApplicationService.validate(new ApplicationService.Patch((String) args.get("status"), (String) args.get("note"),
+                    (String) args.get("nextAction"), (String) args.get("nextActionAt")));
+        if (action.equals("updateApplicationStatus") && !args.containsKey("status") && !args.containsKey("note")
+                && !args.containsKey("nextAction") && !args.containsKey("nextActionAt"))
+            throw invalid("请提供状态、备注或下一步行动");
     }
     private static BusinessException invalid(String message) { return new BusinessException(ErrorCode.VALIDATION_FAILED, message); }
+
+    public Mono<ExpertResult> detail(String owner, String id) {
+        return Mono.fromCallable(() -> {
+            var detail = applications.detail(owner, id);
+            var app = detail.application();
+            return ExpertResult.text("求职记录 " + app.id() + "：" + app.job().path("company").asText() + " / "
+                    + app.job().path("title").asText() + "，阶段 " + app.status() + "，下一步 " + app.nextAction()
+                    + "，日期 " + (app.nextActionAt()==null?"未安排":app.nextActionAt()) + "，备注：" + app.note()
+                    + "。最新评估：" + (detail.latestMatch()==null?"暂无成功匹配报告":detail.latestMatch())
+                    + "。最近跟进事件：" + detail.timeline().stream().skip(Math.max(0,detail.timeline().size()-5)).toList()
+                    + "。" + detail.linkageNote() + "。详情入口 /board?application=" + app.id());
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
 
     public Mono<ExpertResult> execute(String owner, String runId, PlanStep step, ApprovalService.Decision decision) {
         if (!"APPROVE".equals(decision.decision())) return Mono.error(new BusinessException(ErrorCode.APPROVAL_REJECTED,
@@ -57,14 +76,17 @@ public class BoardWriteTools {
             var args = decision.args();
             validate(action, args);
             boolean create = action.equals("createApplication");
-            var saved = create ? applications.create(owner, (String) args.get("jobId"), (String) args.get("status"), (String) args.get("note"))
-                    : applications.update(owner, (String) args.get("applicationId"), (String) args.get("status"), (String) args.get("note"));
+            var patch = new ApplicationService.Patch((String) args.get("status"), (String) args.get("note"),
+                    (String) args.get("nextAction"), (String) args.get("nextActionAt"));
+            var saved = create ? applications.createWithPatch(owner, (String) args.get("jobId"), patch, runId)
+                    : applications.updateWithPatch(owner, (String) args.get("applicationId"), patch, "AGENT", runId);
             var application = new LinkedHashMap<String, Object>();
             application.put("id", saved.id());
             application.put("company", saved.job().path("company").asText());
             application.put("title", saved.job().path("title").asText());
             application.put("status", saved.status());
-            application.put("nextActionAt", null);
+            application.put("nextAction", saved.nextAction());
+            application.put("nextActionAt", saved.nextActionAt());
             return ExpertResult.card("已按用户批准的参数" + (create ? "创建" : "更新") + "投递记录：" + saved.id() + "，状态：" + saved.status(),
                     runId + "_" + step.id(), "board_update", Map.of("application", application, "change", create ? "CREATED" : "UPDATED"));
         }).subscribeOn(Schedulers.boundedElastic());

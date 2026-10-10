@@ -193,6 +193,28 @@ class JobsHttpIntegrationTest {
         assertThat(request("GET","/jobs/unknown",token,null).statusCode()).isEqualTo(404);
     }
 
+    @Test void applicationDetailAggregatesOnlyOwnedJobArtifactsAndJournalsStatusChanges() throws Exception {
+        String token=identities.create().accessToken(), other=identities.create().accessToken(), resume=seed(token), job=jobId(token);
+        var report=data(request("POST","/jobs/"+job+"/matches",token,Map.of("resumeId",resume,"resumeVersionId",resume,"requestId",UUID.randomUUID().toString())));
+        String id=data(request("POST","/applications",token,Map.of("jobId",job))).path("id").asText();
+        // A newer report for the same public job belongs to a different owner.
+        String otherResume=seed(other), otherOwner=identities.require("Bearer "+other);
+        jdbc.update("INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status,report,created_at) VALUES (?,?,?,?,?,'COMPLETED',?::jsonb,now()+interval '1 minute')",
+                "match_other_"+UUID.randomUUID(),otherOwner,job,otherResume,UUID.randomUUID().toString(),report.toString());
+        data(request("PATCH","/applications/"+id,token,Map.of("status","INTERVIEW","nextAction","准备项目复盘","nextActionAt","2026-10-12")));
+        var detail=data(request("GET","/applications/"+id,token,null));
+        assertThat(detail.path("application").path("status").asText()).isEqualTo("INTERVIEW");
+        assertThat(detail.path("latestMatch").path("id")).isEqualTo(report.path("id"));
+        assertThat(detail.path("timeline").findValuesAsText("kind")).contains("CREATED","ARTIFACT_LINKED","STATUS_CHANGED");
+        assertThat(detail.path("resumeOptimizations")).isEmpty(); // JD text cannot prove job identity.
+        assertThat(request("GET","/applications/"+id,other,null).statusCode()).isEqualTo(404);
+        assertThat(request("GET","/applications/"+id,null,null).statusCode()).isEqualTo(401);
+        assertThat(request("GET","/jobs/matches/"+report.path("id").asText()+"/eval.md",token,null).statusCode()).isEqualTo(200);
+        int events=detail.path("timeline").size();
+        data(request("PATCH","/applications/"+id,token,Map.of("status","INTERVIEW")));
+        assertThat(data(request("GET","/applications/"+id,token,null)).path("timeline")).hasSize(events);
+    }
+
     @Test void boardPersistsAcrossClientsAndIsPrivateAndIdempotent() throws Exception {
         String token=identities.create().accessToken(), other=identities.create().accessToken(), job=jobId(token);
         assertThat(request("GET","/applications",null,null).statusCode()).isEqualTo(401);
