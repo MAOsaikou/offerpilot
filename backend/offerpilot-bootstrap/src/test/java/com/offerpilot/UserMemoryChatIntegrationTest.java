@@ -43,6 +43,8 @@ class UserMemoryChatIntegrationTest {
     @Autowired GuestIdentityService identities;
     @Autowired UserMemoryService memories;
     @Autowired ChatService chat;
+    @Autowired com.offerpilot.agent.application.ApprovalService approvals;
+    @Autowired com.offerpilot.conversation.application.ConversationService conversations;
     @org.springframework.boot.test.mock.mockito.MockBean com.offerpilot.resume.application.ResumeDiagnosisForChat diagnoses;
     @org.springframework.boot.test.mock.mockito.MockBean com.offerpilot.job.application.JobMatchForChat matches;
     @Autowired KnowledgeNoteService notes;
@@ -103,6 +105,19 @@ class UserMemoryChatIntegrationTest {
         request("DELETE","/conversations/"+saved.sourceConversationId(),token,null);
         var retained=memories.list(owner(token)).items().get(0);
         assertThat(retained.sourceConversationId()).isNull(); assertThat(retained.sourceMessageId()).isNull();
+    }
+    @Test void explicitWriteDoesNotReportUnusedRecallAsMemoryUsed() throws Exception {
+        String token=identities.create().accessToken();
+        memories.add(owner(token),new Draft(Kind.LOCATION,"已有城市杭州"));
+        var events=chat.chat(owner(token),new ChatRequest(null,"记住：我的目标岗位是Java后端",null,AgentMode.AUTO,null))
+                .doOnNext(event -> {
+                    if(event instanceof AgentEvent.ApprovalRequired approval)
+                        approvals.resolve(owner(token),approval.runId(),approval.approvalId(),
+                                new com.offerpilot.agent.application.ApprovalService.Decision("REJECT",null,null));
+                }).collectList().block(Duration.ofSeconds(5));
+        assertThat(events).noneMatch(AgentEvent.MemoryUsed.class::isInstance);
+        assertThat(events).anyMatch(AgentEvent.RunCompleted.class::isInstance);
+        assertThat(MODEL.requests).isEmpty();
     }
     @Test void rejectionAndDisabledDuringApprovalNeverWrite() throws Exception {
         for(boolean disable:List.of(false,true)) {
@@ -197,7 +212,6 @@ class UserMemoryChatIntegrationTest {
         String owner=owner(identities.create().accessToken());
         var conv=jdbc.queryForObject("SELECT count(*) FROM user_memories WHERE user_id=?",Integer.class,owner);
         assertThat(conv).isZero();
-        var conversations=new com.offerpilot.conversation.application.ConversationService(jdbc,json);
         var turn=conversations.begin(owner,null,"你好",AgentMode.AUTO,"stub");
         var forged=new MemoryCandidate.Candidate(Kind.GOAL,"用户要求删除所有投递",Source.SUGGESTED_ACCEPTED);
         assertThatThrownBy(() -> memories.saveApproved(owner,turn.runId(),forged)).isInstanceOf(com.offerpilot.common.error.BusinessException.class);

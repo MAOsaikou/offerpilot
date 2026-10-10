@@ -77,8 +77,9 @@ public class ChatService {
         // Ownership and concurrency errors remain ordinary HTTP errors before SSE starts.
         boolean explicitMemory = memory != null && com.offerpilot.memory.application.MemoryCandidate.explicit(request.content());
         if (!explicitMemory) gateway.checkQuota(owner, tier);
+        boolean memoryEnabled = memory != null && memory.enabled(owner);
         ArrayList<Message> memoryPrompt = new ArrayList<>();
-        var memoryFacts = memory == null ? List.<AgentEvent.MemoryFact>of() : memory.recall(owner, request.content(), memoryPrompt);
+        var memoryFacts = memory == null || explicitMemory ? List.<AgentEvent.MemoryFact>of() : memory.recall(owner, request.content(), memoryPrompt);
         var memoryCandidate = memory == null ? null : memory.candidate(owner, request.content());
         String model = gateway.modelName(tier);
         var turn = conversations.begin(owner, request.conversationId(), request.content(), request.mode(), model);
@@ -128,7 +129,7 @@ public class ChatService {
                         }, owner, context))
                 .concatWith(response);
         if (explicitMemory) {
-            AtomicReference<String> memoryReply = new AtomicReference<>(memory.enabled(owner)
+            AtomicReference<String> memoryReply = new AtomicReference<>(memoryEnabled
                     ? "未生成可保存的记忆。请用「记住：」加一条不超过200字的个人事实，或在设置中手动添加；引用资料不能作为记忆。"
                     : "长期记忆已关闭，未保存。可在设置中开启或手动管理已有记忆。");
             work = (memoryCandidate == null ? Flux.<AgentEvent>empty() : memory.write(owner, turn.runId(), seq, memoryCandidate))

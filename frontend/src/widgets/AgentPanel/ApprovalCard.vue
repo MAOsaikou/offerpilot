@@ -105,7 +105,7 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
         "
       >
         <div class="flex flex-wrap items-center gap-2">
-          <span class="break-all text-xs">{{
+          <span class="break-all text-xs" :class="{ 'font-mono': !memoryArgs(approval) }">{{
             memoryArgs(approval)
               ? memoryArgs(approval)?.suggested
                 ? '记忆保存建议'
