@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
+import type { ModelTier } from '@/shared/types/model-tier'
 import { RouterLink, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import JobSourceBadge from '@/shared/components/JobSourceBadge.vue'
@@ -45,6 +46,18 @@ const history = useQuery({
   refetchInterval: (query) =>
     query.state.data?.some((r) => r.status === 'RUNNING') ? 4000 : false,
 })
+const modelTier = ref<ModelTier>('FLASH')
+const elapsed = ref(0)
+let progressTimer: ReturnType<typeof setInterval> | undefined
+function stopProgress() {
+  clearInterval(progressTimer)
+  progressTimer = undefined
+}
+onUnmounted(() => {
+  generation++
+  reportRequest++
+  stopProgress()
+})
 const busy = ref(false),
   refreshing = ref(false),
   reportLoading = ref(false),
@@ -56,6 +69,7 @@ let generation = 0,
 watch(id, () => {
   generation++
   reportRequest++
+  stopProgress()
   report.value = undefined
   busy.value = false
   refreshing.value = false
@@ -94,16 +108,29 @@ async function analyze() {
   if (!resumeId.value || !versionId.value || busy.value) return
   const epoch = generation
   busy.value = true
+  elapsed.value = 0
+  stopProgress()
+  const started = Date.now()
+  progressTimer = setInterval(() => {
+    elapsed.value = Math.floor((Date.now() - started) / 1000)
+  }, 1000)
   error.value = ''
   report.value = undefined
   reportRequest++
   try {
-    const value = await matchJob(id.value, resumeId.value, versionId.value, crypto.randomUUID())
+    const value = await matchJob(
+      id.value,
+      resumeId.value,
+      versionId.value,
+      crypto.randomUUID(),
+      modelTier.value,
+    )
     if (epoch === generation) report.value = value
   } catch (e) {
     if (epoch === generation) error.value = (e as Error).message
   } finally {
     if (epoch === generation) {
+      stopProgress()
       busy.value = false
       void history.refetch()
       void job.refetch()
@@ -228,6 +255,15 @@ async function openReport(reportId: string) {
           }}<button class="btn" @click="resumes.refetch()">重试简历列表</button>
         </div>
         <template v-else>
+          <label class="field"
+            >分析模式<select v-model="modelTier" :disabled="busy">
+              <option value="FLASH">快速</option>
+              <option value="PRO">深度</option>
+            </select></label
+          >
+          <p v-if="modelTier === 'PRO'" class="helper-note">
+            深度模式较慢，生成及证据校验最多等待 3 分钟。
+          </p>
           <div class="match-selectors">
             <label class="field"
               >简历<select v-model="resumeId" :disabled="busy">
@@ -293,6 +329,7 @@ async function openReport(reportId: string) {
                 query: {
                   mode: 'JOB',
                   jobAction: 'match',
+                  modelTier,
                   jobId: id,
                   resumeId,
                   resumeVersionId: versionId,
@@ -351,9 +388,22 @@ async function openReport(reportId: string) {
           </div>
         </template>
         <p v-if="busy" class="helper-note" role="status">
-          正在获取岗位并逐项分析。报告完成后自动保存；离开页面不会保证取消已提交的分析。
+          {{ modelTier === 'PRO' ? '深度模式正在分析原文证据' : '正在分析原文证据' }} · 已等待
+          {{ elapsed }} 秒。 报告完成后自动保存；离开页面后可从匹配记录查看结果。
         </p>
-        <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
+        <div v-if="error" class="error-banner" role="alert">
+          {{ error }}
+          <button class="btn" @click="history.refetch()">刷新匹配记录</button>
+          <button
+            class="btn"
+            :disabled="
+              busy || !resumeId || !versionId || versions.isFetching.value || versions.isError.value
+            "
+            @click="analyze"
+          >
+            重新分析
+          </button>
+        </div>
       </section>
       <p v-if="reportLoading" class="panel" role="status">正在加载报告…</p>
       <CardRenderer v-if="report" card-type="job_evidence_match" :payload="report" />

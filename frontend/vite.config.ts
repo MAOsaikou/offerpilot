@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => {
   const sameOrigin: ProxyOptions = {
     target: proxyTarget,
     changeOrigin: true,
+    proxyTimeout: 240_000,
+    timeout: 240_000,
     configure: (proxy) => proxy.on('proxyReq', (request) => request.removeHeader('origin')),
   }
 

@@ -160,7 +160,7 @@ offerpilot:
         provider: ${LLM_PROVIDER_PRO:deepseek}
         model: ${LLM_MODEL_PRO:deepseek-v4-pro}
         supports-vision: ${LLM_VISION_PRO:false}
-        timeout: 120s
+        timeout: 180s
         thinking: ${LLM_THINKING_PRO:enabled}
         max-tokens: ${LLM_MAX_TOKENS_PRO:32768}
     providers:

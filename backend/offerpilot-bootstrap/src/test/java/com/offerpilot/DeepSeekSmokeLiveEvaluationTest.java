@@ -91,6 +91,7 @@ class DeepSeekSmokeLiveEvaluationTest {
     @SpyBean ModelGateway gateway;
     @MockBean JobsMcpClient liveJobs;
     @Autowired ObjectMapper json;
+    @Autowired org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext webContext;
     @Autowired PasswordLoginService identities;
     @Autowired DemoAccountBootstrap accounts;
     @Autowired OccupationEmbeddings embeddings;
@@ -102,7 +103,33 @@ class DeepSeekSmokeLiveEvaluationTest {
     String resumeId;
     String versionId;
 
+    @SuppressWarnings("unchecked")
     @BeforeEach void demo() {
+        doAnswer(invocation -> {
+            ModelTier selected = invocation.getArgument(0);
+            String budgetFile = System.getenv("OFFERPILOT_SMOKE_PRO_BUDGET_FILE");
+            if (selected == ModelTier.PRO && budgetFile != null) {
+                var path = java.nio.file.Path.of(budgetFile);
+                int count = Integer.parseInt(java.nio.file.Files.readString(path).strip());
+                if (count >= 5) throw new IllegalStateException("Live PRO call budget exhausted before provider IO");
+                java.nio.file.Files.writeString(path, Integer.toString(count + 1));
+                System.out.println("LIVE_MODEL_CALL PRO total=" + (count + 1));
+            }
+            long started = System.nanoTime();
+            var first = new java.util.concurrent.atomic.AtomicLong(-1);
+            var chunks = new java.util.concurrent.atomic.AtomicInteger();
+            reactor.core.publisher.Flux<org.springframework.ai.chat.model.ChatResponse> stream = (reactor.core.publisher.Flux<org.springframework.ai.chat.model.ChatResponse>) invocation.callRealMethod();
+            return stream.doOnNext(response -> {
+                first.compareAndSet(-1, (System.nanoTime()-started)/1_000_000);
+                chunks.incrementAndGet();
+            }).doFinally(signal -> System.out.println("LIVE_MODEL_LATENCY tier=" + selected + " signal=" + signal
+                    + " firstEventMs=" + first.get() + " totalMs=" + (System.nanoTime()-started)/1_000_000
+                    + " chunks=" + chunks.get()));
+        }).when(gateway).stream(any(ModelTier.class), anyList(), anyDouble());
+        var tomcat = (org.springframework.boot.web.embedded.tomcat.TomcatWebServer) webContext.getWebServer();
+        for (var connector : tomcat.getTomcat().getService().findConnectors())
+            System.out.println("LIVE_TOMCAT connectionTimeout=" + connector.getProperty("connectionTimeout")
+                    + " asyncTimeout=" + connector.getProperty("asyncTimeout"));
         owner = accounts.requireAccount();
         token = accounts.login(identities).accessToken();
         var resume = jdbc.queryForMap("SELECT id,current_version_id FROM resumes WHERE user_id=? ORDER BY id LIMIT 1", owner);
@@ -118,16 +145,20 @@ class DeepSeekSmokeLiveEvaluationTest {
         jdbc.update("UPDATE jobs SET detail_fetched_at=now()-interval '1 hour' WHERE site='demo'");
         assertThat(data(request("GET", "/api/v1/jobs/job_demo_1", null)).path("source").asText()).isEqualTo("demo");
         assertThat(data(request("POST", "/api/v1/jobs/job_demo_1/refresh", Map.of())).path("source").asText()).isEqualTo("demo");
+        long restStart = System.nanoTime();
         var report = data(request("POST", "/api/v1/jobs/job_demo_1/matches", Map.of("resumeId", resumeId,
                 "resumeVersionId", versionId, "requestId", UUID.randomUUID().toString())));
         verifyReport(report);
         assertThat(report.path("model").asText()).isEqualTo(gateway.modelName(tier));
         verifyNoInteractions(liveJobs);
-        System.out.println("LIVE_SMOKE " + tier + " demo-expired REST-match PASS verified=" + report.path("requirements").size());
+        System.out.println("LIVE_SMOKE " + tier + " demo-expired REST-match PASS verified=" + report.path("requirements").size()
+                + " durationMs=" + report.path("durationMs").asLong() + " httpMs=" + (System.nanoTime()-restStart)/1_000_000);
+        if (Boolean.getBoolean("offerpilot.smoke.match-rest-only")) return;
+        long chatStart = System.nanoTime();
         var chat = chat(tier, "JOB", "请匹配这个岗位与我的简历", Map.of("jobAction", "match", "jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
         assertThat(cards(chat, "job_match").size()).as(tier + " chat matching").isEqualTo(1);
         verifyNoInteractions(liveJobs);
-        System.out.println("LIVE_SMOKE " + tier + " demo-expired chat-match PASS");
+        System.out.println("LIVE_SMOKE " + tier + " demo-expired chat-match PASS httpMs=" + (System.nanoTime()-chatStart)/1_000_000);
 
         var stored = (com.fasterxml.jackson.databind.node.ObjectNode)jobs.get("job_demo_1").deepCopy();
         stored.put("site", "tencent").put("externalId", "smoke-stored").put("source", "company-career-site");
@@ -373,7 +404,14 @@ class DeepSeekSmokeLiveEvaluationTest {
         return json.readTree(response.body()).path("data");
     }
     private HttpResponse<String> request(String method, String path, Object body) throws Exception {
-        return HttpClient.newHttpClient().send(requestBuilder(method, path, body).build(), HttpResponse.BodyHandlers.ofString());
+        long start = System.nanoTime();
+        var response = HttpClient.newHttpClient().send(requestBuilder(method, path, body).build(), HttpResponse.BodyHandlers.ofString());
+        if (path.endsWith("/matches")) {
+            var envelope = json.readTree(response.body());
+            System.out.println("LIVE_MATCH_HTTP status=" + response.statusCode() + " code=" + envelope.path("code").asInt()
+                    + " elapsedMs=" + (System.nanoTime()-start)/1_000_000);
+        }
+        return response;
     }
     private HttpRequest.Builder requestBuilder(String method, String path, Object body) throws Exception {
         var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(240))

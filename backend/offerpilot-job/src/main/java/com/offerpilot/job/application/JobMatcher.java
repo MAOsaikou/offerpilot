@@ -20,44 +20,76 @@ public class JobMatcher {
     public JobMatcher(ModelGateway gateway,ObjectMapper json,@Value("classpath:prompts/job/match.st") Resource prompt) throws java.io.IOException {
         this.gateway=gateway; this.json=json; this.prompt=prompt.getContentAsString(StandardCharsets.UTF_8);
     }
-    public JsonNode match(JsonNode job,JsonNode resume) {
-        var tier=gateway.defaultTier();
-        String jd=JobService.evidenceText(job);
-        if(job.path("description").asText().isBlank() && job.path("requirement").asText().isBlank()) throw new BusinessException(ErrorCode.JOB_CONTENT_MISSING);
-        var input=json.createObjectNode(); input.put("jobText",jd); input.set("resume",resume);
-        if(input.toString().length()>100000) throw new BusinessException(ErrorCode.VALIDATION_FAILED,"简历或岗位内容过长，请使用精简后的简历版本");
-        long start=System.nanoTime();
-        List<Message> messages=new ArrayList<>(List.of(new SystemMessage(prompt),new UserMessage(input.toString())));
-        for(int attempt=0;attempt<2;attempt++) {
-            String output;
-            try {
-                output=gateway.stream(tier,messages,0)
-                    .map(r->r.getResult()==null || r.getResult().getOutput().getText()==null?"":r.getResult().getOutput().getText())
-                    .reduce(new StringBuilder(),(all,part)-> { if(all.length()+part.length()>40000) throw invalid(); return all.append(part); })
-                    .map(StringBuilder::toString).block(Duration.ofSeconds(90));
-            } catch(BusinessException ex) { throw ex; }
-            catch(Exception ex) {
-                for(Throwable cause=ex;cause!=null;cause=cause.getCause()) if(cause instanceof java.util.concurrent.TimeoutException)
-                    throw new BusinessException(ErrorCode.MODEL_TIMEOUT,"匹配分析超时，请稍后重试");
-                throw new BusinessException(ErrorCode.MODEL_UNAVAILABLE);
-            }
-            try {
-                String clean=output==null?"":output.strip().replaceFirst("^```(?:json)?\\s*","").replaceFirst("\\s*```$","");
-                JsonNode report=json.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(clean);
-                validate(report,jd,resume);
-                var result=(ObjectNode)report;
-                int points=0;
-                for(var item:report.path("requirements")) points+=switch(item.path("status").asText()) { case "MET"->2; case "PARTIAL"->1; default->0; };
-                result.put("score",Math.round(100f*points/(2*report.path("requirements").size())));
-                result.put("model",gateway.modelName(tier)); result.put("promptVersion","job-match-v2");
-                result.put("durationMs",(System.nanoTime()-start)/1000000);
-                return result;
-            } catch(Exception ex) {
-                if(attempt==1) throw invalid();
-                messages.add(new SystemMessage("上次报告未通过结构或原文依据校验，未保存。请重新生成：至少一项、最多12项；jdQuote必须连续摘录且不重复；MET/PARTIAL的resumePath必须是存在的字符串叶子JSON Pointer，resumeQuote连续摘录该叶子；MISSING的两项简历证据必须为空。不要补造或拼接引文。仅输出完整JSON对象。"));
-            }
+    public JsonNode match(JsonNode job, JsonNode resume) {
+        return match(job, resume, gateway.defaultTier());
+    }
+
+    public JsonNode match(JsonNode job, JsonNode resume, com.offerpilot.llm.ModelTier tier) {
+        return analyze(job, resume, tier, reactor.core.scheduler.Schedulers.parallel()).block();
+    }
+
+    // One cancellable deadline includes generation and the optional evidence repair.
+    // The injected scheduler lets tests advance time without sleeping or racing the host CPU.
+    reactor.core.publisher.Mono<JsonNode> analyze(JsonNode job, JsonNode resume,
+            com.offerpilot.llm.ModelTier tier, reactor.core.scheduler.Scheduler clock) {
+        return reactor.core.publisher.Mono.defer(() -> {
+            String jd = JobService.evidenceText(job);
+            if (job.path("description").asText().isBlank() && job.path("requirement").asText().isBlank())
+                throw new BusinessException(ErrorCode.JOB_CONTENT_MISSING);
+            var input = json.createObjectNode().put("jobText", jd); input.set("resume", resume);
+            if (input.toString().length() > 100000)
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "简历或岗位内容过长，请使用精简后的简历版本");
+            long start = System.nanoTime();
+            List<Message> messages = new ArrayList<>(List.of(new SystemMessage(prompt), new UserMessage(input.toString())));
+            Duration budget = gateway.timeout(tier);
+            return generate(jd, resume, tier, messages, 0, start)
+                    .timeout(budget, clock)
+                    .onErrorMap(error -> modelFailure(error, tier, budget));
+        });
+    }
+
+    private reactor.core.publisher.Mono<JsonNode> generate(String jd, JsonNode resume,
+            com.offerpilot.llm.ModelTier tier, List<Message> messages, int attempt, long start) {
+        return reactor.core.publisher.Mono.defer(() -> gateway.stream(tier, messages, 0)
+                .map(r -> r.getResult() == null || r.getResult().getOutput().getText() == null
+                        ? "" : r.getResult().getOutput().getText())
+                .reduce(new StringBuilder(), (all, part) -> {
+                    if (all.length() + part.length() > 40000) throw invalid();
+                    return all.append(part);
+                }).map(StringBuilder::toString))
+                .flatMap(output -> {
+                    ObjectNode result;
+                    try {
+                        String clean = output.strip().replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "");
+                        JsonNode report = json.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(clean);
+                        validate(report, jd, resume);
+                        result = (ObjectNode) report;
+                    } catch (Exception ex) {
+                        if (attempt == 1) return reactor.core.publisher.Mono.error(invalid());
+                        messages.add(new SystemMessage("上次报告未通过结构或原文依据校验，未保存。请重新生成：至少一项、最多12项；jdQuote必须连续摘录且不重复；MET/PARTIAL的resumePath必须是存在的字符串叶子JSON Pointer，resumeQuote连续摘录该叶子；MISSING的两项简历证据必须为空。不要补造或拼接引文。仅输出完整JSON对象。"));
+                        return generate(jd, resume, tier, messages, 1, start);
+                    }
+                    int points = 0;
+                    for (var item : result.path("requirements")) points += switch (item.path("status").asText()) {
+                        case "MET" -> 2; case "PARTIAL" -> 1; default -> 0;
+                    };
+                    result.put("score", Math.round(100f * points / (2 * result.path("requirements").size())));
+                    result.put("model", gateway.modelName(tier)).put("modelTier", tier.name()).put("promptVersion", "job-match-v2");
+                    result.put("durationMs", (System.nanoTime() - start) / 1000000);
+                    return reactor.core.publisher.Mono.just((JsonNode) result);
+                });
+    }
+
+    private static Throwable modelFailure(Throwable error, com.offerpilot.llm.ModelTier tier, Duration budget) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof BusinessException) return cause; // Includes LLM_RATE_LIMITED; never repair/retry IO failures.
+            if (cause instanceof java.util.concurrent.TimeoutException || cause instanceof java.net.http.HttpTimeoutException
+                    || cause instanceof java.net.SocketTimeoutException)
+                return new BusinessException(ErrorCode.MODEL_TIMEOUT,
+                        (tier == com.offerpilot.llm.ModelTier.PRO ? "深度" : "快速") + "匹配超过等待上限（" + budget.toSeconds()
+                                + " 秒，含证据校验），未保存报告，请稍后重试或切换快速模式");
         }
-        throw invalid();
+        return new BusinessException(ErrorCode.MODEL_UNAVAILABLE);
     }
 
     /** Only verified, canonical source quotes enter the persisted report; isolated bad rows are discarded. */
