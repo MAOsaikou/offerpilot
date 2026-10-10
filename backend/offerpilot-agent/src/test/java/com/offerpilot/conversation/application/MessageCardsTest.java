@@ -69,4 +69,14 @@ class MessageCardsTest {
         assertThat(buffer.snapshot()).extracting(MessageCard::cardId).containsExactly("card_1");
         assertThat(buffer.accept("card_2", "reminder", Map.of("title", "晚到"))).isFalse();
     }
+
+    @Test
+    void acceptsStarAndEvalCardsWithObjectPayloads() {
+        var buffer = new MessageCardBuffer(json);
+        assertThat(buffer.accept("cite1", "star_story_citations", Map.of("items", List.of(Map.of("id", "star_1", "title", "t")), "count", 1))).isTrue();
+        assertThat(buffer.accept("cand1", "star_story_candidates", Map.of("items", List.of(), "count", 0))).isTrue();
+        assertThat(buffer.accept("story1", "star_story", Map.of("id", "star_1", "title", "t"))).isTrue();
+        assertThat(buffer.accept("eval1", "job_eval_report", Map.of("grade", "B", "overall", 80))).isTrue();
+        assertThat(buffer.accept("bad", "star_story_citations", List.of())).isFalse();
+    }
 }

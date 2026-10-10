@@ -63,6 +63,10 @@ class StarStoryContextTest {
         var result = registry().execute("alice", Map.of(), "run",
                 new PlanStep("s1", "只读", expert, inputs, List.of()), Map.of()).block(Duration.ofSeconds(3));
         assertThat(result.summary()).contains("已确认 STAR 故事引用", "缓存事故复盘", "<star-story-data>");
+        assertThat(result.cards()).anySatisfy(card -> {
+            assertThat(card.cardType()).isEqualTo("star_story_citations");
+            assertThat(card.payload().toString()).contains("缓存事故复盘", "items");
+        });
         verify(stories).recall("alice", "缓存", 3);
         verify(coach, never()).adoptGrowthPlan(anyString(), anyList());
     }

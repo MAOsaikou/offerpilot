@@ -88,6 +88,6 @@ public class InterviewWriteTools {
         }
         return ExpertResult.cards(summary + " 可审批入库的 STAR 候选：" + candidates.size() + " 条。",
                 new ExpertResult.Card(com.offerpilot.agent.experts.ExpertRegistry.requestId(runId, stepId), "interview_report", report),
-                new ExpertResult.Card(com.offerpilot.agent.experts.ExpertRegistry.requestId(runId, stepId + ":stars"), "star_story_candidates", candidates));
+                new ExpertResult.Card(com.offerpilot.agent.experts.ExpertRegistry.requestId(runId, stepId + ":stars"), "star_story_candidates", java.util.Map.of("items", candidates, "count", candidates.size())));
     }
 }
