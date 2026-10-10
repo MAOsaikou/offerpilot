@@ -26,7 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 
-/** 已接入文字面试与规则评分、职业推荐与目标审批、岗位搜索、匹配、审批看板写入、简历诊断与定向改写；成长教练输出确定性技能差距与学习路线及审批任务写入。 */
+/** 已接入文字面试与规则评分、职业推荐与目标审批、岗位搜索、匹配、审批看板写入、简历诊断与定向改写；成长教练输出确定性技能差距与学习路线及审批任务写入，并可引用已入库 STAR 故事。 */
 @Component
 public class ExpertRegistry {
     private static final Map<ExpertType, String> LABELS = Map.of(
@@ -68,12 +68,22 @@ public class ExpertRegistry {
     }
 
     private Mono<ExpertResult> withStories(String owner, PlanStep step, Mono<ExpertResult> work) {
-        if (starContext == null || step.agent() != ExpertType.INTERVIEWER) return work;
-        String query = text(step.inputs().get("noteQuery"));
-        if (query == null) query = text(step.inputs().get("role"));
-        if (query == null) query = "面试 STAR";
-        String q = query;
-        return work.flatMap(result -> starContext.attach(owner, q, result));
+        if (starContext == null) return work;
+        if (step.agent() != ExpertType.INTERVIEWER && step.agent() != ExpertType.COACH) return work;
+        String query = storyQuery(step);
+        return work.flatMap(result -> starContext.attach(owner, query, result));
+    }
+
+    /** Prefer current-turn noteQuery (bounded), then role; coach falls back to skill/STAR practice terms. */
+    private static String storyQuery(PlanStep step) {
+        Object raw = step.inputs().get("noteQuery");
+        if (raw instanceof String s && !s.isBlank()) {
+            String trimmed = s.strip();
+            return trimmed.length() <= 200 ? trimmed : trimmed.substring(0, 200);
+        }
+        String role = text(step.inputs().get("role"));
+        if (role != null) return role;
+        return step.agent() == ExpertType.COACH ? "项目 技能 面试 STAR" : "面试 STAR";
     }
 
     public ExpertRegistry() {

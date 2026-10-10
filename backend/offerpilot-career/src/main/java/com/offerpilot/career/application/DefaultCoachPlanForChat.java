@@ -96,7 +96,7 @@ public class DefaultCoachPlanForChat implements CoachPlanForChat {
         return new Item(id + "-task-" + index, title, hours,
                 List.of(switch (index) {
                     case 0 -> "目标岗位职责与职业库核心技能清单";
-                    case 1 -> "已有项目材料与 STAR 复盘模板";
+                    case 1 -> "已有项目材料、STAR 复盘模板与已入库 STAR 故事（聊天可引用）";
                     case 2 -> "对应技能的官方入门文档与练习笔记";
                     case 3 -> "已保存简历中的项目成果";
                     case 4 -> "OfferPilot 文字模拟面试";
