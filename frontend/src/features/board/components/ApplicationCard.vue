@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { useBoard } from '@/shared/composables/useBoard'
 import {
   applicationStages,
@@ -9,6 +9,11 @@ import {
 } from '@/shared/types/board'
 const props = defineProps<{ application: ServerApplication }>()
 const board = useBoard()
+const router = useRouter()
+function open(event: MouseEvent) {
+  if ((event.target as HTMLElement).closest('a,button,input,textarea,select,label')) return
+  void router.push({ path: '/board', query: { application: props.application.id } })
+}
 const note = ref(props.application.note)
 watch(
   () => props.application.note,
@@ -27,13 +32,17 @@ async function saveNote() {
 }
 </script>
 <template>
-  <article class="application-card" :aria-busy="board.busy.value">
+  <article class="application-card" :aria-busy="board.busy.value" @click="open">
     <p>{{ application.job.company }}</p>
-    <RouterLink :to="'/jobs/' + application.jobId"
+    <RouterLink :to="{ path: '/board', query: { application: application.id } }"
       ><h3>{{ application.job.title }}</h3></RouterLink
     >
     <p>
       {{ application.job.locations || '地点未提供' }} · {{ application.createdAt.slice(0, 10) }}
+    </p>
+    <p v-if="application.nextAction" class="subtle">
+      下一步：{{ application.nextAction
+      }}<span v-if="application.nextActionAt"> · {{ application.nextActionAt }}</span>
     </p>
     <label class="field"
       >当前阶段

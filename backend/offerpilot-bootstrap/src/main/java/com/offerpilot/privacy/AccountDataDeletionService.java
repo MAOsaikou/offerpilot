@@ -62,6 +62,7 @@ public class AccountDataDeletionService {
                 jdbc.update("INSERT INTO account_data_cleanup(id,kind,bucket,object_key) VALUES (?,'OBJECT',?,?)", id, object.get("bucket"), object.get("object_key"));
                 receipts.add(id);
             }
+            // V24 application_events cascades through applications, in the same deletion transaction.
             jdbc.update("DELETE FROM users WHERE id=?", owner);
             return new Deleted(objects.size(), List.copyOf(receipts));
         }));

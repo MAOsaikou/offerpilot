@@ -40,18 +40,18 @@ class BoardApprovalTest {
         var ticket = boards.request("alice", "run_create", create);
         assertThat(ticket.args()).containsEntry("status", "TODO");
         verifyNoInteractions(applications);
-        when(applications.create("alice", "job1", "TODO", "收藏备注")).thenReturn(saved("TODO"));
-        var accepted = approvals.resolve("alice", "run_create", ticket.id(), new ApprovalService.Decision("APPROVE", null, null));
+        when(applications.createWithPatch("alice", "job1", new ApplicationService.Patch("TODO", "收藏备注", "准备 STAR", "2026-10-12"), "run_create")).thenReturn(saved("TODO"));
+        var accepted = approvals.resolve("alice", "run_create", ticket.id(), new ApprovalService.Decision("APPROVE", Map.of("nextAction", "准备 STAR", "nextActionAt", "2026-10-12"), null));
         var created = boards.execute("alice", "run_create", create, accepted).block(Duration.ofSeconds(3));
         assertThat(new ObjectMapper().valueToTree(created.card().payload()).path("change").asText()).isEqualTo("CREATED");
-        verify(applications).create("alice", "job1", "TODO", "收藏备注");
+        verify(applications).createWithPatch("alice", "job1", new ApplicationService.Patch("TODO", "收藏备注", "准备 STAR", "2026-10-12"), "run_create");
 
         var update = step(Map.of("action", "updateApplicationStatus", "applicationId", "app1", "note", ""));
         var noteTicket = boards.request("alice", "run_note", update);
-        when(applications.update("alice", "app1", null, "")).thenReturn(saved("TODO"));
+        when(applications.updateWithPatch("alice", "app1", new ApplicationService.Patch(null, "", null, null), "AGENT", "run_note")).thenReturn(saved("TODO"));
         boards.execute("alice", "run_note", update, approvals.resolve("alice", "run_note", noteTicket.id(),
                 new ApprovalService.Decision("APPROVE", null, null))).block(Duration.ofSeconds(3));
-        verify(applications).update("alice", "app1", null, "");
+        verify(applications).updateWithPatch("alice", "app1", new ApplicationService.Patch(null, "", null, null), "AGENT", "run_note");
     }
 
     @Test void rejectAndTimeoutResolveWithoutMutation() {

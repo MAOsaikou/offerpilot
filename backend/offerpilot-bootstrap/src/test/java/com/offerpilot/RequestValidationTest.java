@@ -89,7 +89,29 @@ class RequestValidationTest {
         for (String note : List.of("😀".repeat(2000), "a\nb", "")) {
             mvc.perform(patch("/api/v1/applications/app_test").contentType("application/json")
                     .content(json.writeValueAsString(Map.of("note", note)))).andExpect(status().isOk());
-            verify(applications).update("owner", "app_test", null, note);
+            verify(applications).updateWithPatch("owner", "app_test",
+                    new ApplicationService.Patch(null, note, null, null), "USER", null);
+        }
+        for (Map<String, String> body : List.of(
+                Map.of("nextAction", "😀".repeat(1000), "nextActionAt", "2026-10-11"),
+                Map.of("nextAction", "", "nextActionAt", ""))) {
+            mvc.perform(patch("/api/v1/applications/app_test").contentType("application/json")
+                    .content(json.writeValueAsString(body))).andExpect(status().isOk());
+            verify(applications).updateWithPatch("owner", "app_test",
+                    new ApplicationService.Patch(null, null, body.get("nextAction"), body.get("nextActionAt")),
+                    "USER", null);
+        }
+
+        clearInvocations(applications, users);
+        for (Map<String, String> body : List.of(
+                Map.of("nextAction", "😀".repeat(1001)),
+                Map.of("nextActionAt", "2026-10-111"))) {
+            var result = mvc.perform(patch("/api/v1/applications/app_test").contentType("application/json")
+                            .content(json.writeValueAsString(body)))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(10001))
+                    .andExpect(jsonPath("$.errors").isNotEmpty()).andReturn();
+            assertThat(result.getResolvedException()).isInstanceOf(MethodArgumentNotValidException.class);
+            verifyNoInteractions(applications, users);
         }
     }
 
