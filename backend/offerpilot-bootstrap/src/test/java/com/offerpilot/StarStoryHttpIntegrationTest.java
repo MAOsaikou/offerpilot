@@ -55,6 +55,12 @@ class StarStoryHttpIntegrationTest extends SharedHttpIntegrationTest {
         assertThat(saved.path("starCount").asInt()).isGreaterThanOrEqualTo(3);
         assertThat(data(call("POST", "/star-stories", owner, Map.of("sessionId", sessionId, "questionIndex", 1)), 200).path("id").asText())
                 .isEqualTo(saved.path("id").asText());
+
+        // The same body in another question still deduplicates after whitespace normalization.
+        data(call("PUT", "/interviews/" + sessionId + "/answers/2", owner,
+                Map.of("answerText", STRONG.replace(" 0", " \n 0"))), 200);
+        assertThat(data(call("POST", "/star-stories", owner, Map.of("sessionId", sessionId, "questionIndex", 2)), 200).path("id"))
+                .isEqualTo(saved.path("id"));
         assertThat(data(call("GET", "/star-stories", owner, null), 200).path("items").size()).isEqualTo(1);
         assertThat(call("GET", "/star-stories/candidates?sessionId=" + sessionId, other, null).statusCode()).isIn(404, 403);
         assertThat(call("POST", "/star-stories", other, Map.of("sessionId", sessionId, "questionIndex", 1)).statusCode()).isIn(404, 403);
