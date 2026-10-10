@@ -6,6 +6,7 @@ import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { useWorkspace } from '@/shared/stores/workspace'
 import { createInterview, listInterviews } from '@/shared/api/interviews'
+import { deleteStarStory, listStarStories } from '@/shared/api/starStories'
 import type { InterviewKind } from '@/shared/types/interview'
 import type { Interview } from '@/shared/types/workspace'
 import { questions } from '@/shared/utils/interviewQuestions'
@@ -19,6 +20,24 @@ const query = useQuery({
   queryFn: ({ signal }) => listInterviews(signal),
   retry: false,
 })
+const stories = useQuery({
+  queryKey: ['star-stories'],
+  queryFn: ({ signal }) => listStarStories(signal),
+  retry: false,
+})
+const storyBusy = ref('')
+async function removeStory(id: string) {
+  if (storyBusy.value) return
+  storyBusy.value = id
+  try {
+    await deleteStarStory(id)
+    void cache.invalidateQueries({ queryKey: ['star-stories'] })
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    storyBusy.value = ''
+  }
+}
 const role = ref(workspace.state.target)
 const kind = ref<InterviewKind>('项目与经历')
 const busy = ref(false)
@@ -141,6 +160,41 @@ function exportLegacy(session: Interview) {
           <small>{{ session.kind }} · {{ session.date }}</small>
         </div>
         <button class="btn" @click="exportLegacy(session)">导出旧练习</button>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <h2>STAR 故事库</h2>
+        <span class="subtle">{{ stories.data.value?.items.length ?? 0 }} / {{ stories.data.value?.limit ?? 30 }}</span>
+      </div>
+      <p class="helper-note">从已完成练习中确认保存的 STAR 回答，会在后续面试对话中作为可引用证据。</p>
+      <p v-if="stories.isPending.value" role="status">正在加载故事库…</p>
+      <div v-else-if="stories.isError.value" class="empty-state" role="alert">
+        <p>{{ stories.error.value?.message }}</p>
+        <button class="btn" @click="stories.refetch()">重新加载</button>
+      </div>
+      <div v-else-if="!stories.data.value?.items.length" class="empty-state">
+        <h2>还没有入库的故事</h2>
+        <p>完成练习后，在复盘页把 STAR 线索齐全的回答保存进来。</p>
+      </div>
+      <article
+        v-for="story in stories.data.value?.items"
+        :key="story.id"
+        class="answer-card"
+        style="margin-top: 12px"
+      >
+        <h3>{{ story.title }}</h3>
+        <p class="subtle">{{ story.role || '未标注岗位' }} · {{ story.starCount }}/4 STAR</p>
+        <p class="prose-content">{{ story.body.slice(0, 200) }}{{ story.body.length > 200 ? '…' : '' }}</p>
+        <button
+          type="button"
+          class="btn"
+          :disabled="storyBusy === story.id"
+          @click="removeStory(story.id)"
+        >
+          {{ storyBusy === story.id ? '删除中…' : '删除' }}
+        </button>
       </article>
     </section>
   </section>

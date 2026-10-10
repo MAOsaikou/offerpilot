@@ -46,13 +46,34 @@ public class ExpertRegistry {
     private com.offerpilot.agent.application.CoachWriteTools coachWrites;
     private ResumePatchWriteTools patchWrites;
     private KnowledgeNoteContext noteContext;
+    private StarStoryContext starContext;
+    private com.offerpilot.agent.application.StarStoryWriteTools starWrites;
+    private com.offerpilot.interview.application.StarStoryService starStories;
 
     @Autowired
     public void setNoteContext(KnowledgeNoteContext noteContext) { this.noteContext = noteContext; }
 
+    @Autowired(required = false)
+    public void setStarContext(StarStoryContext starContext) { this.starContext = starContext; }
+
+    @Autowired(required = false)
+    public void setStarWrites(com.offerpilot.agent.application.StarStoryWriteTools starWrites) { this.starWrites = starWrites; }
+
+    @Autowired(required = false)
+    public void setStarStories(com.offerpilot.interview.application.StarStoryService starStories) { this.starStories = starStories; }
+
     private Mono<ExpertResult> withNotes(String owner, PlanStep step, Mono<ExpertResult> work) {
         if (noteContext == null) return work;
         return work.flatMap(result -> noteContext.attach(owner, text(step.inputs().get("noteQuery")), result));
+    }
+
+    private Mono<ExpertResult> withStories(String owner, PlanStep step, Mono<ExpertResult> work) {
+        if (starContext == null || step.agent() != ExpertType.INTERVIEWER) return work;
+        String query = text(step.inputs().get("noteQuery"));
+        if (query == null) query = text(step.inputs().get("role"));
+        if (query == null) query = "面试 STAR";
+        String q = query;
+        return work.flatMap(result -> starContext.attach(owner, q, result));
     }
 
     public ExpertRegistry() {
@@ -163,7 +184,7 @@ public class ExpertRegistry {
         return interviewWrites.request(owner, runId, step);
     }
     public Mono<ExpertResult> executeInterview(String owner, String runId, PlanStep step, ApprovalService.Decision decision) {
-        return withNotes(owner, step, interviewWrites.execute(owner, runId, step, decision));
+        return withStories(owner, step, withNotes(owner, step, interviewWrites.execute(owner, runId, step, decision)));
     }
 
     public boolean recommending(PlanStep step) {
@@ -235,11 +256,12 @@ public class ExpertRegistry {
 
     public Mono<ExpertResult> execute(String owner, Map<String, Object> context, String runId, PlanStep step,
                                       Map<String, String> upstreamOutputs, com.offerpilot.llm.ModelTier tier) {
-        if (writingBoard(step) || writingCareer(step) || writingInterview(step) || writingCoach(step) || writingPatches(step)) return Mono.error(new IllegalStateException("写入必须先审批"));
+        if (writingBoard(step) || writingCareer(step) || writingInterview(step) || writingCoach(step) || writingPatches(step) || writingStarStory(step)) return Mono.error(new IllegalStateException("写入必须先审批"));
         var work = executeRead(owner, context, runId, step, upstreamOutputs, tier);
-        return step.agent() == ExpertType.COACH || step.agent() == ExpertType.INTERVIEWER
+        Mono<ExpertResult> enriched = step.agent() == ExpertType.COACH || step.agent() == ExpertType.INTERVIEWER
                 || (step.agent() == ExpertType.RESUME && "advice".equals(step.inputs().get("action")))
                 ? withNotes(owner, step, work) : work;
+        return withStories(owner, step, enriched);
     }
 
     private Mono<ExpertResult> executeRead(String owner, Map<String, Object> context, String runId, PlanStep step,
@@ -261,8 +283,18 @@ public class ExpertRegistry {
             return Mono.fromCallable(() -> {
                 String id = interviews.resolveSession(owner, (String) step.inputs().get("sessionId"), false);
                 var report = interviews.scoreSession(owner, id);
-                return ExpertResult.card("当前会话的文字规则评分（未修改完成状态）：" + report,
-                        requestId(runId, step.id()), "interview_report", report);
+                if (starStories == null) {
+                    return ExpertResult.card("当前会话的文字规则评分（未修改完成状态）：" + report,
+                            requestId(runId, step.id()), "interview_report", report);
+                }
+                var candidates = starStories.candidates(owner, id).stream().filter(c -> !c.alreadySaved()).toList();
+                if (candidates.isEmpty()) {
+                    return ExpertResult.card("当前会话的文字规则评分（未修改完成状态）：" + report,
+                            requestId(runId, step.id()), "interview_report", report);
+                }
+                return ExpertResult.cards("当前会话的文字规则评分（未修改完成状态）。可审批入库的 STAR 候选：" + candidates.size() + " 条。",
+                        new ExpertResult.Card(requestId(runId, step.id()), "interview_report", report),
+                        new ExpertResult.Card(requestId(runId, step.id() + ":stars"), "star_story_candidates", candidates));
             }).subscribeOn(Schedulers.boundedElastic());
         }
         if (step.agent() == ExpertType.CAREER_DISCOVERY) {

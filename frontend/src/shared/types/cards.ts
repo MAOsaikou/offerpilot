@@ -17,6 +17,8 @@ export type CardType =
   | 'interviewer_state'
   | 'interview_turn_score'
   | 'interview_report'
+  | 'star_story_candidates'
+  | 'star_story'
   | 'skill_gap'
   | 'skill_radar'
   | 'roadmap'

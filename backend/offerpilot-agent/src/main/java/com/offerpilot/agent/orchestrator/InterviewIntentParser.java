@@ -13,7 +13,7 @@ public final class InterviewIntentParser {
     private static final Pattern ROLE = Pattern.compile("(?:岗位|职位|角色)\\s*[:：]\\s*([^，。；\\n]{1,100})");
     private static final Pattern ROLE_INTERVIEW = Pattern.compile("(?:模拟|文字)?面试\\s*[:：]\\s*([^，。；\\n]{1,100})");
     private static final Pattern NATURAL_ROLE = Pattern.compile("(?:模拟|进行|开始)(?:一场)?([^，。；\\n]{1,100}?)(?:岗位)?面试");
-    private static final Set<String> ACTIONS = Set.of("startInterview", "continueInterview", "answerInterview", "scoreInterview", "generateReport", "completeInterview");
+    private static final Set<String> ACTIONS = Set.of("startInterview", "continueInterview", "answerInterview", "scoreInterview", "generateReport", "completeInterview", "saveStarStory");
     private InterviewIntentParser() {}
     public static PlanStep prepare(PlanStep step, String content, Map<String, Object> context) {
         var args = new LinkedHashMap<String, Object>();
@@ -33,6 +33,13 @@ public final class InterviewIntentParser {
         var ids = ID.matcher(content);
         if (id == null && ids.find()) id = ids.group();
         if (id != null) args.put("sessionId", id);
+        if (action.equals("saveStarStory")) {
+            if (id != null) args.put("sessionId", id);
+            Object index = context.get("questionIndex");
+            if (index instanceof Number n) args.put("questionIndex", n.intValue());
+            else if (index instanceof String s && s.matches("[0-4]")) args.put("questionIndex", Integer.parseInt(s));
+            return new PlanStep(step.id(), "保存 STAR 故事", step.agent(), args, step.dependsOn());
+        }
         if (action.equals("startInterview")) {
             String role = string(context.get("role"));
             var roleMatch = ROLE.matcher(content);
