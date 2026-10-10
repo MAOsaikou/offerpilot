@@ -57,9 +57,9 @@ public class CoachEvidenceAdapter implements CoachEvidence {
                     .sorted(Map.Entry.<String,Integer>comparingByValue().thenComparing(Map.Entry.comparingByKey()))
                     .limit(2).forEach(e -> gaps.add(new Gap("面试 " + e.getKey(), 10, e.getValue(),
                             new Evidence("INTERVIEW", session.id(), label, e.getKey() + "：" + e.getValue() + "/100（文字规则线索）"))));
-            // The lowest-STAR answer is actionable without copying private full answers into prompts/cards.
+            // Retain at most two lowest-STAR answers; never copy full private answers into prompts/cards.
             rubric.turns().stream().filter(t -> t.star().count() < 3)
-                    .sorted(Comparator.comparingInt(t -> t.star().count())).limit(1)
+                    .sorted(Comparator.comparingInt(t -> t.star().count())).limit(2)
                     .forEach(t -> gaps.add(new Gap("STAR 回答结构", 11, t.star().count() * 25,
                             new Evidence("INTERVIEW", session.id(), label, bounded("STAR " + t.star().count()
                                     + "/4；题目：" + t.question() + "；" + t.feedback())))));

@@ -2,9 +2,9 @@ import { createApp, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { getJob, refreshJob, matchJob } from '@/shared/api/jobs'
+import { getJob, refreshJob, matchJob, getJobMatch } from '@/shared/api/jobs'
 import { listResumes, listResumeVersions } from '@/shared/api/resumes'
-import type { RealJob } from '@/shared/types/jobs'
+import type { RealJob, EvidenceMatch } from '@/shared/types/jobs'
 import JobDetailView from './JobDetailView.vue'
 
 vi.mock('@/shared/api/jobs', () => ({
@@ -153,6 +153,29 @@ it('a late refresh cannot replace a different selected job', async () => {
     await Promise.resolve()
     expect(root.textContent).toContain('下一个岗位')
     expect(queryClient.getQueryData<RealJob>(['job', 'job_next'])?.id).toBe('job_next')
+    const linkedReport: EvidenceMatch = {
+      id: 'match_linked',
+      jobId: 'job_next',
+      resumeId: 'rs',
+      resumeTitle: '保存简历',
+      resumeVersionId: 'rv',
+      resumeVersionNo: 1,
+      createdAt: '',
+      score: 50,
+      summary: '成长卡片来源报告',
+      requirements: [],
+      jobSnapshot: { ...snapshot, id: 'job_next' },
+      resumeSnapshot: {},
+      model: 'fixture',
+    }
+    vi.mocked(getJobMatch).mockResolvedValue(linkedReport)
+    await router.push('/jobs/job_next?matchId=match_linked')
+    await vi.waitFor(() => expect(root.textContent).toContain('成长卡片来源报告'))
+    expect(getJobMatch).toHaveBeenCalledWith('match_linked')
+    vi.mocked(getJobMatch).mockResolvedValue({ ...linkedReport, jobId: 'job_wrong' })
+    await router.push('/jobs/job_next?matchId=match_wrong')
+    await vi.waitFor(() => expect(root.textContent).toContain('报告与当前岗位不匹配'))
+    expect(root.textContent).not.toContain('成长卡片来源报告')
   } finally {
     cleanup()
   }
