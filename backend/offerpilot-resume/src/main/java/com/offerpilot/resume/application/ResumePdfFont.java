@@ -33,13 +33,7 @@ final class ResumePdfFont implements AutoCloseable {
 
     static ResumePdfFont open(String configured, boolean bold) {
         String weight = bold ? "Bold" : "Regular";
-        List<String> paths = configured.isBlank() ? List.of(
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-" + weight + ".ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJKsc-" + weight + ".otf",
-            "/usr/share/fonts/noto/NotoSansCJK-" + weight + ".ttc",
-            "/usr/share/fonts/noto-cjk/NotoSansCJK-" + weight + ".ttc",
-            "/usr/share/fonts/noto-cjk/NotoSansCJKsc-" + weight + ".otf"
-        ) : List.of(configured);
+        List<String> paths = configured.isBlank() ? defaultPaths(weight, bold) : List.of(configured);
         for (String path : paths) {
             if (!Files.isReadable(Path.of(path))) continue;
             Closeable source = null;
@@ -70,8 +64,28 @@ final class ResumePdfFont implements AutoCloseable {
             }
         }
         throw new BusinessException(ErrorCode.RESUME_EXPORT_UNAVAILABLE,
-            "PDF 导出缺少可用中文字体，请安装 font-noto-cjk 或配置 offerpilot.resume.export.font-"
+            "PDF 导出缺少可用中文字体，请安装 Noto CJK 或配置 offerpilot.resume.export.font-"
                 + (bold ? "bold" : "regular"));
+    }
+
+    private static List<String> defaultPaths(String weight, boolean bold) {
+        List<String> paths = new ArrayList<>(List.of(
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-" + weight + ".ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJKsc-" + weight + ".otf",
+            "/usr/share/fonts/noto/NotoSansCJK-" + weight + ".ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-" + weight + ".ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJKsc-" + weight + ".otf"
+        ));
+        String windowsRoot = System.getenv("SystemRoot");
+        if (windowsRoot != null && !windowsRoot.isBlank()) {
+            Path fonts = Path.of(windowsRoot, "Fonts");
+            paths.add(fonts.resolve("NotoSansCJKsc-" + weight + ".otf").toString());
+            for (String name : bold ? List.of("msyhbd.ttc", "simhei.ttf", "simsun.ttc")
+                                    : List.of("msyh.ttc", "simsun.ttc", "simhei.ttf")) {
+                paths.add(fonts.resolve(name).toString());
+            }
+        }
+        return paths;
     }
 
     void embed(PDDocument document, Collection<String> texts) throws IOException {

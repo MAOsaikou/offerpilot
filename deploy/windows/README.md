@@ -18,6 +18,8 @@
 
 后端构建在 `backend/target/preview-builds/<唯一标识>/backend/` 的独立源码副本执行 Maven Wrapper `package`（包含测试），不运行 `clean`、不删除已有文件，也不因 JAR 锁停止 Java。副本包含模块 POM、源码、Wrapper 和迁移测试夹具，不复制本机环境凭据。构建失败保留原后端；成功后核对受管进程并停止，确认退出后从新副本的 JAR 启动。启动仍以原项目目录为工作目录，读取原 `backend/.env.local`。构建副本和失败日志保留，脚本不自动清理。
 
+控制台使用同一个进度区显示当前活动：下载依赖、编译、测试或打包，不刷出详细日志。完整输出保存到该构建副本的 `backend/maven-build.log`；失败时显示最多五条关键错误及日志路径。首次构建或升级后的依赖下载可能较慢。部署脚本的构建调用回归可在 Windows PowerShell 中执行 `powershell -NoProfile -ExecutionPolicy Bypass -File deploy/windows/tests/backend-lifecycle.Tests.ps1 -TestNamePattern '*native*'`，不调用真实 Maven 或控制服务。
+
 进程记录默认位于 `D:\OfferPilot\backend-preview.json`，新增项目根目录和 JAR 路径；停止须同时匹配 PID、启动时间、Java 可执行路径、项目根目录和实际 `-jar` 参数。旧记录只接受当前项目原始 target 中的精确 JAR 路径。其他项目副本、无法验证的进程及已有的非受管 8081 服务均保留，不按名称片段查找或强停 Java。停止失败会阻止新版启动。
 
 第一次准备运行包：在仓库根目录执行 `powershell -NoProfile -ExecutionPolicy Bypass -File deploy/windows/prepare.ps1`。它使用现有 Node/pnpm 构建，并将 Nginx 下载到运行根目录（默认 D 盘），不删除旧文件。依赖缺失时先在 frontend 执行 `pnpm install --frozen-lockfile`。后端预览需要已有 bootstrap JAR；缺少时在 backend 运行 `mvn -q -B -pl offerpilot-bootstrap -am package`。
