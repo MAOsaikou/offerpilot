@@ -78,23 +78,26 @@ class SseStreamHttpIntegrationTest {
     static class Application {
         @Bean AsyncCompletions asyncCompletions() { return new AsyncCompletions(); }
         @Bean FilterRegistrationBean<Filter> completionFilter(AsyncCompletions completions) {
-            var registration = new FilterRegistrationBean<Filter>((request, response, chain) ->
-                    chain.doFilter(new HttpServletRequestWrapper((HttpServletRequest) request) {
-                        @Override public AsyncContext startAsync() { return observe(super.startAsync()); }
-                        @Override public AsyncContext startAsync(ServletRequest req, ServletResponse res) {
-                            return observe(super.startAsync(req, res));
-                        }
-                        private AsyncContext observe(AsyncContext context) {
-                            String id = getHeader(REQUEST_ID_HEADER);
-                            context.addListener(new AsyncListener() {
-                                @Override public void onComplete(AsyncEvent event) { completions.complete(id); }
-                                @Override public void onTimeout(AsyncEvent event) {}
-                                @Override public void onError(AsyncEvent event) {}
-                                @Override public void onStartAsync(AsyncEvent event) { event.getAsyncContext().addListener(this); }
-                            });
-                            return context;
-                        }
-                    }, response));
+            var registration = new FilterRegistrationBean<Filter>((request, response, chain) -> {
+                var http = (HttpServletRequest) request;
+                var lifecycle = completions.requests.get(http.getHeader(REQUEST_ID_HEADER));
+                chain.doFilter(new HttpServletRequestWrapper(http) {
+                    @Override public AsyncContext startAsync() { return observe(super.startAsync()); }
+                    @Override public AsyncContext startAsync(ServletRequest req, ServletResponse res) {
+                        return observe(super.startAsync(req, res));
+                    }
+                    private AsyncContext observe(AsyncContext context) {
+                        context.addListener(new AsyncListener() {
+                            @Override public void onComplete(AsyncEvent event) { lifecycle.completed().complete(null); }
+                            @Override public void onTimeout(AsyncEvent event) {}
+                            @Override public void onError(AsyncEvent event) {}
+                            @Override public void onStartAsync(AsyncEvent event) { event.getAsyncContext().addListener(this); }
+                        });
+                        return context;
+                    }
+                }, response);
+                if (request.getDispatcherType() == DispatcherType.REQUEST) lifecycle.initialized().complete(null);
+            });
             registration.setAsyncSupported(true);
             return registration;
         }
@@ -102,15 +105,19 @@ class SseStreamHttpIntegrationTest {
 
     /** Attach at startAsync, before any write can complete/disconnect the response. */
     static class AsyncCompletions {
-        final ConcurrentMap<String, CompletableFuture<Void>> requests = new ConcurrentHashMap<>();
+        record Lifecycle(CompletableFuture<Void> initialized, CompletableFuture<Void> completed) {}
+        final ConcurrentMap<String, Lifecycle> requests = new ConcurrentHashMap<>();
         String expect() {
             String id = UUID.randomUUID().toString();
-            requests.put(id, new CompletableFuture<>());
+            requests.put(id, new Lifecycle(new CompletableFuture<>(), new CompletableFuture<>()));
             return id;
         }
-        void complete(String id) { requests.get(id).complete(null); }
+        void awaitInitialized(String id) throws Exception {
+            requests.get(id).initialized().get(WAIT_SECONDS, TimeUnit.SECONDS);
+        }
         void awaitAll() throws Exception {
-            CompletableFuture.allOf(requests.values().toArray(CompletableFuture[]::new)).get(WAIT_SECONDS, TimeUnit.SECONDS);
+            CompletableFuture.allOf(requests.values().stream().map(Lifecycle::completed).toArray(CompletableFuture[]::new))
+                    .get(WAIT_SECONDS, TimeUnit.SECONDS);
             requests.clear();
         }
     }
@@ -234,9 +241,10 @@ class SseStreamHttpIntegrationTest {
                 socket.setSoTimeout(WAIT_SECONDS * 1000);
                 socket.setSoLinger(true, 0);
                 byte[] body = body(path).getBytes(StandardCharsets.UTF_8);
+                String id = completions.expect();
                 String headers = "POST " + path + " HTTP/1.1\r\nHost: 127.0.0.1:" + port
                         + "\r\nContent-Type: application/json\r\nAccept: text/event-stream\r\n"
-                        + REQUEST_ID_HEADER + ": " + completions.expect() + "\r\nContent-Length: " + body.length + "\r\n\r\n";
+                        + REQUEST_ID_HEADER + ": " + id + "\r\nContent-Length: " + body.length + "\r\n\r\n";
                 socket.getOutputStream().write(headers.getBytes(StandardCharsets.US_ASCII));
                 socket.getOutputStream().write(body);
                 socket.getOutputStream().flush();
@@ -246,6 +254,9 @@ class SseStreamHttpIntegrationTest {
                 do { line = reader.readLine(); assertThat(line).as("started frame before disconnect").isNotNull(); }
                 while (!line.equals("event:run.started"));
                 assertThat(subscribed.get(i).await(WAIT_SECONDS, TimeUnit.SECONDS)).as(path + " subscribed").isTrue();
+                // started can be flushed while MVC is still draining early buffered frames.
+                // Wait until initialize has also registered its container callbacks before resetting TCP.
+                completions.awaitInitialized(id);
                 assertThat(cancelled.get(i).getCount()).as("publisher still active before TCP reset").isEqualTo(1);
             }
             assertThat(cancelled.get(i).await(WAIT_SECONDS, TimeUnit.SECONDS)).as(path + " disconnect must cancel publisher").isTrue();
