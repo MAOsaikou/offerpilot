@@ -50,10 +50,17 @@ class StarStoryHttpIntegrationTest extends SharedHttpIntegrationTest {
         assertThat(candidates.size()).isEqualTo(1);
         assertThat(candidates.get(0).path("questionIndex").asInt()).isEqualTo(1);
         assertThat(candidates.get(0).path("alreadySaved").asBoolean()).isFalse();
+        assertThat(call("POST", "/star-stories", owner, Map.of("sessionId", sessionId, "questionIndex", 0)).statusCode()).isEqualTo(400);
         var saved = data(call("POST", "/star-stories", owner, Map.of("sessionId", sessionId, "questionIndex", 1)), 200);
         assertThat(saved.path("starCount").asInt()).isGreaterThanOrEqualTo(3);
         assertThat(data(call("POST", "/star-stories", owner, Map.of("sessionId", sessionId, "questionIndex", 1)), 200).path("id").asText())
                 .isEqualTo(saved.path("id").asText());
+
+        // The same body in another question still deduplicates after whitespace normalization.
+        data(call("PUT", "/interviews/" + sessionId + "/answers/2", owner,
+                Map.of("answerText", STRONG.replace(" 0", " \n 0"))), 200);
+        assertThat(data(call("POST", "/star-stories", owner, Map.of("sessionId", sessionId, "questionIndex", 2)), 200).path("id"))
+                .isEqualTo(saved.path("id"));
         assertThat(data(call("GET", "/star-stories", owner, null), 200).path("items").size()).isEqualTo(1);
         assertThat(call("GET", "/star-stories/candidates?sessionId=" + sessionId, other, null).statusCode()).isIn(404, 403);
         assertThat(call("POST", "/star-stories", other, Map.of("sessionId", sessionId, "questionIndex", 1)).statusCode()).isIn(404, 403);
@@ -61,11 +68,4 @@ class StarStoryHttpIntegrationTest extends SharedHttpIntegrationTest {
         assertThat(data(call("GET", "/star-stories", owner, null), 200).path("items").size()).isEqualTo(0);
     }
 
-    @Test
-    void weakAnswerRejected() throws Exception {
-        String owner = guests.create().accessToken();
-        String sessionId = data(call("POST", "/interviews", owner, Map.of("role", "测试", "kind", "表达与结构")), 200).path("id").asText();
-        data(call("PUT", "/interviews/" + sessionId + "/answers/0", owner, Map.of("answerText", "我喜欢这个岗位。")), 200);
-        assertThat(call("POST", "/star-stories", owner, Map.of("sessionId", sessionId, "questionIndex", 0)).statusCode()).isEqualTo(400);
-    }
 }

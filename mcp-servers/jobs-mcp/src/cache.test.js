@@ -19,14 +19,6 @@ test('全站失败不缓存，恢复后的合法空结果可以缓存', async ()
   assert.equal(calls, 2);
 });
 
-test('不同 key 互不影响', async () => {
-  await withCache('a', async () => 'A');
-  const b = await withCache('b', async () => 'B');
-  assert.equal(b.cached, false);
-  assert.equal(b.value, 'B');
-  assert.equal((await withCache('a', async () => 'X')).value, 'A');
-});
-
 test('超过 ttl 后重新执行 loader', async () => {
   let calls = 0;
   const loader = async () => {

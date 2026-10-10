@@ -119,15 +119,11 @@ describe('coach roadmap chat confirmation path', () => {
       )
     },
   )
-  it('selects 深度 from the URL and disables model selection while busy', async () => {
-    busyControl.set(true)
-    const root = await mount('/chat?modelTier=pro')
-    const select = root.querySelector<HTMLSelectElement>('select[aria-label="模型档位"]')!
-    expect(select.value).toBe('PRO')
-    expect(select.disabled).toBe(true)
-  })
   it('sends selected completed catalog titles to a COACH approval turn and opens the existing panel', async () => {
-    const root = await mount()
+    const root = await mount('/chat?modelTier=pro')
+    expect(root.querySelector<HTMLSelectElement>('select[aria-label="模型档位"]')!.value).toBe(
+      'PRO',
+    )
     root.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click()
     await nextTick()
     const button = [...root.querySelectorAll('button')].find(
@@ -138,7 +134,7 @@ describe('coach roadmap chat confirmation path', () => {
     expect(send).toHaveBeenCalledExactlyOnceWith(
       '同步成长任务：我确认已完成「梳理目标岗位的核心技能」',
       'COACH',
-      'FLASH',
+      'PRO',
       expect.any(Function),
       {
         coachAction: 'adoptGrowthPlan',
@@ -147,15 +143,13 @@ describe('coach roadmap chat confirmation path', () => {
     )
     expect(root.querySelector('.chat-panel')).not.toBeNull()
     expect(saveCareerTasks).not.toHaveBeenCalled()
-  })
-  it('disables roadmap selection while the conversation is busy', async () => {
     busyControl.set(true)
-    const root = await mount()
+    await nextTick()
     expect(root.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true)
-    const button = [...root.querySelectorAll('button')].find(
-      (b) => b.textContent?.trim() === '同步到成长任务',
-    )!
+    expect(root.querySelector<HTMLSelectElement>('select[aria-label="模型档位"]')!.disabled).toBe(
+      true,
+    )
     button.click()
-    expect(send).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledTimes(1)
   })
 })

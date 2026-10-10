@@ -71,6 +71,11 @@ class InterviewHttpIntegrationTest extends SharedHttpIntegrationTest {
         assertThat(session.path("answers").get(4).path("answerText").asText()).isEqualTo("回答 4");
         assertThat(data(request("GET", "", token, null)).get(0).path("completed").asBoolean()).isTrue();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM interview_answers WHERE session_id=?", Integer.class, id)).isEqualTo(5);
+        var recap = request("GET", "/" + id + "/recap.md", token, null);
+        assertThat(recap.statusCode()).withFailMessage(recap.body()).isEqualTo(200);
+        assertThat(recap.headers().firstValue("Content-Type").orElse("")).contains("text/markdown");
+        assertThat(recap.body()).contains("替换", "回答 4", "未作答", "文字规则评分");
+
     }
 
     @Test
@@ -92,6 +97,9 @@ class InterviewHttpIntegrationTest extends SharedHttpIntegrationTest {
         assertThat(original.path("completed").asBoolean()).isFalse();
         assertThat(original.path("answers").get(0).path("answerText").asText()).isEmpty();
         assertThat(request("GET", "", null, null).statusCode()).isEqualTo(401);
+        assertThat(request("GET", "/" + id + "/recap.md", guest, null).statusCode()).isEqualTo(404);
+        assertThat(request("GET", "/" + id + "/recap.md", null, null).statusCode()).isEqualTo(401);
+
     }
 
     @Test

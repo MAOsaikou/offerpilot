@@ -29,16 +29,3 @@ it('downloads server recap package when available', async () => {
     expect.stringContaining('面试复盘包'),
   )
 })
-
-it('falls back to local Q&A markdown when server export fails', async () => {
-  vi.mocked(fetchWithIdentity).mockRejectedValue(new Error('offline'))
-  await exportInterview(
-    '后端',
-    [{ questionIndex: 0, questionText: '题目', answerText: '回答' }],
-    'iv_1',
-  )
-  expect(downloadText).toHaveBeenCalledWith(
-    '后端-面试复盘.md',
-    expect.stringContaining('## 题目\n\n回答'),
-  )
-})

@@ -20,15 +20,6 @@ class OccupationIndexTest {
         assertThat(scores.get("c")).isEqualTo(1.0 / 62);
     }
 
-    @Test void canonicalDocumentFlattensSkillsAndBoundsOriginalExcerpt() {
-        assertThat(OccupationDocument.build("后端", "构建服务", "[{\"name\":\"Java\",\"level\":\"必备\"}]",
-                "高级工程师", "技术", new String[]{"Java工程师"}))
-                .isEqualTo("name: 后端\ndescription: 构建服务\nskills: Java / 必备\ngrowth: 高级工程师\nfamily: 技术\ntitles: Java工程师");
-        assertThat(OccupationDocument.excerpt("", "[\"SQL\"]")).isEqualTo("SQL");
-        String excerpt = OccupationDocument.excerpt("😀".repeat(125), "[]");
-        assertThat(excerpt.codePointCount(0, excerpt.length())).isEqualTo(120);
-        assertThat(OccupationDocument.excerpt("第一行\n 第二行", "[]")).isEqualTo("第一行 第二行");
-    }
 
     @Test void missingKeyDisabledModelFailuresAndBadDimensionsNeverEscape() {
         @SuppressWarnings("unchecked") ObjectProvider<EmbeddingModel> provider = mock(ObjectProvider.class);

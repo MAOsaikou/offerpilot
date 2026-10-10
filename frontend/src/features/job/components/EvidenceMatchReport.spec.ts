@@ -93,29 +93,15 @@ afterEach(() => {
   }
 })
 
-it.each([['PARTIAL', 'Java项目']] as const)(
-  '%s evidence opens the immutable original field and highlights the exact quote',
-  async (status, quote) => {
-    const root = mountReport()
-    const row = root.querySelector(`.requirement-row[data-status="${status}"]`)!
-    const button = [...row.querySelectorAll('button')].find((b) =>
-      b.textContent?.includes('简历依据'),
-    )!
-    button.click()
-    await nextTick()
-    expect(root.querySelector('mark')?.textContent).toBe(quote)
-    expect(root.querySelector('mark')?.getAttribute('data-status')).toBe(status)
-    expect(root.textContent).toContain('曾完成Java项目，使用SQL')
-    expect(root.textContent).toContain('不是录用概率')
-    expect(document.activeElement).toBe(root.querySelector('section[tabindex="-1"]'))
-  },
-)
-
 it('switches the original quote and status when navigating to missing JD evidence, then closes', async () => {
   const root = mountReport()
-  root.querySelector<HTMLButtonElement>('.requirement-row button')!.click()
+  ;[...root.querySelectorAll<HTMLButtonElement>('.requirement-row button')]
+    .find((button) => button.textContent?.includes('简历依据'))!
+    .click()
   await nextTick()
   expect(root.querySelector('mark')?.getAttribute('data-status')).toBe('PARTIAL')
+  expect(root.querySelector('mark')?.textContent).toBe('Java项目')
+  expect(document.activeElement).toBe(root.querySelector('section[tabindex="-1"]'))
   root.querySelector<HTMLButtonElement>('.requirement-row[data-status="MISSING"] button')!.click()
   await nextTick()
   expect(root.querySelector('mark')?.textContent).toBe('使用Docker部署')

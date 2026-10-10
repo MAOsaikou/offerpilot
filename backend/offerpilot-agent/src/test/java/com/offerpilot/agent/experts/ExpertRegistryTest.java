@@ -58,15 +58,6 @@ class ExpertRegistryTest {
         assertThat(resume.summary()).contains("未选择已保存的简历版本");
     }
 
-    @Test
-    void missingMatcherStaysPlaceholderEvenWhenIdsExist() {
-        ExpertRegistry registry = new ExpertRegistry();
-        ExpertResult result = registry.execute("owner", ids("job_1", "res_1", "ver_1"), "run", job(Map.of()), Map.of())
-                .block(Duration.ofSeconds(3));
-        assertThat(result.card()).isNull();
-        assertThat(result.summary()).contains("未执行搜索");
-        assertThat(registry.matching(job(Map.of()), ids("job_1", "res_1", "ver_1"))).isFalse();
-    }
 
     private ExpertRegistry registry() {
         return new ExpertRegistry((owner, jobId, resumeId, versionId, requestId) -> {

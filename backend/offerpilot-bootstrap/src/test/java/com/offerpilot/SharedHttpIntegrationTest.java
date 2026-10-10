@@ -10,7 +10,7 @@ import org.testcontainers.utility.DockerImageName;
 /** One offline context for HTTP suites with identical infrastructure. Each test owns its fixtures. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.ai.model.chat=none", "spring.ai.model.embedding=none", "spring.ai.mcp.server.enabled=false",
-        "offerpilot.resume.worker-enabled=false", "offerpilot.staff-bootstrap.email=", "offerpilot.staff-bootstrap.password="})
+        "offerpilot.resume.worker-enabled=false", "offerpilot.demo.enabled=false", "offerpilot.demo.reset-cron=-", "offerpilot.staff-bootstrap.email=", "offerpilot.staff-bootstrap.password="})
 @ActiveProfiles("test")
 abstract class SharedHttpIntegrationTest {
     // JVM-scoped container: JUnit must not stop it while another suite reuses the cached context.

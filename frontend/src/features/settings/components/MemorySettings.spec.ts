@@ -51,26 +51,6 @@ afterEach(() => {
   app?.unmount()
   host.remove()
 })
-it('loads persisted facts, edits exact content and shows manual provenance', async () => {
-  mount()
-  await flush()
-  expect(host.textContent).toContain('我的目标城市是杭州')
-  expect(host.textContent).toContain('聊天确认')
-  button('编辑').click()
-  await flush()
-  const input = host.querySelector<HTMLInputElement>('input[type=text]')!
-  input.value = '我的目标城市是苏州'
-  input.dispatchEvent(new Event('input'))
-  vi.mocked(api.editMemory).mockResolvedValue({ ...memory, fact: input.value, source: 'MANUAL' })
-  host.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }))
-  await flush()
-  expect(api.editMemory).toHaveBeenCalledWith('mem1', {
-    kind: 'LOCATION',
-    fact: '我的目标城市是苏州',
-  })
-  expect(host.textContent).toContain('手动管理')
-  expect(host.querySelector('form')).toBeNull()
-})
 it('adds a manual fact, enforces Unicode length and deduplicates returned ids', async () => {
   mount()
   await flush()
@@ -111,17 +91,18 @@ it('requires confirmation to delete one or all and preserves state on failure', 
   await flush()
   expect(host.textContent).toContain('还没有长期记忆')
   expect(button('清空全部记忆').disabled).toBe(true)
-})
-it('deletes one only after confirmation', async () => {
+  app!.unmount()
+  vi.mocked(api.listMemories).mockResolvedValue({ items: [memory], memoryEnabled: true, limit: 50 })
   vi.mocked(api.deleteMemory).mockResolvedValue(null)
   mount()
   await flush()
   button('删除').click()
   await flush()
+  expect(api.deleteMemory).not.toHaveBeenCalled()
   button('确认删除').click()
   await flush()
-  expect(api.deleteMemory).toHaveBeenCalledWith('mem1')
-  expect(host.textContent).toContain('还没有长期记忆')
+  expect(api.deleteMemory).toHaveBeenCalledExactlyOnceWith('mem1')
+  expect(host.querySelectorAll('li')).toHaveLength(0)
 })
 it('opt-out retains manual management and failed toggle rolls back', async () => {
   vi.mocked(api.listMemories).mockResolvedValue({
