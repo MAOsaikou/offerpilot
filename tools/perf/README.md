@@ -39,6 +39,12 @@ reports (`*-1.json` etc.), `runs.json`, render verification, and `chunks.json`.
 JS transferred is the sum of Lighthouse network `Script.transferSize`, including
 HTTP headers, entry, route and fetched lazy/card chunks; it is not just entry JS.
 
+The final integration run on `374e420`'s application-workspace contract adds
+only empty `nextAction` / null `nextActionAt` to the application DTOs. It uses the
+same data counts and content; no due actions or open detail drawer are measured.
+The report keeps the original same-code before/after comparison separately from
+these final integration numbers.
+
 No real backend latency, SSE streaming, AI calls, auth validation, CDN/TLS,
 real mobile hardware, interaction INP, or long-history scrolling is measured.
 Scores are evidence for these fixture loads only.

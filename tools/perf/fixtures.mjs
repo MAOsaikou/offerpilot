@@ -25,17 +25,17 @@ const jobs = Array.from({ length: 8 }, (_, i) => ({
   requirement: "熟悉 Java、SQL 与缓存。",
   detailFetchedAt: ts,
 }));
-const applications = jobs
-  .slice(0, 5)
-  .map((job, i) => ({
-    id: `app_perf_${i}`,
-    jobId: job.id,
-    status: ["TODO", "APPLIED", "INTERVIEW", "OFFER", "CLOSED"][i],
-    note: "准备项目经历与面试问题",
-    createdAt: ts,
-    updatedAt: ts,
-    job,
-  }));
+const applications = jobs.slice(0, 5).map((job, i) => ({
+  id: `app_perf_${i}`,
+  jobId: job.id,
+  status: ["TODO", "APPLIED", "INTERVIEW", "OFFER", "CLOSED"][i],
+  note: "准备项目经历与面试问题",
+  nextAction: "",
+  nextActionAt: null,
+  createdAt: ts,
+  updatedAt: ts,
+  job,
+}));
 const resumes = Array.from({ length: 3 }, (_, i) => ({
   id: `rs_perf_${i}`,
   title: `后端校招简历 ${i + 1}`,
