@@ -16,6 +16,19 @@ const resumes = useQuery({
   queryKey: ['resumes', 1],
   queryFn: ({ signal }) => listResumes(1, signal),
 })
+const dueToday = new Intl.DateTimeFormat('sv-SE').format(new Date())
+const dueActions = computed(() =>
+  board.applications.value
+    .filter(
+      (app) =>
+        app.status !== 'CLOSED' &&
+        app.nextAction?.trim() &&
+        app.nextActionAt &&
+        app.nextActionAt <= dueToday,
+    )
+    .sort((a, b) => a.nextActionAt!.localeCompare(b.nextActionAt!) || a.id.localeCompare(b.id))
+    .slice(0, 5),
+)
 const savedJobs = computed(() => board.applications.value.map((a) => a.job).slice(0, 4))
 const stops = computed(() =>
   Object.entries(applicationStages).map(([status, stage]) => ({
@@ -94,6 +107,37 @@ function send() {
         }}<button class="btn" @click="board.query.refetch()">重试加载</button>
       </p>
       <RouteStrip v-else :stops="stops" />
+    </section>
+
+    <section class="panel next-panel">
+      <div class="section-heading">
+        <h2>接下来要做</h2>
+        <RouterLink to="/board">查看全部机会</RouterLink>
+      </div>
+      <p v-if="board.query.isPending.value" role="status">正在读取行动…</p>
+      <p v-else-if="board.query.isError.value" role="alert">行动加载失败，请在上方重试。</p>
+      <template v-else>
+        <RouterLink
+          v-for="app in dueActions"
+          :key="app.id"
+          :to="{ path: '/board', query: { application: app.id } }"
+          class="next-action due-action"
+        >
+          <span class="next-dot" aria-hidden="true" />
+          <span
+            ><strong>{{ app.nextAction }}</strong
+            ><small
+              >{{ app.job.company }} · {{ app.job.title }} · {{ app.nextActionAt }}（{{
+                app.nextActionAt! < dueToday ? '已逾期' : '今天到期'
+              }}）</small
+            ></span
+          >
+          <AppIcon name="arrow" :size="18" />
+        </RouterLink>
+        <p v-if="!dueActions.length" class="subtle">
+          今天没有到期行动。在机会详情中安排下一步和日期。
+        </p>
+      </template>
     </section>
 
     <div class="dashboard-grid">
@@ -252,6 +296,17 @@ function send() {
   transition:
     border-color var(--dur-fast),
     color var(--dur-fast);
+}
+.due-action {
+  overflow-wrap: anywhere;
+}
+.due-action strong,
+.due-action small {
+  display: block;
+}
+.due-action small {
+  margin-top: 4px;
+  color: var(--muted-foreground);
 }
 .next-action span:nth-child(2) {
   flex: 1;

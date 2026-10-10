@@ -153,6 +153,7 @@ async function onSend(content: string) {
     let context: Record<string, string> = {}
     for (const key of [
       'jobId',
+      'applicationId',
       'resumeId',
       'resumeVersionId',
       'diagnosisReportId',
@@ -316,6 +317,13 @@ async function remove(id: string) {
               已关联选定岗位和简历版本。可发送匹配或定向改写请求，生成建议后仍需逐条核对采纳；搜索新岗位按本轮条件执行。
               <RouterLink :to="'/jobs/' + encodeURIComponent(route.query.jobId)"
                 >返回岗位</RouterLink
+              >
+            </p>
+            <p v-if="typeof route.query.applicationId === 'string'" class="helper-note">
+              已关联这条求职记录。可只读查看进度，或请求更新下一步行动；聊天写入仍需你批准。
+              <RouterLink
+                :to="{ path: '/board', query: { application: route.query.applicationId } }"
+                >返回机会详情</RouterLink
               >
             </p>
             <p v-if="route.query.optimizationReportId" class="helper-note">

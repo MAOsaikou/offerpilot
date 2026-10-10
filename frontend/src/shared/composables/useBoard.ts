@@ -1,7 +1,8 @@
 import { computed, ref } from 'vue'
+import { identitySignal } from '@/shared/utils/authSession'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { favoriteJob, listApplications, updateApplication } from '@/shared/api/applications'
-import type { ApplicationStatus, ServerApplication } from '@/shared/types/board'
+import type { ApplicationPatch, ServerApplication } from '@/shared/types/board'
 
 export function useBoard() {
   const client = useQueryClient()
@@ -17,10 +18,12 @@ export function useBoard() {
     if (busy.value) return false
     busy.value = true
     error.value = ''
+    const session = identitySignal()
     try {
       // Cancel older reads so a late response cannot undo the saved state.
       await client.cancelQueries({ queryKey: ['applications'] })
       const saved = await action()
+      session.throwIfAborted()
       client.setQueryData<ServerApplication[]>(['applications'], (items = []) => [
         saved,
         ...items.filter((item) => item.id !== saved.id),
@@ -41,7 +44,6 @@ export function useBoard() {
     error,
     saved: (jobId: string) => applications.value.some((item) => item.jobId === jobId),
     favorite: (jobId: string) => write(() => favoriteJob(jobId)),
-    update: (id: string, patch: { status?: ApplicationStatus; note?: string }) =>
-      write(() => updateApplication(id, patch)),
+    update: (id: string, patch: ApplicationPatch) => write(() => updateApplication(id, patch)),
   }
 }

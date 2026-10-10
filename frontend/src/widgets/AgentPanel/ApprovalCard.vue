@@ -3,7 +3,11 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { submitApproval } from '@/shared/api/agent'
 import { memoryKinds, type MemoryKind } from '@/shared/api/memories'
 import { queryClient } from '@/shared/api/queryClient'
-import { applicationStages, type ApplicationStatus } from '@/shared/types/board'
+import {
+  applicationStages,
+  type ApplicationStatus,
+  type ApplicationPatch,
+} from '@/shared/types/board'
 import type { ApprovalStatus, ApprovalView } from '@/shared/stores/agentRun'
 
 const props = defineProps<{
@@ -15,7 +19,12 @@ const props = defineProps<{
 const now = ref(Date.now())
 const timer = setInterval(() => (now.value = Date.now()), 1000)
 onUnmounted(() => clearInterval(timer))
-const edits = ref<Record<string, { status: ApplicationStatus | ''; note: string }>>({})
+const edits = ref<
+  Record<
+    string,
+    { status: ApplicationStatus | ''; note: string; nextAction: string; nextActionAt: string }
+  >
+>({})
 const busy = ref<Record<string, boolean>>({})
 const errors = ref<Record<string, string>>({})
 const submitted = ref<Record<string, ApprovalStatus>>({})
@@ -25,8 +34,13 @@ watch(
     for (const approval of props.approvals) {
       const key = keyOf(approval)
       if (edits.value[key]) continue
-      const args = approval.args as { status?: ApplicationStatus; note?: string } | null
-      edits.value[key] = { status: args?.status ?? '', note: args?.note ?? '' }
+      const args = approval.args as ApplicationPatch | null
+      edits.value[key] = {
+        status: args?.status ?? '',
+        note: args?.note ?? '',
+        nextAction: args?.nextAction ?? '',
+        nextActionAt: args?.nextActionAt ?? '',
+      }
     }
   },
   { immediate: true, deep: true },
@@ -68,7 +82,7 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
   busy.value[key] = true
   errors.value[key] = ''
   try {
-    const args: { status?: ApplicationStatus; note?: string } = {}
+    const args: ApplicationPatch = {}
     const edit = edits.value[key]
     if (decision === 'APPROVE' && edit) {
       if (approval.editableFields?.includes('status') && edit.status) args.status = edit.status
@@ -77,6 +91,13 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
         (edit.note !== '' || (approval.args as { note?: unknown } | null)?.note !== undefined)
       )
         args.note = edit.note
+      for (const field of ['nextAction', 'nextActionAt'] as const) {
+        if (
+          approval.editableFields?.includes(field) &&
+          (edit[field] !== '' || (approval.args as ApplicationPatch | null)?.[field] !== undefined)
+        )
+          args[field] = edit[field]
+      }
     }
     await submitApproval(runId, approval.approvalId, {
       decision,
@@ -153,6 +174,23 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
               v-model="edits[keyOf(approval)]!.note"
               maxlength="2000"
               rows="3"
+              class="mt-1 block w-full rounded border bg-background p-2"
+            />
+          </label>
+          <label v-if="approval.editableFields?.includes('nextAction')" class="block">
+            下一步行动
+            <textarea
+              v-model="edits[keyOf(approval)]!.nextAction"
+              maxlength="1000"
+              rows="2"
+              class="mt-1 block w-full rounded border bg-background p-2"
+            />
+          </label>
+          <label v-if="approval.editableFields?.includes('nextActionAt')" class="block">
+            行动日期
+            <input
+              v-model="edits[keyOf(approval)]!.nextActionAt"
+              type="date"
               class="mt-1 block w-full rounded border bg-background p-2"
             />
           </label>

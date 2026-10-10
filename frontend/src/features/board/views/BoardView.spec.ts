@@ -3,18 +3,24 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import BoardView from './BoardView.vue'
-import { listApplications, updateApplication } from '@/shared/api/applications'
-import type { ServerApplication } from '@/shared/types/board'
+import { listApplications, updateApplication, getApplication } from '@/shared/api/applications'
+import type { ServerApplication, ApplicationDetail } from '@/shared/types/board'
 vi.mock('@/shared/api/applications', () => ({
   listApplications: vi.fn(),
   updateApplication: vi.fn(),
   favoriteJob: vi.fn(),
+  getApplication: vi.fn(),
 }))
+vi.mock('@/shared/api/jobs', () => ({ exportJobEvalMarkdown: vi.fn(), getJobMatch: vi.fn() }))
+import { exportJobEvalMarkdown } from '@/shared/api/jobs'
+
 const fixture = (): ServerApplication => ({
   id: 'app_1',
   jobId: 'job_1',
   status: 'TODO',
   note: '原备注',
+  nextAction: '',
+  nextActionAt: null,
   createdAt: '2026-10-04',
   updatedAt: '2026-10-04',
   job: {
@@ -60,6 +66,18 @@ function unmount() {
   root.remove()
 }
 beforeEach(() => {
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value() {
+      this.setAttribute('open', '')
+    },
+  })
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+    configurable: true,
+    value() {
+      this.removeAttribute('open')
+    },
+  })
   vi.resetAllMocks()
   server = [fixture()]
   vi.mocked(listApplications).mockImplementation(async () => structuredClone(server))
@@ -119,4 +137,74 @@ it('shows load failures with retry instead of an empty board', async () => {
   expect(root.textContent).not.toContain('把第一个机会放进看板')
   root.querySelector('button')!.click()
   await vi.waitFor(() => expect(root.querySelector('textarea')).not.toBeNull())
+})
+
+it('opens the selected workspace, retries detail, preserves failed edits and exports the linked report', async () => {
+  const detail = (): ApplicationDetail => ({
+    application: structuredClone(server[0]!),
+    latestMatch: {
+      id: 'match_1',
+      grade: 'C',
+      createdAt: '2026-10-11',
+      topGaps: ['补齐项目证据'],
+      exportUrl: '/api/v1/jobs/matches/match_1/eval.md',
+    },
+    resumeOptimizations: [],
+    interviews: [],
+    starStories: [],
+    linkageNote: '仅按岗位 ID 关联',
+    timeline: [
+      {
+        id: 'evt_1',
+        kind: 'CREATED',
+        fromStatus: null,
+        toStatus: 'TODO',
+        detail: '加入求职看板',
+        actor: 'USER',
+        artifactType: null,
+        artifactId: null,
+        createdAt: '2026-10-11T00:00:00Z',
+      },
+    ],
+  })
+  vi.mocked(getApplication)
+    .mockRejectedValueOnce(new Error('详情读取失败'))
+    .mockImplementation(async () => detail())
+  await mount()
+  await vi.waitFor(() => expect(root.querySelector('article a')).not.toBeNull())
+  root.querySelector<HTMLAnchorElement>('article a')!.click()
+  await vi.waitFor(() =>
+    expect(document.querySelector('dialog')?.textContent).toContain('详情读取失败'),
+  )
+  document.querySelector<HTMLButtonElement>('dialog .error-banner button')!.click()
+  await vi.waitFor(() =>
+    expect(document.querySelector('dialog')?.textContent).toContain('补齐项目证据'),
+  )
+  const drawer = document.querySelector('dialog')!
+  expect(drawer.textContent).toContain('加入求职看板')
+  ;[...drawer.querySelectorAll('button')]
+    .find((button) => button.textContent?.includes('下载评估.md'))!
+    .click()
+  await vi.waitFor(() => expect(exportJobEvalMarkdown).toHaveBeenCalledWith('match_1'))
+  const action = drawer.querySelector<HTMLTextAreaElement>('form textarea')!
+  action.value = '准备 STAR 复盘'
+  action.dispatchEvent(new Event('input', { bubbles: true }))
+  const date = drawer.querySelector<HTMLInputElement>('input[type=date]')!
+  date.value = '2026-10-12'
+  date.dispatchEvent(new Event('input', { bubbles: true }))
+  vi.mocked(updateApplication).mockRejectedValueOnce(new Error('保存失败'))
+  drawer
+    .querySelector('form')!
+    .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+  await vi.waitFor(() => expect(drawer.textContent).toContain('保存失败'))
+  expect(action.value).toBe('准备 STAR 复盘')
+  drawer
+    .querySelector('form')!
+    .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+  await vi.waitFor(() => expect(server[0]!.nextAction).toBe('准备 STAR 复盘'))
+  await vi.waitFor(() =>
+    expect(drawer.querySelector<HTMLButtonElement>('form button')!.disabled).toBe(true),
+  )
+  drawer.dispatchEvent(new Event('cancel', { cancelable: true }))
+  await vi.waitFor(() => expect(document.querySelector('dialog')).toBeNull())
 })
