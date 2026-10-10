@@ -6,8 +6,6 @@ const auth = useAuthStore()
 
 <template>
   <RouterView :key="auth.identityKey" v-slot="{ Component }">
-    <Transition name="page" mode="out-in">
-      <component :is="Component" />
-    </Transition>
+    <component :is="Component" v-if="Component" :key="auth.identityKey" />
   </RouterView>
 </template>
