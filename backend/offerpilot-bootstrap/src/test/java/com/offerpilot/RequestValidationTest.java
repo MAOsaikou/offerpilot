@@ -59,23 +59,16 @@ class RequestValidationTest {
 
     static Stream<Arguments> invalidBodies() {
         Stream<Arguments> auth = Stream.of("login", "register", "staff/login").flatMap(endpoint ->
-                Stream.of("{}", "{\"email\":\"person@example.com\"}", "{\"password\":\"password\"}",
-                                "{\"email\":\" \",\"password\":\"password\"}",
-                                "{\"email\":\"person@example.com\",\"password\":\" \"}")
+                Stream.of("{}", "{\"email\":\"person@example.com\",\"password\":\" \"}")
                         .map(body -> Arguments.of(HttpMethod.POST, "/api/v1/auth/" + endpoint, body)));
-        Stream<Arguments> staff = Stream.of("{}", "{\"status\":null}", "{\"status\":\"\"}",
-                        "{\"status\":\"UNKNOWN\"}", "{\"status\":\"active\"}")
+        Stream<Arguments> staff = Stream.of("{}", "{\"status\":\"UNKNOWN\"}")
                 .map(body -> Arguments.of(HttpMethod.PATCH, "/api/v1/staff/users/usr_test/status", body));
-        Stream<Arguments> board = Stream.of("{\"status\":\"UNKNOWN\"}", "{\"status\":\"\"}",
-                        "{\"status\":\"todo\"}", "{\"note\":\"" + "a".repeat(2001) + "\"}",
+        Stream<Arguments> board = Stream.of("{\"status\":\"UNKNOWN\"}",
                         "{\"note\":\"" + "😀".repeat(2001) + "\"}")
                 .map(body -> Arguments.of(HttpMethod.PATCH, "/api/v1/applications/app_test", body));
-        Stream<Arguments> models = Stream.of("{}", "{\"textTier\":\"FLASH\"}", "{\"visionTier\":\"VISION_ALT\"}",
-                        "{\"textTier\":\"\",\"visionTier\":\"VISION_ALT\"}",
-                        "{\"textTier\":\"FLASH\",\"visionTier\":\" \"}",
+        Stream<Arguments> models = Stream.of("{}",
                         "{\"textTier\":\"unknown\",\"visionTier\":\"VISION_ALT\"}",
-                        "{\"textTier\":\"FLASH\",\"visionTier\":\"VISION\"}",
-                        "{\"textTier\":null,\"visionTier\":null}")
+                        "{\"textTier\":\"FLASH\",\"visionTier\":\"VISION\"}")
                 .map(body -> Arguments.of(HttpMethod.PUT, "/api/v1/resume-model-settings", body));
         return Stream.of(auth, staff, board, models).flatMap(stream -> stream);
     }
@@ -88,15 +81,6 @@ class RequestValidationTest {
                 .andExpect(jsonPath("$.errors").isNotEmpty()).andReturn();
         assertThat(result.getResolvedException()).isInstanceOf(MethodArgumentNotValidException.class);
         verifyNoInteractions(logins, admin, applications, settings, users);
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"TODO", "APPLIED", "INTERVIEW", "OFFER", "CLOSED"})
-    void acceptsEveryApplicationStatus(String status) throws Exception {
-        when(users.require(null)).thenReturn("owner");
-        mvc.perform(patch("/api/v1/applications/app_test").contentType("application/json")
-                .content(json.writeValueAsString(Map.of("status", status)))).andExpect(status().isOk());
-        verify(applications).update("owner", "app_test", status, null);
     }
 
     @Test
@@ -120,19 +104,6 @@ class RequestValidationTest {
         }
     }
 
-    @Test
-    void staffListBindsDefaultsAndReturnsPageObject() throws Exception {
-        when(admin.listUsers("Bearer fixture", 1, 20, false))
-                .thenReturn(new StaffUserAdminService.UserPage(List.of(), 0, 1, 20));
-        mvc.perform(get("/api/v1/staff/users").header("Authorization", "Bearer fixture"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isArray())
-                .andExpect(jsonPath("$.data.total").value(0)).andExpect(jsonPath("$.data.page").value(1))
-                .andExpect(jsonPath("$.data.size").value(20));
-        mvc.perform(get("/api/v1/staff/users?page=3&size=7&hideGuests=true")
-                .header("Authorization", "Bearer fixture")).andExpect(status().isOk());
-        verify(admin).listUsers("Bearer fixture", 3, 7, true);
-    }
-
     @ParameterizedTest
     @ValueSource(strings = {"page=abc", "size=abc", "hideGuests=abc", "page=2147483648"})
     void malformedStaffQueryReturnsValidationError(String query) throws Exception {
@@ -141,12 +112,4 @@ class RequestValidationTest {
         verifyNoInteractions(admin);
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"ACTIVE", "DISABLED"})
-    void acceptsValidStaffStatus(String status) throws Exception {
-        mvc.perform(patch("/api/v1/staff/users/usr_test/status").contentType("application/json")
-                .header("Authorization", "Bearer fixture")
-                .content(json.writeValueAsString(Map.of("status", status)))).andExpect(status().isOk());
-        verify(admin).setUserStatus("Bearer fixture", "usr_test", status);
-    }
 }

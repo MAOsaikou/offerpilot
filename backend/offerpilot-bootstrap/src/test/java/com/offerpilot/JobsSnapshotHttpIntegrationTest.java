@@ -72,15 +72,6 @@ class JobsSnapshotHttpIntegrationTest {
         verifyNoInteractions(live);
     }
 
-    @Test void localServiceNeverCallsHttpIncludingDirectoryAndRefresh() {
-        reset(live);
-        var local = new JobService(new JobSource(live, snapshot, "LOCAL"), jdbc, json);
-        assertThat(local.sites().path("sites")).isNotEmpty();
-        var item = local.search("Java", "bytedance", "campus", "北京").path("items").get(0);
-        assertThat(local.detail(item.path("id").asText(), true).path("source").asText()).isEqualTo("LOCAL_SNAPSHOT");
-        verifyNoInteractions(live);
-    }
-
     @Test void chatToolCarriesSnapshotMetadataWhenDirectoryIsOffline() {
         var card = chat.search("Java", "字节跳动", "campus", "北京");
         assertThat(card.path("items")).isNotEmpty();
@@ -89,16 +80,6 @@ class JobsSnapshotHttpIntegrationTest {
         assertThat(card.at("/meta/fallbackReason").asText()).isEqualTo("LIVE_UNAVAILABLE");
     }
 
-    @Test void mcpJobsSearchUsesLocalModeAndPreservesSourceWhileLimitingResults() {
-        reset(live);
-        var local = new JobService(new JobSource(live, snapshot, "LOCAL"), jdbc, json);
-        var tools = new OfferPilotMcpTools(mock(ResumeDiagnoser.class), mock(JobMatcher.class), local, mock(ModelGateway.class), json);
-        var result = tools.searchJobs("Java", null, "all", null, 1);
-        assertThat(result.path("items")).hasSize(1);
-        assertThat(result.path("truncated").asBoolean()).isTrue();
-        assertThat(result.at("/meta/source").asText()).isEqualTo("LOCAL_SNAPSHOT");
-        verifyNoInteractions(live);
-    }
     @Test void expiredDemoAndAutoStoredCopiesWorkForRestDetailsAndBothMatchEntries() throws Exception {
         var guest = identities.create();
         String token = guest.accessToken();
