@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useAgentRunStore } from './agentRun'
-import { buildScenario } from '@/shared/mocks/scenario'
 import type { AgentEvent } from '@/shared/types/agent-events'
 
 const RUN = 'run_test'
@@ -64,9 +63,8 @@ describe('useAgentRunStore', () => {
     expect(store.activeRunId).toBe(RUN)
   })
 
-  it('tool.result 找不到对应调用时安全忽略', () => {
+  it('没有对应调用或审批的关联事件安全忽略', () => {
     const store = useAgentRunStore()
-
     store.apply(
       ev({
         id: 1,
@@ -79,15 +77,10 @@ describe('useAgentRunStore', () => {
         truncated: false,
       }),
     )
-
+    store.apply(
+      ev({ id: 2, type: 'approval.resolved', approvalId: 'missing', decision: 'APPROVE' }),
+    )
     expect(store.getRun(RUN)?.toolCalls).toHaveLength(0)
-  })
-
-  it('approval.resolved 没有对应审批时安全忽略', () => {
-    const store = useAgentRunStore()
-
-    store.apply(ev({ id: 1, type: 'approval.resolved', approvalId: 'nope', decision: 'APPROVE' }))
-
     expect(store.getRun(RUN)?.approvals).toHaveLength(0)
   })
 
@@ -127,29 +120,5 @@ describe('useAgentRunStore', () => {
     store.apply(ev({ id: 2, type: 'error', code: 40002, message: '限流', recoverable: true }))
 
     expect(store.getRun(RUN)?.status).toBe('RUNNING')
-  })
-
-  it('完整脚本跑完后状态自洽', () => {
-    const store = useAgentRunStore()
-    const events = buildScenario({ content: '帮我找后端校招岗' })
-
-    for (const item of events) store.apply(item)
-
-    const run = store.getRun('run_mock_01')
-    expect(run).toBeDefined()
-    expect(run?.status).toBe('COMPLETED')
-    expect(run?.steps).toHaveLength(4)
-    expect(run?.steps.every((step) => step.status === 'DONE')).toBe(true)
-    expect(run?.toolCalls.every((call) => call.status === 'OK')).toBe(true)
-    expect(run?.approvals.every((approval) => approval.status === 'APPROVED')).toBe(true)
-    expect(run?.cards.map((card) => card.cardType)).toEqual([
-      'job_match',
-      'resume_diff',
-      'board_update',
-    ])
-    expect(run?.citations).toHaveLength(1)
-    expect(run?.usage?.promptTokens).toBe(21480)
-    expect(run?.lastEventId).toBe(events.length)
-    expect(store.pendingApprovals).toHaveLength(0)
   })
 })

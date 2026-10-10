@@ -6,34 +6,16 @@ import com.offerpilot.auth.application.GuestIdentityService;
 import com.offerpilot.memory.application.UserMemoryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import java.net.URI;
 import java.net.http.*;
-import java.util.List;
 import java.util.concurrent.Executors;
 import static com.offerpilot.memory.application.UserMemoryService.*;
 import static org.assertj.core.api.Assertions.*;
 
-@SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT, properties={
-        "spring.ai.model.chat=none", "spring.ai.model.embedding=none", "spring.ai.mcp.server.enabled=false"})
-@ActiveProfiles("test") @Testcontainers
-class UserMemoryHttpIntegrationTest {
-    @Container static PostgreSQLContainer<?> db = new PostgreSQLContainer<>(
-            DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
-    @DynamicPropertySource static void properties(DynamicPropertyRegistry r) {
-        r.add("spring.datasource.url", db::getJdbcUrl); r.add("spring.datasource.username", db::getUsername);
-        r.add("spring.datasource.password", db::getPassword);
-    }
+class UserMemoryHttpIntegrationTest extends SharedHttpIntegrationTest {
     @Autowired GuestIdentityService identities;
     @Autowired ObjectMapper json;
     @Autowired UserMemoryService memories;

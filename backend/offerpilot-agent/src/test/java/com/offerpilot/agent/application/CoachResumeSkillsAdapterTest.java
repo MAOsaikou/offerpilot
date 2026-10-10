@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.offerpilot.resume.application.*;
 import com.offerpilot.common.error.*;
 import org.junit.jupiter.api.Test;
-import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 

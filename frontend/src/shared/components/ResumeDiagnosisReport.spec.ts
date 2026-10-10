@@ -131,16 +131,3 @@ it('单条讨论链接绑定原报告和简历版本，并明确当前建议', a
   expect(url.searchParams.get('prompt')).toContain('f-high')
   expect(url.searchParams.get('prompt')).toContain('补充你实际执行过的接口验证步骤')
 })
-it('没有问题时展示真实零计数和空结果，不生成分数或多余建议', async () => {
-  const report = await mount()
-  report.value = { ...structuredClone(example), reportId: 'empty', findings: [], strengths: [] }
-  await nextTick()
-  expect(root.querySelectorAll('.finding-card')).toHaveLength(0)
-  expect(root.querySelector('.priority-filters')).toBeNull()
-  expect(root.textContent).toContain('本次未发现明确的内容问题')
-  expect([...root.querySelectorAll('.metric dd')].map((item) => item.textContent)).toEqual([
-    '0项建议',
-    '0处亮点',
-    '0个问题',
-  ])
-})

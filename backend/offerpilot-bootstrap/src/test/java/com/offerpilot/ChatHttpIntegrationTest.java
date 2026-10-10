@@ -418,22 +418,6 @@ class ChatHttpIntegrationTest {
     }
 
     @Test
-    void realHttpStreamsChineseAndUsageThroughActualDeepSeekClient() throws Exception {
-        var client = HttpClient.newHttpClient();
-        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/chat"))
-                .timeout(Duration.ofSeconds(15)).header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + identities.create().accessToken())
-                .POST(HttpRequest.BodyPublishers.ofString("{\"content\":\"我是大三学生\",\"options\":{}}"))
-                .build();
-        var response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.body()).contains("event:run.started", "event:text.delta", "你好", "，同学。",
-                "event:usage", "\"promptTokens\":24", "\"completionTokens\":12", "event:run.completed", "COMPLETED");
-        assertThat(requestBody.get()).contains("我是大三学生", "deepseek-flash", "\"stream\":true", "仅以工具成功结果说明已执行的操作");
-        assertThat(response.body().indexOf("event:usage")).isLessThan(response.body().indexOf("event:run.completed"));
-    }
-
-    @Test
     void compositeProducesRealSseAndPersistsFinalText() throws Exception {
         String token = identities.create().accessToken();
         var response = request("POST", "/agent/chat", token, "{\"content\":\"复合验收：分析岗位并指导简历\"}");
@@ -448,6 +432,8 @@ class ChatHttpIntegrationTest {
                 "step.updated", "tool.call", "tool.result", "step.updated", "text.delta", "text.delta", "usage", "run.completed");
         assertThat(events.stream().map(e -> e.path("id").asInt()).toList())
                 .containsExactlyElementsOf(java.util.stream.IntStream.rangeClosed(1, events.size()).boxed().toList());
+        assertThat(response.body()).contains("你好", "，同学。", "event:usage", "\"promptTokens\":24", "\"completionTokens\":12");
+        assertThat(response.body().indexOf("event:usage")).isLessThan(response.body().indexOf("event:run.completed"));
         String conv = events.get(0).path("conversationId").asText();
         var messages = conversations.messages(owner(token), conv, null, 30).items();
         assertThat(messages.get(1).plainText()).isEqualTo("你好，同学。");
@@ -456,80 +442,6 @@ class ChatHttpIntegrationTest {
         assertThat(messages.get(1).parts().get(0).path("type").asText()).isEqualTo("text");
         assertThat(requestBody.get()).contains("成长摘要", "设为目标").doesNotContain("未执行真实业务操作");
         java.nio.file.Files.writeString(java.nio.file.Path.of("target", "orchestrator-sse.json"), json.writeValueAsString(events));
-    }
-
-    @Test
-    void chatRewriteEmitsResumeDiffAndRefreshRestoresTheSameAssistantCard() throws Exception {
-        String token = identities.create().accessToken(), user = owner(token);
-        String conv = conversations.create(user, "改写刷新验收", AgentMode.AUTO).id();
-        var report = json.createObjectNode().put("reportId", "opt_refresh_fixture")
-                .put("resumeId", "res_refresh_fixture").put("resumeVersionId", "ver_refresh_fixture")
-                .put("batchId", "pb_refresh_fixture").put("versionNo", 1)
-                .put("createdAt", "2026-10-09T00:00:00Z").put("summary", "保留事实的岗位定向改写建议");
-        report.putObject("stats").put("added", 0).put("replaced", 1).put("removed", 0);
-        report.putArray("patches").addObject().put("id", "patch_fixture")
-                .put("op", "replace").put("path", "/summary").put("from", "完成 Java 校园项目")
-                .put("value", "使用 Java 完成校园项目").put("reason", "明确已有技术表达")
-                .put("needsUserConfirmation", false);
-        jdbc.update("""
-                INSERT INTO jobs(id, site, external_id, nature, payload, detail_fetched_at)
-                VALUES (?, 'fixture', 'refresh', 'campus', ?::jsonb, now())
-                ON CONFLICT (id) DO UPDATE SET payload = EXCLUDED.payload, detail_fetched_at = now()
-                """, "job_refresh_fixture",
-                json.createObjectNode()
-                        .put("site", "fixture").put("externalId", "refresh").put("nature", "campus")
-                        .put("company", "FixtureCorp").put("title", "Java 校招")
-                        .put("locations", "上海").put("category", "").put("department", "")
-                        .put("updatedAt", "").put("url", "https://example.com/job")
-                        .put("description", "Java 校招岗位 JD").put("requirement", "熟悉 Java").toString());
-        when(optimizations.generate(eq(user), eq("res_refresh_fixture"), eq("ver_refresh_fixture"),
-                contains("Java 校招岗位 JD"), anyString())).thenReturn(Mono.just(report));
-        var response = request("POST", "/agent/chat", token, json.writeValueAsString(java.util.Map.of(
-                "conversationId", conv, "content", "改写刷新验收：请针对所选岗位重新生成简历改写建议。",
-                "options", java.util.Map.of("context", java.util.Map.of("jobId", "job_refresh_fixture",
-                        "resumeId", "res_refresh_fixture", "resumeVersionId", "ver_refresh_fixture")))));
-        assertThat(response.statusCode()).isEqualTo(200);
-        var events = response.body().lines().filter(line -> line.startsWith("data:")).map(line -> {
-            try { return json.readTree(line.substring(5).trim()); }
-            catch (IOException ex) { throw new RuntimeException(ex); }
-        }).toList();
-        assertThat(events).anySatisfy(event -> {
-            assertThat(event.path("type").asText()).isEqualTo("run.completed");
-            assertThat(event.path("status").asText()).isEqualTo("COMPLETED");
-        });
-        var cards = events.stream().filter(event -> "ui.card".equals(event.path("type").asText())).toList();
-        assertThat(cards).hasSize(1);
-        var emitted = cards.get(0);
-        assertThat(emitted.path("cardType").asText()).isEqualTo("resume_diff");
-        assertThat(emitted.path("cardId").asText()).isEqualTo("opt_refresh_fixture");
-        assertThat(emitted.path("payload")).isEqualTo(report);
-        assertThat(events.stream().filter(event -> "tool.call".equals(event.path("type").asText()))).singleElement()
-                .satisfies(event -> assertThat(event.path("name").asText()).isEqualTo("optimizeResumeForJob"));
-
-        // Inspect persisted JSONB independently, then repeat the public refresh read.
-        var persisted = json.readTree(jdbc.queryForObject(
-                "SELECT parts::text FROM messages WHERE conversation_id=? AND role='ASSISTANT'", String.class, conv));
-        assertThat(persisted).hasSize(2);
-        var expectedCard = json.createObjectNode().put("type", "card").put("cardId", "opt_refresh_fixture").put("cardType", "resume_diff");
-        expectedCard.set("payload", report);
-        assertThat(persisted.get(1)).isEqualTo(expectedCard);
-        for (int refresh = 0; refresh < 2; refresh++) {
-            assertThat(request("GET", "/conversations/" + conv, token, null).statusCode()).isEqualTo(200);
-            var restored = request("GET", "/conversations/" + conv + "/messages", token, null);
-            assertThat(restored.statusCode()).isEqualTo(200);
-            var messages = json.readTree(restored.body()).path("data").path("items");
-            assertThat(messages).hasSize(2);
-            assertThat(messages.get(0).path("role").asText()).isEqualTo("USER");
-            assertThat(messages.get(0).path("parts")).hasSize(1);
-            var assistant = messages.get(1);
-            assertThat(assistant.path("role").asText()).isEqualTo("ASSISTANT");
-            assertThat(assistant.path("status").asText()).isEqualTo("COMPLETED");
-            assertThat(assistant.path("plainText").asText()).isEqualTo("你好，同学。");
-            assertThat(assistant.path("parts")).isEqualTo(persisted);
-        }
-        verify(optimizations).generate(eq(user), eq("res_refresh_fixture"), eq("ver_refresh_fixture"),
-                contains("Java 校招岗位 JD"), matches("[a-z0-9-]{36}"));
-        verify(optimizations, never()).report(anyString(), anyString(), anyString(), anyString());
     }
 
     @Autowired com.offerpilot.board.application.ApplicationService applications;

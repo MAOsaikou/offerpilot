@@ -6,16 +6,8 @@ import com.offerpilot.auth.application.GuestIdentityService;
 import com.offerpilot.auth.application.PasswordLoginService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -26,27 +18,13 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "spring.ai.model.chat=none", "spring.ai.model.embedding=none", "spring.ai.mcp.server.enabled=false",
-        "offerpilot.resume.worker-enabled=false"})
-@ActiveProfiles("test")
-@Testcontainers(disabledWithoutDocker = true)
-class InterviewHttpIntegrationTest {
-    @Container
-    static PostgreSQLContainer<?> database = new PostgreSQLContainer<>(
-            DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
+class InterviewHttpIntegrationTest extends SharedHttpIntegrationTest {
     static final ObjectMapper JSON = new ObjectMapper();
     @LocalServerPort int port;
     @Autowired GuestIdentityService guests;
     @Autowired PasswordLoginService logins;
     @Autowired JdbcTemplate jdbc;
 
-    @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry properties) {
-        properties.add("spring.datasource.url", database::getJdbcUrl);
-        properties.add("spring.datasource.username", database::getUsername);
-        properties.add("spring.datasource.password", database::getPassword);
-    }
 
     HttpResponse<String> request(String method, String path, String token, Object body) throws Exception {
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/interviews" + path))

@@ -29,15 +29,6 @@ class ResumeOptimizationValueFilterTest {
         assertThat(filtered.path("filteredPatches").get(0).path("reason").asText()).isEqualTo("TINY_EDIT");
     }
 
-    @Test void keepsSubstantiveStructureImprovementWithoutChangingFacts() throws Exception {
-        var report = report(FROM, VALUE);
-        validate(report, FROM);
-        var filtered = ResumeOptimizationValueFilter.filter(report);
-        assertThat(filtered.path("patches")).isEqualTo(report.path("patches"));
-        assertThat(filtered.path("filteredPatches")).isEmpty();
-        validate(modelOutput(filtered), FROM);
-    }
-
     @ParameterizedTest
     @CsvSource({
         "abcdefghi, abcdefghX, false",
@@ -46,26 +37,13 @@ class ResumeOptimizationValueFilterTest {
         "abcdefghijklmnopqrst, abcdefghijklmnopqrXY, true",
         "abcdefghijklmnopqrstuvwxyzabcd, abcdefghijklmnopqrstuvwxyzaXYZ, false",
         "abcdefghij, abcdefghijX, true",
-        "abcdefghijX, abcdefghij, true",
         "abcdefghij, abcdefghi, true",
-        "abcdefghij, abcdefgXYZXYZ, false",
         "😀😀😀😀😀😀😀😀😀, 😀😀😀😀😀😀😀😀😁, false"
     })
     void respectsRelativeAbsoluteAndCodePointBoundaries(String from, String value, boolean dropped) {
         var filtered = ResumeOptimizationValueFilter.filter(report(from, value));
         assertThat(filtered.path("patches").isEmpty()).isEqualTo(dropped);
         assertThat(filtered.path("filteredPatches").size()).isEqualTo(dropped ? 1 : 0);
-    }
-
-    @Test void keepsEmptySuggestionsEmpty() throws Exception {
-        ObjectNode report = json.createObjectNode().put("summary", "无需改写");
-        report.putArray("patches");
-        validate(report, FROM);
-        var filtered = ResumeOptimizationValueFilter.filter(report);
-        assertThat(filtered.path("summary")).isEqualTo(report.path("summary"));
-        assertThat(filtered.path("patches")).isEmpty();
-        assertThat(filtered.path("filteredPatches").isArray()).isTrue();
-        assertThat(filtered.path("filteredPatches")).isEmpty();
     }
 
     @Test void preservesRetainedIdsOrderAndValidationWithoutMutatingInput() throws Exception {

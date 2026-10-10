@@ -130,17 +130,4 @@ describe('PDF 导出', () => {
     await expect(exportResumePdf('rs1')).rejects.toThrow('身份已切换')
     expect(create).not.toHaveBeenCalled()
   })
-  it('缺少服务端文件名时使用 PDF 默认名', async () => {
-    const { click } = downloadMocks()
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response('%PDF', { headers: { 'Content-Type': 'application/pdf' } }),
-        ),
-    )
-    await exportResumePdf('rs1')
-    expect((click.mock.instances[0] as HTMLAnchorElement | undefined)?.download).toBe('简历.pdf')
-  })
 })

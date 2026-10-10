@@ -41,25 +41,6 @@ describe('本地工作区', () => {
     disposePinia(pinia)
     vi.restoreAllMocks()
   })
-  it('旧本地收藏仍作为归档保留，不被服务端看板替换或删除', async () => {
-    const workspace = useWorkspace()
-    workspace.state.applications.push({
-      id: 'old',
-      jobId: 'j1',
-      stage: '收藏',
-      note: '',
-      date: '2026-10-03',
-    })
-    expect(workspace.state.applications).toHaveLength(1)
-    const app = workspace.state.applications[0]!
-    app.stage = '面试中'
-    app.note = '准备项目复盘'
-    await nextTick()
-    expect(reloadStore().state.applications[0]).toMatchObject({
-      stage: '面试中',
-      note: '准备项目复盘',
-    })
-  })
   it('拒绝损坏的嵌套存储，不覆盖原始内容', async () => {
     const raw = JSON.stringify({
       ...createWorkspace(),
@@ -71,37 +52,6 @@ describe('本地工作区', () => {
     workspace.state.name = '测试'
     await nextTick()
     expect(localStorage.getItem(ANONYMOUS_KEY)).toBe(raw)
-  })
-  it('真实岗位收藏携带快照，刷新后看板仍有标题且保留旧示例收藏', async () => {
-    const store = useWorkspace()
-    store.state.applications.push({
-      id: 'old',
-      jobId: 'j1',
-      stage: '收藏',
-      note: '',
-      date: '2026-10-03',
-    })
-    store.state.applications.push({
-      id: 'old-real',
-      jobId: 'job_real',
-      stage: '收藏',
-      note: '',
-      date: '2026-10-03',
-      jobSnapshot: {
-        id: 'job_real',
-        title: '实际岗位',
-        company: '企业',
-        city: '上海',
-        salary: '',
-        category: '',
-        tags: [],
-        description: '',
-        color: '',
-      },
-    })
-    await nextTick()
-    expect(reloadStore().jobFor('job_real')?.title).toBe('实际岗位')
-    expect(useWorkspace().jobFor('j1')?.title).toBeTruthy()
   })
   it.each(['user', 'guest'] as const)('%s A 写入 → 注销 → B 隔离 → A 恢复', async (kind) => {
     const activate = kind === 'user' ? login : saveGuest

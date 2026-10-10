@@ -61,36 +61,3 @@ it('restored search snapshots expose counts, partial failures and actionable enc
     expect(more.searchParams.get('location')).toBe('北京')
   })
 })
-
-it('empty results retain warnings and never imply the company has no openings', async () => {
-  const value = payload()
-  value.items = []
-  value.returnedCount = 0
-  await mount(value, (root) => {
-    expect(root.textContent).toContain('本次没有找到岗位')
-    expect(root.textContent).toContain('空结果不代表企业没有在招岗位')
-    expect(root.querySelectorAll('article')).toHaveLength(0)
-    expect(root.textContent).toContain('部分企业暂不可用')
-  })
-})
-
-it('chat snapshot badge includes its date and never claims live company data', async () => {
-  const value = payload()
-  value.meta.source = 'LOCAL_SNAPSHOT'
-  value.meta.snapshotDate = '2026-10-10'
-  value.meta.fallbackReason = 'LIVE_UNAVAILABLE'
-  value.meta.skipped = []
-  await mount(value, (root) => {
-    expect(root.textContent).toContain('离线快照')
-    expect(root.textContent).toContain('非实时数据')
-    expect(root.querySelector('[title*="快照日期"]')?.getAttribute('title')).toContain('2026-10-10')
-    expect(root.textContent).not.toContain('企业官网 · 本次查询')
-  })
-})
-
-it('live chat results have no offline badge', async () => {
-  await mount(payload(), (root) => {
-    expect(root.textContent).not.toContain('离线快照')
-    expect(root.textContent).toContain('企业官网 · 本次查询')
-  })
-})

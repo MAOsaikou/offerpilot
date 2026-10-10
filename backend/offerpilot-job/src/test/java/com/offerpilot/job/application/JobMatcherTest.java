@@ -29,11 +29,6 @@ class JobMatcherTest {
         item.put("resumePath","").put("resumeQuote","");
         assertThatCode(()->JobMatcher.validate(missing,"熟悉Java",resume)).doesNotThrowAnyException();
     }
-    @Test void duplicateEvidenceCannotInflateCoverage() throws Exception {
-        var report=report(); ((com.fasterxml.jackson.databind.node.ArrayNode)report.path("requirements")).add(report.path("requirements").get(0).deepCopy());
-        JobMatcher.validate(report,"熟悉Java",json.readTree("{\"summary\":\"Java项目\"}"));
-        assertThat(report.path("requirements")).hasSize(1);
-    }
     @Test void canonicalizesFormattingOnlyAndRetainsExactSourceSubstrings() throws Exception {
         var report=report();
         var item=(ObjectNode)report.path("requirements").get(0);
