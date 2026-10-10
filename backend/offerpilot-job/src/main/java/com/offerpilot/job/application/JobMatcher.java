@@ -83,8 +83,17 @@ public class JobMatcher {
     private static Throwable modelFailure(Throwable error, com.offerpilot.llm.ModelTier tier, Duration budget) {
         for (Throwable cause = error; cause != null; cause = cause.getCause()) {
             if (cause instanceof BusinessException) return cause; // Includes LLM_RATE_LIMITED; never repair/retry IO failures.
-            if (cause instanceof java.util.concurrent.TimeoutException || cause instanceof java.net.http.HttpTimeoutException
-                    || cause instanceof java.net.SocketTimeoutException)
+            if (cause instanceof org.springframework.web.reactive.function.client.WebClientResponseException response
+                    && response.getStatusCode().value() == 504)
+                return new BusinessException(ErrorCode.MODEL_TIMEOUT,
+                        "模型服务返回等待超时，未保存匹配报告，请稍后重试或切换快速模式");
+            if (cause instanceof java.net.http.HttpConnectTimeoutException)
+                return new BusinessException(ErrorCode.MODEL_TIMEOUT,
+                        "模型连接超时（连接上限10秒），未保存匹配报告，请稍后重试");
+            if (cause instanceof java.net.http.HttpTimeoutException || cause instanceof java.net.SocketTimeoutException)
+                return new BusinessException(ErrorCode.MODEL_TIMEOUT,
+                        "模型响应读取超时，未保存匹配报告，请稍后重试或切换快速模式");
+            if (cause instanceof java.util.concurrent.TimeoutException)
                 return new BusinessException(ErrorCode.MODEL_TIMEOUT,
                         (tier == com.offerpilot.llm.ModelTier.PRO ? "深度" : "快速") + "匹配超过等待上限（" + budget.toSeconds()
                                 + " 秒，含证据校验），未保存报告，请稍后重试或切换快速模式");

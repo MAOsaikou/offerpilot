@@ -1,3 +1,5 @@
+import type { ModelTier } from './model-tier'
+
 export interface RealJob {
   id: string
   externalId: string
@@ -57,6 +59,7 @@ export interface MatchRequirement {
   suggestion: string
 }
 export interface EvidenceMatch {
+  modelTier?: ModelTier
   id: string
   jobId: string
   resumeId: string

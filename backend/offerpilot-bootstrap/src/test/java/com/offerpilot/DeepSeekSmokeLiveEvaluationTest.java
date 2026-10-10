@@ -129,7 +129,7 @@ class DeepSeekSmokeLiveEvaluationTest {
         var tomcat = (org.springframework.boot.web.embedded.tomcat.TomcatWebServer) webContext.getWebServer();
         for (var connector : tomcat.getTomcat().getService().findConnectors())
             System.out.println("LIVE_TOMCAT connectionTimeout=" + connector.getProperty("connectionTimeout")
-                    + " asyncTimeout=" + connector.getProperty("asyncTimeout"));
+                    + " asyncTimeout=" + connector.getAsyncTimeout());
         owner = accounts.requireAccount();
         token = accounts.login(identities).accessToken();
         var resume = jdbc.queryForMap("SELECT id,current_version_id FROM resumes WHERE user_id=? ORDER BY id LIMIT 1", owner);
@@ -414,7 +414,7 @@ class DeepSeekSmokeLiveEvaluationTest {
         return response;
     }
     private HttpRequest.Builder requestBuilder(String method, String path, Object body) throws Exception {
-        var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(240))
+        var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(path.equals("/api/v1/agent/chat") ? 420 : 240))
                 .header("Authorization", "Bearer " + token).header("Content-Type", "application/json");
         builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));
         return builder;

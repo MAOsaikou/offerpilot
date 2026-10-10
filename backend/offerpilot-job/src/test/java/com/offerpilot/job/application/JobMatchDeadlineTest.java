@@ -99,7 +99,28 @@ class JobMatchDeadlineTest {
             var error = new AtomicReference<Throwable>();
             analyze(matcher, ModelTier.PRO).subscribe(value -> fail("must fail"), error::set);
             if (original == quota) assertThat(error.get()).isSameAs(quota);
-            else assertTimeout(error.get(), "180");
+            else {
+                assertThat(error.get()).isInstanceOf(BusinessException.class);
+                assertThat(((BusinessException)error.get()).errorCode()).isEqualTo(ErrorCode.MODEL_TIMEOUT);
+                assertThat(error.get().getMessage()).contains("读取超时", "未保存");
+            }
+        }
+        verify(gateway, times(2)).stream(eq(ModelTier.PRO), anyList(), eq(0.0));
+    }
+
+    @Test void connectionAndProviderGatewayTimeoutsDescribeTheFailingLayer() throws Exception {
+        var matcher = matcher();
+        var failures = List.of(new RuntimeException(new java.net.http.HttpConnectTimeoutException("private")),
+                org.springframework.web.reactive.function.client.WebClientResponseException.create(504, "private", null,
+                        "private upstream body".getBytes(), java.nio.charset.StandardCharsets.UTF_8));
+        for (int i = 0; i < failures.size(); i++) {
+            when(gateway.stream(eq(ModelTier.PRO), anyList(), eq(0.0))).thenReturn(Flux.error(failures.get(i)));
+            var error = new AtomicReference<Throwable>();
+            analyze(matcher, ModelTier.PRO).subscribe(value -> fail("must fail"), error::set);
+            assertThat(error.get()).isInstanceOf(BusinessException.class);
+            assertThat(((BusinessException)error.get()).errorCode()).isEqualTo(ErrorCode.MODEL_TIMEOUT);
+            assertThat(error.get().getMessage()).contains(i == 0 ? "连接上限10秒" : "模型服务返回等待超时")
+                    .doesNotContain("private", "180");
         }
         verify(gateway, times(2)).stream(eq(ModelTier.PRO), anyList(), eq(0.0));
     }
