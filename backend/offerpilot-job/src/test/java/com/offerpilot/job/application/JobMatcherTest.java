@@ -57,10 +57,44 @@ class JobMatcherTest {
         items.add(first.deepCopy().put("jdQuote","使用Git").put("status","MISSING")); // evidence must be empty
         first.put("unverifiedQuote","虚构扩展字段"); report.put("score",100);
         JobMatcher.validate(report,"掌握 Java 与 Spring Boot；理解MySQL；了解Redis；使用Git",json.readTree("{\"summary\":\"Java项目\"}"));
-        assertThat(report.path("requirements")).hasSize(1);
+        assertThat(report.path("requirements")).hasSize(2);
         assertThat(report.path("requirements").get(0).has("unverifiedQuote")).isFalse();
         assertThat(report.has("score")).isFalse();
         assertThat(report.path("summary").asText()).contains("未通过校验或重复");
+    }
+
+
+    @Test void enumeratedSkillsSurviveSharedQuotesAndScoreIgnoresModelNumbers() throws Exception {
+        String jd = "熟悉Java、Spring Boot、MySQL、Redis；了解分布式与消息队列；有高并发项目经验优先。";
+        String text = "基于Spring Boot和Redis的秒杀系统；Kafka日志管道；熟悉Java、MySQL、Docker。";
+        var output = json.createObjectNode().put("summary", "逐项评估").put("score", 1);
+        var items = output.putArray("requirements");
+        for (String skill : java.util.List.of("Java", "Spring Boot", "MySQL", "Redis", "消息队列", "分布式", "高并发")) {
+            String status = skill.equals("分布式") ? "MISSING" : skill.equals("高并发") ? "PARTIAL" : "MET";
+            String quote = java.util.Set.of("消息队列", "分布式").contains(skill) ? "了解分布式与消息队列"
+                    : skill.equals("高并发") ? "有高并发项目经验优先" : "熟悉Java、Spring Boot、MySQL、Redis";
+            items.addObject().put("requirement", skill).put("status", status).put("jdQuote", quote)
+                    .put("resumePath", status.equals("MISSING") ? "" : "/rawText")
+                    .put("resumeQuote", status.equals("MISSING") ? "" : text)
+                    .put("reason", "比较原文证据").put("suggestion", "准备真实项目细节");
+        }
+        // Same requirement with different case/spacing is a duplicate; different skills are not.
+        items.add(items.get(1).deepCopy());
+        ((ObjectNode)items.get(7)).put("requirement", " spring boot ");
+        var gateway = org.mockito.Mockito.mock(com.offerpilot.llm.ModelGateway.class);
+        org.mockito.Mockito.when(gateway.timeout(org.mockito.ArgumentMatchers.any())).thenReturn(java.time.Duration.ofSeconds(60));
+        org.mockito.Mockito.when(gateway.modelName(org.mockito.ArgumentMatchers.any())).thenReturn("stub");
+        org.mockito.Mockito.when(gateway.stream(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq(0.0)))
+                .thenReturn(reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(java.util.List.of(
+                        new org.springframework.ai.chat.model.Generation(new org.springframework.ai.chat.messages.AssistantMessage(output.toString()))))));
+        var matcher = new JobMatcher(gateway, json, new org.springframework.core.io.ByteArrayResource("rules".getBytes()));
+        var result = matcher.match(json.createObjectNode().put("requirement", jd), json.createObjectNode().put("rawText", text), com.offerpilot.llm.ModelTier.FLASH);
+        assertThat(result.path("requirements")).hasSize(7);
+        assertThat(result.path("requirements")).extracting(n -> n.path("requirement").asText())
+                .containsExactly("Java", "Spring Boot", "MySQL", "Redis", "消息队列", "分布式", "高并发");
+        assertThat(result.path("score").asInt()).isEqualTo(79); // (5 MET + 0.5 PARTIAL) / 7
+        assertThat(result.path("promptVersion").asText()).isEqualTo("job-match-v3");
+        org.mockito.Mockito.verify(gateway, org.mockito.Mockito.times(1)).stream(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq(0.0));
     }
 
     @Test void supportsEscapedPointersAndRejectsQuoteLabelsAndStitchedLeaves() throws Exception {
@@ -106,8 +140,11 @@ class JobMatcherTest {
         for(int i=0;i<13;i++) {
             jd.append("要求").append(i).append(";");
             var row=report().path("requirements").get(0).deepCopy();
-            ((ObjectNode)row).put("jdQuote","要求"+i+";"); items.add(row);
+            ((ObjectNode)row).put("requirement","要求"+i).put("jdQuote","要求"+i+";"); items.add(row);
         }
+        assertThatThrownBy(()->JobMatcher.validate(report,jd.toString(),json.readTree("{\"summary\":\"Java项目\"}")))
+                .isInstanceOf(BusinessException.class);
+        items.remove(12);
         JobMatcher.validate(report,jd.toString(),json.readTree("{\"summary\":\"Java项目\"}"));
         assertThat(report.path("requirements")).hasSize(12);
         assertThat(JobMatcher.canonicalQuote("前\u00a0后","\u00a0")).isNull();

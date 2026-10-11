@@ -46,7 +46,7 @@ public class ResumeService {
         String mime = reader.mime(name, bytes);
         if (title != null && title.strip().length() > 100) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "简历名称不能超过 100 个字符");
         String resolvedTitle = title == null || title.isBlank() ? name.replaceFirst("\\.[^.]+$", "") : title.strip();
-        if (resolvedTitle.length() > 100) resolvedTitle = resolvedTitle.substring(0, 100);
+        if (resolvedTitle.length() > 100) resolvedTitle = com.offerpilot.common.text.TextBounds.truncate(resolvedTitle, 100);
         if (resolvedTitle.isBlank()) resolvedTitle = "我的简历";
         String id = IdGenerator.next("rs"), fileId = IdGenerator.next("file"), key = "resumes/" + owner + "/" + fileId;
         String finalName = name, finalTitle = resolvedTitle;

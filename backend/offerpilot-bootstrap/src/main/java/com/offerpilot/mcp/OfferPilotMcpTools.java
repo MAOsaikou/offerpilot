@@ -36,10 +36,10 @@ public class OfferPilotMcpTools {
         this.json = json;
     }
 
-    @Tool(name = "resume.diagnose", description = "Read-only diagnosis summary from supplied resume text. Returns top issues and strengths count; no overall score is invented. Optional JD adds a separate match summary. Does not save a diagnosis or read user records.")
+    @Tool(name = "resume.diagnose", description = "只读简历诊断：分析提供的文本，不保存报告。Read-only diagnosis summary from supplied resume text. Returns top issues and strengths count; no overall score is invented. Optional JD adds a separate match summary. Does not save a diagnosis or read user records.")
     public ObjectNode diagnoseResume(
-            @ToolParam(description = "Required resume plain text, 1–50000 characters") String resumeText,
-            @ToolParam(description = "Optional job description, at most 20000 characters", required = false) String jobDescription) {
+            @ToolParam(description = "必填简历纯文本 / Required resume plain text, 1–50000 characters") String resumeText,
+            @ToolParam(description = "可选岗位描述 / Optional job description, at most 20000 characters", required = false) String jobDescription) {
         String resume = required(resumeText, "resumeText", 50000);
         String jd = optional(jobDescription, "jobDescription", 20000);
         var report = diagnoser.diagnose(resumeSource(resume), gateway.defaultTier()).block();
@@ -66,13 +66,13 @@ public class OfferPilotMcpTools {
         return result;
     }
 
-    @Tool(name = "jobs.search", description = "Read-only search of public company career-site jobs or explicitly marked offline sample snapshots. Returns items and source metadata. May refresh the public job cache; never writes applications or private user data.")
+    @Tool(name = "jobs.search", description = "只读岗位搜索：返回公开岗位或明确标注的离线示例，含短摘录与来源。Read-only search of public company career-site jobs or explicitly marked offline sample snapshots. Returns compact items (id/url/title/company/locations/excerpt) and source metadata. May refresh the public job cache; never writes applications or private user data.")
     public ObjectNode searchJobs(
-            @ToolParam(description = "Required search query, 1–100 characters") String query,
-            @ToolParam(description = "Optional company site ID, at most 60 characters", required = false) String site,
-            @ToolParam(description = "campus, intern, social or all (case-insensitive); default all", required = false) String nature,
-            @ToolParam(description = "Optional location, at most 60 characters", required = false) String location,
-            @ToolParam(description = "Maximum returned items, 1–20; default 10", required = false) Integer limit) {
+            @ToolParam(description = "必填搜索关键词（参数名query） / Required search query, 1–100 characters") String query,
+            @ToolParam(description = "可选企业站点ID（如meituan/bytedance），省略搜索全部 / Optional company site ID, at most 60 characters", required = false) String site,
+            @ToolParam(description = "招聘类型：校招campus/实习intern/社招social/全部all / campus, intern, social or all (case-insensitive); default all", required = false) String nature,
+            @ToolParam(description = "可选城市（如北京） / Optional location, at most 60 characters", required = false) String location,
+            @ToolParam(description = "最多返回条数 / Maximum returned items, 1–20; default 10", required = false) Integer limit) {
         String q = required(query, "query", 100);
         String s = optional(site, "site", 60);
         String l = optional(location, "location", 60);
@@ -84,16 +84,32 @@ public class OfferPilotMcpTools {
         var source = result.path("items");
         var items = result.putArray("items");
         // Preserve sources/degradation metadata while bounding the external response.
-        for (int i = 0; i < Math.min(count, source.size()); i++) items.add(source.get(i));
+        for (int i = 0; i < Math.min(count, source.size()); i++) items.add(searchItem(source.get(i)));
         result.put("limit", count);
         result.put("truncated", source.size() > count || result.path("meta").path("truncated").asBoolean());
         return result;
     }
 
-    @Tool(name = "jobs.match", description = "Read-only match of supplied resume text against supplied job description. Returns score, summary and MET/PARTIAL/MISSING requirements with verified text evidence. Never saves match history or accesses private resumes.")
+    private ObjectNode searchItem(JsonNode source) {
+        var item = json.createObjectNode();
+        for (String field : new String[]{"id", "site", "nature", "source", "snapshotDate"})
+            if (source.has(field)) item.put(field, com.offerpilot.common.text.TextBounds.truncate(source.path(field).asText(), 80));
+        for (String field : new String[]{"title", "company", "locations"})
+            item.put(field, com.offerpilot.common.text.TextBounds.truncate(source.path(field).asText(), 200));
+        String url = source.path("url").asText();
+        item.put("url", url.length() <= 2048 ? url : "");
+        String text = (source.path("description").asText() + "\n" + source.path("requirement").asText())
+                .replaceAll("[\\s\\p{Z}]+", " ").strip();
+        boolean truncated = text.length() > 240;
+        item.put("excerpt", truncated ? com.offerpilot.common.text.TextBounds.truncate(text, 239) + "…" : text);
+        item.put("excerptTruncated", truncated);
+        return item;
+    }
+
+    @Tool(name = "jobs.match", description = "只读岗位匹配：逐项评估JD技能，分数由代码计算，不保存历史。Read-only match of supplied resume text against supplied job description. Returns score, summary and MET/PARTIAL/MISSING requirements with verified text evidence. Never saves match history or accesses private resumes.")
     public ObjectNode matchJob(
-            @ToolParam(description = "Required resume plain text, 1–50000 characters") String resumeText,
-            @ToolParam(description = "Required job description, 1–20000 characters") String jobDescription) {
+            @ToolParam(description = "必填简历纯文本 / Required resume plain text, 1–50000 characters") String resumeText,
+            @ToolParam(description = "必填岗位描述 / Required job description, 1–20000 characters") String jobDescription) {
         return matchValidated(required(resumeText, "resumeText", 50000), required(jobDescription, "jobDescription", 20000));
     }
 

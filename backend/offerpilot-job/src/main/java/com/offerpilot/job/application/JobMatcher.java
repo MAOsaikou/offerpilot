@@ -76,7 +76,7 @@ public class JobMatcher {
                         result = (ObjectNode) report;
                     } catch (Exception ex) {
                         if (attempt == 1) return reactor.core.publisher.Mono.error(invalid());
-                        messages.add(new SystemMessage("上次报告未通过结构或原文依据校验，未保存。请重新生成：至少一项、最多12项；jdQuote必须连续摘录且不重复；MET/PARTIAL的resumePath必须是存在的字符串叶子JSON Pointer，resumeQuote连续摘录该叶子；MISSING的两项简历证据必须为空。不要补造或拼接引文。仅输出完整JSON对象。"));
+                        messages.add(new SystemMessage("上次报告未通过结构或原文依据校验，未保存。请重新生成：至少一项、最多12项；枚举中的每个具体技能都必须可评估，不同要求可共享同一段连续jdQuote；合并要求必须列全技能并按全部技能判断状态；MET/PARTIAL的resumePath必须是存在的字符串叶子JSON Pointer，resumeQuote连续摘录该叶子；MISSING的两项简历证据必须为空。不要补造或拼接引文。仅输出完整JSON对象。"));
                         return generate(jd, resume, tier, messages, 1, start);
                     }
                     int points = 0;
@@ -84,7 +84,7 @@ public class JobMatcher {
                         case "MET" -> 2; case "PARTIAL" -> 1; default -> 0;
                     };
                     result.put("score", Math.round(100f * points / (2 * result.path("requirements").size())));
-                    result.put("model", gateway.modelName(tier)).put("modelTier", tier.name()).put("promptVersion", "job-match-v2");
+                    result.put("model", gateway.modelName(tier)).put("modelTier", tier.name()).put("promptVersion", "job-match-v3");
                     result.put("durationMs", (System.nanoTime() - start) / 1000000);
                     return reactor.core.publisher.Mono.just((JsonNode) result);
                 });
@@ -116,13 +116,15 @@ public class JobMatcher {
         if(report==null || !report.isObject() || !text(report,"summary",2000) || !report.path("requirements").isArray()
                 || report.path("requirements").isEmpty() || report.path("requirements").size()>100) throw invalid();
         var verified=((ObjectNode)report).arrayNode();
-        Set<String> quotes=new HashSet<>();
+        Set<String> requirements=new HashSet<>();
         for(var item:report.path("requirements")) {
-            if(verified.size()==12) break;
             if(!text(item,"requirement",500) || !text(item,"jdQuote",1500) || !text(item,"reason",1500) || !text(item,"suggestion",1500)) continue;
             String quote=canonicalQuote(jd,item.path("jdQuote").asText());
+            // The evidence clause is not the requirement identity: a list can support many skills.
+            String requirement=java.text.Normalizer.normalize(item.path("requirement").asText(), java.text.Normalizer.Form.NFKC)
+                    .replaceAll("[\\s\\p{Z}]+", "").toLowerCase(Locale.ROOT);
             String status=item.path("status").asText();
-            if(quote==null || quote.length()>1500 || quotes.contains(quote) || !Set.of("MET","PARTIAL","MISSING").contains(status)) continue;
+            if(quote==null || quote.length()>1500 || requirements.contains(requirement) || !Set.of("MET","PARTIAL","MISSING").contains(status)) continue;
             if(!item.path("resumePath").isTextual() || !item.path("resumeQuote").isTextual()) continue;
             String path=item.path("resumePath").asText(), evidence=item.path("resumeQuote").asText();
             if("MISSING".equals(status)) {
@@ -138,9 +140,10 @@ public class JobMatcher {
             var row=((ObjectNode)report).objectNode();
             for(String key:List.of("requirement","status","reason","suggestion")) row.set(key,item.path(key));
             row.put("jdQuote",quote).put("resumePath",path).put("resumeQuote",evidence);
-            verified.add(row); quotes.add(quote);
+            verified.add(row); requirements.add(requirement);
         }
-        if(verified.isEmpty()) throw invalid();
+        // Repair an oversized report instead of silently losing valid requirements at the cap.
+        if(verified.isEmpty() || verified.size()>12) throw invalid();
         boolean filtered=verified.size()!=report.path("requirements").size();
         ((ObjectNode)report).retain("summary","requirements");
         ((ObjectNode)report).set("requirements",verified);

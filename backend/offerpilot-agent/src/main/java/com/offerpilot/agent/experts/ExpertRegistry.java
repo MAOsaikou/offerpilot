@@ -117,7 +117,7 @@ public class ExpertRegistry {
         Object raw = step.inputs().get("noteQuery");
         if (raw instanceof String s && !s.isBlank()) {
             String trimmed = s.strip();
-            return trimmed.length() <= 200 ? trimmed : trimmed.substring(0, 200);
+            return trimmed.length() <= 200 ? trimmed : com.offerpilot.common.text.TextBounds.truncate(trimmed, 200);
         }
         String role = text(step.inputs().get("role"));
         if (role != null) return role;

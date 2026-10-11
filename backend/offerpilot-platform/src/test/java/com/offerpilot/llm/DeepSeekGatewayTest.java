@@ -30,6 +30,25 @@ class DeepSeekGatewayTest {
                         "VISION_ALT", new OfferPilotProperties.Llm.Tier("deepseek", "deepseek-flash", Duration.ofSeconds(90), true)), Map.of()), null, null),
                 new MockEnvironment().withProperty("spring.ai.deepseek.base-url", base).withProperty("spring.ai.deepseek.api-key", key));
     }
+    @Test void productionSseDecoderReassemblesUtf8EvenWhenEveryByteIsASeparateBuffer() {
+        String content = "有框架经验😀，熟悉中文流式传输";
+        byte[] bytes = ("data: {\"id\":\"stub\",\"model\":\"deepseek-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\""
+                + content + "\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n").getBytes(StandardCharsets.UTF_8);
+        var support = new DeepSeekRequestSupport("disabled", Duration.ofSeconds(60));
+        reactor.core.publisher.Flux<org.springframework.core.io.buffer.DataBuffer> buffers = reactor.core.publisher.Flux.range(0, bytes.length).map(i ->
+                new org.springframework.core.io.buffer.DefaultDataBufferFactory().wrap(new byte[]{bytes[i]}));
+        var web = support.webClient().exchangeFunction(request -> reactor.core.publisher.Mono.just(
+                org.springframework.web.reactive.function.client.ClientResponse.create(org.springframework.http.HttpStatus.OK)
+                        .header("Content-Type", "text/event-stream;charset=UTF-8").body(buffers).build()));
+        var api = org.springframework.ai.deepseek.api.DeepSeekApi.builder().baseUrl("http://unused.invalid")
+                .apiKey("isolated-test-key").webClientBuilder(web).restClientBuilder(support.restClient()).build();
+        var request = new org.springframework.ai.deepseek.api.DeepSeekApi.ChatCompletionRequest(List.of(
+                new org.springframework.ai.deepseek.api.DeepSeekApi.ChatCompletionMessage("中文", org.springframework.ai.deepseek.api.DeepSeekApi.ChatCompletionMessage.Role.USER)), "deepseek-flash", 0.0, true);
+        String result = api.chatCompletionStream(request).map(chunk -> chunk.choices().get(0).delta().content())
+                .reduce("", String::concat).block(Duration.ofSeconds(5));
+        assertThat(result).isEqualTo(content).doesNotContain("\uFFFD");
+    }
+
     @Test void bothTiersUseTheirModelThinkingBudgetAndOnlyContentForSyncStreamAndToolLoops() throws Exception {
         var requests = new CopyOnWriteArrayList<com.fasterxml.jackson.databind.JsonNode>();
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
