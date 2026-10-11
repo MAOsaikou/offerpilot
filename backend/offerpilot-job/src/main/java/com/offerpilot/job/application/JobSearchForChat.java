@@ -96,6 +96,6 @@ public class JobSearchForChat {
     }
 
     private static String bounded(String value, int limit) {
-        return value.length() > limit ? value.substring(0, limit) : value;
+        return value.length() > limit ? com.offerpilot.common.text.TextBounds.truncate(value, limit) : value;
     }
 }

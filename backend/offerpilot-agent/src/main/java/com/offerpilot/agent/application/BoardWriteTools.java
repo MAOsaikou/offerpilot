@@ -96,10 +96,14 @@ public class BoardWriteTools {
             application.put("company", saved.job().path("company").asText());
             application.put("title", saved.job().path("title").asText());
             application.put("status", saved.status());
+            application.put("note", saved.note());
             application.put("nextAction", saved.nextAction());
             application.put("nextActionAt", saved.nextActionAt());
+            var changedFields = new LinkedHashMap<String, Object>();
+            for (String field : java.util.List.of("status", "note", "nextAction", "nextActionAt"))
+                if (args.containsKey(field)) changedFields.put(field, application.get(field));
             return ExpertResult.card("已按用户批准的参数" + (create ? "创建" : "更新") + "投递记录：" + saved.job().path("company").asText() + " / " + saved.job().path("title").asText() + "，阶段：" + statusLabel(saved.status()),
-                    runId + "_" + step.id(), "board_update", Map.of("application", application, "change", create ? "CREATED" : "UPDATED"));
+                    runId + "_" + step.id(), "board_update", Map.of("application", application, "change", create ? "CREATED" : "UPDATED", "changedFields", changedFields));
         }).subscribeOn(Schedulers.boundedElastic());
     }
 }

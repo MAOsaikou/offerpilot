@@ -67,6 +67,6 @@ public class CoachEvidenceAdapter implements CoachEvidence {
         return new Snapshot(report != null, session != null, List.copyOf(gaps));
     }
     private static String bounded(String value) {
-        return value.length() <= 240 ? value : value.substring(0, 240) + "…";
+        return value.length() <= 240 ? value : com.offerpilot.common.text.TextBounds.truncate(value, 240) + "…";
     }
 }

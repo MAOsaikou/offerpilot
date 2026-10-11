@@ -119,7 +119,7 @@ public class Orchestrator {
                             if (careerStep) producedCareerOutcome.set(true);
                             String preview = result.summary() == null ? "" : result.summary();
                             boolean truncated = preview.length() > 500;
-                            if (truncated) preview = preview.substring(0, 500);
+                            if (truncated) preview = com.offerpilot.common.text.TextBounds.truncate(preview, 500);
                             return outcome(runId, seq, step.id(), callId, name, true, preview, truncated, result.cards(), started);
                         });
                 return Flux.<AgentEvent>just(new AgentEvent.StepUpdated("step.updated", seq.incrementAndGet(), runId, started,

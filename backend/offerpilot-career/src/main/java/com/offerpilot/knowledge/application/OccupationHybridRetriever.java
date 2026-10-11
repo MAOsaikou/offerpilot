@@ -31,7 +31,7 @@ public class OccupationHybridRetriever {
         validateLimit(limit);
         if (query == null || query.isBlank()) return new Retrieval(List.of(), false);
         String text = query.strip();
-        if (text.length() > 2000) text = text.substring(0, 2000);
+        if (text.length() > 2000) text = com.offerpilot.common.text.TextBounds.truncate(text, 2000);
         int candidates = Math.min(200, Math.max(20, limit * 2));
         String lexicalQuery = OccupationDocument.lexicalQuery(text);
         var fts = lexicalQuery.isEmpty() ? List.<Hit>of() : jdbc.query("""
