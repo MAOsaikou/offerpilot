@@ -37,7 +37,7 @@ public class DemoAccountBootstrap implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        ensure();
+        if (enabled() && !config.sandboxEnabled()) ensure();
     }
 
     /** Also used by on-demand login/reset. Null means disabled or unsafe configuration. */
@@ -55,13 +55,13 @@ public class DemoAccountBootstrap implements ApplicationRunner {
         String hash = passwords.encode(config.password());
         return transaction.execute(status -> {
             jdbc.execute("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE");
-            var byEmail = jdbc.queryForList("SELECT id, is_demo, ('USER' = ANY(roles) AND NOT ('STAFF' = ANY(roles))) AS demo_role FROM users WHERE email = CAST(? AS citext)", email);
+            var byEmail = jdbc.queryForList("SELECT id, (is_demo AND demo_expires_at IS NULL) AS is_demo, ('USER' = ANY(roles) AND NOT ('STAFF' = ANY(roles))) AS demo_role FROM users WHERE email = CAST(? AS citext)", email);
             if (!byEmail.isEmpty() && (!Boolean.TRUE.equals(byEmail.get(0).get("is_demo"))
                     || !Boolean.TRUE.equals(byEmail.get(0).get("demo_role")))) {
                 log.warn("Demo bootstrap skipped: email belongs to an account without the demo USER role: {}", email);
                 return null;
             }
-            var demos = jdbc.queryForList("SELECT id FROM users WHERE is_demo = true AND 'USER' = ANY(roles) AND NOT ('STAFF' = ANY(roles)) ORDER BY created_at, id", String.class);
+            var demos = jdbc.queryForList("SELECT id FROM users WHERE is_demo = true AND demo_expires_at IS NULL AND 'USER' = ANY(roles) AND NOT ('STAFF' = ANY(roles)) ORDER BY created_at, id", String.class);
             if (byEmail.isEmpty() && demos.size() > 1) {
                 log.warn("Demo bootstrap skipped: multiple demo accounts; configure an existing demo email");
                 return null;

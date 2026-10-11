@@ -30,8 +30,11 @@ class RedisLlmUsageStoreIntegrationTest {
         first.check("deleted",1,"day",10,1000,reset,reset,true);
         first.addTokens("deleted","day",50,reset);
         first.addTokens("survivor","day",75,reset);
+        assertThat(second.tokens("deleted","day")).isEqualTo(50);
         first.erase("deleted");
         second.addTokens("deleted","day",99,reset);
+        assertThat(second.tokens("deleted","day")).isZero();
+        assertThat(second.tokens("survivor","day")).isEqualTo(75);
         assertThat(redis.hasKey("offerpilot:llm:{deleted}:rpm:1")).isFalse();
         assertThat(redis.hasKey("offerpilot:llm:{deleted}:tokens:day")).isFalse();
         assertThat(redis.opsForValue().get("offerpilot:llm:{survivor}:tokens:day")).isEqualTo("75");
@@ -61,6 +64,8 @@ class RedisLlmUsageStoreIntegrationTest {
             assertThat(redis.getExpire("offerpilot:llm:{shared}:rpm:1")).isBetween(1L, 60L);
             first.addTokens("shared", "day1", 12, dayReset);
             second.addTokens("shared", "day1", 8, dayReset);
+            assertThat(second.tokens("shared", "day1")).isEqualTo(20);
+            assertThat(second.tokens("shared", "day2")).isZero();
             assertThat(second.check("shared", 2, "day1", 3, 20, minuteReset, dayReset, true)).isEqualTo(2);
             assertThat(first.check("shared", 2, "day2", 3, 20, minuteReset, dayReset, true)).isZero();
             assertThat(second.check("other", 1, "day1", 3, 20, minuteReset, dayReset, true)).isZero();

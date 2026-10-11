@@ -118,6 +118,12 @@ offerpilot:
     email: ${DEMO_ACCOUNT_EMAIL:demo@offerpilot.local}
     password: ${DEMO_ACCOUNT_PASSWORD:}
     reset-cron: ${DEMO_RESET_CRON:0 0 4 * * *}
+    sandbox-enabled: ${DEMO_SANDBOX_ENABLED:true}
+    sandbox-ttl: ${DEMO_SANDBOX_TTL:24h}
+    sandbox-daily-token-limit: ${DEMO_SANDBOX_DAILY_TOKEN_LIMIT:200000}
+    sandbox-max-active: ${DEMO_SANDBOX_MAX_ACTIVE:30}
+    sandbox-max-per-day: ${DEMO_SANDBOX_MAX_PER_DAY:100}
+    sandbox-cleanup-delay-ms: ${DEMO_SANDBOX_CLEANUP_DELAY_MS:60000}
   storage:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}

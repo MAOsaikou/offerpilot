@@ -16,8 +16,12 @@ public class DemoController {
     private final DemoAccountBootstrap accounts;
     private final DemoResetService resets;
     private final PasswordLoginService logins;
+    private final DemoSandboxService sandboxes;
+    private final com.offerpilot.auth.application.CurrentUser users;
 
-    public DemoController(DemoAccountBootstrap accounts, DemoResetService resets, PasswordLoginService logins) {
+    public DemoController(DemoAccountBootstrap accounts, DemoResetService resets, PasswordLoginService logins, DemoSandboxService sandboxes, com.offerpilot.auth.application.CurrentUser users) {
+        this.sandboxes = sandboxes;
+        this.users = users;
         this.accounts = accounts;
         this.resets = resets;
         this.logins = logins;
@@ -26,9 +30,17 @@ public class DemoController {
     @PostMapping("/api/v1/auth/demo-login")
     public ApiResponse<PasswordLoginService.LoginResponse> demoLogin(HttpServletRequest request, HttpServletResponse response) {
         response.setHeader("Cache-Control", "no-store");
-        var login = accounts.login(logins);
-        resets.seedIfEmpty(login.user().id());
+        var login = sandboxes.enabled() ? sandboxes.login() : accounts.login(logins);
+        if (!sandboxes.enabled()) resets.seedIfEmpty(login.user().id());
         return ApiResponse.ok(login, TraceIdFilter.current(request));
+    }
+
+    @org.springframework.web.bind.annotation.GetMapping("/api/v1/demo/sandbox")
+    public ApiResponse<DemoSandboxService.Status> sandboxStatus(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            HttpServletRequest request, HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store");
+        return ApiResponse.ok(sandboxes.status(users.require(authorization)), TraceIdFilter.current(request));
     }
 
     @PostMapping("/api/v1/admin/demo/reset")

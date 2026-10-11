@@ -41,6 +41,12 @@ public final class RedisLlmUsageStore implements LlmUsageStore {
         } catch (BusinessException ex) { throw ex; }
         catch (RuntimeException ex) { throw new BusinessException(ErrorCode.CACHE_UNAVAILABLE); }
     }
+    @Override public long tokens(String owner, String day) {
+        try {
+            String value = redis.opsForValue().get(prefix(owner) + "tokens:" + day);
+            return value == null ? 0 : Long.parseLong(value);
+        } catch (RuntimeException ex) { throw new BusinessException(ErrorCode.CACHE_UNAVAILABLE); }
+    }
     @Override public void erase(String owner) {
         // Fence late accounting/admissions before removing counters; expires after all daily counters/runs.
         redis.opsForValue().set(prefix(owner) + "revoked", "1", java.time.Duration.ofHours(26));

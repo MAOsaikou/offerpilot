@@ -34,6 +34,9 @@ class JwtTokenServiceTest {
         assertThat(claims.get("roles", List.class)).containsExactly("USER");
         assertThat(Duration.between(claims.getIssuedAt().toInstant(), claims.getExpiration().toInstant()))
                 .isEqualTo(Duration.ofHours(12));
+        var expiry = java.time.Instant.now().plusSeconds(300);
+        var sandbox = tokens.parseAndVerify(tokens.issue("usr_sandbox", List.of("USER"), "Demo", expiry));
+        assertThat(sandbox.getExpiration().toInstant()).isEqualTo(expiry.truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
         var other = new JwtTokenService(properties("test-only-other-key-" + "b".repeat(64)));
         assertThatThrownBy(() -> tokens.parseAndVerify(other.issue("usr_private", List.of("USER"), "User")))
                 .isInstanceOfSatisfying(BusinessException.class,

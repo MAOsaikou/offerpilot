@@ -4,6 +4,7 @@ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import GenerationProgressDock from '@/shared/components/GenerationProgressDock.vue'
 import BrandMark from '@/shared/components/BrandMark.vue'
+import DemoBanner from '@/shared/components/DemoBanner.vue'
 import PageBoundary from './PageBoundary.vue'
 import { useWorkspace } from '@/shared/stores/workspace'
 import { useAuthStore } from '@/shared/stores/auth'
@@ -107,6 +108,7 @@ watch(
         /></RouterLink>
       </header>
       <main id="main-content" class="workspace-content">
+        <DemoBanner />
         <p v-if="workspace.storageError" class="error-banner" role="alert">
           {{ workspace.storageError }}
         </p>

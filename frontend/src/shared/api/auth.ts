@@ -123,3 +123,13 @@ export function deleteMyData(confirm: string): Promise<null> {
     signal: AbortSignal.timeout(120_000),
   })
 }
+
+export interface DemoSandboxStatus {
+  expiresAt: string
+  remainingSeconds: number
+  dailyTokenLimit: number
+  remainingTokens: number
+  budgetResetsAt: string
+}
+export const getDemoSandboxStatus = (signal?: AbortSignal) =>
+  apiRequest<DemoSandboxStatus>('/demo/sandbox', { signal })

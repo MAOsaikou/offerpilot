@@ -24,8 +24,12 @@ public class AccountDataCleanup {
             if (rows.isEmpty()) return;
             var row = rows.get(0);
             try {
-                if ("OBJECT".equals(row.get("kind"))) storage.remove((String) row.get("bucket"), (String) row.get("object_key"));
-                else quotas.erase((String) row.get("object_key"));
+                if ("OBJECT".equals(row.get("kind"))) {
+                    // A seed can commit before removing its upload reservation, then exit.
+                    if (jdbc.queryForObject("SELECT count(*) FROM files WHERE bucket=? AND object_key=?", Integer.class,
+                            row.get("bucket"), row.get("object_key")) == 0)
+                        storage.remove((String) row.get("bucket"), (String) row.get("object_key"));
+                } else quotas.erase((String) row.get("object_key"));
                 jdbc.update("DELETE FROM account_data_cleanup WHERE id=?", id);
             } catch (RuntimeException ex) {
                 jdbc.update("UPDATE account_data_cleanup SET attempts=attempts+1,next_attempt_at=now()+interval '1 minute' WHERE id=?", id);

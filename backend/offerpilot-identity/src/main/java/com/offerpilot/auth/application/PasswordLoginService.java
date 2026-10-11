@@ -39,7 +39,11 @@ public class PasswordLoginService {
         this.tokens = tokens;
     }
 
-    public record UserView(String id, String email, String nickname, List<String> roles, boolean isDemo) {}
+    public record UserView(String id, String email, String nickname, List<String> roles, boolean isDemo, Instant demoExpiresAt) {
+        public UserView(String id, String email, String nickname, List<String> roles, boolean isDemo) {
+            this(id, email, nickname, roles, isDemo, null);
+        }
+    }
 
     public record LoginResponse(String accessToken, long expiresIn, UserView user) {}
 
@@ -77,7 +81,7 @@ public class PasswordLoginService {
         List<String> roles = readRoles(claims);
         String status;
         try {
-            status = jdbc.queryForObject("SELECT status FROM users WHERE id = ?", String.class, userId);
+            status = jdbc.queryForObject("SELECT status FROM users WHERE id = ? AND (demo_expires_at IS NULL OR demo_expires_at>now())", String.class, userId);
         } catch (EmptyResultDataAccessException ex) {
             throw new BusinessException(ErrorCode.TOKEN_INVALID, "令牌对应的用户不存在");
         }
@@ -144,7 +148,7 @@ public class PasswordLoginService {
         validatePassword(password);
         List<Account> found = jdbc.query("""
                 SELECT id, email, password_hash, nickname, array_to_string(roles, ',') AS roles_csv, status, is_demo
-                FROM users WHERE email = ?
+                FROM users WHERE email = ? AND demo_expires_at IS NULL
                 """, (rs, i) -> new Account(rs.getString("id"), rs.getString("email"),
                 rs.getString("password_hash"), rs.getString("nickname"),
                 Arrays.stream(rs.getString("roles_csv").split(",")).filter(s -> !s.isBlank()).toList(),

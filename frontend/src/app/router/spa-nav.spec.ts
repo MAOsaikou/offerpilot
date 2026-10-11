@@ -9,6 +9,17 @@ import { registerGuards } from './guards'
 import { useAuthStore } from '@/shared/stores/auth'
 import { saveGuest, saveLogin } from '@/shared/utils/authSession'
 
+vi.mock('@/shared/api/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/shared/api/auth')>()),
+  getDemoSandboxStatus: vi.fn(async () => ({
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+    remainingSeconds: 3600,
+    dailyTokenLimit: 200000,
+    remainingTokens: 123456,
+    budgetResetsAt: new Date().toISOString(),
+  })),
+}))
+
 vi.mock('@/shared/api/generationTasks', () => ({
   listGenerationTasks: vi.fn(async () => []),
   cancelGenerationTask: vi.fn(async () => null),
@@ -178,11 +189,22 @@ it('preserves the logout guard and remounts pages when identity changes', async 
   saveLogin({
     accessToken: `e30.${btoa(JSON.stringify({ sub: 'nav-user', exp: Date.now() / 1000 + 43200 }))}.fixture`,
     expiresIn: 43200,
-    user: { id: 'nav-user', email: 'nav@example.com', nickname: '导航测试', roles: ['USER'] },
+    user: {
+      id: 'nav-user',
+      email: 'nav@example.com',
+      nickname: '导航测试',
+      roles: ['USER'],
+      isDemo: true,
+      demoExpiresAt: new Date(Date.now() + 3600000).toISOString(),
+    },
   })
   await nextTick()
   await expectPage('dashboard')
   await vi.waitFor(() => expect(root.querySelector('.app-shell')).not.toBe(oldShell))
+  await vi.waitFor(() => {
+    expect(root.querySelector('.demo-banner')?.textContent).toContain('独立体验沙箱')
+    expect(root.querySelector('.demo-banner')?.textContent).toContain('123,456')
+  })
   await router.push('/board')
   await expectPage('board')
   useAuthStore().logout()
@@ -194,6 +216,7 @@ it('preserves the logout guard and remounts pages when identity changes', async 
   saveGuest('guest-return-fixture')
   await router.push('/')
   await expectPage('dashboard')
+  expect(root.querySelector('.demo-banner')).toBeNull()
 })
 
 it('skips initial scroll layout but preserves navigation and history restoration', async () => {
