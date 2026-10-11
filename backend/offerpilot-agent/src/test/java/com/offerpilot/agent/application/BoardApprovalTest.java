@@ -55,6 +55,33 @@ class BoardApprovalTest {
         verify(applications).updateWithPatch("alice", "app1", new ApplicationService.Patch(null, "", null, null), "AGENT", "run_note");
     }
 
+    @Test void approvedUpdateNarrationIncludesAllPersistedFieldsAndClearedDate() throws Exception {
+        var update = step(Map.of("action", "updateApplicationStatus", "applicationId", "app1", "status", "INTERVIEW",
+                "note", "已约一面", "nextAction", "准备一面", "nextActionAt", ""));
+        when(applications.updateWithPatch(eq("alice"), eq("app1"), any(), eq("AGENT"), eq("run_update")))
+                .thenReturn(new ApplicationService.Application("app1", "job1", "INTERVIEW", "已约一面", "", "",
+                        new ObjectMapper().createObjectNode().put("company", "示例公司").put("title", "Java"), "准备一面", null));
+        var planner = mock(IntentPlanner.class);
+        when(planner.prepare(any(), anyString(), anyList(), any(), any(), anyMap())).thenReturn(Mono.just(
+                new IntentPlanner.Decision("single", ExpertType.JOB, 1.0, false, null, new Plan("更新", List.of(update)))));
+        var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
+        var events = new Orchestrator(planner, registry(boards)).run(AgentMode.JOB, "把阶段改成面试中，备注已约一面", List.of(), ModelTier.FLASH,
+                "run_update", new AtomicInteger(), reply, u -> {}, "alice", Map.of()).doOnNext(event -> {
+                    if (event instanceof AgentEvent.ApprovalRequired required) {
+                        verifyNoInteractions(applications);
+                        approvals.resolve("alice", "run_update", required.approvalId(), new ApprovalService.Decision("APPROVE", null, null));
+                    }
+                }).collectList().block(Duration.ofSeconds(3));
+        var card = events.stream().filter(AgentEvent.UiCard.class::isInstance).map(AgentEvent.UiCard.class::cast).findFirst().orElseThrow();
+        var payload = new ObjectMapper().valueToTree(card.payload());
+        var expected = new ObjectMapper().readTree("{\"status\":\"INTERVIEW\",\"note\":\"已约一面\",\"nextAction\":\"准备一面\",\"nextActionAt\":null}");
+        assertThat(payload.path("changedFields")).isEqualTo(expected);
+        assertThat(payload.path("application").path("note").asText()).isEqualTo("已约一面");
+        String narration = reply.stream().map(org.springframework.ai.chat.messages.Message::getText).collect(java.util.stream.Collectors.joining());
+        assertThat(narration).contains("changedFields", expected.toString(), "示例公司", "Java").doesNotContain("app1");
+        verify(applications).updateWithPatch("alice", "app1", new ApplicationService.Patch("INTERVIEW", "已约一面", "准备一面", ""), "AGENT", "run_update");
+    }
+
     @Test void rejectAndTimeoutResolveWithoutMutation() {
         for (boolean timeout : List.of(false, true)) {
             ApprovalService service = timeout ? new ApprovalService(conversations) {
