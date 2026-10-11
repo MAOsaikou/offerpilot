@@ -1,6 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { analyzeResume } from './diagnoses'
 vi.mock('./client', () => ({
+  ApiError: class extends Error {
+    constructor(message: string, options: { code: number }) {
+      super(message)
+      Object.assign(this, options)
+    }
+  },
   apiUrl: (path: string) => path,
   authenticatedHeaders: async () => ({ Authorization: 'Bearer fixture' }),
   fetchWithIdentity: (input: RequestInfo | URL, init: RequestInit) => fetch(input, init),
@@ -53,7 +59,8 @@ it('断流和服务端错误不能被当作成功报告', async () => {
           { type: 'ui.card', cardType: 'resume_diagnosis', payload: { reportId: 'diag1' } },
         ]),
       )
-      .mockResolvedValueOnce(response([{ type: 'error', message: '引文无效' }])),
+      .mockResolvedValueOnce(response([{ type: 'error', message: '引文无效' }]))
+      .mockResolvedValueOnce(response([{ type: 'error', code: 30205, message: '已取消' }])),
   )
   await expect(
     analyzeResume('r', 'v', 'id', new AbortController().signal, vi.fn()),
@@ -61,4 +68,7 @@ it('断流和服务端错误不能被当作成功报告', async () => {
   await expect(
     analyzeResume('r', 'v', 'id', new AbortController().signal, vi.fn()),
   ).rejects.toThrow('引文无效')
+  await expect(
+    analyzeResume('r', 'v', 'id', new AbortController().signal, vi.fn()),
+  ).rejects.toMatchObject({ code: 30205, message: '已取消' })
 })

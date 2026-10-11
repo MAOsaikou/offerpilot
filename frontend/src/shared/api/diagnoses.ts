@@ -1,4 +1,5 @@
 import {
+  ApiError,
   apiRequest,
   apiUrl,
   authenticatedHeaders,
@@ -50,12 +51,14 @@ export async function analyzeResume(
       reportId?: string
       cardType?: string
       payload?: ResumeDiagnosisReport
+      code?: number
       message?: string
       status?: string
     }
     if (event.type === 'run.started' && event.reportId) started(event.reportId)
     if (event.type === 'ui.card' && event.cardType === 'resume_diagnosis') report = event.payload
-    if (event.type === 'error') throw new Error(event.message || '诊断失败，请重试')
+    if (event.type === 'error')
+      throw new ApiError(event.message || '诊断失败，请重试', { code: event.code ?? 50000 })
     if (event.type === 'run.completed') {
       complete = event.status === 'COMPLETED'
       break

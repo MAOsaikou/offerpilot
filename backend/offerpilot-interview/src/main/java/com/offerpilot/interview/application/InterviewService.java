@@ -27,16 +27,24 @@ public class InterviewService {
     public InterviewService(JdbcTemplate jdbc, com.offerpilot.common.artifact.JobArtifacts artifacts) { this.jdbc = jdbc; this.artifacts=artifacts; }
 
     public record Summary(String id, String role, String kind, int questionIndex, boolean completed,
-                          String createdAt, String updatedAt) {}
+                          String createdAt, String updatedAt, String jobId) {
+        public Summary(String id, String role, String kind, int questionIndex, boolean completed, String createdAt, String updatedAt) {
+            this(id,role,kind,questionIndex,completed,createdAt,updatedAt,null);
+        }
+    }
     public record Answer(int questionIndex, String questionText, String answerText) {}
     public record Session(String id, String role, String kind, int questionIndex, boolean completed,
-                          String createdAt, String updatedAt, List<Answer> answers) {}
+                          String createdAt, String updatedAt, List<Answer> answers, String jobId) {
+        public Session(String id, String role, String kind, int questionIndex, boolean completed, String createdAt, String updatedAt, List<Answer> answers) {
+            this(id,role,kind,questionIndex,completed,createdAt,updatedAt,answers,null);
+        }
+    }
 
     private Summary summary(ResultSet rs, int row) throws SQLException {
         return new Summary(rs.getString("id"), rs.getString("role"), rs.getString("kind"),
                 rs.getInt("question_index"), rs.getBoolean("completed"),
                 rs.getTimestamp("created_at").toInstant().toString(),
-                rs.getTimestamp("updated_at").toInstant().toString());
+                rs.getTimestamp("updated_at").toInstant().toString(), rs.getString("job_id"));
     }
 
     @Transactional(readOnly = true)
@@ -90,7 +98,7 @@ public class InterviewService {
                 """, (rs, row) -> new Answer(rs.getInt("question_index"), rs.getString("question_text"),
                 rs.getString("answer_text")), id, owner);
         return new Session(session.id(), session.role(), session.kind(), session.questionIndex(), session.completed(),
-                session.createdAt(), session.updatedAt(), answers);
+                session.createdAt(), session.updatedAt(), answers, session.jobId());
     }
 
     @Transactional

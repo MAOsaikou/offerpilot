@@ -5,7 +5,7 @@ import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { checkPrivacyFile } from '@/shared/api/privacy-settings'
-import { listResumes, uploadResume } from '@/shared/api/resumes'
+import { listResumes, uploadResume, validateResumeFile } from '@/shared/api/resumes'
 import { resumeStatus } from '@/shared/types/resume'
 import { useWorkspace } from '@/shared/stores/workspace'
 const workspace = useWorkspace()
@@ -44,7 +44,11 @@ async function importFile(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
-  error.value = ''
+  error.value = validateResumeFile(file) || ''
+  if (error.value) {
+    input.value = ''
+    return
+  }
   importing.value = true
   try {
     const risk = await checkPrivacyFile(file)

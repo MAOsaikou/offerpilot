@@ -94,7 +94,8 @@ it('取消显式调用接口，失败有可重试反馈', async () => {
   await vi.waitFor(() => expect(root.textContent).toContain('取消诊断'))
   button('取消诊断').click()
   await vi.waitFor(() => expect(cancelDiagnosis).toHaveBeenCalledWith('d1'))
-  await vi.waitFor(() => expect(root.textContent).toContain('诊断连接已停止'))
+  await vi.waitFor(() => expect(root.textContent).toContain('诊断已取消'))
+  expect(root.querySelector('[role="alert"]')).toBeNull()
 })
 it('读取历史报告不重新调用模型，显示旧版本并传递讨论上下文', async () => {
   await mount(false)

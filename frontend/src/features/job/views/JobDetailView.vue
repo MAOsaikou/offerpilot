@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isGenerationCancelled } from '@/shared/api/client'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import type { ModelTier } from '@/shared/types/model-tier'
 import { RouterLink, useRoute } from 'vue-router'
@@ -64,6 +65,7 @@ const busy = ref(false),
   reportLoading = ref(false),
   error = ref(''),
   refreshError = ref(''),
+  cancelled = ref(false),
   report = ref<EvidenceMatch>()
 let generation = 0,
   reportRequest = 0
@@ -76,6 +78,7 @@ watch(id, () => {
   refreshing.value = false
   reportLoading.value = false
   error.value = ''
+  cancelled.value = false
   refreshError.value = ''
 })
 watch(resumeId, () => {
@@ -132,6 +135,7 @@ async function analyze() {
     elapsed.value = Math.floor((Date.now() - started) / 1000)
   }, 1000)
   error.value = ''
+  cancelled.value = false
   report.value = undefined
   reportRequest++
   try {
@@ -144,7 +148,10 @@ async function analyze() {
     )
     if (epoch === generation) report.value = value
   } catch (e) {
-    if (epoch === generation) error.value = (e as Error).message
+    if (epoch === generation) {
+      cancelled.value = isGenerationCancelled(e)
+      if (!cancelled.value) error.value = (e as Error).message
+    }
   } finally {
     if (epoch === generation) {
       stopProgress()
@@ -158,6 +165,7 @@ async function openReport(reportId: string) {
   const request = ++reportRequest
   reportLoading.value = true
   error.value = ''
+  cancelled.value = false
   report.value = undefined
   try {
     const value = await getJobMatch(reportId)
@@ -166,7 +174,10 @@ async function openReport(reportId: string) {
       report.value = value
     }
   } catch (e) {
-    if (request === reportRequest) error.value = (e as Error).message
+    if (request === reportRequest) {
+      cancelled.value = isGenerationCancelled(e)
+      if (!cancelled.value) error.value = (e as Error).message
+    }
   } finally {
     if (request === reportRequest) reportLoading.value = false
   }
@@ -425,6 +436,7 @@ watch(
           {{ modelTier === 'PRO' ? '深度模式正在分析原文证据' : '正在分析原文证据' }} · 已等待
           {{ elapsed }} 秒。 报告完成后自动保存；离开页面后可从匹配记录查看结果。
         </p>
+        <p v-if="cancelled" role="status">匹配已取消，可重新生成报告。</p>
         <div v-if="error" class="error-banner" role="alert">
           {{ error }}
           <button class="btn" @click="history.refetch()">刷新匹配记录</button>
@@ -463,7 +475,9 @@ watch(
                 ? item.score + '/100'
                 : item.status === 'RUNNING'
                   ? '处理中'
-                  : '分析失败，可重新生成'
+                  : item.status === 'CANCELLED'
+                    ? '已取消，可重新生成'
+                    : '分析失败，可重新生成'
             }}</span
           ><button
             v-if="item.status === 'COMPLETED'"

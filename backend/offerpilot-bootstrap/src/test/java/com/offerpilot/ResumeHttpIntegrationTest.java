@@ -39,6 +39,8 @@ import static org.assertj.core.api.Assertions.*;
 @Testcontainers
 class ResumeHttpIntegrationTest {
     @Autowired ResumeDiagnosisService diagnoses;
+    @org.springframework.boot.test.mock.mockito.SpyBean ResumeDiagnoser diagnoser;
+    @org.springframework.boot.test.mock.mockito.SpyBean ResumeOptimizer optimizer;
     @Container static PostgreSQLContainer<?> database = new PostgreSQLContainer<>(DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
     // quay.io/minio/minio 匿名 token 的 actions 为空，manifest 返回 UNAUTHORIZED。
     // 固定 adobe/s3mock:5.2.0 的清单 digest。Testcontainers 1.21 不能同时解析 tag 与 digest。
@@ -158,14 +160,44 @@ class ResumeHttpIntegrationTest {
         assertThatThrownBy(() -> diagnoses.report(owner(token),id,updated.currentVersionId(),reportId)).hasMessageContaining("不存在");
         assertThat(request("POST","/resumes/"+id+"/versions/"+updated.currentVersionId()+"/analyze",token,body).statusCode()).isEqualTo(400);
     }
+    private void cancelStream(String token, String path, String body, String listPath, String kind,
+                              java.util.concurrent.CountDownLatch started, java.util.concurrent.CountDownLatch stopped) throws Exception {
+        var req=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1"+path))
+                .header("Authorization","Bearer "+token).header("Content-Type","application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+        var inFlight=HttpClient.newHttpClient().sendAsync(req,HttpResponse.BodyHandlers.ofString());
+        try {
+            assertThat(started.await(15,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            String taskId=data(request("GET",listPath,token,null)).get(0).path("id").asText();
+            assertThat(request("POST","/generation-tasks/"+kind+"/"+taskId+"/cancel",token,null).statusCode()).isEqualTo(200);
+            var response=inFlight.get(15,java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(response.body()).contains("event:error","30205","已取消").doesNotContain("event:ui.card","过期");
+            assertThat(stopped.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(data(request("GET",listPath,token,null)).toString()).contains("CANCELLED");
+        } finally { inFlight.cancel(true); }
+    }
+
     @Test void diagnosisCancellationExpirationAndInvalidOutputCannotPublishReport() throws Exception {
         String token=identities.create().accessToken();
         String id=data(upload(token,"cancel.txt","虚构简历".getBytes(StandardCharsets.UTF_8))).path("id").asText(); worker.processNext();
         String version=resumes.get(owner(token),id).currentVersionId();
+        var started=new java.util.concurrent.CountDownLatch(1);
+        var stopped=new java.util.concurrent.CountDownLatch(1);
+        org.mockito.Mockito.doReturn(reactor.core.publisher.Mono.<com.fasterxml.jackson.databind.node.ObjectNode>never()
+                .doOnSubscribe(ignored -> started.countDown()).doOnCancel(stopped::countDown))
+                .when(diagnoser).diagnose(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any());
+        cancelStream(token,"/resumes/"+id+"/versions/"+version+"/analyze",
+                "{\"requestId\":\"diagnosis-request-dock\"}","/resumes/"+id+"/diagnoses","RESUME_DIAGNOSIS",started,stopped);
+        org.mockito.Mockito.reset(diagnoser);
         var work=diagnoses.begin(owner(token),id,version,"diagnosis-request-cancel");
         assertThatThrownBy(() -> diagnoses.begin(owner(token),id,version,"diagnosis-request-other")).hasMessageContaining("进行中");
         diagnoses.cancel(owner(token),work.id());
-        assertThatThrownBy(() -> diagnoses.execute(work).block(Duration.ofSeconds(3))).hasMessageContaining("取消");
+        assertThat(request("POST","/resumes/"+id+"/versions/"+version+"/analyze",token,
+                "{\"requestId\":\"diagnosis-request-cancel\"}").statusCode()).isEqualTo(409);
+        assertThatThrownBy(() -> diagnoses.execute(work).block(Duration.ofSeconds(3)))
+                .isInstanceOfSatisfying(com.offerpilot.common.error.BusinessException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(com.offerpilot.common.error.ErrorCode.GENERATION_CANCELLED));
         assertThat(diagnoses.get(owner(token),work.id()).path("status").asText()).isEqualTo("CANCELLED");
         assertThat(diagnoses.get(owner(token),work.id()).has("report")).isFalse();
         var expired=diagnoses.begin(owner(token),id,version,"diagnosis-request-expired");
@@ -179,6 +211,12 @@ class ResumeHttpIntegrationTest {
     }
     @Test void uploadParseEditRestoreAndOwnership() throws Exception {
         String token = identities.create().accessToken(), stranger = identities.create().accessToken();
+        for (int size : new int[] {10 * 1024 * 1024 + 1, 16 * 1024 * 1024}) {
+            var oversized=upload(token,"oversized.pdf",new byte[size]);
+            assertThat(oversized.statusCode()).isEqualTo(413);
+            assertThat(oversized.headers().firstValue("Content-Type").orElse("")).contains("application/json");
+            assertThat(oversized.body()).contains("10003","简历文件不能超过 10MB");
+        }
         var uploaded = upload(token, "resume.txt", "张同学 软件工程 Java".getBytes(StandardCharsets.UTF_8));
         assertThat(uploaded.statusCode()).isEqualTo(200);
         String id = data(uploaded).path("id").asText();
@@ -449,10 +487,20 @@ class ResumeHttpIntegrationTest {
         var input=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(optimizeBody("optimize-request-fields"));input.put("jobId","guessed");
         assertThat(request("POST",path,token,input.toString()).statusCode()).isEqualTo(404);
         assertThat(request("POST",path,token,optimizeBody("short")).statusCode()).isEqualTo(400);
+        var started=new java.util.concurrent.CountDownLatch(1);
+        var stopped=new java.util.concurrent.CountDownLatch(1);
+        org.mockito.Mockito.doReturn(reactor.core.publisher.Mono.<com.fasterxml.jackson.databind.node.ObjectNode>never()
+                .doOnSubscribe(ignored -> started.countDown()).doOnCancel(stopped::countDown))
+                .when(optimizer).optimize(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any());
+        cancelStream(token,path,optimizeBody("optimize-request-dock"),"/resumes/"+resume.id()+"/optimizations","RESUME_OPTIMIZE",started,stopped);
+        org.mockito.Mockito.reset(optimizer);
         var work=optimizations.begin(owner(token),resume.id(),resume.currentVersionId(),new ResumeOptimizationService.Input("optimize-request-cancel",OPTIMIZE_JD));
         assertThat(request("POST",path,token,optimizeBody("optimize-request-other")).statusCode()).isEqualTo(429);
         optimizations.cancel(owner(token),work.id());
-        assertThatThrownBy(() -> optimizations.execute(work).block(Duration.ofSeconds(3))).hasMessageContaining("取消");
+        assertThat(request("POST",path,token,optimizeBody("optimize-request-cancel")).statusCode()).isEqualTo(409);
+        assertThatThrownBy(() -> optimizations.execute(work).block(Duration.ofSeconds(3)))
+                .isInstanceOfSatisfying(com.offerpilot.common.error.BusinessException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(com.offerpilot.common.error.ErrorCode.GENERATION_CANCELLED));
         var expired=optimizations.begin(owner(token),resume.id(),resume.currentVersionId(),new ResumeOptimizationService.Input("optimize-request-expired",OPTIMIZE_JD));
         jdbc.update("UPDATE resume_optimizations SET created_at=now()-interval '4 minutes' WHERE id=?",expired.id());
         assertThatThrownBy(() -> optimizations.execute(expired).block(Duration.ofSeconds(3))).hasMessageContaining("过期");

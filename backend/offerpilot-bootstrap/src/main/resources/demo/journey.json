@@ -303,32 +303,44 @@
     {
       "jobIndex": 0,
       "status": "TODO",
-      "note": "准备核对岗位要求并调整简历"
+      "note": "准备核对岗位要求并调整简历",
+      "nextAction": "核对 Java 岗位要求，补充预约接口的并发测试证据",
+      "nextActionDayOffset": 0
     },
     {
       "jobIndex": 1,
       "status": "TODO",
-      "note": "补充项目测试记录后再投递"
+      "note": "补充项目测试记录后再投递",
+      "nextAction": "整理项目测试记录，给简历补上一条可验证结果",
+      "nextActionDayOffset": -1
     },
     {
       "jobIndex": 2,
       "status": "APPLIED",
-      "note": "已提交简历，等待反馈"
+      "note": "已提交简历，等待反馈",
+      "nextAction": "查看官网申请进度，记录是否需要跟进",
+      "nextActionDayOffset": 3
     },
     {
       "jobIndex": 3,
       "status": "INTERVIEW",
-      "note": "已约技术面，准备项目 STAR 故事"
+      "note": "已约技术面，准备项目 STAR 故事",
+      "nextAction": "练习两分钟项目介绍，复盘唯一约束与事务的取舍",
+      "nextActionDayOffset": 1
     },
     {
       "jobIndex": 4,
       "status": "OFFER",
-      "note": "收到虚构录用意向，练习比较岗位"
+      "note": "收到虚构录用意向，练习比较岗位",
+      "nextAction": "列出培养计划、工作地点与薪酬问题，准备沟通",
+      "nextActionDayOffset": 5
     },
     {
       "jobIndex": 5,
       "status": "CLOSED",
-      "note": "岗位方向不匹配，记录复盘"
+      "note": "岗位方向不匹配，记录复盘",
+      "nextAction": "",
+      "nextActionDayOffset": null
     }
   ],
   "interviews": [

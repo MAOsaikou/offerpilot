@@ -42,6 +42,7 @@ public class ResumeDiagnosisService {
             if (!previous.isEmpty()) {
                 var row=previous.get(0);
                 if (!versionId.equals(row.get("version_id"))) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请求标识不能用于不同简历版本");
+                if ("CANCELLED".equals(row.get("status"))) throw new BusinessException(ErrorCode.GENERATION_CANCELLED);
                 if ("SUCCEEDED".equals(row.get("status"))) return new Work(row.get("id").toString(), owner, resumeId, version, tier, parse(row.get("report").toString()));
                 throw new BusinessException(ErrorCode.CONCURRENT_RUN_LIMIT, "本次请求正在处理或已结束，请刷新报告；重试需使用新的请求标识");
             }
@@ -60,15 +61,15 @@ public class ResumeDiagnosisService {
             var cancellation = Sinks.<Boolean>one();
             if (cancellations.putIfAbsent(work.id(), cancellation) != null) return Mono.error(new BusinessException(ErrorCode.CONCURRENT_RUN_LIMIT));
             return Mono.defer(() -> {
-                if (!"RUNNING".equals(get(work.owner(), work.id()).path("status").asText())) return Mono.error(cancelled());
+                if (!"RUNNING".equals(get(work.owner(), work.id()).path("status").asText())) return Mono.error(cancelled(work));
                 return diagnoser.diagnose(work.version().structured(), work.tier());
-            }).takeUntilOther(cancellation.asMono()).switchIfEmpty(Mono.error(cancelled()))
+            }).takeUntilOther(cancellation.asMono()).switchIfEmpty(Mono.defer(() -> Mono.error(cancelled(work))))
                 .publishOn(Schedulers.boundedElastic()).<JsonNode>map(report -> {
                     report.put("reportId", work.id()).put("resumeId", work.resumeId()).put("versionId", work.version().id())
                         .put("versionNo", work.version().versionNo()).put("createdAt", Instant.now().toString());
                     if (report.toString().length() > 30000) throw ResumeDiagnosisValidator.invalid();
                     int saved=jdbc.update("UPDATE resume_diagnoses SET status='SUCCEEDED',report=?::jsonb,updated_at=now() WHERE id=? AND user_id=? AND status='RUNNING'", report.toString(), work.id(), work.owner());
-                    if (saved != 1) throw cancelled();
+                    if (saved != 1) throw cancelled(work);
                     return report;
                 }).doOnError(error -> {
                     String message=error instanceof BusinessException b ? b.getMessage() : "诊断服务暂时异常，请重试";
@@ -119,5 +120,9 @@ public class ResumeDiagnosisService {
     }
     private JsonNode parse(String value) { try { return json.readTree(value); } catch (Exception ex) { throw new IllegalStateException(ex); } }
     private static BusinessException notFound() { return new BusinessException(ErrorCode.RESUME_NOT_FOUND, "诊断报告不存在或无权访问"); }
-    private static BusinessException cancelled() { return new BusinessException(ErrorCode.RUN_ALREADY_FINISHED, "诊断已取消或过期，请刷新报告状态"); }
+    private BusinessException cancelled(Work work) {
+        if ("CANCELLED".equals(get(work.owner(),work.id()).path("status").asText()))
+           return new BusinessException(ErrorCode.GENERATION_CANCELLED);
+        return new BusinessException(ErrorCode.RUN_ALREADY_FINISHED, "诊断已结束或过期，请刷新报告状态");
+    }
 }

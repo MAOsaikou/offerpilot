@@ -89,7 +89,7 @@ class JobsSnapshotHttpIntegrationTest {
         jdbc.update("INSERT INTO resumes(id,user_id,title,source_file_id,parse_status) VALUES (?,?,'虚构简历',?,'READY')", resumeId, owner, resumeId);
         jdbc.update("INSERT INTO resume_versions(id,resume_id,user_id,version_no,source,structured,plain_text) VALUES (?,?,?,1,'UPLOAD','{\"summary\":\"Java项目\"}'::jsonb,'Java项目')", resumeId, resumeId, owner);
         jdbc.update("UPDATE resumes SET current_version_id=? WHERE id=?", resumeId, resumeId);
-        when(matcher.match(any(), any())).thenAnswer(invocation -> json.readTree("""
+        when(matcher.match(any(), any(), isNull(), any())).thenAnswer(invocation -> json.readTree("""
             {"summary":"核实过的Java依据","score":100,"requirements":[{"requirement":"Java","status":"MET","jdQuote":"Java","resumePath":"/summary","resumeQuote":"Java项目","reason":"项目证据","suggestion":"核对细节"}]}
             """));
         for (String source : new String[]{"demo", "company-career-site", "LOCAL_SNAPSHOT"}) {
@@ -113,6 +113,36 @@ class JobsSnapshotHttpIntegrationTest {
             if (!source.equals("company-career-site")) verifyNoInteractions(live);
             else verify(live, times(2)).call(eq("get_job_detail"), anyMap());
         }
+        // Missing or non-object matcher output must fail cleanly without a persisted report.
+        String id = "job_" + java.util.UUID.randomUUID();
+        jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES (?,'demo',?,'intern',?::jsonb)",
+            id, id, json.createObjectNode().put("source", "demo").put("requirement", "Java").toString());
+        for (JsonNode invalid : new JsonNode[]{null, json.nullNode(), json.createArrayNode()}) {
+            when(matcher.match(any(), any(), isNull(), any())).thenReturn(invalid);
+            String requestId = java.util.UUID.randomUUID().toString();
+            var response = http("POST", "/jobs/" + id + "/matches", token, java.util.Map.of("resumeId", resumeId,
+                "resumeVersionId", resumeId, "requestId", requestId));
+            assertThat(response.statusCode()).isEqualTo(422);
+            assertThat(json.readTree(response.body()).path("code").asInt()).isEqualTo(40003);
+            assertThat(jdbc.queryForObject("SELECT status FROM job_matches WHERE user_id=? AND request_id=?", String.class, owner, requestId))
+                .isEqualTo("FAILED");
+            assertThat(jdbc.queryForObject("SELECT report IS NULL FROM job_matches WHERE user_id=? AND request_id=?", Boolean.class, owner, requestId))
+                .isTrue();
+        }
+        String cancelledRequestId = java.util.UUID.randomUUID().toString();
+        when(matcher.match(any(), any(), isNull(), any())).thenAnswer(invocation -> {
+            String matchId = jdbc.queryForObject("SELECT id FROM job_matches WHERE user_id=? AND request_id=?", String.class, owner, cancelledRequestId);
+            matches.cancel(owner, matchId);
+            return null;
+        });
+        var cancelled = http("POST", "/jobs/" + id + "/matches", token, java.util.Map.of("resumeId", resumeId,
+            "resumeVersionId", resumeId, "requestId", cancelledRequestId));
+        assertThat(cancelled.statusCode()).isEqualTo(409);
+        assertThat(json.readTree(cancelled.body()).path("code").asInt()).isEqualTo(30205);
+        assertThat(jdbc.queryForObject("SELECT status FROM job_matches WHERE user_id=? AND request_id=?", String.class, owner, cancelledRequestId))
+            .isEqualTo("CANCELLED");
+        assertThat(jdbc.queryForObject("SELECT report IS NULL FROM job_matches WHERE user_id=? AND request_id=?", Boolean.class, owner, cancelledRequestId))
+            .isTrue();
     }
     private HttpResponse<String> http(String method, String path, String token, Object body) throws Exception {
         var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1" + path))
