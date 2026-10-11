@@ -84,10 +84,10 @@ public class MemoryChat {
                 Flux<AgentEvent> resolved = Flux.defer(() -> Flux.just(new AgentEvent.ApprovalResolved("approval.resolved",
                         seq.incrementAndGet(), runId, Instant.now(), ticket.id(), decision.decision())));
                 Mono<String> save = !"APPROVE".equals(decision.decision())
-                        ? Mono.just("TIMEOUT".equals(decision.decision()) ? "审批已超时，未保存记忆" : "你已拒绝，未保存记忆")
+                        ? Mono.just("TIMEOUT".equals(decision.decision()) ? "审批已超时，未保存记忆" : "你已拒绝，未保存记忆。可以重新发起。")
                         : Mono.fromCallable(() -> {
-                            var memory = memories.saveApproved(owner, runId, candidate);
-                            return "记忆已保存，可在设置中管理（" + memory.id() + "）";
+                            java.util.Objects.requireNonNull(memories.saveApproved(owner, runId, candidate));
+                            return "记忆已保存，可在设置中管理。";
                         }).subscribeOn(Schedulers.boundedElastic());
                 return resolved.concatWith(save.map(summary -> (AgentEvent) new AgentEvent.ToolResult("tool.result",
                                 seq.incrementAndGet(), runId, Instant.now(), null, callId, ACTION,

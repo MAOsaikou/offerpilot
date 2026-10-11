@@ -46,7 +46,13 @@ class InterviewHttpIntegrationTest extends SharedHttpIntegrationTest {
     @Test
     void createListDetailAnswerProgressAndCompletionPersistForGuest() throws Exception {
         String token = guests.create().accessToken();
-        String id = create(token);
+        String jobId = "job_interview_" + UUID.randomUUID();
+        jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES (?,'fixture',?,'campus',?::jsonb)",
+                jobId, jobId, "{\"title\":\"Java 工程师\",\"company\":\"示例公司\"}");
+        var created = data(request("POST", "", token, Map.of("role", "  Java 工程师  ", "kind", "项目与经历", "jobId", jobId)));
+        String id = created.path("id").asText();
+        assertThat(java.util.List.of(created, data(request("GET", "/" + id, token, null)), data(request("GET", "", token, null)).get(0)))
+                .extracting(n -> n.path("jobId").asText()).containsOnly(jobId);
         var list = data(request("GET", "", token, null));
         assertThat(list.size()).isEqualTo(1);
         assertThat(list.get(0).path("role").asText()).isEqualTo("Java 工程师");

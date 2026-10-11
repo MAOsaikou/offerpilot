@@ -44,7 +44,7 @@ public class CoachEvidenceAdapter implements CoachEvidence {
                     .filter(d -> d.path("score").asInt() < 60)
                     .sorted(Comparator.comparingInt((JsonNode d) -> d.path("score").asInt())
                             .thenComparing(d -> d.path("code").asText())).limit(2)
-                    .forEach(d -> gaps.add(new Gap("岗位 " + d.path("code").asText() + " · " + d.path("name").asText(),
+                    .forEach(d -> gaps.add(new Gap("岗位评估：" + d.path("name").asText(),
                             30, d.path("score").asInt(), new Evidence("JOB_MATCH", id, label,
                             bounded(d.path("score").asInt() + "/100；" + d.path("reason").asText()), selectedJob))));
         }
@@ -52,17 +52,17 @@ public class CoachEvidenceAdapter implements CoachEvidence {
             var rubric = InterviewRubric.score(session);
             var d = rubric.dimensions();
             String label = "面试复盘 · " + session.role();
-            var dimensions = Map.of("专业", d.professional(), "表达", d.expression(), "逻辑", d.logic(), "岗位匹配", d.jobFit());
+            var dimensions = Map.of("专业内容", d.professional(), "表达清晰度", d.expression(), "逻辑结构", d.logic(), "岗位关联", d.jobFit());
             dimensions.entrySet().stream().filter(e -> e.getValue() < 60)
                     .sorted(Map.Entry.<String,Integer>comparingByValue().thenComparing(Map.Entry.comparingByKey()))
-                    .limit(2).forEach(e -> gaps.add(new Gap("面试 " + e.getKey(), 10, e.getValue(),
-                            new Evidence("INTERVIEW", session.id(), label, e.getKey() + "：" + e.getValue() + "/100（文字规则线索）"))));
+                    .limit(2).forEach(e -> gaps.add(new Gap("面试表现：" + e.getKey(), 10, e.getValue(),
+                            new Evidence("INTERVIEW", session.id(), label, e.getKey() + "：" + e.getValue() + "/100（文字规则线索）", session.jobId()))));
             // Retain at most two lowest-STAR answers; never copy full private answers into prompts/cards.
             rubric.turns().stream().filter(t -> t.star().count() < 3)
                     .sorted(Comparator.comparingInt(t -> t.star().count())).limit(2)
                     .forEach(t -> gaps.add(new Gap("STAR 回答结构", 11, t.star().count() * 25,
                             new Evidence("INTERVIEW", session.id(), label, bounded("STAR " + t.star().count()
-                                    + "/4；题目：" + t.question() + "；" + t.feedback())))));
+                                    + "/4；题目：" + t.question() + "；" + t.feedback()), session.jobId()))));
         }
         return new Snapshot(report != null, session != null, List.copyOf(gaps));
     }

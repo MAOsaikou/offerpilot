@@ -62,7 +62,7 @@ class OrchestratorTest {
         assertThat(events).extracting(AgentEvent::id).containsExactlyElementsOf(java.util.stream.IntStream.rangeClosed(1,13).boxed().toList());
         var plan = (AgentEvent.PlanCreated) events.get(0);
         assertThat(plan.steps()).extracting(AgentEvent.PlanStepView::id).containsExactly("s1", "s2", "s3");
-        verify(experts).execute(eq("owner"), eq(Map.of()), eq("run"), argThat(s -> s.id().equals("s2")), argThat(upstream -> upstream.get("s1").contains("占位")));
+        verify(experts).execute(eq("owner"), eq(Map.of()), eq("run"), argThat(s -> s.id().equals("s2")), argThat(upstream -> upstream.get("s1").contains("未执行")));
         var call = (AgentEvent.ToolCall) events.get(2);
         var result = (AgentEvent.ToolResult) events.get(3);
         assertThat(result.toolCallId()).isEqualTo(call.toolCallId());
@@ -96,7 +96,7 @@ class OrchestratorTest {
         assertThat(run(AgentMode.AUTO).collectList().block(Duration.ofSeconds(3))).isEmpty();
         verify(gateway, times(3)).stream(any(), anyList(), eq(0.1));
         verify(experts, never()).execute(any(), any(), any(), any(), anyMap());
-        assertThat(reply.get(0).getText()).contains("降级");
+        assertThat(reply.get(0).getText()).contains("未执行请求", "文字建议", "重试").doesNotContain("规划", "编排");
     }
 
     @Test void chitchatClarificationAndUnsafeDoNotRunExperts() {
@@ -141,12 +141,8 @@ class OrchestratorTest {
         assertThat(reply.get(0).getText()).contains(expectedRule);
         assertDelimitedData(payload, injection);
         assertThat(reply.get(1).getText()).contains("失败或跳过的步骤：");
-        if (path.equals("business-failed")) {
-            String failedSteps = reply.get(1).getText().split("失败或跳过的步骤：", 2)[1];
-            assertThat(failedSteps).contains("s1", "s2", "s3");
-        } else {
-            assertThat(reply.get(1).getText()).endsWith("失败或跳过的步骤：\n</orchestrator-data>");
-        }
+        assertThat(reply.get(1).getText()).contains("失败或跳过的步骤：" + (path.equals("business-failed") ? 3 : 0) + " 项")
+                .doesNotContain("s1", "s2", "s3");
     }
 
     @Test void clarifyingQuestionRemainsDelimitedDataWithoutExecutingExperts() throws Exception {

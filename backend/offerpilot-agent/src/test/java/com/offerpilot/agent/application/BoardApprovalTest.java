@@ -44,6 +44,7 @@ class BoardApprovalTest {
         var accepted = approvals.resolve("alice", "run_create", ticket.id(), new ApprovalService.Decision("APPROVE", Map.of("nextAction", "准备 STAR", "nextActionAt", "2026-10-12"), null));
         var created = boards.execute("alice", "run_create", create, accepted).block(Duration.ofSeconds(3));
         assertThat(new ObjectMapper().valueToTree(created.card().payload()).path("change").asText()).isEqualTo("CREATED");
+        assertThat(created.summary()).contains("示例公司", "Java", "待投递").doesNotContain("app1");
         verify(applications).createWithPatch("alice", "job1", new ApplicationService.Patch("TODO", "收藏备注", "准备 STAR", "2026-10-12"), "run_create");
 
         var update = step(Map.of("action", "updateApplicationStatus", "applicationId", "app1", "note", ""));
@@ -64,8 +65,9 @@ class BoardApprovalTest {
             var planner = mock(IntentPlanner.class);
             when(planner.prepare(any(), anyString(), anyList(), any(), any(), anyMap())).thenReturn(Mono.just(
                     new IntentPlanner.Decision("single", ExpertType.JOB, 1.0, false, null, new Plan("新建", List.of(step(Map.of("action", "createApplication", "jobId", "job1")))))));
+            var reply = new ArrayList<org.springframework.ai.chat.messages.Message>();
             var events = new Orchestrator(planner, registry(new BoardWriteTools(applications, service))).run(AgentMode.AUTO, "新建", List.of(), ModelTier.FLASH,
-                    "run_reject", new AtomicInteger(), new ArrayList<>(), u -> {}, "alice", Map.of()).doOnNext(event -> {
+                    "run_reject", new AtomicInteger(), reply, u -> {}, "alice", Map.of()).doOnNext(event -> {
                         if (!timeout && event instanceof AgentEvent.ApprovalRequired required)
                             service.resolve("alice", "run_reject", required.approvalId(), new ApprovalService.Decision("REJECT", null, null));
                     }).collectList().block(Duration.ofSeconds(3));
@@ -76,9 +78,12 @@ class BoardApprovalTest {
             assertThat(events).anySatisfy(e -> {
                 assertThat(e).isInstanceOf(AgentEvent.ToolResult.class);
                 assertThat(((AgentEvent.ToolResult)e).ok()).isFalse();
-                assertThat(((AgentEvent.ToolResult)e).resultPreview()).isEqualTo(timeout ? "审批已超时" : "用户拒绝了该操作");
+                assertThat(((AgentEvent.ToolResult)e).resultPreview()).isEqualTo(timeout ? "确认已超时，看板修改未执行，数据未改动。可以重新发起。" : "你已拒绝，看板修改未执行，数据未改动。可以重新发起。");
             });
             assertThat(events).noneMatch(AgentEvent.UiCard.class::isInstance);
+            assertThat(reply.stream().map(org.springframework.ai.chat.messages.Message::getText).collect(java.util.stream.Collectors.joining()))
+                    .contains(timeout ? "确认已超时" : "你已拒绝", "数据未改动", "重新发起")
+                    .doesNotContain("本轮真实业务调用未成功", "s1：", "run_reject", "job1");
         }
         verifyNoInteractions(applications);
     }

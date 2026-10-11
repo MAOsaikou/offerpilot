@@ -319,6 +319,23 @@ public class ExpertRegistry {
         return execute(owner, context, runId, step, upstreamOutputs, null);
     }
 
+    public Mono<PlanStep> prepareInterview(String owner, PlanStep step) {
+        if (interviews == null || step.agent() != ExpertType.INTERVIEWER
+                || !"continueInterview".equals(step.inputs().get("action"))) return Mono.just(step);
+        return Mono.fromCallable(() -> {
+            String id = interviews.resolveSession(owner, text(step.inputs().get("sessionId")), false);
+            var session = interviews.session(owner, id);
+            var inputs = new java.util.LinkedHashMap<>(step.inputs());
+            inputs.put("sessionId", id);
+            if (session.completed()) {
+                inputs.remove("answer");
+                inputs.remove("nextQuestion");
+                inputs.put("action", "completedInterview");
+            }
+            return new PlanStep(step.id(), step.title(), step.agent(), inputs, step.dependsOn());
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+
     public Mono<ExpertResult> execute(String owner, Map<String, Object> context, String runId, PlanStep step,
                                       Map<String, String> upstreamOutputs, com.offerpilot.llm.ModelTier tier) {
         if (writingBoard(step) || writingCareer(step) || writingInterview(step) || writingCoach(step) || writingPatches(step) || writingStarStory(step)) return Mono.error(new IllegalStateException("写入必须先审批"));
@@ -348,6 +365,8 @@ public class ExpertRegistry {
         }
         if (step.agent() == ExpertType.INTERVIEWER) {
             if (interviews == null) return Mono.just(ExpertResult.text("文字面试服务暂不可用，请稍后重试。"));
+            if ("completedInterview".equals(step.inputs().get("action")))
+                return Mono.just(ExpertResult.text("这场面试已完成，本轮没有保存或推进答案。你可以请求评分、复盘，或开始一场新面试。"));
             if ("recallStarStories".equals(step.inputs().get("action"))) {
                 return Mono.fromCallable(() -> {
                     String id = interviews.resolveSession(owner, text(step.inputs().get("sessionId")), false);
@@ -439,13 +458,13 @@ public class ExpertRegistry {
                 if (payload != null && payload.path("evaluation").isObject()) {
                     return ExpertResult.cards(card.summary(),
                             new ExpertResult.Card(card.cardId(), card.cardType(), payload),
-                            new ExpertResult.Card(card.cardId() + ":eval", "job_eval_report", payload.path("evaluation")));
+                            new ExpertResult.Card(requestId(runId, step.id() + ":eval"), "job_eval_report", payload.path("evaluation")));
                 }
                 return ExpertResult.card(card.summary(), card.cardId(), card.cardType(), payload);
             }).subscribeOn(Schedulers.boundedElastic());
         }
-        return Mono.fromSupplier(() -> ExpertResult.text(label(step.agent()) + "占位专家已接收任务；收到 "
-                + upstreamOutputs.size() + " 项上游结果。仅验证编排链路，未执行搜索、修改或创建业务记录。"));
+        return Mono.fromSupplier(() -> ExpertResult.text(label(step.agent())
+                + "本轮未执行搜索、修改或创建业务记录，可继续提供文字建议。"));
     }
 
     /** JsonNode is intentionally serialized as JSON; arbitrary Java objects never enter tool narration. */
