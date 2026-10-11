@@ -1,10 +1,19 @@
-import { createApp, h, nextTick, ref } from 'vue'
+import { createApp, h, nextTick, ref, type VNode } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ApprovalCard from './ApprovalCard.vue'
+import ToolTimeline from './ToolTimeline.vue'
 import { queryClient } from '@/shared/api/queryClient'
 import type { ApprovalView } from '@/shared/stores/agentRun'
 
 let cleanup: () => void
+function render(root: HTMLElement, view: () => VNode) {
+  const app = createApp({ render: view })
+  app.mount(root)
+  cleanup = () => {
+    app.unmount()
+    root.remove()
+  }
+}
 beforeEach(() => {
   localStorage.setItem('offerpilot-guest-v1', 'test-guest-token')
   vi.useFakeTimers()
@@ -32,14 +41,7 @@ function mount(
   })
   const root = document.createElement('div')
   document.body.append(root)
-  const app = createApp({
-    render: () => h(ApprovalCard, { runId: 'run1', running: true, approvals: [approval.value] }),
-  })
-  app.mount(root)
-  cleanup = () => {
-    app.unmount()
-    root.remove()
-  }
+  render(root, () => h(ApprovalCard, { runId: 'run1', running: true, approvals: [approval.value] }))
   return { root, approval }
 }
 async function settle() {
@@ -56,6 +58,9 @@ it('批准编辑后的状态和备注，通过真实 API helper 提交并刷新�
   vi.stubGlobal('fetch', fetch)
   const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue()
   const { root } = mount()
+  expect(root.textContent).toContain('已投递')
+  expect(root.textContent).not.toContain('app1')
+  expect(root.querySelector('pre')).toBeNull()
   const select = root.querySelector('select')!
   expect([...select.options].map((o) => o.value)).not.toContain('WRITTEN_TEST')
   select.value = 'INTERVIEW'
@@ -205,4 +210,28 @@ it('显式记忆拒绝/超时不能显示保存成功', async () => {
   await nextTick()
   expect(root.textContent).toContain('已超时')
   expect(root.querySelectorAll('button')).toHaveLength(0)
+})
+
+it('expanded execution details show the reviewed change without transport JSON or resource ids', async () => {
+  const root = document.createElement('div')
+  render(root, () =>
+    h(ToolTimeline, {
+      toolCalls: [
+        {
+          id: 'run_internal:s1',
+          name: 'updateApplicationStatus',
+          source: 'local',
+          access: 'WRITE',
+          status: 'OK',
+          args: { applicationId: 'app_internal', status: 'INTERVIEW', note: '周五面试' },
+          resultPreview: '{"id":"app_internal","status":"INTERVIEW"}',
+        },
+      ],
+    }),
+  )
+  root.querySelector('details')!.open = true
+  expect(root.textContent).toContain('面试中')
+  expect(root.textContent).toContain('周五面试')
+  expect(root.textContent).not.toContain('app_internal')
+  expect(root.querySelector('pre')).toBeNull()
 })

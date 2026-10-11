@@ -24,15 +24,16 @@ const data = computed(() => {
   if (raw && typeof raw === 'object' && raw.evaluation) return raw.evaluation
   return null
 })
+const reportId = computed(() => props.matchId || data.value?.matchId)
 const exporting = ref(false)
 const exportError = ref('')
 async function exportMarkdown() {
-  if (!props.matchId || exporting.value) return
+  if (!reportId.value || exporting.value) return
   exporting.value = true
   exportError.value = ''
   try {
     const title = data.value?.title?.trim() || '岗位'
-    await exportJobEvalMarkdown(props.matchId, `${title}-岗位评估.md`)
+    await exportJobEvalMarkdown(reportId.value, `${title}-岗位评估.md`)
   } catch (error) {
     exportError.value = error instanceof Error ? error.message : '导出失败，请重试'
   } finally {
@@ -48,7 +49,7 @@ async function exportMarkdown() {
     </div>
     <p class="subtle">{{ data.summary }}</p>
     <p class="helper-note">{{ data.note }}</p>
-    <div v-if="matchId" class="card-footer">
+    <div v-if="reportId" class="card-footer">
       <button type="button" class="btn" :disabled="exporting" @click="exportMarkdown">
         {{ exporting ? '正在导出…' : '导出评估.md' }}
       </button>

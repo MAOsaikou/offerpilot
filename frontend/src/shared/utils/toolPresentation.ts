@@ -1,0 +1,39 @@
+import { applicationStages, type ApplicationStatus } from '@/shared/types/board'
+
+// Resource identifiers remain in transport arguments, never in visible review text.
+export function toolArguments(args: unknown): Array<{ label: string; value: string }> {
+  if (!args || typeof args !== 'object') return []
+  const data = args as Record<string, unknown>
+  const fields: Record<string, string> = {
+    name: '目标职业',
+    role: '目标岗位',
+    kind: '练习侧重点',
+    status: '阶段',
+    note: '备注',
+    nextAction: '下一步行动',
+    nextActionAt: '行动日期',
+    answer: '回答',
+    taskTitles: '确认已完成的任务',
+  }
+  const rows = Object.entries(fields).flatMap(([key, label]) => {
+    const raw = data[key]
+    if (raw === undefined || raw === null) return []
+    const value =
+      key === 'status'
+        ? (applicationStages[raw as ApplicationStatus] ?? String(raw))
+        : Array.isArray(raw)
+          ? raw.join('、')
+          : String(raw)
+    return [{ label, value: value || '清空' }]
+  })
+  const accepted = Array.isArray(data.accepted) ? data.accepted.length : 0
+  const edited = data.edited && typeof data.edited === 'object' ? Object.values(data.edited) : []
+  if (accepted || edited.length) {
+    rows.push({ label: '采纳建议', value: `${accepted} 条原建议、${edited.length} 条编辑后的建议` })
+    for (const edit of edited) {
+      if (edit && typeof edit === 'object' && 'value' in edit)
+        rows.push({ label: '编辑内容', value: String(edit.value) })
+    }
+  }
+  return rows
+}

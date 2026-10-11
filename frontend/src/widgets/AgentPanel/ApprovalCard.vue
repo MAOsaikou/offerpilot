@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { toolArguments } from '@/shared/utils/toolPresentation'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { submitApproval } from '@/shared/api/agent'
 import { memoryKinds, type MemoryKind } from '@/shared/api/memories'
@@ -146,10 +147,12 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
             已提交确认，是否保存成功请查看工具结果。
           </p>
         </div>
-        <pre
-          v-else
-          class="mt-2 max-h-32 overflow-auto rounded-lg bg-foreground/5 p-2 font-mono text-xs leading-relaxed"
-          >{{ JSON.stringify(approval.args, null, 2) }}</pre>
+        <dl v-else class="mt-2 space-y-1 text-xs">
+          <div v-for="(row, index) in toolArguments(approval.args)" :key="index">
+            <dt class="text-muted-foreground">{{ row.label }}</dt>
+            <dd class="whitespace-pre-wrap break-words">{{ row.value }}</dd>
+          </div>
+        </dl>
         <fieldset
           v-if="statusOf(approval) === 'PENDING'"
           :disabled="busy[keyOf(approval)] || !canSubmit"
