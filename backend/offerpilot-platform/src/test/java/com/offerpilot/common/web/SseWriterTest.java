@@ -107,6 +107,24 @@ class SseWriterTest {
         verify(emitter, never()).completeWithError(any());
     }
 
+    @Test void boundedSseTextDoesNotSerializeHalfASurrogatePair() throws Exception {
+        String text = "中😀文";
+        var emitter = mock(SseEmitter.class);
+        var frame = new AtomicReference<String>();
+        doAnswer(call -> { frame.set(frame(call.getArgument(0))); return null; }).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        var writer = writer(emitter, Duration.ofDays(1), () -> {});
+        try {
+            for (int limit = 0; limit <= text.length(); limit++) {
+                String bounded = com.offerpilot.common.text.TextBounds.truncate(text, limit);
+                writer.send("text.delta", Map.of("text", bounded));
+                String encoded = new String(frame.get().getBytes(java.nio.charset.StandardCharsets.UTF_8), java.nio.charset.StandardCharsets.UTF_8);
+                assertThat(encoded).isEqualTo(frame.get());
+                var decoded = json.readTree(encoded.split("data:", 2)[1].strip()).path("text").asText();
+                assertThat(decoded).isEqualTo(switch (limit) { case 0 -> ""; case 1, 2 -> "中"; case 3 -> "中😀"; default -> text; });
+            }
+        } finally { writer.complete(); }
+    }
+
     @Test void businessAndUnknownErrorsKeepTheEnvelopeAndDoNotDispatchMvcErrors() throws Exception {
         for (Throwable error : new Throwable[]{new BusinessException(ErrorCode.MODEL_UNAVAILABLE), new RuntimeException("private provider body")}) {
             var emitter = mock(SseEmitter.class);

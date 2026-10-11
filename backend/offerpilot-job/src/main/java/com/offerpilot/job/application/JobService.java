@@ -78,7 +78,7 @@ public class JobService implements JobDescriptionForChat {
         var data=json.createObjectNode();
         for(String field:List.of("site","company","title","locations","category","department","updatedAt","description","requirement")) {
             String value=raw.path(field).asText("").replaceAll("(?is)<[^>]*>"," ").replace("&nbsp;"," ").replace("&amp;","&").strip();
-            if(value.length()>30000) value=value.substring(0,30000);
+            if(value.length()>30000) value=com.offerpilot.common.text.TextBounds.truncate(value,30000);
             data.put(field,value);
         }
         data.put("externalId",raw.path("id").asText()); data.put("nature",nature);

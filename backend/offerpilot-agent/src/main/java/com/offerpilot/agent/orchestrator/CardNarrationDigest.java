@@ -176,5 +176,5 @@ final class CardNarrationDigest {
         return text.replaceAll("(?<![A-Za-z0-9_])(?:app|match|rs|res|rv|ver|run|iv|mem|note|story|star|job|diag|opt|batch|pb|conv|msg|evt|usr|file|parse)_[A-Za-z0-9_-]+(?![A-Za-z0-9_-])", "（所选记录）")
                 .replaceAll("(?<![A-Za-z0-9_])[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}(?![A-Za-z0-9_-])", "（所选记录）");
     }
-    private static String shortText(String text) { return text.length() > 300 ? text.substring(0, 300) + "…" : text; }
+    private static String shortText(String text) { return text.length() > 300 ? com.offerpilot.common.text.TextBounds.truncate(text, 300) + "…" : text; }
 }
