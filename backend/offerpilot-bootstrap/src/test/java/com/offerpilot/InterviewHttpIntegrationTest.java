@@ -46,11 +46,19 @@ class InterviewHttpIntegrationTest extends SharedHttpIntegrationTest {
     @Test
     void createListDetailAnswerProgressAndCompletionPersistForGuest() throws Exception {
         String token = guests.create().accessToken();
-        String id = create(token);
+        String jobId="job_interview_"+UUID.randomUUID();
+        jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES (?,'demo',?,'intern','{\"title\":\"Java 工程师\"}'::jsonb)",jobId,jobId);
+        var created=data(request("POST","",token,Map.of("role","  Java 工程师  ","kind","项目与经历","jobId",jobId)));
+        String id=created.path("id").asText();
+        assertThat(created.path("jobId").asText()).isEqualTo(jobId);
         var list = data(request("GET", "", token, null));
         assertThat(list.size()).isEqualTo(1);
         assertThat(list.get(0).path("role").asText()).isEqualTo("Java 工程师");
         var session = data(request("GET", "/" + id, token, null));
+        for (var view : java.util.List.of(created,list.get(0),session))
+            assertThat(view.path("jobId").asText()).isEqualTo(jobId);
+        // Association survives subsequent answer/progress writes and remains private.
+        assertThat(request("GET","/"+id,guests.create().accessToken(),null).statusCode()).isEqualTo(404);
         assertThat(session.path("answers").size()).isEqualTo(5);
         for (int index = 0; index < 5; index++) {
             assertThat(session.path("answers").get(index).path("questionIndex").asInt()).isEqualTo(index);

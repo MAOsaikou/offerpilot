@@ -1,3 +1,8 @@
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
+import ResumeListView from '@/features/resume/views/ResumeListView.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { uploadResume, validateResumeFile, saveResume, exportResumePdf } from './resumes'
 import type { ResumeStructure } from '@/shared/types/resume'
@@ -18,7 +23,39 @@ describe('简历上传与保存', () => {
     expect(
       validateResumeFile(new File([new Uint8Array(10 * 1024 * 1024 + 1)], 'large.pdf')),
     ).toContain('10MB')
+    await expect(
+      uploadResume(new File([new Uint8Array(16 * 1024 * 1024)], 'large.pdf')),
+    ).rejects.toThrow('10MB')
     expect(fetch).not.toHaveBeenCalled()
+    fetch.mockResolvedValue(
+      new Response(JSON.stringify({ data: { items: [], total: 0, page: 1, size: 20 } })),
+    )
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/resumes', component: ResumeListView }],
+    })
+    await router.push('/resumes')
+    const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const root = document.createElement('div')
+    const app = createApp(ResumeListView)
+      .use(createPinia())
+      .use(router)
+      .use(VueQueryPlugin, { queryClient: cache })
+    app.mount(root)
+    try {
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
+      fetch.mockClear()
+      const input = root.querySelector<HTMLInputElement>('input[type="file"]')!
+      Object.defineProperty(input, 'files', {
+        value: [new File([new Uint8Array(16 * 1024 * 1024)], 'large.pdf')],
+      })
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+      await vi.waitFor(() => expect(root.textContent).toContain('10MB'))
+      expect(fetch).not.toHaveBeenCalled()
+    } finally {
+      app.unmount()
+      cache.clear()
+    }
   })
   it('上传携带原始文件与身份，浏览器自动生成 multipart boundary', async () => {
     const fetch = vi

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRoute } from 'vue-router'
 import { useQueryClient } from '@tanstack/vue-query'
+import InterviewJobContext from '@/shared/components/InterviewJobContext.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { getInterview, saveInterviewAnswer, updateInterview } from '@/shared/api/interviews'
@@ -273,6 +274,7 @@ onBeforeRouteUpdate(saveBeforeLeave)
         {{ exportBusy ? '正在导出…' : '导出复盘' }}
       </button>
     </PageHeading>
+    <InterviewJobContext :job-id="session.jobId" :fallback-title="session.role" />
     <p v-if="exportError" role="alert">{{ exportError }}</p>
     <p v-if="error" role="alert">{{ error }} · 回答已保留，请重试保存。</p>
     <template v-if="!session.completed">

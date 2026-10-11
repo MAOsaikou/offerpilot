@@ -96,7 +96,11 @@ class DemoJourneyIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM user_memories WHERE user_id=?", Integer.class, owner)).isEqualTo(3);
         jdbc.update("DELETE FROM user_memories WHERE user_id=?", owner);
         jdbc.update("UPDATE user_preferences SET memory_enabled=false WHERE user_id=?", owner);
+        var schedule=jdbc.queryForList("SELECT id,next_action,next_action_at-current_date AS day_offset FROM applications WHERE user_id=? ORDER BY id",owner);
         assertThat(resets.reset().memoryCount()).isEqualTo(3);
+        assertThat(jdbc.queryForList("SELECT id,next_action,next_action_at-current_date AS day_offset FROM applications WHERE user_id=? ORDER BY id",owner)).isEqualTo(schedule);
+        assertThat(schedule.stream().map(row -> row.get("day_offset")).toList()).containsExactly(0,-1,3,1,5,null);
+        assertThat(schedule.stream().map(row -> row.get("next_action")).filter(value -> !"".equals(value)).toList()).hasSize(5).doesNotHaveDuplicates();
         assertThat(jdbc.queryForList("SELECT fact FROM user_memories WHERE user_id=?", String.class, owner))
                 .hasSize(3).allSatisfy(fact -> assertThat(fact).contains("虚构演示"));
         assertThat(jdbc.queryForObject("SELECT memory_enabled FROM user_preferences WHERE user_id=?", Boolean.class, owner)).isTrue();

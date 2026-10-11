@@ -28,6 +28,14 @@ public class JobMatcher {
         return analyze(job, resume, tier, reactor.core.scheduler.Schedulers.parallel()).block();
     }
 
+    public JsonNode match(JsonNode job, JsonNode resume, com.offerpilot.llm.ModelTier tier,
+                          org.reactivestreams.Publisher<?> cancellation) {
+        return analyze(job, resume, tier == null ? gateway.defaultTier() : tier,
+                reactor.core.scheduler.Schedulers.parallel()).takeUntilOther(cancellation)
+                .switchIfEmpty(reactor.core.publisher.Mono.error(new BusinessException(ErrorCode.GENERATION_CANCELLED)))
+                .block();
+    }
+
     // One cancellable deadline includes generation and the optional evidence repair.
     // The injected scheduler lets tests advance time without sleeping or racing the host CPU.
     reactor.core.publisher.Mono<JsonNode> analyze(JsonNode job, JsonNode resume,

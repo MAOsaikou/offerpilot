@@ -1,6 +1,9 @@
 server:
   port: 8081
   forward-headers-strategy: framework
+  tomcat:
+    # Drain rejected multipart bodies so clients receive the JSON 413 response.
+    max-swallow-size: -1
 
 spring:
   profiles:

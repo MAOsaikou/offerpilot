@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { isGenerationCancelled } from '@/shared/api/client'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { analyzeResume, cancelDiagnosis, getDiagnosis, listDiagnoses } from '@/shared/api/diagnoses'
 import type { ResumeDiagnosisReport as Report } from '@/shared/types/diagnosis'
@@ -20,10 +21,12 @@ const history = useQuery({
 const report = ref<Report>()
 const reportElement = ref<HTMLElement>()
 const error = ref('')
+const message = ref('')
 const running = ref(false)
 const selecting = ref(false)
 const runningId = ref('')
 const existing = computed(() => history.data.value?.find((task) => task.status === 'RUNNING'))
+let locallyCancelled = false
 let controller: AbortController | undefined
 let alive = true
 let selection = 0
@@ -58,8 +61,10 @@ async function show(id: string) {
 async function start(save: boolean) {
   if (running.value || existing.value) return
   running.value = true
+  locallyCancelled = false
   error.value = ''
   runningId.value = ''
+  message.value = ''
   const epoch = ++selection
   let requestId = ''
   try {
@@ -81,6 +86,14 @@ async function start(save: boolean) {
     await revealReport(result, epoch)
   } catch (cause) {
     if (alive) {
+      if (
+        isGenerationCancelled(cause) ||
+        (locallyCancelled && cause instanceof DOMException && cause.name === 'AbortError')
+      ) {
+        error.value = ''
+        message.value = '诊断已取消，可重新发起。'
+        return
+      }
       error.value =
         cause instanceof DOMException && cause.name === 'AbortError'
           ? '诊断连接已停止，请查看报告记录。'
@@ -110,11 +123,17 @@ async function start(save: boolean) {
 }
 async function stop(id = runningId.value || existing.value?.id) {
   if (!id) {
+    locallyCancelled = true
+    message.value = '诊断已取消，可重新发起。'
+    error.value = ''
     controller?.abort()
     return
   }
   try {
     await cancelDiagnosis(id)
+    locallyCancelled = true
+    message.value = '诊断已取消，可重新发起。'
+    error.value = ''
     controller?.abort()
     await refresh()
   } catch (cause) {
@@ -163,6 +182,7 @@ onBeforeUnmount(() => {
     <p v-if="running || existing" role="status">
       正在分析已保存版本，通常需要几十秒；离开当前分析页面会停止本次连接。
     </p>
+    <p v-if="message" role="status">{{ message }}</p>
     <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
     <p v-if="selecting" role="status">正在加载报告…</p>
     <p v-if="report && report.versionId !== versionId" class="helper-note">

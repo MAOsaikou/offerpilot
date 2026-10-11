@@ -29,6 +29,10 @@ export class ApiError extends Error {
   }
 }
 
+export function isGenerationCancelled(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 30205
+}
+
 /** 后端基地址；本地开发可直连后端，也可走 vite 代理，见 frontend/.env.example */
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/+$/, '')
 

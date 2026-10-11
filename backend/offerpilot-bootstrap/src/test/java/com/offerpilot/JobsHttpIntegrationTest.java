@@ -164,6 +164,39 @@ class JobsHttpIntegrationTest {
             assertThat(request("POST","/jobs/"+job+"/matches",token,changedTier).statusCode()).isEqualTo(400);
             org.mockito.Mockito.verify(gateway,org.mockito.Mockito.times(1)).stream(
                     org.mockito.ArgumentMatchers.eq(com.offerpilot.llm.ModelTier.PRO),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0));
+            var cancelledUpstream=new java.util.concurrent.CountDownLatch(1);
+            var startedAgain=new java.util.concurrent.CountDownLatch(1);
+            org.mockito.Mockito.doReturn(reactor.core.publisher.Flux.defer(() -> {
+                startedAgain.countDown();
+                return reactor.core.publisher.Flux.never().doOnCancel(cancelledUpstream::countDown);
+            })).when(gateway).stream(org.mockito.ArgumentMatchers.eq(com.offerpilot.llm.ModelTier.PRO),
+                    org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0));
+            var cancelBody=new HashMap<String,String>(body); cancelBody.put("requestId",UUID.randomUUID().toString());
+            var cancelReq=HttpRequest.newBuilder(req.uri()).header("Authorization","Bearer "+token)
+                    .header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(cancelBody))).build();
+            var inFlight=HttpClient.newHttpClient().sendAsync(cancelReq,HttpResponse.BodyHandlers.ofString());
+            try {
+                assertThat(startedAgain.await(15,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                String matchId=data(request("GET","/jobs/"+job+"/matches",token,null)).get(0).path("id").asText();
+                assertThat(request("POST","/generation-tasks/JOB_MATCH/"+matchId+"/cancel",token,null).statusCode()).isEqualTo(200);
+                var cancelled=inFlight.get(15,java.util.concurrent.TimeUnit.SECONDS);
+                assertThat(cancelled.statusCode()).isEqualTo(409);
+                assertThat(cancelled.body()).contains("30205","取消").doesNotContain("过期");
+                assertThat(cancelledUpstream.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var read=request("GET","/jobs/matches/"+matchId,token,null);
+                assertThat(read.statusCode()).isEqualTo(409);
+                assertThat(read.body()).contains("30205","取消");
+                assertThat(request("GET","/jobs/matches/"+matchId,other,null).statusCode()).isEqualTo(404);
+                assertThat(data(request("GET","/jobs/"+job+"/matches",token,null)).toString()).contains("CANCELLED");
+                assertThat(request("POST","/generation-tasks/JOB_MATCH/"+matchId+"/cancel",token,null).statusCode()).isEqualTo(200);
+                assertThat(request("POST","/jobs/"+job+"/matches",token,cancelBody).statusCode()).isEqualTo(409);
+                org.mockito.Mockito.doReturn(reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(List.of(
+                        new org.springframework.ai.chat.model.Generation(new org.springframework.ai.chat.messages.AssistantMessage(output))))))
+                        .when(gateway).stream(org.mockito.ArgumentMatchers.eq(com.offerpilot.llm.ModelTier.PRO),
+                                org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0));
+                cancelBody.put("requestId",UUID.randomUUID().toString());
+                assertThat(data(request("POST","/jobs/"+job+"/matches",token,cancelBody)).path("score").asInt()).isEqualTo(100);
+            } finally { inFlight.cancel(true); }
         } finally { sink.tryEmitError(new IllegalStateException("fixture released")); pending.cancel(true); }
     }
 

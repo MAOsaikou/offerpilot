@@ -13,6 +13,7 @@ import java.util.List;
 
 @Service
 public class JobMatchService {
+    private final java.util.Map<String, reactor.core.publisher.Sinks.One<Boolean>> cancellations = new java.util.concurrent.ConcurrentHashMap<>();
     private final JobService jobs;
     private final com.offerpilot.board.application.ApplicationTimeline timeline;
     private final ResumeMatchSource resumes;
@@ -38,6 +39,7 @@ public class JobMatchService {
                 if(!jobId.equals(row.get("job_id")) || !versionId.equals(row.get("resume_version_id"))) throw new BusinessException(ErrorCode.VALIDATION_FAILED,"请求标识不能用于不同的岗位或简历版本");
                 if (tier != null && row.get("model_tier") != null && !tier.name().equals(row.get("model_tier")))
                     throw new BusinessException(ErrorCode.VALIDATION_FAILED,"请求标识不能用于不同的模型档位");
+                if ("CANCELLED".equals(row.get("status"))) throw new BusinessException(ErrorCode.GENERATION_CANCELLED);
                 if("COMPLETED".equals(row.get("status"))) return row.get("id").toString();
                 throw new BusinessException(ErrorCode.CONCURRENT_RUN_LIMIT,"此请求正在处理或已失败，请刷新报告列表；失败后请重新发起分析");
             }
@@ -48,11 +50,14 @@ public class JobMatchService {
             return null;
         });
         if(existing!=null) return get(owner,existing);
+        var cancellation = reactor.core.publisher.Sinks.<Boolean>one();
+        cancellations.put(id, cancellation);
         try {
+            rejectCancelled(owner, id);
             job=jobs.detail(jobId,false);
             JsonNode selectedJob = job;
             ObjectNode report=(ObjectNode)com.offerpilot.llm.quota.LlmUserContext.asUser(owner,
-                    () -> tier == null ? matcher.match(selectedJob,resume.structured()) : matcher.match(selectedJob,resume.structured(),tier));
+                    () -> matcher.match(selectedJob,resume.structured(),tier,cancellation.asMono()));
             report.put("id",id).put("jobId",jobId).put("resumeId",resumeId).put("resumeTitle",resume.title())
                 .put("resumeVersionId",versionId).put("resumeVersionNo",resume.versionNo()).put("createdAt",Instant.now().toString());
             report.set("jobSnapshot",job); report.set("resumeSnapshot",resume.structured());
@@ -62,19 +67,31 @@ public class JobMatchService {
                 if (count==1) timeline.linkMatches(owner,jobId);
                 return count;
             });
-            if(saved!=1) throw new BusinessException(ErrorCode.MODEL_TIMEOUT,"本次匹配已过期，请重新分析");
+            if(saved!=1) {
+                rejectCancelled(owner,id);
+                throw new BusinessException(ErrorCode.MODEL_TIMEOUT,"本次匹配已过期，请重新分析");
+            }
             return withEvaluation(report);
         } catch(RuntimeException ex) {
+            rejectCancelled(owner,id);
             jdbc.update("UPDATE job_matches SET status='FAILED',updated_at=now() WHERE id=? AND status='RUNNING'",id);
             throw ex;
+        } finally {
+            cancellations.remove(id,cancellation);
         }
     }
     public JsonNode get(String owner,String id) {
+        rejectCancelled(owner,id);
         var rows=jdbc.query("SELECT report FROM job_matches WHERE id=? AND user_id=? AND status='COMPLETED'",(rs,n)->parse(rs.getString(1)),id,owner);
         if(rows.isEmpty()) throw new BusinessException(ErrorCode.MATCH_NOT_FOUND);
         return withEvaluation(rows.get(0));
     }
 
+
+    private void rejectCancelled(String owner, String id) {
+        var statuses=jdbc.queryForList("SELECT status FROM job_matches WHERE id=? AND user_id=?",String.class,id,owner);
+        if (statuses.contains("CANCELLED")) throw new BusinessException(ErrorCode.GENERATION_CANCELLED,"匹配已取消，可重新分析");
+    }
 
     /** Marks RUNNING match cancelled so the progress dock can drop it; in-flight save becomes no-op. */
     public void cancel(String owner, String id) {
@@ -84,6 +101,8 @@ public class JobMatchService {
             if (rows.isEmpty()) throw new BusinessException(ErrorCode.MATCH_NOT_FOUND);
             // already finished — idempotent no-op for dock cancel
         }
+        var signal=cancellations.get(id);
+        if (signal!=null) signal.tryEmitValue(true);
     }
     /** No writes/refresh/model call. Without a job selection, only the exact target title qualifies. */
     public JsonNode latestCompleted(String owner, String jobId, String target) {
