@@ -69,8 +69,13 @@ class ChatServiceTest {
     void explicitMatchingIgnoresClarificationVariantAndEmptyModelPlansForBothTiers() throws Exception {
         var json = new ObjectMapper();
         var matches = mock(com.offerpilot.job.application.JobMatchForChat.class);
-        var report = json.createObjectNode().put("id", "match_selected").put("score", 80).put("summary", "已核实");
-        report.putArray("requirements");
+        var report = json.createObjectNode().put("id", "match_selected").put("score", 80).put("summary", "已核实所选match_selected报告");
+        report.set("jobSnapshot", json.readTree("{\"id\":\"job_selected\",\"title\":\"后端工程师\",\"company\":\"示例公司\"}"));
+        report.set("requirements", json.readTree("""
+                [{"status":"MET","requirement":"Java","resumeQuote":"Java 项目"},
+                 {"status":"PARTIAL","requirement":"SQL","reason":"缺结果证据","suggestion":"补充查询优化结果"},
+                 {"status":"MISSING","requirement":"Docker","reason":"简历未体现","suggestion":"补真实容器项目"}]
+                """));
         org.mockito.Mockito.doCallRealMethod().when(matches).match(anyString(), anyString(), anyString(), anyString(), anyString(), any(ModelTier.class));
         when(matches.match(eq("owner"), eq("job_selected"), eq("resume_selected"), eq("version_selected"), anyString()))
                 .thenReturn(JobMatchCards.fromReport(report));
@@ -93,13 +98,20 @@ class ChatServiceTest {
                             "resumeId", "resume_selected", "resumeVersionId", "version_selected");
                     var events = local.chat("owner", new ChatRequest(null, "请匹配这个岗位与我的简历", null, mode,
                             new ChatRequest.Options(tier.name(), null, context))).collectList().block(Duration.ofSeconds(5));
-                    assertThat(events).filteredOn(AgentEvent.UiCard.class::isInstance).singleElement()
-                            .isInstanceOfSatisfying(AgentEvent.UiCard.class, card -> assertThat(card.cardType()).isEqualTo("job_match"));
+                    assertThat(events.stream().filter(AgentEvent.UiCard.class::isInstance).map(AgentEvent.UiCard.class::cast))
+                            .extracting(AgentEvent.UiCard::cardType).containsExactly("job_match", "job_eval_report");
+                    var prompt = org.mockito.ArgumentCaptor.forClass(List.class);
+                    verify(gateway).stream(eq(tier), prompt.capture());
+                    String narrationData = ((List<org.springframework.ai.chat.messages.Message>) prompt.getValue()).stream()
+                            .map(org.springframework.ai.chat.messages.Message::getText).collect(java.util.stream.Collectors.joining("\n"));
+                    assertThat(narrationData).contains("\"cardType\":\"岗位匹配\"", "\"cardType\":\"岗位评估\"", "\"requirementsCount\":3", "\"metCount\":1,\"partialCount\":1,\"missingCount\":1",
+                            "\"grade\":", "Docker", "SQL", "后端工程师", "示例公司")
+                            .doesNotContain("s1：", "match_selected", "job_selected", "四周", "STAR反馈", "[]；");
                     assertThat(events).extracting(AgentEvent::type).contains("run.completed").doesNotContain("error", "approval.required");
                     verify(gateway, never()).stream(any(), anyList(), eq(0.1));
                     verify(matches).match("owner", "job_selected", "resume_selected", "version_selected", ExpertRegistry.requestId("run", "s1"), tier);
                     verify(matches).match("owner", "job_selected", "resume_selected", "version_selected", ExpertRegistry.requestId("run", "s1"));
-                    verify(conversations).finish(any(), eq("匹配卡已展示"), eq("COMPLETED"), any(), isNull(), argThat(cards -> cards.size() == 1));
+                    verify(conversations).finish(any(), eq("匹配卡已展示"), eq("COMPLETED"), any(), isNull(), argThat(cards -> cards.size() == 2));
                 }
             }
         }
@@ -239,10 +251,10 @@ class ChatServiceTest {
     void narratorReceivesStructuredCoachInterviewAndCareerCards(ModelTier tier) throws Exception {
         var cards = List.of(
             new com.offerpilot.agent.experts.ExpertResult.Card("gap", "skill_gap", java.util.Map.of(
-                "target", java.util.Map.of("title", "后端开发"), "skills", List.of(java.util.Map.of("name", "并发测试", "required", 3, "current", 1, "gap", 2, "learnFirst", true)),
+                "target", java.util.Map.of("title", "后端开发"), "skills", List.of(java.util.Map.of("id", "gap_internal", "name", "并发测试", "required", 3, "current", 1, "gap", 2, "learnFirst", true)),
                 "privateField", "SHOULD_NOT_REACH_NARRATOR")),
             new com.offerpilot.agent.experts.ExpertResult.Card("roadmap", "roadmap", java.util.Map.of("weeks", List.of(
-                java.util.Map.of("index", 1, "theme", "梳理基础", "items", List.of(java.util.Map.of("title", "核对并发场景"))),
+                java.util.Map.of("index", 1, "gapIds", List.of("gap_internal"), "theme", "梳理基础", "items", List.of(java.util.Map.of("title", "核对并发场景"))),
                 java.util.Map.of("index", 2, "theme", "项目实战", "items", List.of()),
                 java.util.Map.of("index", 3, "theme", "测试验证", "items", List.of()),
                 java.util.Map.of("index", 4, "theme", "表达复盘", "items", List.of())))),
@@ -265,7 +277,7 @@ class ChatServiceTest {
             String prompt = messages.stream().map(org.springframework.ai.chat.messages.Message::getText).collect(java.util.stream.Collectors.joining("\n"));
             assertThat(prompt).contains("topGaps", "并发测试", "\"required\":3", "\"current\":1", "\"gap\":2",
                 "梳理基础", "项目实战", "测试验证", "表达复盘", "核对并发场景", "professional", "\"result\":false", "补充R结果", "后端开发工程师", "已保存Java技能与软件方向")
-                .doesNotContain("SHOULD_NOT_REACH_NARRATOR");
+                .contains("gapNames").doesNotContain("SHOULD_NOT_REACH_NARRATOR", "gap_internal", "gapIds", "s1：");
             return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage("按卡片整理准备建议")))));
         });
         var result = local.chat("owner", new ChatRequest(null, "分析", null, AgentMode.COACH, new ChatRequest.Options(tier.name(), null, null)))

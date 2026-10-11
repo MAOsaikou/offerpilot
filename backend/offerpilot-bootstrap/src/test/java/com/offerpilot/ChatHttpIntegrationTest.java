@@ -538,6 +538,20 @@ class ChatHttpIntegrationTest {
         var saved = conversations.messages(owner(token), events.get(0).path("conversationId").asText(), null, 30).items().get(1);
         assertThat(saved.parts().get(1).path("payload")).isEqualTo(payload);
         assertThat(json.readTree(request("GET", "/interviews/" + id, token, null).body()).path("data").path("completed").asBoolean()).isFalse();
+        request("PATCH", "/interviews/" + id, token, "{\"completed\":true}");
+        var completedSnapshot = json.readTree(request("GET", "/interviews/" + id, token, null).body()).path("data");
+        for (String text : java.util.List.of("给我这场面试的评分。", "帮我打分", "给我分数", "评价一下我的表现")) {
+            var natural = request("POST", "/agent/chat", token, json.writeValueAsString(java.util.Map.of(
+                    "content", text, "mode", "INTERVIEWER", "options", java.util.Map.of("context", java.util.Map.of("interviewSessionId", id)))));
+            assertThat(sseEvents(natural.body()).stream().filter(e -> e.path("type").asText().equals("ui.card")))
+                    .extracting(e -> e.path("cardType").asText()).contains("interview_report");
+            assertThat(natural.body()).doesNotContain("approval.required", "面试练习未完成", "event:error");
+        }
+        var answerAfterCompletion = request("POST", "/agent/chat", token, json.writeValueAsString(java.util.Map.of(
+                "content", "我补充项目验证方式", "mode", "INTERVIEWER", "options", java.util.Map.of("context", java.util.Map.of("interviewSessionId", id)))));
+        assertThat(answerAfterCompletion.body()).contains("run.completed", "这场面试已完成", "本轮没有保存或推进答案")
+                .doesNotContain("approval.required", "面试练习未完成", "event:error");
+        assertThat(json.readTree(request("GET", "/interviews/" + id, token, null).body()).path("data")).isEqualTo(completedSnapshot);
         var other = request("POST", "/agent/chat", stranger, json.writeValueAsString(java.util.Map.of("content", "给我面试反馈", "options",
                 java.util.Map.of("context", java.util.Map.of("interviewAction", "scoreInterview", "interviewSessionId", id)))));
         assertThat(other.body()).doesNotContain("interview_report", "当时在项目中");
@@ -719,7 +733,7 @@ class ChatHttpIntegrationTest {
                 INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status,created_at)
                 VALUES (?,?,?,?,?,'RUNNING',now()+interval '2 minutes')
                 """, "running_" + user, user, jobId, versionId, "running_" + user);
-        jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,completed) VALUES (?,?,'另一练习岗位','项目与经历',true)", interviewId, user);
+        jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,completed,job_id) VALUES (?,?,'另一练习岗位','项目与经历',true,?)", interviewId, user, jobId);
         jdbc.update("INSERT INTO interview_answers(session_id,question_index,question_text,answer_text) VALUES (?,0,'介绍项目','我做过练习')", interviewId);
         jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,completed,updated_at) VALUES (?,?,'foreign-interview','项目与经历',true,now()+interval '1 minute')",
                 "iv_foreign_" + user, owner(stranger));
@@ -748,6 +762,9 @@ class ChatHttpIntegrationTest {
             assertThat(source.path("id").asText()).isEqualTo(interviewId);
             assertThat(source.path("label").asText()).contains("另一练习岗位");
         });
+        assertThat(sources.stream().filter(source -> source.path("type").asText().equals("INTERVIEW")))
+                .allSatisfy(source -> assertThat(source.path("jobId").asText()).isEqualTo(jobId));
+        assertThat(loopSkills.toString()).contains("岗位评估：", "面试表现：").doesNotContain("岗位 A ·", "面试 岗位匹配", "面试 逻辑");
         assertThat(loopSkills.toString()).contains("STAR", "PARTIAL").doesNotContain("foreign-secret-gap", "foreign-private-evidence", foreignMatchId, "iv_foreign_");
         for (var week : loopCards.get(1).path("payload").path("weeks"))
             for (var gapId : week.path("gapIds")) assertThat(gapIds).contains(gapId.asText());
@@ -897,7 +914,7 @@ class ChatHttpIntegrationTest {
                     assertThat(version.path("structured").at("/skills/0/items/0").asText()).isEqualTo("SQL 查询");
                     assertThat(version.path("versionNo").asInt()).isEqualTo(2);
                     assertThat(version.path("parentVersionId").asText()).isEqualTo(versionId);
-                    assertThat(result.path("resultPreview").asText()).contains(savedBatch.appliedVersionId(), "V2");
+                    assertThat(result.path("resultPreview").asText()).contains("V2", "原版本保留").doesNotContain(savedBatch.appliedVersionId());
                 }
                 assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(409);
             }
@@ -969,7 +986,7 @@ class ChatHttpIntegrationTest {
                 var cards = events.stream().filter(e -> e.path("type").asText().equals("ui.card")).toList();
                 if (reject) {
                     assertThat(cards).isEmpty();
-                    assertThat(result.path("resultPreview").asText()).isEqualTo("用户拒绝了该操作");
+                    assertThat(result.path("resultPreview").asText()).contains("你已拒绝", "看板修改未执行", "数据未改动", "重新发起");
                 } else {
                     assertThat(cards).hasSize(1);
                     assertThat(cards.get(0).path("cardType").asText()).isEqualTo("board_update");

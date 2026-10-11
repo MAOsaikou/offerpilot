@@ -71,7 +71,7 @@ public class ResumePatchWriteTools {
             var saved = patches.apply(owner, (String) decision.args().get("resumeId"),
                     (String) decision.args().get("resumeVersionId"), json.valueToTree(body(decision.args())));
             return ExpertResult.text("已按用户批准采纳所选简历补丁，生成新版本 V" + saved.version().versionNo()
-                    + "（" + saved.version().id() + "），原版本保留可查看。");
+                    + "，原版本保留可查看。");
         }).subscribeOn(Schedulers.boundedElastic());
     }
 }

@@ -49,7 +49,7 @@ class InterviewApprovalTest {
     }
 
 
-    @Test void linkedStartPreservesProvenanceAndRejectedWritesStayUnchanged() {
+    @Test void linkedStartPreservesProvenanceAndRejectedWritesStayUnchanged() throws Exception {
         var linked = InterviewIntentParser.prepare(new PlanStep("s0","面试",ExpertType.INTERVIEWER,Map.of("jobId","model_guessed"),List.of()),
                 "开始面试",Map.of("interviewAction","startInterview","role","Java工程师","jobId","job_1"));
         when(sessions.create("alice","Java工程师","项目与经历","job_1")).thenReturn(session(false));
@@ -58,6 +58,32 @@ class InterviewApprovalTest {
         var accepted=approvals.resolve("alice","run_start",start.id(),new ApprovalService.Decision("APPROVE",null,null));
         writes.execute("alice","run_start",linked,accepted).block();
         verify(sessions).create("alice","Java工程师","项目与经历","job_1");
+        var registry = registry();
+        var runner = new Orchestrator(new IntentPlanner(gateway, new ObjectMapper(), registry,
+                new ByteArrayResource("{experts}".getBytes())), registry);
+        for (boolean completed : List.of(false, true)) {
+            when(sessions.get("alice", "iv_1")).thenReturn(session(completed));
+            var reply = new ArrayList<Message>();
+            var scoring = runner.run(AgentMode.INTERVIEWER, "给我这场面试的评分。", List.of(), ModelTier.FLASH,
+                    "run_score", new AtomicInteger(), reply, u -> {}, "alice", Map.of("interviewSessionId", "iv_1"))
+                    .collectList().block(Duration.ofSeconds(3));
+            assertThat(scoring.stream().filter(AgentEvent.UiCard.class::isInstance).map(AgentEvent.UiCard.class::cast))
+                    .extracting(AgentEvent.UiCard::cardType).containsExactly("interview_report");
+            assertThat(scoring).noneMatch(AgentEvent.ApprovalRequired.class::isInstance);
+            assertThat(reply.stream().map(Message::getText).collect(java.util.stream.Collectors.joining()))
+                    .contains("文字规则评分").doesNotContain("iv_1", "s1：", "四周主题");
+        }
+        var reply = new ArrayList<Message>();
+        var completedAnswer = runner.run(AgentMode.INTERVIEWER, "我补充项目的验证方式", List.of(), ModelTier.FLASH,
+                "run_answer", new AtomicInteger(), reply, u -> {}, "alice", Map.of("interviewSessionId", "iv_1"))
+                .collectList().block(Duration.ofSeconds(3));
+        assertThat(completedAnswer).noneMatch(e -> e instanceof AgentEvent.ApprovalRequired || e.type().equals("error"));
+        assertThat(completedAnswer.stream().filter(AgentEvent.ToolCall.class::isInstance).map(AgentEvent.ToolCall.class::cast))
+                .extracting(AgentEvent.ToolCall::access).containsExactly(AgentEvent.ToolAccess.READ);
+        assertThat(reply.stream().map(Message::getText).collect(java.util.stream.Collectors.joining()))
+                .contains("这场面试已完成", "本轮没有保存或推进答案", "评分、复盘", "新面试").doesNotContain("未完成，请重试", "iv_1");
+        verifyNoInteractions(gateway);
+        verify(sessions, never()).saveAnswer(any(), any(), anyInt(), any());
         var bad = new PlanStep("s1", "面试", ExpertType.INTERVIEWER, Map.of("action", "startInterview", "kind", "硬件指标"), List.of());
         assertThatThrownBy(() -> writes.request("alice", "run", bad)).isInstanceOf(BusinessException.class);
         when(sessions.get("bob", "iv_1")).thenThrow(new BusinessException(ErrorCode.INTERVIEW_NOT_FOUND));

@@ -85,7 +85,8 @@ public class IntentPlanner {
                     single(content, ExpertType.RESUME, safeContext)), content, history, tier, onUsage, safeContext);
         }
         if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.INTERVIEWER)
-                && (safeContext.containsKey("interviewAction") || safeContext.containsKey("interviewSessionId"))) {
+                && (safeContext.containsKey("interviewAction") || safeContext.containsKey("interviewSessionId")
+                    || content.contains("面试") && InterviewIntentParser.scoringRequest(content))) {
             return resolveActions(new Decision("single", ExpertType.INTERVIEWER, 1.0, false, null,
                     single(content, ExpertType.INTERVIEWER, safeContext)), content, history, tier, onUsage, safeContext);
         }

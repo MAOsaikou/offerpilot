@@ -55,16 +55,27 @@ public class BoardWriteTools {
     }
     private static BusinessException invalid(String message) { return new BusinessException(ErrorCode.VALIDATION_FAILED, message); }
 
+    private static String statusLabel(String status) {
+        return switch (status) {
+            case "TODO" -> "待投递";
+            case "APPLIED" -> "已投递";
+            case "INTERVIEW" -> "面试中";
+            case "OFFER" -> "已获 Offer";
+            case "CLOSED" -> "已结束";
+            default -> "未知";
+        };
+    }
+
     public Mono<ExpertResult> detail(String owner, String id) {
         return Mono.fromCallable(() -> {
             var detail = applications.detail(owner, id);
             var app = detail.application();
-            return ExpertResult.text("求职记录 " + app.id() + "：" + app.job().path("company").asText() + " / "
-                    + app.job().path("title").asText() + "，阶段 " + app.status() + "，下一步 " + app.nextAction()
+            return ExpertResult.text("求职记录：" + app.job().path("company").asText() + " / "
+                    + app.job().path("title").asText() + "，阶段 " + statusLabel(app.status()) + "，下一步 " + app.nextAction()
                     + "，日期 " + (app.nextActionAt()==null?"未安排":app.nextActionAt()) + "，备注：" + app.note()
-                    + "。最新评估：" + (detail.latestMatch()==null?"暂无成功匹配报告":detail.latestMatch())
-                    + "。最近跟进事件：" + detail.timeline().stream().skip(Math.max(0,detail.timeline().size()-5)).toList()
-                    + "。" + detail.linkageNote() + "。详情入口 /board?application=" + app.id());
+                    + "。最新评估：" + (detail.latestMatch()==null?"暂无成功匹配报告":"等级 " + detail.latestMatch().grade() + "，主要差距：" + String.join("、", detail.latestMatch().topGaps()))
+                    + "。最近跟进事件：" + detail.timeline().stream().skip(Math.max(0,detail.timeline().size()-5)).map(e -> e.createdAt() + "：" + e.detail()).toList()
+                    + "。" + detail.linkageNote());
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -87,7 +98,7 @@ public class BoardWriteTools {
             application.put("status", saved.status());
             application.put("nextAction", saved.nextAction());
             application.put("nextActionAt", saved.nextActionAt());
-            return ExpertResult.card("已按用户批准的参数" + (create ? "创建" : "更新") + "投递记录：" + saved.id() + "，状态：" + saved.status(),
+            return ExpertResult.card("已按用户批准的参数" + (create ? "创建" : "更新") + "投递记录：" + saved.job().path("company").asText() + " / " + saved.job().path("title").asText() + "，阶段：" + statusLabel(saved.status()),
                     runId + "_" + step.id(), "board_update", Map.of("application", application, "change", create ? "CREATED" : "UPDATED"));
         }).subscribeOn(Schedulers.boundedElastic());
     }

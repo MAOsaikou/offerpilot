@@ -29,14 +29,15 @@ public class InterviewService {
     public record Summary(String id, String role, String kind, int questionIndex, boolean completed,
                           String createdAt, String updatedAt, String jobId) {
         public Summary(String id, String role, String kind, int questionIndex, boolean completed, String createdAt, String updatedAt) {
-            this(id,role,kind,questionIndex,completed,createdAt,updatedAt,null);
+            this(id, role, kind, questionIndex, completed, createdAt, updatedAt, null);
         }
     }
     public record Answer(int questionIndex, String questionText, String answerText) {}
     public record Session(String id, String role, String kind, int questionIndex, boolean completed,
                           String createdAt, String updatedAt, List<Answer> answers, String jobId) {
-        public Session(String id, String role, String kind, int questionIndex, boolean completed, String createdAt, String updatedAt, List<Answer> answers) {
-            this(id,role,kind,questionIndex,completed,createdAt,updatedAt,answers,null);
+        public Session(String id, String role, String kind, int questionIndex, boolean completed,
+                       String createdAt, String updatedAt, List<Answer> answers) {
+            this(id, role, kind, questionIndex, completed, createdAt, updatedAt, answers, null);
         }
     }
 

@@ -81,7 +81,7 @@ public class InterviewWriteTools {
                 return withCandidates(owner, turn.sessionId(), report,
                         turn.note() + com.offerpilot.interview.application.InterviewRubric.summary(report), runId, step.id());
             }
-            return ExpertResult.card("面试会话 " + turn.sessionId() + "，第 " + (turn.questionIndex() + 1) + " 题：" + turn.question() + " " + turn.note(),
+            return ExpertResult.card("面试第 " + (turn.questionIndex() + 1) + " 题：" + turn.question() + " " + turn.note(),
                     com.offerpilot.agent.experts.ExpertRegistry.requestId(runId, step.id()), "interviewer_state", turn);
         }).subscribeOn(Schedulers.boundedElastic());
     }

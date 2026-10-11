@@ -46,31 +46,31 @@ class InterviewHttpIntegrationTest extends SharedHttpIntegrationTest {
     @Test
     void createListDetailAnswerProgressAndCompletionPersistForGuest() throws Exception {
         String token = guests.create().accessToken();
-        String jobId="job_interview_"+UUID.randomUUID();
-        jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES (?,'demo',?,'intern','{\"title\":\"Java 工程师\"}'::jsonb)",jobId,jobId);
-        var created=data(request("POST","",token,Map.of("role","  Java 工程师  ","kind","项目与经历","jobId",jobId)));
-        String id=created.path("id").asText();
-        assertThat(created.path("jobId").asText()).isEqualTo(jobId);
+        String jobId = "job_interview_" + UUID.randomUUID();
+        jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES (?,'fixture',?,'campus',?::jsonb)",
+                jobId, jobId, "{\"title\":\"Java 工程师\",\"company\":\"示例公司\"}");
+        var created = data(request("POST", "", token, Map.of("role", "  Java 工程师  ", "kind", "项目与经历", "jobId", jobId)));
+        String id = created.path("id").asText();
         var list = data(request("GET", "", token, null));
         assertThat(list.size()).isEqualTo(1);
         assertThat(list.get(0).path("role").asText()).isEqualTo("Java 工程师");
         var session = data(request("GET", "/" + id, token, null));
-        for (var view : java.util.List.of(created,list.get(0),session))
+        for (var view : java.util.List.of(created, list.get(0), session))
             assertThat(view.path("jobId").asText()).isEqualTo(jobId);
         // Association survives subsequent answer/progress writes and remains private.
-        assertThat(request("GET","/"+id,guests.create().accessToken(),null).statusCode()).isEqualTo(404);
+        assertThat(request("GET", "/" + id, guests.create().accessToken(), null).statusCode()).isEqualTo(404);
         assertThat(session.path("answers").size()).isEqualTo(5);
         for (int index = 0; index < 5; index++) {
             assertThat(session.path("answers").get(index).path("questionIndex").asInt()).isEqualTo(index);
             assertThat(session.path("answers").get(index).path("questionText").asText())
                     .isEqualTo(com.offerpilot.interview.application.InterviewService.QUESTIONS.get(index));
             assertThat(session.path("answers").get(index).path("answerText").asText()).isEmpty();
-            data(request("PUT", "/" + id + "/answers/" + index, token, Map.of("answerText", "  回答 " + index + "  ")));
-            data(request("PATCH", "/" + id, token, Map.of("questionIndex", index)));
+            assertThat(data(request("PUT", "/" + id + "/answers/" + index, token, Map.of("answerText", "  回答 " + index + "  "))).path("jobId").asText()).isEqualTo(jobId);
+            assertThat(data(request("PATCH", "/" + id, token, Map.of("questionIndex", index))).path("jobId").asText()).isEqualTo(jobId);
         }
         data(request("PUT", "/" + id + "/answers/0", token, Map.of("answerText", "替换")));
         data(request("PUT", "/" + id + "/answers/1", token, Map.of("answerText", "")));
-        data(request("PATCH", "/" + id, token, Map.of("completed", true)));
+        assertThat(data(request("PATCH", "/" + id, token, Map.of("completed", true))).path("jobId").asText()).isEqualTo(jobId);
         session = data(request("GET", "/" + id, token, null));
         assertThat(session.path("completed").asBoolean()).isTrue();
         assertThat(session.path("questionIndex").asInt()).isEqualTo(4);
@@ -102,6 +102,8 @@ class InterviewHttpIntegrationTest extends SharedHttpIntegrationTest {
             }
         }
         var original = data(request("GET", "/" + id, account, null));
+        assertThat(original.path("jobId").isNull()).isTrue();
+        assertThat(data(request("GET", "", account, null)).get(0).path("jobId").isNull()).isTrue();
         assertThat(original.path("completed").asBoolean()).isFalse();
         assertThat(original.path("answers").get(0).path("answerText").asText()).isEmpty();
         assertThat(request("GET", "", null, null).statusCode()).isEqualTo(401);

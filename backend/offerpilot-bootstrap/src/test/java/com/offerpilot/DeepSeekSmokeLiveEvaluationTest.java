@@ -156,7 +156,11 @@ class DeepSeekSmokeLiveEvaluationTest {
         if (Boolean.getBoolean("offerpilot.smoke.match-rest-only")) return;
         long chatStart = System.nanoTime();
         var chat = chat(tier, "JOB", "请匹配这个岗位与我的简历", Map.of("jobAction", "match", "jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
-        assertThat(cards(chat, "job_match").size()).as(tier + " chat matching").isEqualTo(1);
+        assertThat(chat.stream().filter(e -> e.path("type").asText().equals("ui.card")))
+                .extracting(e -> e.path("cardType").asText()).containsExactly("job_match", "job_eval_report");
+        String answer = narration(chat);
+        assertThat(answer).contains(cards(chat, "job_eval_report").get(0).path("grade").asText())
+                .doesNotContain("没有收到可用", "明细列表是空", "四周主题", "STAR 反馈");
         verifyNoInteractions(liveJobs);
         System.out.println("LIVE_SMOKE " + tier + " demo-expired chat-match PASS httpMs=" + (System.nanoTime()-chatStart)/1_000_000);
 
@@ -198,8 +202,9 @@ class DeepSeekSmokeLiveEvaluationTest {
 
     @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
     void interviewerNarratesStarAndRubricCard(ModelTier tier) throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(System.getProperty("offerpilot.smoke.tier", tier.name()).equals(tier.name()));
         String session = jdbc.queryForObject("SELECT id FROM interview_sessions WHERE user_id=? AND completed=true LIMIT 1", String.class, owner);
-        var events = chat(tier, "INTERVIEWER", "请评价面试，概括评分卡的STAR和改进建议", Map.of("interviewAction", "scoreInterview", "interviewSessionId", session));
+        var events = chat(tier, "INTERVIEWER", "给我这场面试的评分。", Map.of("interviewSessionId", session));
         assertThat(cards(events, "interview_report").size()).isEqualTo(1);
         assertThat(List.of("STAR", "背景", "结果").stream().anyMatch(narration(events)::contains)).isTrue();
         assertThat(List.of("只有一段报告摘要", "仅收到摘要").stream().noneMatch(narration(events)::contains)).isTrue();
@@ -363,6 +368,8 @@ class DeepSeekSmokeLiveEvaluationTest {
     private void verifyCompleted(List<JsonNode> events) {
         assertThat(events.stream().filter(e -> e.path("type").asText().equals("error")).map(e -> e.path("code").asText()).toList()).isEmpty();
         assertThat(events.stream().anyMatch(e -> e.path("type").asText().equals("run.completed"))).isTrue();
+        assertThat(narration(events)).doesNotContain("编排数据", "步骤被拒绝")
+                .doesNotMatch("(?s).*(?<![A-Za-z0-9_])(?:s[0-9]+|(?:run|app|match|rs|rv|iv|pb|star|mem)_[A-Za-z0-9_-]+)(?![A-Za-z0-9_-]).*");
     }
 
     private void verifyReport(JsonNode report) {

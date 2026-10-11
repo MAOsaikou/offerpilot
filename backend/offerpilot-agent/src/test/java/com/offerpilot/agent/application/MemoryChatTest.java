@@ -27,6 +27,7 @@ class MemoryChatTest {
         var events=chat.write("alice","run",new AtomicInteger(),candidate).doOnNext(e -> {
             if(e instanceof AgentEvent.ApprovalRequired a) approvals.resolve("alice","run",a.approvalId(),new ApprovalService.Decision("REJECT",null,null));
         }).collectList().block(Duration.ofSeconds(5));
+        assertThat(((AgentEvent.ToolResult)events.get(3)).resultPreview()).contains("你已拒绝", "未保存记忆", "重新发起");
         assertThat(((AgentEvent.ToolResult)events.get(3)).ok()).isFalse();
         String[] id={null};
         var subscription=chat.write("alice","cancelled",new AtomicInteger(),candidate).subscribe(e -> {
@@ -54,6 +55,12 @@ class MemoryChatTest {
         }).collectList().block(Duration.ofSeconds(5));
         assertThat(((AgentEvent.ToolResult)events.get(3)).ok()).isFalse();
         assertThat(((AgentEvent.ToolResult)events.get(3)).resultPreview()).doesNotContain("internal secret").contains("保存失败");
+        doReturn(new Memory("mem_internal", candidate.kind(), candidate.fact(), candidate.source(), "conv_internal", "msg_internal", "now", "now"))
+                .when(memories).saveApproved(anyString(),anyString(),any());
+        var saved=chat.write("alice","run_saved",new AtomicInteger(),candidate).doOnNext(e -> {
+            if(e instanceof AgentEvent.ApprovalRequired a) approvals.resolve("alice","run_saved",a.approvalId(),new ApprovalService.Decision("APPROVE",null,null));
+        }).collectList().block(Duration.ofSeconds(5));
+        assertThat(((AgentEvent.ToolResult)saved.get(3)).resultPreview()).isEqualTo("记忆已保存，可在设置中管理。");
     }
 
     @Test void invalidSourcesAndExtraKeysAreRejected() {

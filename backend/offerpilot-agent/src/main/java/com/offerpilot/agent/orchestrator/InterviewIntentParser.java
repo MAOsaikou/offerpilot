@@ -24,6 +24,7 @@ public final class InterviewIntentParser {
                     "面试会话标识无效，请重新选择练习。");
         var args = new LinkedHashMap<String, Object>();
         String action = context.get("interviewAction") instanceof String s && ACTIONS.contains(s) ? s : null;
+        if (action == null && scoringRequest(content)) action = "scoreInterview";
         if (action == null && step.inputs().get("action") instanceof String proposed && ACTIONS.contains(proposed)) action = proposed;
         if (action == null) {
             if (content.strip().matches("(?s)(?:请)?(?:帮我|给我)?(?:结束面试|完成面试|标记完成).*")) action = "completeInterview";
@@ -67,6 +68,14 @@ public final class InterviewIntentParser {
             args.put("nextQuestion", content.strip().matches("(?:请)?(?:下一题|跳过追问|跳过本题)[。！!]?"));
         }
         return new PlanStep(step.id(), action.equals("scoreInterview") ? "面试 STAR 评分卡" : "文字模拟面试", step.agent(), args, step.dependsOn());
+    }
+    public static boolean scoringRequest(String content) {
+        String text = content.strip();
+        // Anchor to a request, so an answer describing product scores/feedback stays an answer.
+        if (text.matches("(?s)(?:请)?(?:帮我|给我)?(?:结束面试|完成面试|标记完成).*")) return false;
+        return text.matches("(?is)(?:请)?(?:帮我|给我|为我|我想要|我想)?(?:给|对|为)?(?:这场|本场|刚才的|我的|这次)?(?:面试|表现|回答)?(?:的)?(?:评分|打分|分数|得分|评价|复盘|反馈|score).*")
+                || text.matches("(?s)(?:请)?(?:帮我|给我|为我|我想要|我想)?(?:评价|点评)(?:一下)?(?:我的|这场面试的|本场面试的|刚才的)?(?:表现|面试|回答).*")
+                || text.matches("(?s)(?:请)?(?:帮我|给我|为我|生成|请求).*(?:面试反馈|评分卡|面试报告).*");
     }
     private static boolean recallRequest(String content) {
         return content.strip().matches("(?s)(?:请|帮我|基于|根据|参考|引用|召回).*(?:引用|召回|参考|故事库|已入库).*(?:STAR|故事|项目经历).*");

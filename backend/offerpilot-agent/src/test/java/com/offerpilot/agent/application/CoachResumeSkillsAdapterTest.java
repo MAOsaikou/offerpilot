@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.offerpilot.resume.application.*;
 import com.offerpilot.common.error.*;
 import org.junit.jupiter.api.Test;
+import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -24,6 +25,26 @@ class CoachResumeSkillsAdapterTest {
         assertThat(adapter.read("alice",null,null).skills()).containsExactly("Java","SQL","Vue");
         verify(resumes).latestReady("alice");
         verify(source,times(2)).snapshot("alice","rs","rv");
+        var matches = mock(com.offerpilot.job.application.JobMatchService.class);
+        var interviews = mock(com.offerpilot.interview.application.InterviewService.class);
+        var applications = mock(com.offerpilot.board.application.ApplicationService.class);
+        var report = new ObjectMapper().readTree("""
+                {"id":"match_1","jobId":"job_1","jobSnapshot":{"title":"工程师"},"evaluation":{"dimensions":[
+                 {"code":"A","name":"要求覆盖","score":40,"reason":"缺少证据"},
+                 {"code":"B","name":"证据强度","score":50,"reason":"引用不足"}]}}
+                """);
+        when(matches.latestCompleted("alice", "job_1", "工程师")).thenReturn(report);
+        when(interviews.latestCompleted("alice")).thenReturn(new com.offerpilot.interview.application.InterviewService.Session(
+                "iv_1", "工程师", "项目与经历", 0, true, "now", "now",
+                List.of(new com.offerpilot.interview.application.InterviewService.Answer(0, "介绍项目", "我实现了接口，并对请求参数、异常情况和返回值逐一做了校验。")), "job_1"));
+        var signals = new CoachEvidenceAdapter(matches, interviews, applications).read("alice", "job_1", null, "工程师");
+        assertThat(signals.gaps()).extracting(com.offerpilot.career.application.CoachEvidence.Gap::name)
+                .contains("岗位评估：要求覆盖", "岗位评估：证据强度", "面试表现：岗位关联", "面试表现：逻辑结构", "STAR 回答结构")
+                .doesNotContain("岗位 A · 要求覆盖", "面试 岗位匹配", "面试 逻辑");
+        assertThat(signals.gaps().stream().filter(g -> g.source().type().equals("INTERVIEW")))
+                .extracting(g -> g.source().jobId()).containsOnly("job_1");
+        verifyNoInteractions(applications);
+
     }
     @Test void absentAndForeignVersionsNeverExposeOtherOwnersSkillsOrGuessPartialSelection() {
         assertThat(adapter.read("alice",null,null).available()).isFalse();
