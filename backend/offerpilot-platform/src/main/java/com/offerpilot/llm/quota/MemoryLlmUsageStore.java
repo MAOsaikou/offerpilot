@@ -24,6 +24,10 @@ public final class MemoryLlmUsageStore implements LlmUsageStore {
         if (consume) counters.put(requestKey, new Counter(value(requestKey) + 1, minuteReset));
         return 0;
     }
+    @Override public synchronized long tokens(String owner, String day) {
+        purge();
+        return value(owner + ":tokens:" + day);
+    }
     @Override public synchronized void erase(String owner) {
         counters.keySet().removeIf(key -> key.startsWith(owner + ":"));
         revoked.values().removeIf(expiry -> !expiry.isAfter(clock.instant()));

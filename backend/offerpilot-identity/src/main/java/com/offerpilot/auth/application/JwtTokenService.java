@@ -41,13 +41,19 @@ public class JwtTokenService {
 
     /** 生成签名令牌，claims 携带用户 ID、角色与昵称。 */
     public String issue(String userId, List<String> roles, String nickname) {
+        return issue(userId, roles, nickname, Instant.now().plus(accessTtl));
+    }
+
+    /** Sandbox credentials never outlive the sandbox or the normal access-token TTL. */
+    public String issue(String userId, List<String> roles, String nickname, Instant expiresAt) {
         Instant now = Instant.now();
+        Instant expiry = expiresAt.isBefore(now.plus(accessTtl)) ? expiresAt : now.plus(accessTtl);
         return Jwts.builder()
                 .subject(userId)
                 .claim("roles", roles)
                 .claim("nickname", nickname)
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(now.plus(accessTtl)))
+                .expiration(Date.from(expiry))
                 .signWith(key, Jwts.SIG.HS256)
                 .compact();
     }

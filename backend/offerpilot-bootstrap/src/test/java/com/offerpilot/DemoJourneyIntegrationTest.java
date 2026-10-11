@@ -43,6 +43,9 @@ import static org.assertj.core.api.Assertions.*;
         "spring.ai.model.chat=none", "spring.ai.model.embedding=none", "spring.ai.mcp.server.enabled=false",
         "offerpilot.demo.enabled=true", "offerpilot.demo.email=demo@offerpilot.local",
         "offerpilot.demo.password=isolated-demo-test-password", "offerpilot.demo.reset-cron=-",
+        "offerpilot.demo.sandbox-max-active=2", "offerpilot.demo.sandbox-max-per-day=3",
+        "offerpilot.demo.sandbox-daily-token-limit=150000", "offerpilot.demo.sandbox-cleanup-delay-ms=3600000",
+        "offerpilot.privacy.cleanup-delay-ms=3600000", "offerpilot.rate-limit.auth-demo-login-per-minute=100",
         "offerpilot.staff-bootstrap.email=", "offerpilot.staff-bootstrap.password="
 })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -62,6 +65,14 @@ class DemoJourneyIntegrationTest {
     @Autowired DemoAccountBootstrap accounts;
     @Autowired DemoJourneyBootstrap bootstrap;
     @Autowired DemoResetService resets;
+    @Autowired com.offerpilot.demo.DemoSandboxService sandboxes;
+    @Autowired com.offerpilot.auth.application.PasswordLoginService logins;
+    @Autowired com.offerpilot.llm.quota.LlmQuotaLimiter limiter;
+    @Autowired com.offerpilot.llm.quota.LlmQuotaIdentity quotas;
+    @Autowired com.offerpilot.llm.quota.LlmUsageStore usage;
+    @Autowired com.offerpilot.privacy.AccountDataCleanup cleanup;
+    @Autowired com.offerpilot.conversation.application.ConversationService conversations;
+    @Autowired com.offerpilot.agent.application.ApprovalService approvals;
     @Autowired PasswordEncoder passwords;
     @Autowired PlatformTransactionManager transactions;
     @Autowired ResumeObjectStore storage;
@@ -76,8 +87,10 @@ class DemoJourneyIntegrationTest {
     static class MemoryDemoStorage implements ResumeObjectStore {
         private final Map<String, byte[]> objects = new ConcurrentHashMap<>();
         boolean failWrites;
+        Runnable beforePut = () -> {};
         public String bucket() { return "isolated-demo-fixtures"; }
         public void put(String key, byte[] bytes, String mime) {
+            beforePut.run();
             if (failWrites) throw new com.offerpilot.common.error.BusinessException(com.offerpilot.common.error.ErrorCode.STORAGE_UNAVAILABLE);
             objects.put(key, bytes);
         }
@@ -87,8 +100,9 @@ class DemoJourneyIntegrationTest {
 
     @BeforeEach void freshJourney() {
         jdbc.execute("TRUNCATE users CASCADE");
-        accounts.run(new DefaultApplicationArguments());
-        bootstrap.run(new DefaultApplicationArguments());
+        jdbc.execute("TRUNCATE demo_sandbox_admissions, account_data_cleanup");
+        ((MemoryDemoStorage) storage).objects.clear();
+        resets.seedIfEmpty(accounts.requireAccount());
     }
 
     @Test void resetRestoresFictionalMemoriesAndOptIn() {
@@ -134,7 +148,7 @@ class DemoJourneyIntegrationTest {
             var detail = request("GET", "/resumes/" + resume.path("id").asText(), token, null);
             ResumeStructure.validate(json.readTree(detail.body()).path("data").path("currentVersion").path("structured"));
         }
-        for (var file : jdbc.queryForList("SELECT bucket,object_key,mime,size FROM files WHERE user_id=?", owner())) {
+        for (var file : jdbc.queryForList("SELECT bucket,object_key,mime,size FROM files WHERE user_id=?", data.path("user").path("id").asText())) {
             var bytes = storage.get(file.get("bucket").toString(), file.get("object_key").toString());
             assertThat(bytes.length).isEqualTo(((Number) file.get("size")).intValue());
             assertThat(reader.read(bytes, file.get("mime").toString()).text()).contains("校园", "虚构", "Java");
@@ -197,7 +211,8 @@ class DemoJourneyIntegrationTest {
         jdbc.update("UPDATE users SET roles='{USER}' WHERE id='usr_staff'");
         assertThat(request("POST", "/admin/demo/reset", staff, null).statusCode()).isEqualTo(403);
         jdbc.update("UPDATE users SET status='DISABLED' WHERE id=?", owner());
-        assertThat(request("POST", "/auth/demo-login", null, null).statusCode()).isEqualTo(403);
+        assertThatThrownBy(() -> accounts.login(logins)).isInstanceOf(com.offerpilot.common.error.BusinessException.class);
+        assertThat(request("POST", "/auth/demo-login", null, null).statusCode()).isEqualTo(200);
     }
 
     @Test void storageFailureRollsBackBusinessReplacementAndSuccessfulResetCleansOldUploads() {
@@ -223,16 +238,20 @@ class DemoJourneyIntegrationTest {
         assertThat(first.join().resumeCount()).isEqualTo(2);
         assertThat(second.join().applicationCount()).isEqualTo(6);
         jdbc.update("UPDATE career_profiles SET target='试用修改' WHERE user_id=?", owner());
-        bootstrap.scheduledReset();
+        new DemoJourneyBootstrap(accounts, resets, new OfferPilotProperties(null,
+                new OfferPilotProperties.Demo(true, "demo@offerpilot.local", "isolated-demo-test-password", "-", false, java.time.Duration.ofHours(24), 200000, 30, 100),
+                null,null,null,null,null,null)).scheduledReset();
         assertThat(jdbc.queryForObject("SELECT target FROM career_profiles WHERE user_id=?", String.class, owner())).isEqualTo("后端开发工程师");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM resumes WHERE user_id=?", Integer.class, owner())).isEqualTo(2);
     }
 
     @Test void neverIssuesStaffJwtForAnIncorrectlyFlaggedDemoUser() throws Exception {
         jdbc.update("UPDATE users SET roles='{USER,STAFF}' WHERE id=?", owner());
+        assertThatThrownBy(() -> accounts.login(logins)).isInstanceOfSatisfying(com.offerpilot.common.error.BusinessException.class,
+                ex -> assertThat(ex.errorCode()).isEqualTo(com.offerpilot.common.error.ErrorCode.DEMO_NOT_ALLOWED));
         var response = request("POST", "/auth/demo-login", null, null);
-        assertThat(response.statusCode()).isEqualTo(403);
-        assertThat(json.readTree(response.body()).path("code").asInt()).isEqualTo(20007);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(response.body()).path("data").path("user").path("roles").toString()).isEqualTo("[\"USER\"]");
     }
 
     @Test void rotatesConfiguredPasswordAndEmailButNeverHijacksRealAccount() {
@@ -248,6 +267,87 @@ class DemoJourneyIntegrationTest {
         assertThat(accountConfig(false, "demo@offerpilot.local", "isolated-test-password").ensure()).isNull();
         assertThat(accountConfig(true, "demo@offerpilot.local", "").ensure()).isNull();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE is_demo=true", Integer.class)).isEqualTo(1);
+    }
+
+    @Test void sandboxLoginsIsolateJourneyQuotaAndExpiryCleanup() throws Exception {
+        var first = java.util.concurrent.CompletableFuture.supplyAsync(sandboxes::login);
+        var second = java.util.concurrent.CompletableFuture.supplyAsync(sandboxes::login);
+        var a = first.join(); var b = second.join();
+        String owner = a.user().id();
+        assertThat(owner).isNotEqualTo(b.user().id());
+        assertThat(a.user().demoExpiresAt()).isAfter(java.time.Instant.now().plusSeconds(23*3600));
+        assertThatThrownBy(() -> logins.login(a.user().email(), "isolated-demo-test-password"))
+                .isInstanceOf(com.offerpilot.common.error.BusinessException.class);
+        assertThat(request("GET", "/staff/users", a.accessToken(), null).statusCode()).isEqualTo(403);
+        assertThat(request("POST", "/admin/demo/reset", a.accessToken(), null).statusCode()).isEqualTo(403);
+        assertThat(request("POST", "/auth/demo-login", null, null).statusCode()).isEqualTo(429);
+        var aResumes = json.readTree(request("GET", "/resumes", a.accessToken(), null).body()).path("data").path("items");
+        var bResumes = json.readTree(request("GET", "/resumes", b.accessToken(), null).body()).path("data").path("items");
+        assertThat(aResumes).hasSize(2); assertThat(bResumes).hasSize(2);
+        assertThat(request("GET", "/resumes/"+aResumes.get(0).path("id").asText(), b.accessToken(), null).statusCode()).isEqualTo(404);
+        String app = "app_demo_"+owner+"_1";
+        assertThat(request("PATCH", "/applications/"+app, b.accessToken(), Map.of("note", "foreign" )).statusCode()).isEqualTo(404);
+        assertThat(request("PATCH", "/applications/"+app, a.accessToken(), Map.of("note", "visitor A" )).statusCode()).isEqualTo(200);
+        assertThat(jdbc.queryForList("SELECT note FROM applications WHERE user_id=?", String.class,b.user().id())).doesNotContain("visitor A");
+        assertThat(request("GET", "/interviews/int_demo_"+owner+"_1", b.accessToken(), null).statusCode()).isEqualTo(404);
+        var admission = limiter.check(owner, com.offerpilot.llm.ModelTier.FLASH, true);
+        limiter.record(admission, 150000);
+        assertThatThrownBy(() -> limiter.check(owner, com.offerpilot.llm.ModelTier.FLASH, false))
+                .isInstanceOfSatisfying(com.offerpilot.common.error.BusinessException.class,
+                    ex -> assertThat(ex.errorCode()).isEqualTo(com.offerpilot.common.error.ErrorCode.DAILY_QUOTA_EXCEEDED));
+        assertThat(limiter.check(b.user().id(), com.offerpilot.llm.ModelTier.FLASH, false)).isNotNull();
+        assertThat(json.readTree(request("GET", "/demo/sandbox", a.accessToken(), null).body()).path("data").path("remainingTokens").asLong()).isZero();
+        jdbc.update("UPDATE user_preferences SET daily_token_limit=999999 WHERE user_id=?",owner);
+        assertThat(quotas.policy(owner).dailyTokenLimit()).isEqualTo(150000);
+        var turn = conversations.begin(owner, null, "fictional", com.offerpilot.agent.domain.AgentMode.AUTO, "FLASH");
+        var ticket = approvals.request(owner, turn.runId(), "updateApplicationStatus", Map.of("applicationId",app,"note","fictional"));
+        String approvalPath = "/agent/runs/"+turn.runId()+"/approvals/"+ticket.id();
+        assertThat(request("POST",approvalPath,b.accessToken(),Map.of("decision","APPROVE")).statusCode()).isEqualTo(404);
+        assertThat(request("POST",approvalPath,a.accessToken(),Map.of("decision","REJECT")).statusCode()).isEqualTo(200);
+        jdbc.update("INSERT INTO approvals(id,run_id,user_id,tool_name,args,status,expires_at) VALUES ('sandbox-approval',?,?,'fixture','{}','PENDING',now()+interval '1 hour')",turn.runId(),owner);
+        var objects = jdbc.queryForList("SELECT object_key FROM files WHERE user_id=?",String.class,owner);
+        var indirect = jdbc.queryForList("SELECT session_id FROM interview_answers WHERE session_id IN (SELECT id FROM interview_sessions WHERE user_id=?)",String.class,owner);
+        // Expiry is checked on every authenticated request, before the deletion poll, even if staff suspended it.
+        jdbc.update("UPDATE users SET demo_expires_at=now()-interval '1 second' WHERE id=?",owner);
+        assertThat(request("GET", "/resumes", a.accessToken(), null).statusCode()).isEqualTo(401);
+        assertThatThrownBy(() -> quotas.policy(owner)).isInstanceOf(com.offerpilot.common.error.BusinessException.class);
+        jdbc.update("UPDATE users SET status='DISABLED' WHERE id=?",owner);
+        sandboxes.cleanupExpired();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE id=?", Integer.class,owner)).isZero();
+        for (String table : jdbc.queryForList("SELECT table_name FROM information_schema.columns WHERE table_schema='public' AND column_name='user_id'",String.class))
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM "+table+" WHERE user_id=?",Integer.class,owner)).as(table).isZero();
+        for (String id : indirect) assertThat(jdbc.queryForObject("SELECT count(*) FROM interview_answers WHERE session_id=?",Integer.class,id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM agent_runs WHERE id=?",Integer.class,turn.runId())).isZero();
+        for (String key : objects) assertThat(storage.get(storage.bucket(),key)).isNull();
+        assertThat(usage.tokens(owner,admission.day())).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup",Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM resumes WHERE user_id=?",Integer.class,b.user().id())).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM jobs WHERE site='demo'",Integer.class)).isEqualTo(10);
+        var c = sandboxes.login();
+        assertThat(request("DELETE", "/users/me/data", c.accessToken(), Map.of("confirm","DELETE")).statusCode()).isEqualTo(200);
+        // Deleted/failed sandboxes do not refund daily admission, even after active capacity opens.
+        assertThat(request("POST", "/auth/demo-login", null, null).statusCode()).isEqualTo(429);
+    }
+
+    @Test void sandboxSeedFailureReclaimsPartialObjectsAndKeepsAdmission() {
+        var memory = (MemoryDemoStorage) storage;
+        memory.beforePut = () -> assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM account_data_cleanup WHERE kind='OBJECT' AND next_attempt_at>now()",Integer.class)).isEqualTo(2);
+        // Fail after uploads at the career-profile insert to verify rollback object cleanup.
+        jdbc.execute("ALTER TABLE career_profiles ADD CONSTRAINT sandbox_seed_failure CHECK (user_id NOT LIKE 'usr_%') NOT VALID");
+        try { assertThatThrownBy(sandboxes::login).isInstanceOf(RuntimeException.class); }
+        finally {
+            jdbc.execute("ALTER TABLE career_profiles DROP CONSTRAINT sandbox_seed_failure");
+            memory.beforePut = () -> {};
+        }
+        cleanup.retryPending();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE demo_expires_at IS NOT NULL",Integer.class)).isZero();
+        assertThat(memory.objects.keySet()).allMatch(key -> key.contains(owner()));
+        assertThat(jdbc.queryForObject("SELECT created_count FROM demo_sandbox_admissions",Integer.class)).isEqualTo(1);
+        String linked = jdbc.queryForObject("SELECT object_key FROM files WHERE user_id=? LIMIT 1",String.class,owner());
+        jdbc.update("INSERT INTO account_data_cleanup(id,kind,bucket,object_key) VALUES ('crash-after-commit','OBJECT',?,?)",storage.bucket(),linked);
+        cleanup.retryPending();
+        assertThat(storage.get(storage.bucket(),linked)).isNotEmpty();
     }
 
     private DemoAccountBootstrap accountConfig(boolean enabled, String email, String password) {

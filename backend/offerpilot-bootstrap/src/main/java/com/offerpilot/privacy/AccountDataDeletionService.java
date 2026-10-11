@@ -27,9 +27,16 @@ public class AccountDataDeletionService {
     }
     private record Deleted(int files, List<String> receipts) {}
     public void delete(String owner) {
+        delete(owner, false);
+    }
+    /** Internal expiry path; still refuses shared demos, ordinary users and staff. */
+    public void deleteExpiredSandbox(String owner) {
+        delete(owner, true);
+    }
+    private void delete(String owner, boolean expiredSandbox) {
         Deleted deleted;
         for (int attempt = 0; ; attempt++) {
-            try { deleted = deleteRows(owner); break; }
+            try { deleted = deleteRows(owner, expiredSandbox); break; }
             catch (PessimisticLockingFailureException ex) {
                 // A parser may hold a child row before acquiring its user FK lock.
                 // PostgreSQL rolls back the entire losing transaction, including receipts.
@@ -43,13 +50,15 @@ public class AccountDataDeletionService {
             catch (RuntimeException ex) { LoggerFactory.getLogger(getClass()).warn("Account data cleanup deferred receipt={}", receipt); }
         }
     }
-    private Deleted deleteRows(String owner) {
+    private Deleted deleteRows(String owner, boolean expiredSandbox) {
         return Objects.requireNonNull(tx.execute(status -> {
             var receipts = new ArrayList<String>();
             // Blocks new FK-backed writes before inventory; an authenticated request may already be in flight.
-            var accounts = jdbc.queryForList("SELECT is_demo,('STAFF'=ANY(roles)) AS staff,status FROM users WHERE id=? FOR UPDATE", owner);
-            if (accounts.isEmpty() || !"ACTIVE".equals(accounts.get(0).get("status"))) throw new BusinessException(ErrorCode.UNAUTHENTICATED);
-            if (Boolean.TRUE.equals(accounts.get(0).get("is_demo")))
+            var accounts = jdbc.queryForList("SELECT is_demo,('STAFF'=ANY(roles)) AS staff,status,demo_expires_at, (demo_expires_at<=now()) AS expired FROM users WHERE id=? FOR UPDATE", owner);
+            if (expiredSandbox && (accounts.isEmpty() || !Boolean.TRUE.equals(accounts.get(0).get("expired"))))
+                return new Deleted(0, List.of());
+            if (accounts.isEmpty() || (!expiredSandbox && !"ACTIVE".equals(accounts.get(0).get("status")))) throw new BusinessException(ErrorCode.UNAUTHENTICATED);
+            if (Boolean.TRUE.equals(accounts.get(0).get("is_demo")) && accounts.get(0).get("demo_expires_at") == null)
                 throw new BusinessException(ErrorCode.DEMO_NOT_ALLOWED, "共享体验账号不能删除全部数据，请由客服使用体验账号重置");
             if (Boolean.TRUE.equals(accounts.get(0).get("staff")))
                 throw new BusinessException(ErrorCode.FORBIDDEN, "客服账号不能自助删除，请通过管理员处理，避免丢失管理权限");
