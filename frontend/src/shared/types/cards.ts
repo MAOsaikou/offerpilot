@@ -231,6 +231,11 @@ export interface InterviewReportPayload {
   recommendedLearning: Array<{ topic: string; reason: string; estimatedHours: number }>
 }
 
+export interface StarStoryCitationsPayload {
+  count: number
+  items: Array<{ id: string; title: string; role: string; starCount: number; excerpt: string }>
+}
+
 /* ---------- 职业规划 ---------- */
 
 export interface GrowthEvidence {
@@ -297,12 +302,14 @@ export interface CardPayloadMap {
   resume_diagnosis: ResumeDiagnosisPayload
   resume_diff: ResumeDiffPayload
   job_card: JobCardItem | import('./jobs').ChatJobSearch
-  job_match: JobMatchPayload
+  job_match:
+    JobMatchPayload | Omit<import('./jobs').EvidenceMatch, 'jobSnapshot' | 'resumeSnapshot'>
   campus_calendar: CampusCalendarPayload
   board_update: BoardUpdatePayload
   interviewer_state: InterviewerStatePayload
   interview_turn_score: InterviewTurnScorePayload
   interview_report: InterviewReportPayload
+  star_story_citations: StarStoryCitationsPayload
   skill_gap: SkillGapPayload
   skill_radar: SkillRadarPayload
   roadmap: RoadmapPayload

@@ -12,7 +12,10 @@ public interface CareerRecommendForChat {
         }
     }
     record Payload(String hollandCode, List<String> interestsUsed, List<Recommendation> recommendations) {}
-    record Result(String guidance, Payload payload) {}
+    record CurrentProfile(String target, String city) {}
+    record Result(String guidance, Payload payload, CurrentProfile currentProfile) {
+        public Result(String guidance, Payload payload) { this(guidance, payload, null); }
+    }
     Result recommend(String owner);
     default Result recommend(String owner, String request) { return recommend(owner); }
     OccupationRecommender.Ranked occupation(String occupationId, String name);

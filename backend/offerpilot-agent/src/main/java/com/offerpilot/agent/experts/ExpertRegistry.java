@@ -401,7 +401,8 @@ public class ExpertRegistry {
             return Mono.fromCallable(() -> {
                 var result = careers.recommend(owner, text(step.inputs().get("request")));
                 return result.payload() == null ? ExpertResult.text(result.guidance())
-                        : ExpertResult.card("根据已保存兴趣生成的规则推荐（未设置目标）。",
+                        : ExpertResult.card("根据已保存兴趣生成的规则推荐，本轮未修改职业档案。"
+                                + (result.currentProfile() == null ? "" : "当前职业档案：" + jsonSummary(JSON.valueToTree(result.currentProfile()))),
                                 requestId(runId, step.id()), "career_recommendation", result.payload());
             }).subscribeOn(Schedulers.boundedElastic());
         }

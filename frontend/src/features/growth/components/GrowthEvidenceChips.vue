@@ -2,6 +2,9 @@
 import { RouterLink } from 'vue-router'
 import type { GrowthEvidence } from '@/shared/types/cards'
 defineProps<{ sources: GrowthEvidence[] }>()
+function excerpt(text: string) {
+  return text.replace(/^MISSING[：:]/, '简历未体现：').replace(/^PARTIAL[：:]/, '部分体现：')
+}
 function destination(source: GrowthEvidence) {
   if (!source.id) return undefined
   if (source.type === 'JOB_MATCH' && source.jobId)
@@ -18,16 +21,16 @@ function destination(source: GrowthEvidence) {
         v-if="destination(source)"
         :to="destination(source)!"
         class="inline-flex min-h-11 max-w-full items-center break-words rounded border border-border px-2 py-1 text-primary underline"
-        :title="source.excerpt"
+        :title="excerpt(source.excerpt)"
         >{{ source.label }} · 查看{{ source.type === 'INTERVIEW' ? '复盘' : '报告' }}</RouterLink
       >
       <span
         v-else
         class="inline-block break-words rounded bg-muted px-2 py-1"
-        :title="source.excerpt"
+        :title="excerpt(source.excerpt)"
         >{{ source.label }}</span
       >
-      <p class="mt-1 break-words text-muted-foreground">{{ source.excerpt }}</p>
+      <p class="mt-1 break-words text-muted-foreground">{{ excerpt(source.excerpt) }}</p>
     </li>
   </ul>
 </template>

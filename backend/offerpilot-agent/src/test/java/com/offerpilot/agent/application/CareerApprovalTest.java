@@ -55,6 +55,16 @@ class CareerApprovalTest {
     }
 
 
+    @Test void recommendationCarriesCurrentProfileWithoutChangingExistingTarget() {
+        when(profiles.get("alice")).thenReturn(new CareerProfileService.Profile("工程师", "上海", "Java", List.of("技术研发"), List.of(), null));
+        when(occupations.rankHybrid(any(RiasecProfile.class), anyString(), eq(8))).thenReturn(List.of());
+        var result = registry().execute("alice", Map.of(), "run", new PlanStep("s1", "探索", ExpertType.CAREER_DISCOVERY,
+                Map.of("request", "推荐职业"), List.of()), Map.of()).block(Duration.ofSeconds(3));
+        assertThat(result.summary()).contains("本轮未修改职业档案", "当前职业档案", "上海", "工程师").doesNotContain("未设置目标");
+        assertThat(result.card().cardType()).isEqualTo("career_recommendation");
+        verify(profiles, never()).saveTarget(anyString(), anyString());
+    }
+
     @Test void timeoutRejectsWithoutWritingAndUnknownOccupationNeverRequestsApproval() {
         var ticket = approvals.request("alice", "run", "setCareerTarget", Map.of("occupationId", "occ1"), Duration.ofMillis(5));
         var decision = ticket.await().block(Duration.ofSeconds(2));

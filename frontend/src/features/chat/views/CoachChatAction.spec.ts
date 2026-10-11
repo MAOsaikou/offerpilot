@@ -174,7 +174,7 @@ describe('coach roadmap chat confirmation path', () => {
       '查看报告',
     )
     expect(gap.querySelector('a[href="/interviews/iv1"]')?.textContent).toContain('查看复盘')
-    expect(gap.textContent).toContain('MISSING：SQL <script>untrusted</script>')
+    expect(gap.textContent).toContain('简历未体现：SQL <script>untrusted</script>')
     expect(gap.querySelector('script')).toBeNull()
     expect(root.querySelector('section[aria-label="学习路线图"] a')?.getAttribute('href')).toBe(
       '/jobs/job1?matchId=match1',

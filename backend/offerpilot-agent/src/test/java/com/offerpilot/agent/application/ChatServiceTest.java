@@ -263,21 +263,26 @@ class ChatServiceTest {
                 "weaknesses", List.of("R 结果证据不足"), "advice", List.of("补充可核对结果"),
                 "turns", List.of(java.util.Map.of("question", "介绍项目", "score", 60, "star", java.util.Map.of("situation", true, "task", true, "action", true, "result", false), "feedback", "补充R结果")))),
             new com.offerpilot.agent.experts.ExpertResult.Card("career", "career_recommendation", java.util.Map.of(
-                "hollandCode", "RIS", "recommendations", List.of(java.util.Map.of("name", "后端开发工程师", "family", "软件研发", "hollandCode", "ICR", "similarity", .42, "reasons", List.of("已保存Java技能与软件方向"))))));
+                "hollandCode", "RIS", "recommendations", java.util.stream.IntStream.rangeClosed(1, 8).mapToObj(rank -> java.util.Map.of(
+                    "name", rank == 1 ? "后端开发工程师" : "职业" + rank, "family", "软件研发", "hollandCode", "ICR", "similarity", .42,
+                    "reasons", List.of("已保存Java技能与软件方向"))).toList())),
+            new com.offerpilot.agent.experts.ExpertResult.Card("state", "interviewer_state", java.util.Map.of(
+                "questionIndex", 4, "total", 5, "question", "未来一年如何学习？")));
         var planner = mock(IntentPlanner.class);
         var experts = mock(ExpertRegistry.class);
         var step = new com.offerpilot.agent.domain.PlanStep("s1", "成长", com.offerpilot.agent.domain.ExpertType.COACH, java.util.Map.of(), List.of());
         when(planner.prepare(any(), anyString(), anyList(), any(), any(), anyMap())).thenReturn(reactor.core.publisher.Mono.just(
             new IntentPlanner.Decision("single", step.agent(), 1.0, false, null, new com.offerpilot.agent.domain.Plan("成长", List.of(step)))));
         when(experts.execute(anyString(), anyMap(), anyString(), any(), anyMap())).thenReturn(reactor.core.publisher.Mono.just(
-            com.offerpilot.agent.experts.ExpertResult.cards("已生成卡片，请查看", cards)));
+            com.offerpilot.agent.experts.ExpertResult.cards("已生成卡片，请查看。当前职业档案：{\"target\":\"后端开发工程师\",\"city\":\"上海\"}", cards)));
         var local = new ChatService(gateway, conversations, new ByteArrayResource("narrator".getBytes()), new Orchestrator(planner, experts), new ObjectMapper());
         when(gateway.stream(eq(tier), anyList())).thenAnswer(invocation -> {
             List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(1);
             String prompt = messages.stream().map(org.springframework.ai.chat.messages.Message::getText).collect(java.util.stream.Collectors.joining("\n"));
             assertThat(prompt).contains("topGaps", "并发测试", "\"required\":3", "\"current\":1", "\"gap\":2",
-                "梳理基础", "项目实战", "测试验证", "表达复盘", "核对并发场景", "professional", "\"result\":false", "补充R结果", "后端开发工程师", "已保存Java技能与软件方向")
-                .contains("gapNames").doesNotContain("SHOULD_NOT_REACH_NARRATOR", "gap_internal", "gapIds", "s1：");
+                "梳理基础", "项目实战", "测试验证", "表达复盘", "核对并发场景", "professional", "\"result\":false", "补充R结果", "后端开发工程师", "已保存Java技能与软件方向", "职业8", "\"rank\":8", "\"questionNumber\":5")
+                .contains("gapNames", "当前职业档案", "上海", "长期记忆和历史消息中的偏好可能过时")
+                .doesNotContain("SHOULD_NOT_REACH_NARRATOR", "gap_internal", "gapIds", "s1：", "questionIndex");
             return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage("按卡片整理准备建议")))));
         });
         var result = local.chat("owner", new ChatRequest(null, "分析", null, AgentMode.COACH, new ChatRequest.Options(tier.name(), null, null)))

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onErrorCaptured, ref, watch } from 'vue'
 import CardFallback from './CardFallback.vue'
 import { resolveCardComponent } from './registry'
 import type { PatchDecision } from '@/shared/types/optimization'
@@ -20,14 +20,30 @@ const emit = defineEmits<{
   adoptTarget: [selection: CareerTargetSelection]
 }>()
 
+const failed = ref(false)
+const revision = ref(0)
+onErrorCaptured(() => {
+  failed.value = true
+  return false
+})
+function retry() {
+  revision.value++
+  failed.value = false
+}
+watch(() => props.cardType, retry)
 const component = computed(() => resolveCardComponent(props.cardType))
 </script>
 
 <template>
   <div class="card-reveal">
+    <section v-if="failed" class="panel form-stack" role="alert" aria-label="卡片加载失败">
+      <p>这张卡片暂时无法显示，回复与其他卡片仍可继续查看。</p>
+      <button type="button" class="btn" @click="retry">重新加载卡片</button>
+    </section>
     <component
       :is="component"
-      v-if="component"
+      v-else-if="component"
+      :key="revision"
       :payload="payload"
       v-bind="
         cardType === 'resume_diff'

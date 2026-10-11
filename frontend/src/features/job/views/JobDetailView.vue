@@ -91,12 +91,14 @@ watch(
     const ready = items.find((resume) => resume.parseStatus === 'READY')
     if (ready) resumeId.value = ready.id
   },
+  { immediate: true },
 )
 watch(
   () => versions.data.value,
   (items) => {
     if (items?.length && !versionId.value) versionId.value = items[0]!.id
   },
+  { immediate: true },
 )
 const matchBlockedReason = computed(() => {
   if (busy.value || refreshing.value) return ''
