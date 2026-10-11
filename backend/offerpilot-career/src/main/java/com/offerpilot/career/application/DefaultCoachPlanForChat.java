@@ -74,7 +74,8 @@ public class DefaultCoachPlanForChat implements CoachPlanForChat {
                         List.of(item(requestId, 3, 3, profile), item(requestId, 4, 2, profile))),
                 week(4, "复盘与调整", skills, List.of(item(requestId, 5, 2, profile))));
         return new Result(summary,
-                new SkillGapPayload(requestId, new Target("OCCUPATION", occupation.id(), occupation.name()), skills, summary, List.of()),
+                new SkillGapPayload(requestId, new Target("OCCUPATION", occupation.id(), occupation.name()), skills, summary, List.of(),
+                        new EvidenceAvailability(signals.matchAvailable(), signals.interviewAvailable())),
                 new RoadmapPayload(weeks, List.of(new Milestone("完成核心技能复盘与项目证据整理", "第2周末"),
                         new Milestone("完成文字面试并调整下一轮计划", "第4周末"))));
     }
