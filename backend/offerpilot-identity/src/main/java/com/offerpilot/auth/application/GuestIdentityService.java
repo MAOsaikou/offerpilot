@@ -77,7 +77,7 @@ public class GuestIdentityService implements CurrentUser {
         String userId = claims.getSubject();
         String status;
         try {
-            status = jdbc.queryForObject("SELECT status FROM users WHERE id = ?", String.class, userId);
+            status = jdbc.queryForObject("SELECT status FROM users WHERE id = ? AND (demo_expires_at IS NULL OR demo_expires_at>now())", String.class, userId);
         } catch (EmptyResultDataAccessException ex) {
             throw new BusinessException(ErrorCode.TOKEN_INVALID, "令牌对应的用户不存在");
         }

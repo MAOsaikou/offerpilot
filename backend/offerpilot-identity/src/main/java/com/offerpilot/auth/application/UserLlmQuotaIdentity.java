@@ -15,14 +15,15 @@ public class UserLlmQuotaIdentity implements LlmQuotaIdentity {
     @Override public Policy policy(String owner) {
         var rows = jdbc.query("""
                 SELECT EXISTS(SELECT 1 FROM guest_sessions s WHERE s.user_id=u.id) AS guest,
-                       p.daily_token_limit
+                       p.daily_token_limit, u.demo_expires_at IS NOT NULL AS sandbox
                 FROM users u LEFT JOIN user_preferences p ON p.user_id=u.id
-                WHERE u.id=? AND u.status='ACTIVE'
+                WHERE u.id=? AND u.status='ACTIVE' AND (u.demo_expires_at IS NULL OR u.demo_expires_at>now())
                 """, (rs, row) -> {
             boolean guest = rs.getBoolean("guest");
             Number preferred = (Number) rs.getObject("daily_token_limit");
             long daily = guest ? properties.rateLimit().guestDailyTokenLimit()
                     : preferred == null ? properties.rateLimit().defaultDailyTokenLimit() : preferred.longValue();
+            if (rs.getBoolean("sandbox")) daily = Math.min(daily, properties.demo().sandboxDailyTokenLimit());
             return new Policy(guest, daily);
         }, owner);
         if (rows.isEmpty()) throw new BusinessException(ErrorCode.UNAUTHENTICATED);

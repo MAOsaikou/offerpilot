@@ -17,7 +17,7 @@ const confirm = ref('')
 const busy = ref(false)
 const error = ref('')
 const restricted = computed(() =>
-  auth.user?.isDemo
+  auth.user?.isDemo && !auth.user?.demoExpiresAt
     ? '共享体验账号不能删除全部数据，由客服使用专用重置入口恢复虚构旅程。'
     : auth.isStaff
       ? '客服账号不能自助删除，请通过管理员处理。'

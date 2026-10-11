@@ -4,6 +4,7 @@ export interface AuthUser {
   nickname: string
   roles: string[]
   isDemo?: boolean
+  demoExpiresAt?: string | null
 }
 export interface LoginResult {
   accessToken: string

@@ -11,25 +11,28 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 class UserLlmQuotaIdentityTest {
-    UserLlmQuotaIdentity identity(boolean guest, Integer preference) {
+    UserLlmQuotaIdentity identity(boolean guest, Integer preference) { return identity(guest, preference, false); }
+    UserLlmQuotaIdentity identity(boolean guest, Integer preference, boolean sandbox) {
         var jdbc = new JdbcTemplate() {
             @Override public <T> List<T> query(String sql, RowMapper<T> mapper, Object... args) {
                 assertThat(sql).contains("guest_sessions", "LEFT JOIN user_preferences", "u.status='ACTIVE'");
                 assertThat(args).containsExactly("verified-owner");
                 try {
                     var metadata = new RowSetMetaDataImpl();
-                    metadata.setColumnCount(2);
+                    metadata.setColumnCount(3);
+                    metadata.setColumnName(3, "sandbox"); metadata.setColumnType(3, Types.BOOLEAN);
                     metadata.setColumnName(1, "guest"); metadata.setColumnType(1, Types.BOOLEAN);
                     metadata.setColumnName(2, "daily_token_limit"); metadata.setColumnType(2, Types.INTEGER);
                     var row = RowSetProvider.newFactory().createCachedRowSet();
                     row.setMetaData(metadata); row.moveToInsertRow(); row.updateBoolean(1, guest);
                     if (preference == null) row.updateNull(2); else row.updateInt(2, preference);
+                    row.updateBoolean(3, sandbox);
                     row.insertRow(); row.moveToCurrentRow(); row.beforeFirst(); row.next();
                     return List.of(mapper.mapRow(row, 0));
                 } catch (java.sql.SQLException ex) { throw new IllegalStateException(ex); }
             }
         };
-        var config = new OfferPilotProperties(null, null, null, null,
+        var config = new OfferPilotProperties(null, new OfferPilotProperties.Demo(true, "demo@test.invalid", "", "-", true, java.time.Duration.ofHours(24), 150000, 2, 3), null, null,
                 new OfferPilotProperties.RateLimit(60, 2, 20, 200000, 50000, 15, 20, 20, 20, 20), null, null, null);
         return new UserLlmQuotaIdentity(jdbc, config);
     }
@@ -43,5 +46,7 @@ class UserLlmQuotaIdentityTest {
         assertThat(identity(false, 0).policy("verified-owner").dailyTokenLimit()).isZero();
         assertThat(identity(false, null).policy("verified-owner").dailyTokenLimit()).isEqualTo(200000);
         assertThat(identity(false, null).policy("verified-owner").guest()).isFalse();
+        assertThat(identity(false, 999999, true).policy("verified-owner").dailyTokenLimit()).isEqualTo(150000);
+        assertThat(identity(false, 123, true).policy("verified-owner").dailyTokenLimit()).isEqualTo(123);
     }
 }
