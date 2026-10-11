@@ -117,6 +117,15 @@ const excerpt = computed(() => {
       <p v-else class="subtle">所选简历中未找到可引用的证据。</p>
       <p><strong>准备建议：</strong>{{ item.suggestion }}</p>
     </article>
+    <section v-if="data.unverifiedRequirements?.length" aria-label="未核实要求" class="helper-note">
+      <h4>未核实 {{ data.unverifiedCount ?? data.unverifiedRequirements.length }} 项 · 不计分</h4>
+      <p>以下条目的原文依据未通过校验，无法判断覆盖程度；请核对完整岗位与简历。</p>
+      <ul>
+        <li v-for="(item, index) in data.unverifiedRequirements" :key="index">
+          {{ item.requirement }} · 未核实
+        </li>
+      </ul>
+    </section>
     <section
       v-if="selected && excerpt"
       ref="evidencePanel"
