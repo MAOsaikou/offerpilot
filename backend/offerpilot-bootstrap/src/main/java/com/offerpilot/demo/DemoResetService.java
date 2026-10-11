@@ -154,16 +154,18 @@ public class DemoResetService {
             String jobId = jdbc.queryForObject("SELECT id FROM jobs WHERE site='demo' AND external_id=? AND nature=?",
                     String.class, job.path("externalId").asText(), job.path("nature").asText());
             String appId = "app_demo_" + userId + "_" + (++i);
-            jdbc.update("INSERT INTO applications(id,user_id,job_id,status,note,next_action,next_action_at) VALUES (?,?,?,?,?,?,current_date)",
+            jdbc.update("INSERT INTO applications(id,user_id,job_id,status,note,next_action,next_action_at) VALUES (?,?,?,?,?,?,current_date + ?::integer)",
                     appId, userId, jobId, application.path("status").asText(), application.path("note").asText(),
-                    "核对岗位要求，准备项目 STAR 复盘（虚构演示）");
+                    application.path("nextAction").asText(""),
+                    application.hasNonNull("nextActionDayOffset") ? application.path("nextActionDayOffset").asInt() : null);
             jdbc.update("INSERT INTO application_events(id,application_id,kind,to_status,detail,actor,created_at) VALUES (?,?,'CREATED','TODO','加入求职看板（虚构演示）','SYSTEM',now()-interval '2 days')",
                     "evt_demo_create_"+appId, appId);
             if (!"TODO".equals(application.path("status").asText()))
                 jdbc.update("INSERT INTO application_events(id,application_id,kind,from_status,to_status,detail,actor,created_at) VALUES (?,?,'STATUS_CHANGED','TODO',?,'演示阶段更新','SYSTEM',now()-interval '1 day')",
                         "evt_demo_status_"+appId, appId, application.path("status").asText());
-            jdbc.update("INSERT INTO application_events(id,application_id,kind,detail,actor) VALUES (?,?,'NEXT_ACTION_EDITED','今天准备项目 STAR 复盘（虚构演示）','SYSTEM')",
-                    "evt_demo_next_"+appId, appId);
+            if (!application.path("nextAction").asText("").isBlank())
+                jdbc.update("INSERT INTO application_events(id,application_id,kind,detail,actor) VALUES (?,?,'NEXT_ACTION_EDITED',?,'SYSTEM')",
+                        "evt_demo_next_"+appId, appId, application.path("nextAction").asText());
         }
         i = 0;
         for (JsonNode interview : journey.path("interviews")) {

@@ -12,6 +12,8 @@ import {
   saveInterviewAnswer,
   updateInterview,
 } from '@/shared/api/interviews'
+import { getJob } from '@/shared/api/jobs'
+import { listApplications } from '@/shared/api/applications'
 import { ApiError } from '@/shared/api/client'
 import { listStarStoryCandidates, listStarStories, saveStarStory } from '@/shared/api/starStories'
 import type { InterviewSession } from '@/shared/types/interview'
@@ -20,6 +22,8 @@ import { downloadText } from '@/shared/utils/download'
 import { useWorkspace } from '@/shared/stores/workspace'
 import { installSpeechMocks } from '@/test/speech'
 
+vi.mock('@/shared/api/jobs', () => ({ getJob: vi.fn() }))
+vi.mock('@/shared/api/applications', () => ({ listApplications: vi.fn() }))
 vi.mock('@/shared/api/interviews', () => ({
   createInterview: vi.fn(),
   getInterview: vi.fn(),
@@ -222,7 +226,18 @@ it('persists opt-in autoplay, reads changed questions and cleans up on unmount',
 })
 
 it('creates only server sessions and exports unchanged legacy records', async () => {
+  server.jobId = 'job_interview'
+  vi.mocked(getJob).mockResolvedValue({ id: server.jobId, title: 'Java 后端实习生' } as Awaited<
+    ReturnType<typeof getJob>
+  >)
+  vi.mocked(listApplications).mockResolvedValue([
+    { id: 'app_interview', jobId: server.jobId },
+  ] as Awaited<ReturnType<typeof listApplications>>)
   await mount('/interviews')
+  await vi.waitFor(() => expect(root.textContent).toContain('针对：Java 后端实习生'))
+  expect(
+    root.querySelector<HTMLAnchorElement>('a[href="/board?application=app_interview"]'),
+  ).not.toBeNull()
   const workspace = useWorkspace(pinia)
   workspace.state.interviews.push({
     id: 'legacy',
@@ -251,6 +266,10 @@ it('creates only server sessions and exports unchanged legacy records', async ()
     { role: '新岗位', kind: '项目与经历' },
     expect.any(AbortSignal),
   )
+  await vi.waitFor(() => expect(root.textContent).toContain('针对：Java 后端实习生'))
+  expect(
+    root.querySelector<HTMLAnchorElement>('a[href="/board?application=app_interview"]'),
+  ).not.toBeNull()
   expect(workspace.state.interviews).toHaveLength(1)
 })
 it('saves drafts and previous/next progress, reloads and exports stored question snapshots', async () => {

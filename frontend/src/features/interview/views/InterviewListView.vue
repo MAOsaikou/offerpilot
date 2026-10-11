@@ -2,6 +2,7 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { RouterLink, useRouter, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
+import InterviewJobContext from '@/shared/components/InterviewJobContext.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { useWorkspace } from '@/shared/stores/workspace'
@@ -146,21 +147,28 @@ function exportLegacy(session: Interview) {
         <h2>第一场练习，从自我介绍开始</h2>
         <p>完成后的回答会留在这里，方便你反复复盘。</p>
       </div>
-      <RouterLink
+      <article
         v-for="session in query.data.value"
         :key="session.id"
-        :to="'/interviews/' + session.id"
-        class="list-row"
-        ><span class="stat-icon"><AppIcon name="interviews" /></span>
+        class="list-row interview-record"
+      >
+        <span class="stat-icon"><AppIcon name="interviews" /></span>
         <div>
-          <h3>{{ session.role }}</h3>
+          <h3>
+            <RouterLink :to="'/interviews/' + session.id">{{ session.role }}</RouterLink>
+          </h3>
+          <InterviewJobContext :job-id="session.jobId" :fallback-title="session.role" />
           <small
             >{{ session.kind }} · {{ new Date(session.createdAt).toLocaleString('zh-CN') }}</small
           >
         </div>
-        <span class="tag">{{ session.completed ? '已完成' : '进行中' }}</span
-        ><span>{{ session.completed ? '查看复盘' : '继续练习' }}</span></RouterLink
-      >
+        <div class="interview-record-actions">
+          <span class="tag">{{ session.completed ? '已完成' : '进行中' }}</span>
+          <RouterLink :to="'/interviews/' + session.id">{{
+            session.completed ? '查看复盘' : '继续练习'
+          }}</RouterLink>
+        </div>
+      </article>
     </section>
     <section v-if="workspace.state.interviews.length" class="panel">
       <div class="section-heading"><h2>本机旧练习</h2></div>
@@ -219,3 +227,22 @@ function exportLegacy(session: Interview) {
     </section>
   </section>
 </template>
+
+<style scoped>
+.interview-record > .interview-record-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+@media (max-width: 600px) {
+  .interview-record {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    align-items: start;
+  }
+  .interview-record-actions {
+    grid-column: 2;
+  }
+}
+</style>

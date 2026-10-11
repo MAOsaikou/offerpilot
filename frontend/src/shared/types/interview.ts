@@ -2,6 +2,7 @@ export type InterviewKind = '项目与经历' | '表达与结构' | '职业动�
 
 export interface InterviewSummary {
   id: string
+  jobId?: string | null
   role: string
   kind: InterviewKind
   questionIndex: number

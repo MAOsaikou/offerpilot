@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
+import { isGenerationCancelled } from '@/shared/api/client'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   applyPatches,
@@ -80,6 +81,7 @@ const canApply = computed(
     !appliedVersionId.value,
 )
 const labels = { RUNNING: '生成中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消' }
+let locallyCancelled = false
 let controller: AbortController | undefined,
   alive = true,
   epoch = 0
@@ -125,6 +127,7 @@ watch(
 async function start(save: boolean) {
   if (occupied.value || !jobDescription.value.trim()) return
   running.value = true
+  locallyCancelled = false
   error.value = ''
   message.value = ''
   runningId.value = ''
@@ -155,6 +158,14 @@ async function start(save: boolean) {
     await reveal(value, jd, request)
   } catch (cause) {
     if (alive && request === epoch) {
+      if (
+        isGenerationCancelled(cause) ||
+        (locallyCancelled && cause instanceof DOMException && cause.name === 'AbortError')
+      ) {
+        error.value = ''
+        message.value = '改写已取消，可重新发起。'
+        return
+      }
       error.value =
         cause instanceof DOMException && cause.name === 'AbortError'
           ? '改写连接已停止，请查看改写记录。'
@@ -188,6 +199,9 @@ async function stop() {
   const id = runningId.value || existing.value?.id
   try {
     if (id) await cancelOptimization(id)
+    locallyCancelled = true
+    message.value = '改写已取消，可重新发起。'
+    error.value = ''
     controller?.abort()
     void refresh()
   } catch (cause) {

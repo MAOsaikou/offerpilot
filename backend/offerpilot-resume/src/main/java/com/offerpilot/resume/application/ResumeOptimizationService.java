@@ -56,6 +56,7 @@ public class ResumeOptimizationService {
                 var row=previous.get(0);
                 if (!versionId.equals(row.get("version_id")) || !jd.equals(row.get("job_description")) || !Objects.equals(input.jobId(),row.get("job_id")))
                     throw new BusinessException(ErrorCode.VALIDATION_FAILED,"请求标识不能用于不同简历版本、岗位或岗位内容");
+                if ("CANCELLED".equals(row.get("status"))) throw new BusinessException(ErrorCode.GENERATION_CANCELLED);
                 if ("SUCCEEDED".equals(row.get("status"))) return new Work(row.get("id").toString(),owner,resumeId,version,tier,jd,parse(row.get("report").toString()));
                 throw new BusinessException(ErrorCode.CONCURRENT_RUN_LIMIT,"本次改写正在处理或已结束，请刷新记录；重试使用新的请求标识");
             }
@@ -76,9 +77,9 @@ public class ResumeOptimizationService {
             var cancellation=Sinks.<Boolean>one();
             if (cancellations.putIfAbsent(work.id(),cancellation)!=null) return Mono.error(new BusinessException(ErrorCode.CONCURRENT_RUN_LIMIT));
             return Mono.defer(() -> {
-                if (!"RUNNING".equals(get(work.owner(),work.id()).path("status").asText())) return Mono.error(finished());
+                if (!"RUNNING".equals(get(work.owner(),work.id()).path("status").asText())) return Mono.error(finished(work));
                 return optimizer.optimize(work.version().structured(),work.jd(),work.tier());
-            }).takeUntilOther(cancellation.asMono()).switchIfEmpty(Mono.error(finished()))
+            }).takeUntilOther(cancellation.asMono()).switchIfEmpty(Mono.defer(() -> Mono.error(finished(work))))
                 .publishOn(Schedulers.boundedElastic()).<JsonNode>map(report -> complete(work,report))
                 .onErrorMap(error -> error instanceof BusinessException ? error : new BusinessException(ErrorCode.DATABASE_UNAVAILABLE))
                 .doOnError(error -> jdbc.update("UPDATE resume_optimizations SET status='FAILED',error=?,updated_at=now() WHERE id=? AND user_id=? AND status='RUNNING'",
@@ -94,7 +95,7 @@ public class ResumeOptimizationService {
         return tx.execute(status -> {
             var rows=jdbc.queryForList("SELECT status,created_at FROM resume_optimizations WHERE id=? AND user_id=? FOR UPDATE",work.id(),work.owner());
             if (rows.isEmpty() || !"RUNNING".equals(rows.get(0).get("status"))
-                    || ((java.sql.Timestamp)rows.get(0).get("created_at")).toInstant().isBefore(Instant.now().minusSeconds(180))) throw finished();
+                    || ((java.sql.Timestamp)rows.get(0).get("created_at")).toInstant().isBefore(Instant.now().minusSeconds(180))) throw finished(work);
             var batch=report.path("patches").isEmpty() ? null : patches.store(work.owner(),work.resumeId(),work.version().id(),report.path("patches"));
             report.put("reportId",work.id()).put("resumeId",work.resumeId()).put("resumeVersionId",work.version().id())
                 .put("versionNo",work.version().versionNo()).put("createdAt",Instant.now().toString());
@@ -134,5 +135,9 @@ public class ResumeOptimizationService {
         jdbc.update("UPDATE resume_optimizations SET status='FAILED',error='改写中断或超时，请重试',updated_at=now() WHERE user_id=? AND status='RUNNING' AND created_at<now()-interval '3 minutes'",owner);
     }
     private JsonNode parse(String value) { try {return json.readTree(value);} catch (Exception ex) {throw new IllegalStateException(ex);} }
-    private static BusinessException finished() {return new BusinessException(ErrorCode.RUN_ALREADY_FINISHED,"改写已取消或过期，请刷新记录");}
+    private BusinessException finished(Work work) {
+        if ("CANCELLED".equals(get(work.owner(),work.id()).path("status").asText()))
+           return new BusinessException(ErrorCode.GENERATION_CANCELLED);
+        return new BusinessException(ErrorCode.RUN_ALREADY_FINISHED,"改写已结束或过期，请刷新记录");
+    }
 }

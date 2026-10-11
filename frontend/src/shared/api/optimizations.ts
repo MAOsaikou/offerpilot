@@ -1,4 +1,5 @@
 import {
+  ApiError,
   apiRequest,
   apiUrl,
   authenticatedHeaders,
@@ -59,12 +60,14 @@ export async function optimizeResume(
       reportId?: string
       cardType?: string
       payload?: OptimizationReport
+      code?: number
       message?: string
       status?: string
     }
     if (event.type === 'run.started' && event.reportId) started(event.reportId)
     if (event.type === 'ui.card' && event.cardType === 'resume_diff') report = event.payload
-    if (event.type === 'error') throw new Error(event.message || '改写失败，请重试')
+    if (event.type === 'error')
+      throw new ApiError(event.message || '改写失败，请重试', { code: event.code ?? 50000 })
     if (event.type === 'run.completed') {
       complete = event.status === 'COMPLETED'
       break

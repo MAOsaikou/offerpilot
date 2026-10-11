@@ -1,6 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { optimizeResume } from './optimizations'
 vi.mock('./client', () => ({
+  ApiError: class extends Error {
+    constructor(message: string, options: { code: number }) {
+      super(message)
+      Object.assign(this, options)
+    }
+  },
   apiUrl: (path: string) => path,
   authenticatedHeaders: async () => ({}),
   toApiError: async () => new Error('接口失败'),
@@ -56,6 +62,7 @@ it('收到卡片后断流仍失败，服务端失败不自动重试', async () =
       response([{ type: 'ui.card', cardType: 'resume_diff', payload: { reportId: 'o1' } }]),
     )
     .mockResolvedValueOnce(response([{ type: 'error', message: '新增数字不允许' }]))
+    .mockResolvedValueOnce(response([{ type: 'error', code: 30205, message: '已取消' }]))
   vi.stubGlobal('fetch', fetcher)
   await expect(
     optimizeResume('r', 'v', 'id', 'JD', new AbortController().signal, vi.fn()),
@@ -63,5 +70,8 @@ it('收到卡片后断流仍失败，服务端失败不自动重试', async () =
   await expect(
     optimizeResume('r', 'v', 'id', 'JD', new AbortController().signal, vi.fn()),
   ).rejects.toThrow('新增数字')
-  expect(fetcher).toHaveBeenCalledTimes(2)
+  await expect(
+    optimizeResume('r', 'v', 'id', 'JD', new AbortController().signal, vi.fn()),
+  ).rejects.toMatchObject({ code: 30205, message: '已取消' })
+  expect(fetcher).toHaveBeenCalledTimes(3)
 })

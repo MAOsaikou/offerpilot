@@ -1,3 +1,4 @@
+import { ApiError } from '@/shared/api/client'
 import { createApp, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
@@ -278,6 +279,13 @@ it('deep matching shows progress, preserves the precise failure and allows an ex
     await vi.waitFor(() => expect(matchJob).toHaveBeenCalledTimes(2))
     await vi.waitFor(() => expect(root.textContent).toContain('本次原文证据仍未通过校验'))
     expect(vi.mocked(matchJob).mock.calls[0]![3]).not.toBe(vi.mocked(matchJob).mock.calls[1]![3])
+    vi.mocked(matchJob).mockRejectedValueOnce(
+      new ApiError('匹配已取消', { code: 30205, status: 409 }),
+    )
+    retry.click()
+    await vi.waitFor(() => expect(root.textContent).toContain('匹配已取消，可重新生成报告'))
+    expect(root.querySelector('[role="alert"]')).toBeNull()
+    expect(button.disabled).toBe(false)
   } finally {
     cleanup()
   }

@@ -30,7 +30,11 @@ const cancelMutation = useMutation({
     cancelError.value = ''
   },
   onSuccess: async () => {
-    await queryClient.invalidateQueries({ queryKey: ['generation-tasks', auth.identityKey] })
+    await Promise.all(
+      ['generation-tasks', 'job-matches', 'diagnoses', 'optimizations', 'applications'].map((key) =>
+        queryClient.invalidateQueries({ queryKey: [key] }),
+      ),
+    )
   },
   onError: (error: unknown) => {
     cancelError.value = error instanceof Error ? error.message : '取消失败，请稍后重试'
@@ -76,7 +80,7 @@ function cancelTask(kind: string, id: string) {
             {{ cancellingId === task.id ? '取消中…' : '取消' }}
           </button>
         </div>
-        <p class="subtle">离开页面也会继续；可取消后重新发起。</p>
+        <p class="subtle">匹配离开页面后继续；诊断和改写离开分析页会停止。可取消后重新发起。</p>
       </li>
     </ul>
   </aside>

@@ -23,6 +23,7 @@ public enum ErrorCode {
 
     CONVERSATION_NOT_FOUND(30101, HttpStatus.NOT_FOUND, "会话不存在"),
     RUN_NOT_FOUND(30201, HttpStatus.NOT_FOUND, "运行不存在"),
+    GENERATION_CANCELLED(30205, HttpStatus.CONFLICT, "已取消，可重新发起"),
     RUN_ALREADY_FINISHED(30202, HttpStatus.CONFLICT, "运行已结束"),
     APPROVAL_EXPIRED(30203, HttpStatus.CONFLICT, "审批不存在或已过期"),
     CONCURRENT_RUN_LIMIT(30204, HttpStatus.TOO_MANY_REQUESTS, "并发运行超限"),
