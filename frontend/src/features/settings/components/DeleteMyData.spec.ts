@@ -16,12 +16,12 @@ vi.mock('@/shared/api/auth', async (original) => ({
 let app: App | undefined
 let host: HTMLDivElement
 const workspaceKey = (id: string) => `offerpilot-workspace-v1:user:${id}`
-function login(id = 'A', isDemo = false, roles = ['USER']) {
+function login(id = 'A', isDemo = false, roles = ['USER'], demoExpiresAt: string | null = null) {
   const payload = btoa(JSON.stringify({ sub: id, exp: Math.floor(Date.now() / 1000) + 3600 }))
   saveLogin({
     accessToken: `header.${payload}.signature`,
     expiresIn: 3600,
-    user: { id, email: `${id}@example.test`, nickname: id, roles, isDemo },
+    user: { id, email: `${id}@example.test`, nickname: id, roles, isDemo, demoExpiresAt },
   })
 }
 async function settle() {
@@ -106,7 +106,8 @@ it('requires exact typed confirmation and traps focus, cancellation restores foc
   expect(document.activeElement).toBe(trigger())
   expect(deleteMyData).not.toHaveBeenCalled()
 })
-it('deletes current workspace and its legacy migration only, clears cache and logs out', async () => {
+it('deletes current sandbox workspace and its legacy migration only, clears cache and logs out', async () => {
+  login('A', true, ['USER'], new Date(Date.now() + 3600000).toISOString())
   localStorage.setItem(workspaceKey('A'), JSON.stringify(createWorkspace()))
   localStorage.setItem(workspaceKey('B'), 'keep B')
   localStorage.setItem('offerpilot-workspace-migration-v1', workspaceKey('A'))

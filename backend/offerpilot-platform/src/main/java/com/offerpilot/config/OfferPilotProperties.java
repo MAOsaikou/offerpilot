@@ -53,8 +53,24 @@ public record OfferPilotProperties(
             @DefaultValue("true") boolean enabled,
             @DefaultValue("demo@offerpilot.local") String email,
             String password,
-            @DefaultValue("0 0 4 * * *") String resetCron
+            @DefaultValue("0 0 4 * * *") String resetCron,
+            @DefaultValue("true") boolean sandboxEnabled,
+            @DefaultValue("24h") Duration sandboxTtl,
+            @DefaultValue("200000") int sandboxDailyTokenLimit,
+            @DefaultValue("30") int sandboxMaxActive,
+            @DefaultValue("100") int sandboxMaxPerDay
     ) {
+        public Demo(boolean enabled, String email, String password, String resetCron) {
+            this(enabled, email, password, resetCron, true, Duration.ofHours(24), 200000, 30, 100);
+        }
+        @org.springframework.boot.context.properties.bind.ConstructorBinding
+        public Demo {
+            if (sandboxTtl == null || sandboxTtl.toSeconds() < 1
+                    || sandboxTtl.compareTo(Duration.ofHours(24)) > 0)
+                throw new IllegalArgumentException("Demo sandbox TTL must be positive and at most 24 hours");
+            if (sandboxDailyTokenLimit < 0 || sandboxMaxActive < 1 || sandboxMaxPerDay < 1)
+                throw new IllegalArgumentException("Demo sandbox limits must be positive (tokens may be zero)");
+        }
     }
 
     public record Storage(

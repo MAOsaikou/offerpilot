@@ -37,6 +37,7 @@ public class DemoResetService {
     private final TransactionTemplate transaction;
     private final ResumeObjectStore storage;
     private final JsonNode journey;
+    private final List<SourceDocument> sources;
     private final com.offerpilot.knowledge.application.KnowledgeNoteService notes;
     private final com.offerpilot.memory.application.UserMemoryService memories;
 
@@ -51,12 +52,19 @@ public class DemoResetService {
         try (var input = new ClassPathResource("demo/journey.json").getInputStream()) {
             journey = json.readTree(input);
         }
-        journey.path("resumes").forEach(resume -> ResumeStructure.validate(resume.path("structured")));
+        var cached = new java.util.ArrayList<SourceDocument>();
+        journey.path("resumes").forEach(resume -> {
+            ResumeStructure.validate(resume.path("structured"));
+            byte[] bytes = document(plainText(resume.path("structured")));
+            cached.add(new SourceDocument(bytes, sha256(bytes)));
+        });
+        sources = List.copyOf(cached);
     }
 
     public record Summary(Instant resetAt, int resumeCount, int jobCount, int applicationCount,
                           int interviewSessionCount, int careerProfileCount, int growthTaskCount, int knowledgeNoteCount, int memoryCount) {}
     private record StoredFile(String bucket, String key) {}
+    private record SourceDocument(byte[] bytes, String hash) {}
 
     public Summary reset() {
         return seed(accounts.requireAccount(), false);
@@ -68,7 +76,23 @@ public class DemoResetService {
 
     private Summary seed(String userId, boolean onlyIfEmpty) {
         List<StoredFile> obsolete = new java.util.ArrayList<>();
-        Summary result = transaction.execute(status -> {
+        // Durable reservations precede S3 PUT, so process death/rollback cannot orphan uploads.
+        // Existing linked sources are protected; stale receipts are discarded by privacy cleanup.
+        if (!accounts.enabled() || jdbc.queryForObject("SELECT count(*) FROM users WHERE id=? AND is_demo=true", Integer.class, userId) == 0)
+            throw new BusinessException(ErrorCode.DEMO_NOT_ALLOWED, "体验账号未启用");
+        List<String> reservations = new java.util.ArrayList<>();
+        for (int i = 0; i < sources.size(); i++) {
+            String key = sourceKey(userId, i + 1, sources.get(i));
+            if (jdbc.queryForObject("SELECT count(*) FROM files WHERE bucket=? AND object_key=?", Integer.class, storage.bucket(), key) > 0) continue;
+            String receipt = com.offerpilot.common.id.IdGenerator.next("cleanup");
+            jdbc.update("""
+                    INSERT INTO account_data_cleanup(id,kind,bucket,object_key,next_attempt_at)
+                    SELECT ?,'OBJECT',?,?,COALESCE(demo_expires_at,now()+interval '26 hours') FROM users WHERE id=?
+                    """, receipt, storage.bucket(), key, userId);
+            reservations.add(receipt);
+        }
+        Summary result;
+        try { result = transaction.execute(status -> {
             // Serializes startup/manual/scheduled resets across instances. Never accepts a real user.
             var demo = jdbc.queryForList("SELECT id FROM users WHERE id=? AND is_demo=true FOR UPDATE", String.class, userId);
             if (!accounts.enabled() || demo.isEmpty())
@@ -84,6 +108,12 @@ public class DemoResetService {
             return new Summary(Instant.now(), journey.path("resumes").size(), journey.path("jobs").size(),
                     journey.path("applications").size(), journey.path("interviews").size(), 1, journey.path("growthTasks").size(), journey.path("notes").size(), 3);
         });
+        } catch (RuntimeException ex) {
+            for (String receipt : reservations)
+                jdbc.update("UPDATE account_data_cleanup SET next_attempt_at=now() WHERE id=?", receipt);
+            throw ex;
+        }
+        for (String receipt : reservations) jdbc.update("DELETE FROM account_data_cleanup WHERE id=?", receipt);
         // Never remove source objects until the database replacement has committed.
         for (StoredFile file : obsolete) {
             if (jdbc.queryForObject("SELECT count(*) FROM files WHERE bucket=? AND object_key=?",
@@ -115,10 +145,11 @@ public class DemoResetService {
             String title = resume.path("title").asText();
             JsonNode structured = resume.path("structured");
             String plain = plainText(structured);
-            byte[] bytes = document(plain);
-            String hash = sha256(bytes);
+            SourceDocument source = sources.get(i - 1);
+            byte[] bytes = source.bytes();
+            String hash = source.hash();
             // Immutable source keys keep the old source intact if a later insert/upload fails.
-            String key = "demo/" + userId + "/resume-" + i + "-" + hash + ".docx";
+            String key = sourceKey(userId, i, source);
             storage.put(key, bytes, DOCX);
             jdbc.update("""
                     INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256)
@@ -134,6 +165,10 @@ public class DemoResetService {
                     """, version, id, userId, structured.toString(), plain);
             jdbc.update("UPDATE resumes SET current_version_id=? WHERE id=?", version, id);
         }
+    }
+
+    private static String sourceKey(String userId, int index, SourceDocument source) {
+        return "demo/" + userId + "/resume-" + index + "-" + source.hash() + ".docx";
     }
 
     private void insertJobs() {
