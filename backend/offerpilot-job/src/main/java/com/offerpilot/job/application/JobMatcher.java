@@ -18,8 +18,17 @@ public class JobMatcher {
     private final ModelGateway gateway;
     private final ObjectMapper json;
     private final String prompt;
-    public JobMatcher(ModelGateway gateway,ObjectMapper json,@Value("classpath:prompts/job/match.st") Resource prompt) throws java.io.IOException {
-        this.gateway=gateway; this.json=json; this.prompt=prompt.getContentAsString(StandardCharsets.UTF_8);
+    private final JobRequirementCache requirementCache;
+    private static final String EXTRACTION_VERSION = "job-requirements-v1";
+    public JobMatcher(ModelGateway gateway, ObjectMapper json, Resource prompt) throws java.io.IOException {
+        this(gateway, json, prompt, new JobRequirementCache((org.springframework.data.redis.core.StringRedisTemplate) null, json));
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public JobMatcher(ModelGateway gateway, ObjectMapper json,
+            @Value("classpath:prompts/job/match.st") Resource prompt, JobRequirementCache requirementCache) throws java.io.IOException {
+        this.gateway = gateway; this.json = json; this.prompt = prompt.getContentAsString(StandardCharsets.UTF_8);
+        this.requirementCache = requirementCache;
     }
     public JsonNode match(JsonNode job, JsonNode resume) {
         return match(job, resume, gateway.defaultTier());
@@ -50,51 +59,191 @@ public class JobMatcher {
             if (input.toString().length() > 100000)
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "简历或岗位内容过长，请使用精简后的简历版本");
             long start = System.nanoTime();
-            List<Message> messages = new ArrayList<>(List.of(new SystemMessage(prompt), new UserMessage(input.toString())));
             Duration budget = gateway.timeout(tier);
             var best = new java.util.concurrent.atomic.AtomicReference<ObjectNode>();
-            return generate(jd, resume, tier, messages, 0, start, null, best)
+            var repairUsed = new java.util.concurrent.atomic.AtomicBoolean();
+            return definitions(jd, repairUsed).flatMap(definitions -> {
+                        input.put("phase", "ASSESS");
+                        input.set("fixedRequirements", definitions.path("requirements"));
+                        List<Message> messages = new ArrayList<>(List.of(new SystemMessage(prompt), new UserMessage(input.toString())));
+                        return generate(jd, resume, tier, messages, definitions, repairUsed.get() ? 1 : 0, start, null, best);
+                    })
                     .timeout(budget, clock)
                     .onErrorResume(java.util.concurrent.TimeoutException.class, error -> best.get() == null
                             ? reactor.core.publisher.Mono.error(error) : reactor.core.publisher.Mono.just(best.get()))
+                    .map(report -> { ((ObjectNode) report).put("durationMs", (System.nanoTime() - start) / 1000000); return report; })
                     .onErrorMap(error -> modelFailure(error, tier, budget));
         }).contextWrite(context -> owner == null ? context
                 : com.offerpilot.llm.quota.LlmUserContext.withUser(context, owner));
     }
 
     private reactor.core.publisher.Mono<JsonNode> generate(String jd, JsonNode resume,
-            com.offerpilot.llm.ModelTier tier, List<Message> messages, int attempt, long start,
+            com.offerpilot.llm.ModelTier tier, List<Message> messages, JsonNode definitions, int attempt, long start,
             ObjectNode fallback, java.util.concurrent.atomic.AtomicReference<ObjectNode> best) {
+        return structuredOutput(tier, messages)
+                .flatMap(output -> {
+                    ObjectNode result;
+                    try {
+                        JsonNode report = parseOutput(output);
+                        var skipped = bindDefinitions(report, definitions);
+                        validate(report, jd, resume);
+                        appendOmissions((ObjectNode) report, skipped);
+                        appendOmissions((ObjectNode) report, definitions.path("unverifiedRequirements"));
+                        ((ObjectNode) report).put("requirementSnapshotHash", definitions.path("snapshotHash").asText())
+                                .put("requirementExtractionVersion", EXTRACTION_VERSION);
+                        result = (ObjectNode) report;
+                    } catch (Exception ex) {
+                        if (attempt == 1) return fallback == null ? reactor.core.publisher.Mono.error(invalid()) : reactor.core.publisher.Mono.just(fallback);
+                        messages.add(new SystemMessage("上次报告未通过结构或原文依据校验，未保存。请重新逐项评估fixedRequirements的所有固定ID，不增删、拆分或合并要求，沿用输入的岗位引文。MET/PARTIAL的resumePath必须是存在的字符串叶子JSON Pointer，resumeQuote连续摘录该叶子；MISSING的两项简历证据必须为空。不要补造或拼接引文。仅输出完整JSON对象。"));
+                        return generate(jd, resume, tier, messages, definitions, 1, start, null, best);
+                    }
+                    finish(result, tier, start);
+                    if (best.get() == null || result.path("verifiedCount").asInt() > best.get().path("verifiedCount").asInt()) best.set(result);
+                    int total = result.path("verifiedCount").asInt() + result.path("unverifiedCount").asInt();
+                    if (attempt == 0 && result.path("verifiedCount").asInt() * 2 < total) {
+                        messages.add(new SystemMessage("上次原文依据校验只核实了少量条目，未保存。请按原文修复路径与连续引文，逐项保留fixedRequirements所有固定ID；不添加或拼接证据。"));
+                        return generate(jd, resume, tier, messages, definitions, 1, start, result, best)
+                                .map(repaired -> repaired.path("verifiedCount").asInt() >= result.path("verifiedCount").asInt() ? repaired : result)
+                                .onErrorReturn(result);
+                    }
+                    return reactor.core.publisher.Mono.just((JsonNode) result);
+                });
+    }
+
+    private reactor.core.publisher.Mono<String> structuredOutput(com.offerpilot.llm.ModelTier tier, List<Message> messages) {
         return reactor.core.publisher.Mono.defer(() -> gateway.stream(tier, messages, 0)
                 .map(r -> r.getResult() == null || r.getResult().getOutput().getText() == null
                         ? "" : r.getResult().getOutput().getText())
                 .reduce(new StringBuilder(), (all, part) -> {
                     if (all.length() + part.length() > 40000) throw invalid();
                     return all.append(part);
-                }).map(StringBuilder::toString))
-                .flatMap(output -> {
-                    ObjectNode result;
-                    try {
-                        String clean = output.strip().replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "");
-                        JsonNode report = json.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(clean);
-                        validate(report, jd, resume);
-                        result = (ObjectNode) report;
-                    } catch (Exception ex) {
-                        if (attempt == 1) return fallback == null ? reactor.core.publisher.Mono.error(invalid()) : reactor.core.publisher.Mono.just(fallback);
-                        messages.add(new SystemMessage("上次报告未通过结构或原文依据校验，未保存。请重新生成：至少一项，尽量不超过12项；枚举中的每个具体技能都必须可评估，不同要求可共享同一段连续jdQuote；合并要求必须列全技能并按全部技能判断状态；MET/PARTIAL的resumePath必须是存在的字符串叶子JSON Pointer，resumeQuote连续摘录该叶子；MISSING的两项简历证据必须为空。不要补造或拼接引文。仅输出完整JSON对象。"));
-                        return generate(jd, resume, tier, messages, 1, start, null, best);
+                }).map(StringBuilder::toString));
+    }
+
+    private JsonNode parseOutput(String output) throws java.io.IOException {
+        String clean = output.strip().replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "");
+        return json.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(clean);
+    }
+
+    private reactor.core.publisher.Mono<JsonNode> definitions(String jd, java.util.concurrent.atomic.AtomicBoolean repairUsed) {
+        String key;
+        try {
+            byte[] bytes = (EXTRACTION_VERSION + "\0" + prompt + "\0" + gateway.modelName(com.offerpilot.llm.ModelTier.FLASH) + "\0" + jd)
+                    .getBytes(StandardCharsets.UTF_8);
+            key = "offerpilot:job-requirements:" + java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+        return cacheCall(() -> java.util.Optional.ofNullable(requirementCache.get(key)))
+                .flatMap(cached -> {
+                    if (cached.isPresent()) {
+                        log.debug("Match requirements cache hit snapshot={}", key);
+                        return reactor.core.publisher.Mono.just(verifiedDefinitions(cached.get(), jd));
                     }
-                    finish(result, tier, start);
-                    if (best.get() == null || result.path("verifiedCount").asInt() > best.get().path("verifiedCount").asInt()) best.set(result);
-                    int total = result.path("verifiedCount").asInt() + result.path("unverifiedCount").asInt();
-                    if (attempt == 0 && result.path("verifiedCount").asInt() * 2 < total) {
-                        messages.add(new SystemMessage("上次原文依据校验只核实了少量条目，未保存。请按原文修复路径与连续引文，保留所有要求；不添加或拼接证据。"));
-                        return generate(jd, resume, tier, messages, 1, start, result, best)
-                                .map(repaired -> repaired.path("verifiedCount").asInt() >= result.path("verifiedCount").asInt() ? repaired : result)
-                                .onErrorReturn(result);
+                    var input = json.createObjectNode().put("phase", "EXTRACT").put("jobText", jd);
+                    // The extraction has no resume, always uses FLASH/0, and is committed only after quote verification.
+                    return extractDefinitions(jd, new ArrayList<>(List.of(new SystemMessage(prompt), new UserMessage(input.toString()))), repairUsed)
+                            .flatMap(extracted -> cacheCall(() -> verifiedDefinitions(requirementCache.putIfAbsent(key, extracted), jd)));
+                }).map(result -> { ((ObjectNode) result).put("snapshotHash", key.substring(key.lastIndexOf(':') + 1)); return result; });
+    }
+
+    private reactor.core.publisher.Mono<JsonNode> extractDefinitions(String jd, List<Message> messages,
+            java.util.concurrent.atomic.AtomicBoolean repairUsed) {
+        return structuredOutput(com.offerpilot.llm.ModelTier.FLASH, messages)
+                .map(raw -> {
+                    try { return verifiedDefinitions(parseOutput(raw), jd); }
+                    catch (java.io.IOException error) { throw invalid(); }
+                }).flatMap(extracted -> {
+                    if (extracted.path("verifiedCount").asInt() < extracted.path("unverifiedCount").asInt()
+                            && repairUsed.compareAndSet(false, true)) {
+                        messages.add(new SystemMessage("上次岗位要求原文依据校验只核实了少量条目。请修复连续引文，不省略枚举中的技能或编号，不补造要求。"));
+                        return extractDefinitions(jd, messages, repairUsed)
+                                .map(repaired -> repaired.path("verifiedCount").asInt() >= extracted.path("verifiedCount").asInt() ? repaired : extracted)
+                                .onErrorReturn(extracted);
                     }
-                    return reactor.core.publisher.Mono.just((JsonNode) result);
+                    return reactor.core.publisher.Mono.just((JsonNode) extracted);
+                }).onErrorResume(BusinessException.class, error -> {
+                    if (error.errorCode() != ErrorCode.STRUCTURED_OUTPUT_INVALID || !repairUsed.compareAndSet(false, true))
+                        return reactor.core.publisher.Mono.error(error);
+                    messages.add(new SystemMessage("上次岗位要求原文依据校验未通过，未保存。只提取有连续原文引文的要求，不拼接或补造，输出完整JSON。"));
+                    return extractDefinitions(jd, messages, repairUsed);
                 });
+    }
+
+    private <T> reactor.core.publisher.Mono<T> cacheCall(java.util.concurrent.Callable<T> action) {
+        var call = reactor.core.publisher.Mono.fromCallable(action);
+        return requirementCache.persistent() ? call.subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic()) : call;
+    }
+
+    private ObjectNode verifiedDefinitions(JsonNode output, String jd) {
+        if (output == null || !output.isObject() || !output.path("requirements").isArray()
+                || output.path("requirements").isEmpty() || output.path("requirements").size() > 100) throw invalid();
+        var checked = json.createObjectNode().put("summary", "岗位要求原文核对");
+        var rows = checked.putArray("requirements");
+        for (var item : output.path("requirements")) {
+            var row = rows.addObject();
+            row.set("requirement", item.path("requirement")); row.set("jdQuote", item.path("jdQuote"));
+            row.put("status", "MISSING").put("resumePath", "").put("resumeQuote", "")
+                    .put("reason", "岗位要求原文核对").put("suggestion", "逐项核对简历依据");
+        }
+        validate(checked, jd, json.createObjectNode());
+        appendOmissions(checked, output.path("unverifiedRequirements"));
+        int id = 1;
+        for (var row : checked.path("requirements")) {
+            ((ObjectNode) row).retain("requirement", "jdQuote");
+            ((ObjectNode) row).put("requirementId", "r" + id++);
+        }
+        return checked;
+    }
+
+    /** Fixed JD identities/order are server-owned. Missing answers are unverified, never MISSING. */
+    private com.fasterxml.jackson.databind.node.ArrayNode bindDefinitions(JsonNode report, JsonNode definitions) {
+        if (report == null || !report.isObject() || !report.path("requirements").isArray()
+                || report.path("requirements").size() > 100) throw invalid();
+        var skipped = json.createArrayNode();
+        Map<String, JsonNode> byId = new HashMap<>();
+        for (var row : definitions.path("requirements")) byId.put(row.path("requirementId").asText(), row);
+        Map<String, ObjectNode> answers = new HashMap<>();
+        for (var answer : report.path("requirements")) {
+            String id = answer.path("requirementId").asText();
+            if (id.isEmpty()) {
+                // Compatibility for old structured callers: exact requirement identity only, never semantic matching.
+                for (var definition : definitions.path("requirements"))
+                    if (requirementKey(definition.path("requirement").asText()).equals(requirementKey(answer.path("requirement").asText())))
+                        id = definition.path("requirementId").asText();
+            }
+            if (!byId.containsKey(id) || !answer.isObject()) {
+                log.warn("Match assessment ignored unknown requirementId={}", safeLabel(id));
+                skipped.addObject().put("requirement", safeLabel(answer.path("requirement").asText()))
+                        .put("status", "UNVERIFIED").put("verificationIssue", "UNKNOWN_REQUIREMENT");
+                continue;
+            }
+            var definition = byId.get(id);
+            var row = ((ObjectNode) answer).deepCopy();
+            row.set("requirement", definition.path("requirement")); row.set("jdQuote", definition.path("jdQuote"));
+            row.set("requirementId", definition.path("requirementId"));
+            // Keep duplicates for the same fixed identity out of the score; prefer its first answer.
+            if (answers.putIfAbsent(id, row) != null) skipped.addObject()
+                    .put("requirement", definition.path("requirement").asText()).put("status", "UNVERIFIED")
+                    .put("verificationIssue", "DUPLICATE");
+        }
+        var fixed = ((ObjectNode) report).putArray("requirements");
+        for (var definition : definitions.path("requirements")) {
+            var answer = answers.get(definition.path("requirementId").asText());
+            if (answer != null) fixed.add(answer);
+            else fixed.addObject().put("requirement", definition.path("requirement").asText())
+                    .put("jdQuote", definition.path("jdQuote").asText()).put("status", "UNVERIFIED")
+                    .put("reason", "本次未返回此要求的评估").put("suggestion", "核对完整岗位与简历");
+        }
+        return skipped;
+    }
+
+    private static void appendOmissions(ObjectNode report, JsonNode extra) {
+        var omitted = (com.fasterxml.jackson.databind.node.ArrayNode) report.path("unverifiedRequirements");
+        if (extra.isArray()) for (var item : extra) omitted.addObject()
+                .put("requirement", safeLabel(item.path("requirement").asText())).put("status", "UNVERIFIED")
+                .put("verificationIssue", item.path("verificationIssue").asText("JD_QUOTE"));
+        report.put("unverifiedCount", omitted.size());
+        if (!omitted.isEmpty()) report.put("summary", "已核实 " + report.path("requirements").size()
+                + " 项，另有 " + omitted.size() + " 项未核实（不计分）；覆盖率仅按已核实项计算。未体现不等于不具备，请逐项核对准备建议。");
     }
 
     private JsonNode finish(ObjectNode result, com.offerpilot.llm.ModelTier tier, long start) {
@@ -103,7 +252,7 @@ public class JobMatcher {
             case "MET" -> 2; case "PARTIAL" -> 1; default -> 0;
         };
         result.put("score", Math.round(100f * points / (2 * result.path("requirements").size())));
-        result.put("model", gateway.modelName(tier)).put("modelTier", tier.name()).put("promptVersion", "job-match-v3");
+        result.put("model", gateway.modelName(tier)).put("modelTier", tier.name()).put("promptVersion", "job-match-v4");
         result.put("durationMs", (System.nanoTime() - start) / 1000000);
         return result;
     }
@@ -167,15 +316,16 @@ public class JobMatcher {
                 // Index + field + quote fingerprint identifies the rejected quote without logging resume PII.
                 String field = issue.equals("JD_QUOTE") ? "jdQuote" : "resumeQuote";
                 String raw = item.path(field).asText();
-                log.warn("Match verification rejected item={} requirement={} issue={} quoteField={} quoteHash={} quoteLength={}",
+                log.warn("Match verification rejected item={} requirement={} issue={} quoteField={} quoteHash={} quoteLength={} resumePath={}",
                         index++, safeLabel(item.path("requirement").asText()), issue, field,
-                        Integer.toHexString(raw.hashCode()), raw.length());
+                        Integer.toHexString(raw.hashCode()), raw.length(), jsonSafePath(item.path("resumePath").asText()));
                 omitted.addObject().put("requirement", safeLabel(item.path("requirement").asText()))
                         .put("status", "UNVERIFIED").put("verificationIssue", issue);
                 continue;
             }
             var row = ((ObjectNode) report).objectNode();
             for (String key : List.of("requirement", "status", "reason", "suggestion")) row.set(key, item.path(key));
+            if (item.path("requirementId").isTextual()) row.set("requirementId", item.path("requirementId"));
             row.put("jdQuote", quote).put("resumePath", path).put("resumeQuote", evidence);
             verified.add(row); requirements.add(identity); index++;
         }
@@ -192,6 +342,10 @@ public class JobMatcher {
     static String requirementKey(String text) {
         return java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFKC)
                 .replaceAll("[\\s\\p{Z}]+", "").toLowerCase(Locale.ROOT);
+    }
+
+    private static String jsonSafePath(String path) {
+        return com.fasterxml.jackson.databind.node.TextNode.valueOf(safeLabel(path)).toString();
     }
 
     private static String safeLabel(String label) {

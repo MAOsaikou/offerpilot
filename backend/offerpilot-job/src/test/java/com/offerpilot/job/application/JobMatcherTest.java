@@ -62,12 +62,16 @@ class JobMatcherTest {
         var report=report(); var items=(com.fasterxml.jackson.databind.node.ArrayNode)report.path("requirements");
         var first=(ObjectNode)items.get(0); first.put("jdQuote","掌握Java与SpringBoot");
         items.add(first.deepCopy().put("requirement","Spring Boot")); // DeepSeek repeats combined JD for split skills.
-        items.add(first.deepCopy().put("jdQuote","理解MySQL").put("resumePath","/skills/0/items")); // array, not string
-        items.add(first.deepCopy().put("jdQuote","了解Redis").put("resumePath","projects[0].bullets[0]"));
-        items.add(first.deepCopy().put("jdQuote","使用Git").put("status","MISSING")); // evidence must be empty
+        items.add(first.deepCopy().put("requirement", "MySQL").put("jdQuote","理解MySQL").put("resumePath","/skills/0/items")); // array, not string
+        items.add(first.deepCopy().put("requirement", "Redis").put("jdQuote","了解Redis").put("resumePath","projects[0].bullets[0]"));
+        items.add(first.deepCopy().put("requirement", "Git").put("jdQuote","使用Git").put("status","MISSING")); // evidence must be empty
+        items.add(first.deepCopy().put("requirement", "shell命令").put("jdQuote", "会常用shell命令").put("resumeQuote", "Linux"));
         first.put("unverifiedQuote","虚构扩展字段"); report.put("score",100);
-        JobMatcher.validate(report,"掌握 Java 与 Spring Boot；理解MySQL；了解Redis；使用Git",json.readTree("{\"summary\":\"Java项目\"}"));
+        JobMatcher.validate(report,"掌握 Java 与 Spring Boot；理解MySQL；了解Redis；使用Git；会常用shell命令",json.readTree("{\"summary\":\"Java项目\",\"skills\":[{\"items\":[\"Linux\"]}]}"));
         assertThat(report.path("requirements")).hasSize(2);
+        assertThat(report.path("unverifiedRequirements")).extracting(n -> n.path("verificationIssue").asText())
+                .contains("RESUME_PATH", "MISSING_WITH_EVIDENCE", "RESUME_QUOTE");
+        assertThat(report.path("unverifiedRequirements").toString()).doesNotContain("Linux");
         assertThat(report.path("requirements").get(0).has("unverifiedQuote")).isFalse();
         assertThat(report.has("score")).isFalse();
         assertThat(report.path("summary").asText()).contains("未核实", "不计分");
@@ -103,8 +107,24 @@ class JobMatcherTest {
         assertThat(result.path("requirements")).extracting(n -> n.path("requirement").asText())
                 .containsExactly("Java", "Spring Boot", "MySQL", "Redis", "消息队列", "分布式", "高并发");
         assertThat(result.path("score").asInt()).isEqualTo(79); // (5 MET + 0.5 PARTIAL) / 7
-        assertThat(result.path("promptVersion").asText()).isEqualTo("job-match-v3");
-        org.mockito.Mockito.verify(gateway, org.mockito.Mockito.times(1)).stream(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq(0.0));
+        assertThat(result.path("promptVersion").asText()).isEqualTo("job-match-v4");
+        org.mockito.Mockito.verify(gateway, org.mockito.Mockito.times(2)).stream(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq(0.0));
+        // The same text, even with a different job ID/fetch timestamp, reuses JD-only definitions.
+        ((ObjectNode) result.path("requirements").get(0)).put("requirement", "caller mutation");
+        var reused = matcher.match(json.createObjectNode().put("id", "other-job").put("requirement", jd).put("detailFetchedAt", "later"),
+                json.createObjectNode().put("rawText", text), com.offerpilot.llm.ModelTier.FLASH);
+        assertThat(reused.path("requirements")).extracting(n -> n.path("requirement").asText()).containsExactly(
+                "Java", "Spring Boot", "MySQL", "Redis", "消息队列", "分布式", "高并发");
+        assertThat(reused.path("score").asInt()).isEqualTo(79);
+        org.mockito.Mockito.verify(gateway, org.mockito.Mockito.times(3)).stream(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq(0.0));
+        matcher.match(json.createObjectNode().put("requirement", jd + "新增岗位条件。"), json.createObjectNode().put("rawText", text), com.offerpilot.llm.ModelTier.FLASH);
+        var requests = org.mockito.ArgumentCaptor.forClass(java.util.List.class);
+        org.mockito.Mockito.verify(gateway, org.mockito.Mockito.times(5)).stream(org.mockito.ArgumentMatchers.any(), requests.capture(), org.mockito.ArgumentMatchers.eq(0.0));
+        var extraction = json.readTree(((org.springframework.ai.chat.messages.Message) requests.getAllValues().get(0).get(1)).getText());
+        assertThat(extraction.path("phase").asText()).isEqualTo("EXTRACT");
+        assertThat(extraction.has("resume")).isFalse();
+        var assessment = json.readTree(((org.springframework.ai.chat.messages.Message) requests.getAllValues().get(2).get(1)).getText());
+        assertThat(assessment.path("fixedRequirements").toString()).doesNotContain("resumeQuote", "status", "caller mutation");
     }
 
     @Test void supportsEscapedPointersAndRejectsQuoteLabelsAndStitchedLeaves() throws Exception {
@@ -132,7 +152,9 @@ class JobMatcherTest {
                 return reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(java.util.List.of(
                     new org.springframework.ai.chat.model.Generation(new org.springframework.ai.chat.messages.AssistantMessage(raw)))));
             });
-        var matcher=new JobMatcher(gateway,json,new org.springframework.core.io.ByteArrayResource("rules".getBytes()));
+        var cache = org.mockito.Mockito.mock(JobRequirementCache.class);
+        org.mockito.Mockito.when(cache.get(org.mockito.ArgumentMatchers.anyString())).thenReturn(report());
+        var matcher=new JobMatcher(gateway,json,new org.springframework.core.io.ByteArrayResource("rules".getBytes()), cache);
         var result=matcher.match(json.readTree("{\"requirement\":\"熟悉Java\"}"),json.readTree("{\"summary\":\"Java项目\"}"));
         assertThat(calls).hasValue(2);
         assertThat(result.path("requirements")).hasSize(1);
@@ -140,7 +162,13 @@ class JobMatcherTest {
         // Too few verified rows get one repair; a worse repair must not destroy good evidence.
         var partial = report();
         var partialRows = (com.fasterxml.jackson.databind.node.ArrayNode) partial.path("requirements");
-        for (int i = 0; i < 3; i++) partialRows.add(invalid.path("requirements").get(0).deepCopy());
+        var definitionRows = report();
+        var definitionList = (com.fasterxml.jackson.databind.node.ArrayNode) definitionRows.path("requirements");
+        for (int i = 0; i < 3; i++) {
+            var bad = ((ObjectNode) invalid.path("requirements").get(0)).deepCopy().put("requirement", "Java条件" + i);
+            partialRows.add(bad); definitionList.add(bad);
+        }
+        org.mockito.Mockito.when(cache.get(org.mockito.ArgumentMatchers.anyString())).thenReturn(definitionRows);
         org.mockito.Mockito.clearInvocations(gateway);
         org.mockito.Mockito.when(gateway.stream(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0)))
                 .thenReturn(reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(java.util.List.of(
@@ -158,8 +186,22 @@ class JobMatcherTest {
         org.mockito.Mockito.clearInvocations(gateway);
         assertThatThrownBy(()->matcher.match(json.readTree("{\"requirement\":\"熟悉Java\"}"),json.createObjectNode())).isInstanceOf(BusinessException.class);
         org.mockito.Mockito.verify(gateway,org.mockito.Mockito.times(2)).stream(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0));
+        // One repair allowance spans cold extraction and assessment; never repair both steps.
+        var badDefinition = report(); ((ObjectNode) badDefinition.path("requirements").get(0)).put("jdQuote", "伪造岗位原文");
+        org.mockito.Mockito.clearInvocations(gateway);
+        org.mockito.Mockito.when(gateway.stream(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0)))
+                .thenReturn(reply(badDefinition.toString()), reply(report().toString()), reply(invalid.toString()));
+        var cold = new JobMatcher(gateway,json,new org.springframework.core.io.ByteArrayResource("rules".getBytes()));
+        assertThatThrownBy(() -> cold.match(json.readTree("{\"requirement\":\"熟悉Java\"}"), json.readTree("{\"summary\":\"Java项目\"}")))
+                .isInstanceOfSatisfying(BusinessException.class, error -> assertThat(error.recoverable()).isTrue());
+        org.mockito.Mockito.verify(gateway,org.mockito.Mockito.times(3)).stream(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0));
     }
-    @Test void limitsVerifiedRowsAndNeverSavesBlankOrOverlongCanonicalEvidence() throws Exception {
+
+    private reactor.core.publisher.Flux<org.springframework.ai.chat.model.ChatResponse> reply(String text) {
+        return reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(java.util.List.of(
+                new org.springframework.ai.chat.model.Generation(new org.springframework.ai.chat.messages.AssistantMessage(text)))));
+    }
+    @Test void preservesVerifiedOverflowAndNeverSavesBlankOrOverlongCanonicalEvidence() throws Exception {
         var report=report(); var items=(com.fasterxml.jackson.databind.node.ArrayNode)report.path("requirements");
         items.removeAll(); var jd=new StringBuilder();
         for(int i=0;i<13;i++) {
@@ -178,4 +220,30 @@ class JobMatcherTest {
         assertThatThrownBy(()->JobMatcher.validate(oversized,"熟悉"+" ".repeat(1600)+"Java",json.readTree("{\"summary\":\"Java项目\"}")))
                 .isInstanceOf(BusinessException.class);
     }
+    @Test void concurrentSnapshotsUseTheFirstDefinitionAndRedisFailureDoesNotChangeTheList() throws Exception {
+        var cache = new JobRequirementCache((org.springframework.data.redis.core.StringRedisTemplate) null, json);
+        var first = report(); var second = report(); second.put("summary", "different extraction");
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var gate = new java.util.concurrent.CountDownLatch(1);
+            var a = pool.submit(() -> { gate.await(); return cache.putIfAbsent("snapshot", first); });
+            var b = pool.submit(() -> { gate.await(); return cache.putIfAbsent("snapshot", second); });
+            gate.countDown();
+            assertThat(a.get()).isEqualTo(b.get());
+            var saved = cache.get("snapshot"); ((ObjectNode) saved).put("summary", "mutated");
+            assertThat(cache.get("snapshot").path("summary").asText()).isNotEqualTo("mutated");
+        } finally { pool.shutdownNow(); }
+        var redis = org.mockito.Mockito.mock(org.springframework.data.redis.core.StringRedisTemplate.class);
+        @SuppressWarnings("unchecked")
+        org.springframework.data.redis.core.ValueOperations<String,String> values = org.mockito.Mockito.mock(org.springframework.data.redis.core.ValueOperations.class);
+        org.mockito.Mockito.when(redis.opsForValue()).thenReturn(values);
+        org.mockito.Mockito.when(values.get("snapshot")).thenReturn(first.toString());
+        var persistent = new JobRequirementCache(redis, json);
+        assertThat(persistent.putIfAbsent("snapshot", second)).isEqualTo(first);
+        org.mockito.Mockito.verify(values).setIfAbsent("snapshot", second.toString(), java.time.Duration.ofDays(30));
+        org.mockito.Mockito.when(values.get("snapshot")).thenThrow(new org.springframework.data.redis.RedisConnectionFailureException("private"));
+        assertThatThrownBy(() -> persistent.get("snapshot")).isInstanceOfSatisfying(BusinessException.class,
+                error -> assertThat(error.errorCode()).isEqualTo(com.offerpilot.common.error.ErrorCode.CACHE_UNAVAILABLE));
+    }
+
 }

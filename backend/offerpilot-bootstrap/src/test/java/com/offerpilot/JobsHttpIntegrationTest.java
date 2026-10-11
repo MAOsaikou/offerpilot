@@ -202,7 +202,10 @@ class JobsHttpIntegrationTest {
 
     @Test void fabricatedEvidenceFailsWithoutSavingAReport() throws Exception {
         String token=identities.create().accessToken(), resume=seed(token), job=jobId(token); badEvidence=true;
-        assertThat(request("POST","/jobs/"+job+"/matches",token,Map.of("resumeId",resume,"resumeVersionId",resume,"requestId",UUID.randomUUID().toString())).statusCode()).isEqualTo(422);
+        var failed=request("POST","/jobs/"+job+"/matches",token,Map.of("resumeId",resume,"resumeVersionId",resume,"requestId",UUID.randomUUID().toString()));
+        assertThat(failed.statusCode()).isEqualTo(422);
+        assertThat(JSON.readTree(failed.body()).path("recoverable").asBoolean()).isTrue();
+        assertThat(JSON.readTree(failed.body()).path("code").asInt()).isEqualTo(40003);
         var history=data(request("GET","/jobs/"+job+"/matches",token,null)); assertThat(history.get(0).path("status").asText()).isEqualTo("FAILED");
         // A real HTTP report with one good row and a fabricated leaf saves only verified evidence.
         String mixed = """

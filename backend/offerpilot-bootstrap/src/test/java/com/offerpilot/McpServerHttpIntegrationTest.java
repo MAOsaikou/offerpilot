@@ -69,6 +69,7 @@ class McpServerHttpIntegrationTest {
     void fixtures() throws Exception {
         when(gateway.defaultTier()).thenReturn(ModelTier.FLASH);
         when(gateway.modelName(any())).thenReturn("offline-fixture");
+        when(gateway.timeout(any())).thenReturn(Duration.ofSeconds(60));
         when(gateway.stream(any(), anyList(), anyDouble())).thenAnswer(invocation -> {
             List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(1);
             boolean matching = json.readTree(messages.get(1).getText()).has("jobText");
@@ -188,7 +189,7 @@ class McpServerHttpIntegrationTest {
 
     private JsonNode call(io.modelcontextprotocol.client.McpSyncClient client, String name, Map<String, Object> args) throws Exception {
         var result = client.callTool(new McpSchema.CallToolRequest(name, args));
-        assertThat(result.isError()).isFalse();
+        assertThat(result.isError()).withFailMessage("MCP %s failed: %s", name, result.content()).isFalse();
         return json.readTree(((McpSchema.TextContent) result.content().get(0)).text());
     }
 
