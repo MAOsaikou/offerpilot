@@ -47,6 +47,9 @@ it('推荐卡片选择发送结构化职业聊天请求并打开现有审批面�
                   hollandCode: 'IRC',
                   similarity: 1,
                   reasons: ['共同兴趣 IRC'],
+                  citations: [
+                    { occupationId: 'occ1', title: '软件工程师', excerpt: '设计可靠的软件服务' },
+                  ],
                 },
               ],
             },
@@ -96,6 +99,8 @@ it('推荐卡片选择发送结构化职业聊天请求并打开现有审批面�
   await nextTick()
   expect(root.textContent).toContain('对话保存在当前账号')
   expect(root.textContent).not.toContain('访客身份保存在这个浏览器')
+  expect(root.textContent).toContain('引用来源：软件工程师 · 设计可靠的软件服务')
+  expect(root.textContent).not.toContain('occ1')
   const adopt = root.querySelector<HTMLButtonElement>('[aria-label="将软件工程师设为目标"]')!
   adopt.click()
   await nextTick()
