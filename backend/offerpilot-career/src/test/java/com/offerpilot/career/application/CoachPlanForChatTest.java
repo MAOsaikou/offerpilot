@@ -70,12 +70,27 @@ class CoachPlanForChatTest {
         assertThat(items).extracting(CoachPlanForChat.Item::title).containsExactlyInAnyOrderElementsOf(GrowthTaskCatalog.TITLES);
         assertThat(items.get(0).done()).isTrue();
         assertThat(result.summary()).contains("结构化简历", "未写入");
+        assertThat(result.skillGap().evidenceAvailability()).isEqualTo(new CoachPlanForChat.EvidenceAvailability(false, false));
         assertThat(coach.plan("alice","rs","rv","req")).isEqualTo(result);
         when(resumes.read("alice",null,null)).thenReturn(new CoachResumeSkills.Snapshot(false,List.of()));
         assertThat(coach.plan("alice",null,null,"req").summary()).contains("仅参考档案技能");
         when(jdbc.queryForObject(anyString(), eq(String.class), eq("occ"))).thenReturn("[]");
         assertThat(coach.plan("alice",null,null,"req").summary()).contains("暂不能判断具体差距");
         verify(profiles,never()).mergeTasks(anyString(),anyList());
+    }
+    @Test void completedReportsRemainAvailableEvenWhenTheyHaveNoWeakItems() {
+        when(profiles.get("alice")).thenReturn(profile("工程师", "Java"));
+        when(occupations.find(null,"工程师")).thenReturn(new OccupationRecommender.Ranked("occ", "工程师", "技术", "IRC", 0));
+        when(jdbc.queryForObject(anyString(), eq(String.class), eq("occ"))).thenReturn("[]");
+        when(resumes.read("alice",null,null)).thenReturn(new CoachResumeSkills.Snapshot(false,List.of()));
+        var evidence = mock(CoachEvidence.class);
+        when(evidence.read("alice","job","app","工程师")).thenReturn(new CoachEvidence.Snapshot(true,true,List.of()));
+        var coach = coach(); coach.setEvidence(evidence);
+        var result = coach.plan("alice",null,null,"req","job","app");
+        assertThat(result.skillGap().skills()).isEmpty();
+        assertThat(result.skillGap().evidenceAvailability()).isEqualTo(new CoachPlanForChat.EvidenceAvailability(true,true));
+        assertThat(result.summary()).contains("已参考目标/所选岗位", "已参考最近完成面试").doesNotContain("暂无");
+        verify(evidence).read("alice","job","app","工程师");
     }
     static CareerProfileService.Profile profile(String target,String skills) {
         return new CareerProfileService.Profile(target,"上海",skills,List.of(),List.of(GrowthTaskCatalog.TITLES.get(0)),null);
