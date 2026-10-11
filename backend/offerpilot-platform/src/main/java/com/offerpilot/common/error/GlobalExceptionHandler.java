@@ -45,7 +45,8 @@ public class GlobalExceptionHandler {
         if (ex instanceof com.offerpilot.llm.quota.LlmQuotaException quota)
             response.header("Retry-After", String.valueOf(quota.retryAfterSeconds()));
         return response
-                .body(ApiResponse.fail(error.code(), ex.getMessage(), TraceIdFilter.current(request)));
+                .body(ex.recoverable() ? ApiResponse.fail(error.code(), ex.getMessage(), TraceIdFilter.current(request), true)
+                        : ApiResponse.fail(error.code(), ex.getMessage(), TraceIdFilter.current(request)));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -43,6 +43,7 @@ public class Orchestrator {
             AtomicInteger seq,List<Message> replyPrompt,Consumer<Usage> onUsage,String owner,Map<String,Object> safeContext) {
         AtomicBoolean attemptedBusiness = new AtomicBoolean();
         AtomicBoolean producedCard = new AtomicBoolean();
+        var matchFailure = new java.util.concurrent.atomic.AtomicReference<BusinessException>();
         AtomicBoolean producedGuidance = new AtomicBoolean();
         AtomicBoolean producedInterviewOutcome = new AtomicBoolean();
         AtomicBoolean interviewFailed = new AtomicBoolean();
@@ -141,6 +142,7 @@ public class Orchestrator {
                                             .concatWith(Flux.defer(() -> finish.apply(patchWrite ? experts.executePatch(owner, runId, step, decisionResult) : coachWrite ? experts.executeCoach(owner, step, decisionResult) : starWrite ? experts.executeStarStory(owner, runId, step, decisionResult) : interviewWrite ? experts.executeInterview(owner, runId, step, decisionResult) : careerWrite ? experts.executeCareer(owner, step, decisionResult) : experts.executeBoard(owner, runId, step, decisionResult)))))));
                         }).onErrorResume(ex -> {
                             failed.add(step.id());
+                            if (willMatch && ex instanceof BusinessException business) matchFailure.set(business);
                             if (interviewStep && !(ex instanceof BusinessException b && b.errorCode() == ErrorCode.APPROVAL_REJECTED))
                                 interviewFailed.set(true);
                             String summary = willWrite || willMatch || willDiagnose || willSearch || willOptimize || careerStep || interviewStep || coachStep
@@ -157,7 +159,8 @@ public class Orchestrator {
                     return Flux.error(new BusinessException(ErrorCode.MODEL_UNAVAILABLE,
                             "本轮面试请求未执行成功：" + String.join("；", outputs.values())));
                 if ("match".equals(safeContext.get("jobAction")) && !producedCard.get())
-                    return Flux.error(new BusinessException(ErrorCode.MODEL_UNAVAILABLE,
+                    return Flux.error(matchFailure.get() != null ? new BusinessException(matchFailure.get().errorCode(),
+                            "本轮匹配未完成：" + matchFailure.get().getMessage(), matchFailure.get().recoverable()) : new BusinessException(ErrorCode.MODEL_UNAVAILABLE,
                             "本轮匹配未完成：" + String.join("；", outputs.values())));
                 if (!declined.isEmpty()) addReplyData(replyPrompt,
                         "用户拒绝或确认超时是正常的确认结果。明确说明该操作未执行、对应数据未改动，可重新发起。不要要求用户重新识别已选择的记录，不把拒绝描述为系统故障。其它操作按各自实际结果说明。",

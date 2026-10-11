@@ -42,6 +42,7 @@ final class CardNarrationDigest {
                         }
                     }
                     row.put("requirementsCount", payload.path("requirements").size());
+                    row.put("unverifiedCount", payload.path("unverifiedCount").asInt());
                     row.put("metCount", met).put("partialCount", partial).put("missingCount", missing);
                     for (String status : List.of("MISSING", "PARTIAL"))
                         for (var requirement : payload.path("requirements"))

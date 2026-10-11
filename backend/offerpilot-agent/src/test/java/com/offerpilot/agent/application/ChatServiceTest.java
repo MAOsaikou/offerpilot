@@ -190,6 +190,22 @@ class ChatServiceTest {
             assertThat(((AgentEvent.ErrorEvent) events.get(events.size() - 1)).message()).contains("匹配未完成")
                     .contains(experts == denied ? "简历版本不可用" : "匹配服务暂不可用");
         }
+        var retryable = new ExpertRegistry((owner, jobId, resumeId, versionId, requestId) -> {
+            throw new BusinessException(ErrorCode.STRUCTURED_OUTPUT_INVALID, "匹配报告没有可核实的条目，未保存报告；请重试", true);
+        });
+        var local = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()),
+                new Orchestrator(new IntentPlanner(gateway, new ObjectMapper(), retryable, new ByteArrayResource("planner".getBytes())), retryable), new ObjectMapper());
+        var context = java.util.Map.<String, Object>of("jobAction", "match", "jobId", "job1", "resumeId", "resume1", "resumeVersionId", "version1");
+        var events = local.chat("owner", new ChatRequest(null, "请匹配", null, null,
+                new ChatRequest.Options("FLASH", null, context))).collectList().block(Duration.ofSeconds(5));
+        assertThat(events).filteredOn(AgentEvent.ErrorEvent.class::isInstance).singleElement()
+                .isInstanceOfSatisfying(AgentEvent.ErrorEvent.class, error -> {
+                    assertThat(error.code()).isEqualTo(40003);
+                    assertThat(error.recoverable()).isTrue();
+                    assertThat(error.message()).contains("没有可核实", "未保存", "请重试");
+                });
+        assertThat(events).last().isInstanceOfSatisfying(AgentEvent.RunCompleted.class,
+                completed -> assertThat(completed.status()).isEqualTo("FAILED"));
         verify(gateway, never()).stream(any(), anyList(), anyDouble());
         verify(gateway, never()).stream(any(), anyList());
     }
