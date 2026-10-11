@@ -14,7 +14,9 @@ public interface CoachPlanForChat {
         }
     }
     record Citation(String docId, String title) {}
-    record SkillGapPayload(String id, Target target, List<Skill> skills, String summary, List<Citation> citations) {}
+    record EvidenceAvailability(boolean matchAvailable, boolean interviewAvailable) {}
+    record SkillGapPayload(String id, Target target, List<Skill> skills, String summary, List<Citation> citations,
+                           EvidenceAvailability evidenceAvailability) {}
     record Item(String id, String title, int hours, List<String> resources, String dueAt, boolean done) {}
     record Week(int index, String theme, List<Item> items, List<String> gapIds, List<Evidence> evidenceSources) {
         public Week(int index, String theme, List<Item> items) { this(index, theme, items, List.of(), List.of()); }
