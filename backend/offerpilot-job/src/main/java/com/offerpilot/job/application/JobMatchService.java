@@ -56,8 +56,10 @@ public class JobMatchService {
             rejectCancelled(owner, id);
             job=jobs.detail(jobId,false);
             JsonNode selectedJob = job;
-            ObjectNode report=(ObjectNode)com.offerpilot.llm.quota.LlmUserContext.asUser(owner,
+            JsonNode generated=com.offerpilot.llm.quota.LlmUserContext.asUser(owner,
                     () -> matcher.match(selectedJob,resume.structured(),tier,cancellation.asMono()));
+            if (!(generated instanceof ObjectNode report))
+                throw new BusinessException(ErrorCode.STRUCTURED_OUTPUT_INVALID,"匹配报告为空或格式无效，请重试；未保存未经核实的报告");
             report.put("id",id).put("jobId",jobId).put("resumeId",resumeId).put("resumeTitle",resume.title())
                 .put("resumeVersionId",versionId).put("resumeVersionNo",resume.versionNo()).put("createdAt",Instant.now().toString());
             report.set("jobSnapshot",job); report.set("resumeSnapshot",resume.structured());
