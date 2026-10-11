@@ -1,0 +1,84 @@
+name: Gitee mirror
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitee-mirror-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  configuration:
+    name: Check mirror configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      # Secrets cannot be referenced in jobs.<job_id>.if. Export only a boolean.
+      - name: Check required secret and variable
+        id: check
+        env:
+          GITEE_SSH_PRIVATE_KEY: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
+          GITEE_REPO: ${{ vars.GITEE_REPO }}
+        shell: bash
+        run: |
+          if [[ -n "$GITEE_SSH_PRIVATE_KEY" && -n "$GITEE_REPO" ]]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'Gitee mirror is not configured; the mirror job will be skipped.'
+          fi
+
+  mirror:
+    name: Mirror branches and tags to Gitee
+    needs: configuration
+    if: ${{ needs.configuration.outputs.enabled == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch GitHub branches and tags and push mirror
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITEE_SSH_PRIVATE_KEY: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
+          GITEE_REPO: ${{ vars.GITEE_REPO }}
+          GIT_TERMINAL_PROMPT: '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITEE_REPO" =~ ^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$ || "$GITEE_REPO" == *.git ]]; then
+            echo '::error::GITEE_REPO must be owner/repository (without a URL or .git suffix).'
+            exit 1
+          fi
+
+          mirror_dir=$(mktemp -d "$RUNNER_TEMP/gitee-mirror.XXXXXX")
+          ssh_key="$mirror_dir/id_ed25519"
+          known_hosts="$mirror_dir/known_hosts"
+          trap 'rm -f "$ssh_key"' EXIT
+          umask 077
+          printf '%s\n' "$GITEE_SSH_PRIVATE_KEY" > "$ssh_key"
+
+          # Official ED25519 host key, pinned rather than trusting ssh-keyscan:
+          # https://help.gitee.com/account/gitees-ssh-key-fingerprints
+          # SHA256:+ULzij2u99B9eWYFTw1Q4ErYG/aepHLbu96PAUCoV88
+          cat > "$known_hosts" <<'EOF'
+          gitee.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEKxHSJ7084RmkJ4YdEi5tngynE8aZe2uEoVVsB/OvYN
+          EOF
+          export GIT_SSH_COMMAND="ssh -F /dev/null -i '$ssh_key' -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o UserKnownHostsFile='$known_hosts' -o GlobalKnownHostsFile=/dev/null -o HostKeyAlgorithms=ssh-ed25519"
+
+          git init --bare --initial-branch=main "$mirror_dir/repository.git"
+          # A fresh bare repository gets only heads and tags, never refs/pull/*
+          # or runner/checkout refs. Fetch complete history for every branch.
+          auth_header=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth_header"
+          git -C "$mirror_dir/repository.git" \
+            -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic $auth_header" \
+            fetch --no-tags "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+            '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+          git -C "$mirror_dir/repository.git" push --mirror "git@gitee.com:${GITEE_REPO}.git"
