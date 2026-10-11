@@ -274,14 +274,15 @@ class ChatServiceTest {
         when(planner.prepare(any(), anyString(), anyList(), any(), any(), anyMap())).thenReturn(reactor.core.publisher.Mono.just(
             new IntentPlanner.Decision("single", step.agent(), 1.0, false, null, new com.offerpilot.agent.domain.Plan("成长", List.of(step)))));
         when(experts.execute(anyString(), anyMap(), anyString(), any(), anyMap())).thenReturn(reactor.core.publisher.Mono.just(
-            com.offerpilot.agent.experts.ExpertResult.cards("已生成卡片，请查看", cards)));
+            com.offerpilot.agent.experts.ExpertResult.cards("已生成卡片，请查看。当前职业档案：{\"target\":\"后端开发工程师\",\"city\":\"上海\"}", cards)));
         var local = new ChatService(gateway, conversations, new ByteArrayResource("narrator".getBytes()), new Orchestrator(planner, experts), new ObjectMapper());
         when(gateway.stream(eq(tier), anyList())).thenAnswer(invocation -> {
             List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(1);
             String prompt = messages.stream().map(org.springframework.ai.chat.messages.Message::getText).collect(java.util.stream.Collectors.joining("\n"));
             assertThat(prompt).contains("topGaps", "并发测试", "\"required\":3", "\"current\":1", "\"gap\":2",
                 "梳理基础", "项目实战", "测试验证", "表达复盘", "核对并发场景", "professional", "\"result\":false", "补充R结果", "后端开发工程师", "已保存Java技能与软件方向", "职业8", "\"rank\":8", "\"questionNumber\":5")
-                .contains("gapNames").doesNotContain("SHOULD_NOT_REACH_NARRATOR", "gap_internal", "gapIds", "s1：", "questionIndex");
+                .contains("gapNames", "当前职业档案", "上海", "长期记忆和历史消息中的偏好可能过时")
+                .doesNotContain("SHOULD_NOT_REACH_NARRATOR", "gap_internal", "gapIds", "s1：", "questionIndex");
             return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage("按卡片整理准备建议")))));
         });
         var result = local.chat("owner", new ChatRequest(null, "分析", null, AgentMode.COACH, new ChatRequest.Options(tier.name(), null, null)))

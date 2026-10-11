@@ -32,6 +32,7 @@ class CareerRecommendForChatTest {
                 new OccupationRecommender.Ranked("occ2", "分析师", "数据", "ICR", .75)));
         var result = careers.recommend("alice");
         assertThat(result.guidance()).isNull();
+        assertThat(result.currentProfile()).isEqualTo(new CareerRecommendForChat.CurrentProfile("旧目标", "上海"));
         assertThat(result.payload().hollandCode()).isEqualTo("IRC");
         assertThat(result.payload().interestsUsed()).containsExactlyInAnyOrder("技术研发", "数据分析");
         assertThat(result.payload().recommendations()).extracting(CareerRecommendForChat.Recommendation::name)
