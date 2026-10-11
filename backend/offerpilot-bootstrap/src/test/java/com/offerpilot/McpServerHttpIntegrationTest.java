@@ -85,7 +85,9 @@ class McpServerHttpIntegrationTest {
         var payload = json.createObjectNode();
         var jobs = payload.putArray("jobs");
         for (int i = 0; i < 3; i++) jobs.addObject().put("id", "mcp-fixture-" + i).put("site", "fixture")
-                .put("title", "Java工程师").put("nature", "campus").put("url", "https://example.com/jobs/" + i);
+                .put("title", "Java工程师😀").put("company", "示例公司").put("locations", "北京")
+                .put("description", "中文".repeat(119) + "😀" + "详情".repeat(1000))
+                .put("nature", "campus").put("url", "https://example.com/jobs/" + i);
         payload.putObject("_meta").putArray("sites").add("fixture");
         when(upstream.call(eq("search_jobs"), anyMap())).thenReturn(payload);
     }
@@ -95,7 +97,7 @@ class McpServerHttpIntegrationTest {
         assertThat(provider.getToolCallbacks()).extracting(callback -> callback.getToolDefinition().name())
                 .containsExactlyInAnyOrder("resume.diagnose", "jobs.search", "jobs.match");
         for (var callback : provider.getToolCallbacks()) {
-            assertThat(callback.getToolDefinition().description()).isNotBlank();
+            assertThat(callback.getToolDefinition().description()).contains("只读", "Read-only");
             var schema = json.readTree(callback.getToolDefinition().inputSchema());
             assertThat(schema.path("properties").size()).isPositive();
             assertThat(schema.path("required").toString()).contains(
@@ -130,7 +132,7 @@ class McpServerHttpIntegrationTest {
             assertThat(tools).extracting(McpSchema.Tool::name)
                     .containsExactlyInAnyOrder("resume.diagnose", "jobs.search", "jobs.match");
             for (var tool : tools) {
-                assertThat(tool.description()).isNotBlank();
+                assertThat(tool.description()).contains("只读", "Read-only");
                 assertThat(tool.inputSchema().properties()).isNotEmpty();
             }
             JsonNode diagnosis = call(client, "resume.diagnose", Map.of("resumeText", "Java项目经验", "jobDescription", "Java开发"));
@@ -146,12 +148,19 @@ class McpServerHttpIntegrationTest {
             assertThat(match.path("requirements").get(0).path("resumePath").asText()).isEqualTo("/rawText");
             JsonNode search = call(client, "jobs.search", Map.of("query", " Java ", "nature", "CAMPUS", "limit", 2));
             assertThat(search.path("items").size()).isEqualTo(2);
+            assertThat(search.path("items").get(0).path("excerpt").asText()).isEqualTo("中文".repeat(119) + "…");
+            assertThat(search.path("items").get(0).has("description")).isFalse();
+            assertThat(search.path("items").get(0).path("title").asText()).isEqualTo("Java工程师😀");
+            assertThat(search.toString().length()).isLessThan(1600);
             assertThat(search.path("meta").path("sites").get(0).asText()).isEqualTo("fixture");
             assertThat(search.path("truncated").asBoolean()).isTrue();
             JsonNode defaultSearch = call(client, "jobs.search", Map.of("query", "Java"));
             assertThat(defaultSearch.path("limit").asInt()).isEqualTo(10);
             var invalid = client.callTool(new McpSchema.CallToolRequest("jobs.search", Map.of("query", " ")));
             assertThat(invalid.isError()).isTrue();
+            var wrongArg = client.callTool(new McpSchema.CallToolRequest("jobs.search", Map.of("keyword", "Java")));
+            assertThat(wrongArg.isError()).isTrue();
+            assertThat(((McpSchema.TextContent)wrongArg.content().get(0)).text()).contains("query is required");
         }
         verify(upstream).call("search_jobs", Map.of("query", "Java", "nature", "campus", "limit", 30));
         verify(upstream).call("search_jobs", Map.of("query", "Java", "nature", "all", "limit", 30));
