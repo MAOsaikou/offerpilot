@@ -104,7 +104,7 @@ class ChatServiceTest {
                     verify(gateway).stream(eq(tier), prompt.capture());
                     String narrationData = ((List<org.springframework.ai.chat.messages.Message>) prompt.getValue()).stream()
                             .map(org.springframework.ai.chat.messages.Message::getText).collect(java.util.stream.Collectors.joining("\n"));
-                    assertThat(narrationData).contains("\"requirementsCount\":3", "\"metCount\":1,\"partialCount\":1,\"missingCount\":1",
+                    assertThat(narrationData).contains("\"cardType\":\"岗位匹配\"", "\"cardType\":\"岗位评估\"", "\"requirementsCount\":3", "\"metCount\":1,\"partialCount\":1,\"missingCount\":1",
                             "\"grade\":", "Docker", "SQL", "后端工程师", "示例公司")
                             .doesNotContain("s1：", "match_selected", "job_selected", "四周", "STAR反馈", "[]；");
                     assertThat(events).extracting(AgentEvent::type).contains("run.completed").doesNotContain("error", "approval.required");

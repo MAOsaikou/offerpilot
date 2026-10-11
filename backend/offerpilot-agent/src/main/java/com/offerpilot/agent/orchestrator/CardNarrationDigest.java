@@ -15,7 +15,18 @@ final class CardNarrationDigest {
         var digest = JSON.createArrayNode();
         for (var card : cards) {
             JsonNode payload = JSON.valueToTree(card.payload());
-            var row = JSON.createObjectNode().put("cardType", card.cardType());
+            var row = JSON.createObjectNode().put("cardType", switch (card.cardType()) {
+                case "job_match", "job_evidence_match" -> "岗位匹配";
+                case "job_eval_report" -> "岗位评估";
+                case "board_update" -> "看板更新";
+                case "skill_gap" -> "技能差距";
+                case "roadmap" -> "四周路线";
+                case "interview_report" -> "面试评分";
+                case "interviewer_state", "interview_session" -> "面试状态";
+                case "star_story_citations" -> "STAR 故事引用";
+                case "career_recommendation" -> "职业推荐";
+                default -> card.cardType();
+            });
             switch (card.cardType()) {
                 case "job_match", "job_evidence_match" -> {
                     row.set("match", fields(payload, "score", "summary"));
