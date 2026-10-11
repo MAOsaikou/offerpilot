@@ -202,8 +202,25 @@ class JobsHttpIntegrationTest {
 
     @Test void fabricatedEvidenceFailsWithoutSavingAReport() throws Exception {
         String token=identities.create().accessToken(), resume=seed(token), job=jobId(token); badEvidence=true;
-        assertThat(request("POST","/jobs/"+job+"/matches",token,Map.of("resumeId",resume,"resumeVersionId",resume,"requestId",UUID.randomUUID().toString())).statusCode()).isEqualTo(422);
+        var failed=request("POST","/jobs/"+job+"/matches",token,Map.of("resumeId",resume,"resumeVersionId",resume,"requestId",UUID.randomUUID().toString()));
+        assertThat(failed.statusCode()).isEqualTo(422);
+        assertThat(JSON.readTree(failed.body()).path("recoverable").asBoolean()).isTrue();
+        assertThat(JSON.readTree(failed.body()).path("code").asInt()).isEqualTo(40003);
         var history=data(request("GET","/jobs/"+job+"/matches",token,null)); assertThat(history.get(0).path("status").asText()).isEqualTo("FAILED");
+        // A real HTTP report with one good row and a fabricated leaf saves only verified evidence.
+        String mixed = """
+            {"summary":"依据","requirements":[
+            {"requirement":"Java","status":"MET","jdQuote":"熟悉Java","resumePath":"/summary","resumeQuote":"Java项目","reason":"原文证据","suggestion":"准备细节"},
+            {"requirement":"Java实践","status":"MET","jdQuote":"熟悉Java","resumePath":"/summary","resumeQuote":"Linux","reason":"错误叶子","suggestion":"核对原文"}]}
+            """;
+        org.mockito.Mockito.doReturn(reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(List.of(
+                new org.springframework.ai.chat.model.Generation(new org.springframework.ai.chat.messages.AssistantMessage(mixed))))))
+                .when(gateway).stream(org.mockito.ArgumentMatchers.eq(com.offerpilot.llm.ModelTier.FLASH),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0));
+        var partial=data(request("POST","/jobs/"+job+"/matches",token,Map.of("resumeId",resume,"resumeVersionId",resume,"requestId",UUID.randomUUID().toString())));
+        assertThat(partial.path("score").asInt()).isEqualTo(100);
+        assertThat(partial.path("unverifiedCount").asInt()).isEqualTo(1);
+        assertThat(partial.path("unverifiedRequirements").toString()).contains("UNVERIFIED").doesNotContain("Linux");
+        assertThat(data(request("GET","/jobs/matches/"+partial.path("id").asText(),token,null))).isEqualTo(partial);
     }
     @Test void matchQuotaFailureKeepsCodeRetryAfterAndDoesNotRepair() throws Exception {
         String token=identities.create().accessToken(), resume=seed(token), job=jobId(token);

@@ -10,8 +10,17 @@ public record ApiResponse<T>(
         String message,
         T data,
         String traceId,
-        List<FieldError> errors
+        List<FieldError> errors,
+        Boolean recoverable
 ) {
+
+    public ApiResponse(int code, String message, T data, String traceId, List<FieldError> errors) {
+        this(code, message, data, traceId, errors, null);
+    }
+
+    public static ApiResponse<Void> fail(int code, String message, String traceId, boolean recoverable) {
+        return new ApiResponse<>(code, message, null, traceId, null, recoverable);
+    }
 
     public static <T> ApiResponse<T> ok(T data, String traceId) {
         return new ApiResponse<>(0, "ok", data, traceId, null);

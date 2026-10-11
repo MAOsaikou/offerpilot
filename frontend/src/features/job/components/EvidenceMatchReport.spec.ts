@@ -15,6 +15,10 @@ const report: EvidenceMatch = {
   summary: '已有开发证据，待补数据库与部署经验',
   createdAt: '2026-09-21',
   model: 'test',
+  unverifiedCount: 1,
+  unverifiedRequirements: [
+    { requirement: '会常用的shell命令', status: 'UNVERIFIED', verificationIssue: 'RESUME_QUOTE' },
+  ],
   requirements: [
     {
       requirement: 'Java',
@@ -101,6 +105,12 @@ afterEach(() => {
 
 it('switches the original quote and status when navigating to missing JD evidence, then closes', async () => {
   const root = mountReport()
+  expect(root.querySelector('[aria-label="未核实要求"]')?.textContent).toContain(
+    '未核实 1 项 · 不计分',
+  )
+  expect(root.querySelector('[aria-label="未核实要求"]')?.textContent).toContain(
+    '会常用的shell命令',
+  )
   expect(root.querySelector('a')?.getAttribute('href')).toContain(
     '/resumes/resume-1?tab=optimize&jobId=job-1&resumeVersionId=version-2',
   )

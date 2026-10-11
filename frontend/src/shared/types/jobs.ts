@@ -90,6 +90,13 @@ export interface EvidenceMatch {
   score: number
   summary: string
   requirements: MatchRequirement[]
+  verifiedCount?: number
+  unverifiedCount?: number
+  unverifiedRequirements?: Array<{
+    requirement: string
+    status: 'UNVERIFIED'
+    verificationIssue: string
+  }>
   jobSnapshot: RealJob
   resumeSnapshot: Record<string, unknown>
   model: string

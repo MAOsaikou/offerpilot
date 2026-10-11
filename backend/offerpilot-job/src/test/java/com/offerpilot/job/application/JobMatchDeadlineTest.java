@@ -36,7 +36,9 @@ class JobMatchDeadlineTest {
         when(gateway.timeout(ModelTier.PRO)).thenReturn(Duration.ofSeconds(180));
         when(gateway.timeout(ModelTier.FLASH)).thenReturn(Duration.ofSeconds(60));
         when(gateway.modelName(any())).thenReturn("stub");
-        return new JobMatcher(gateway, json, new ByteArrayResource("rules".getBytes()));
+        var cache = mock(JobRequirementCache.class);
+        when(cache.get(anyString())).thenReturn(json.readTree(valid));
+        return new JobMatcher(gateway, json, new ByteArrayResource("rules".getBytes()), cache);
     }
     ChatResponse response(String text) {
         return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
@@ -76,6 +78,25 @@ class JobMatchDeadlineTest {
         assertTimeout(error.get(), "180");
         assertThat(cancelled).isTrue();
         clock.advanceTimeBy(Duration.ofDays(1));
+        verify(gateway, times(2)).stream(eq(ModelTier.PRO), anyList(), eq(0.0));
+        // With some good evidence, a late repair cancels at the same deadline and returns that evidence.
+        var definitions = json.readTree(valid); var definitionRows = (com.fasterxml.jackson.databind.node.ArrayNode) definitions.path("requirements");
+        var partial = json.readTree(valid); var partialRows = (com.fasterxml.jackson.databind.node.ArrayNode) partial.path("requirements");
+        for (int i = 0; i < 3; i++) {
+            var row = ((com.fasterxml.jackson.databind.node.ObjectNode) definitionRows.get(0)).deepCopy().put("requirement", "Java条件" + i);
+            definitionRows.add(row); partialRows.add(row.deepCopy().put("resumeQuote", "Linux"));
+        }
+        var cache = mock(JobRequirementCache.class); when(cache.get(anyString())).thenReturn(definitions);
+        var partialMatcher = new JobMatcher(gateway, json, new ByteArrayResource("rules".getBytes()), cache);
+        clearInvocations(gateway); cancelled.set(false);
+        when(gateway.stream(eq(ModelTier.PRO), anyList(), eq(0.0)))
+                .thenReturn(Flux.just(response(partial.toString())), Flux.<ChatResponse>never().doOnCancel(() -> cancelled.set(true)));
+        var result = new AtomicReference<com.fasterxml.jackson.databind.JsonNode>();
+        analyze(partialMatcher, ModelTier.PRO).subscribe(result::set, failure -> fail("verified fallback must survive", failure));
+        clock.advanceTimeBy(Duration.ofSeconds(180));
+        assertThat(result.get().path("score").asInt()).isEqualTo(100);
+        assertThat(result.get().path("unverifiedCount").asInt()).isEqualTo(3);
+        assertThat(cancelled).isTrue();
         verify(gateway, times(2)).stream(eq(ModelTier.PRO), anyList(), eq(0.0));
     }
 
