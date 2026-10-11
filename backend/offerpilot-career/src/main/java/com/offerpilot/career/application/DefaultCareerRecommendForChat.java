@@ -26,7 +26,8 @@ public class DefaultCareerRecommendForChat implements CareerRecommendForChat {
                                 "兴趣码 " + derived.code() + "，职业码 " + item.hollandCode() + "；字母码仅用于展示",
                                 item.retrievalReason().isEmpty() ? "本项按兴趣画像排序；本轮未检索到对应职业文本" : item.retrievalReason()),
                         item.citations())).toList();
-        return new Result(null, new Payload(derived.code(), derived.interestsUsed(), ranked));
+        return new Result(null, new Payload(derived.code(), derived.interestsUsed(), ranked),
+                new CurrentProfile(profile.target(), profile.city()));
     }
     @Override public OccupationRecommender.Ranked occupation(String occupationId, String name) {
         return occupations.find(occupationId, name);

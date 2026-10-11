@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { getStoredToken, sessionRevision } from '@/shared/utils/authSession'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import type { Conversation } from '@/shared/types/conversation'
 
@@ -18,6 +19,10 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ select: [id?: string]; reload: []; more: [] }>()
 
+const signedIn = computed(() => {
+  void sessionRevision.value
+  return Boolean(getStoredToken())
+})
 const editing = ref<string>()
 const titleDraft = ref('')
 const deleting = ref<string>()
@@ -138,7 +143,11 @@ function confirmRemove(id: string) {
       加载更多对话
     </button>
     <p class="history-caption history-foot">
-      访客身份保存在这个浏览器，有效期 30 天。清除浏览器数据或更换设备后，无法直接访问原记录。
+      {{
+        signedIn
+          ? '对话保存在当前账号，使用同一账号登录可继续访问。'
+          : '访客身份保存在这个浏览器，有效期 30 天。清除浏览器数据或更换设备后，无法直接访问原记录。'
+      }}
     </p>
   </aside>
 </template>

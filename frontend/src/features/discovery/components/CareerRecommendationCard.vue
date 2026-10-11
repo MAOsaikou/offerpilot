@@ -38,7 +38,7 @@ const emit = defineEmits<{ adoptTarget: [selection: CareerTargetSelection] }>()
           :key="citation.occupationId"
           class="mt-2 break-words text-xs text-muted-foreground"
         >
-          引用来源：{{ citation.title }}（{{ citation.occupationId }}）· {{ citation.excerpt }}
+          引用来源：{{ citation.title }} · {{ citation.excerpt }}
         </p>
         <button
           v-if="interactive"

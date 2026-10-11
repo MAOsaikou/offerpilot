@@ -14,6 +14,7 @@ export type CardLoader = () => Promise<Component>
 export const cardRegistry: Partial<Record<CardType, CardLoader>> = {
   skill_gap: () => import('@/features/growth/components/SkillGapCard.vue'),
   roadmap: () => import('@/features/growth/components/RoadmapCard.vue'),
+  star_story_citations: () => import('@/features/interview/components/StarStoryCitationsCard.vue'),
   interview_report: () => import('@/features/interview/components/InterviewReportCard.vue'),
   interviewer_state: () => import('@/features/interview/components/InterviewerStateCard.vue'),
   career_recommendation: () =>
@@ -42,7 +43,6 @@ export function resolveCardComponent(cardType: string): Component | null {
     loadingComponent: CardSkeleton,
     errorComponent: CardFallback,
     delay: 140,
-    timeout: 10_000,
   })
   asyncCache.set(cardType, component)
   return component

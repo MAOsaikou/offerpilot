@@ -53,13 +53,20 @@ beforeEach(() => {
   vi.mocked(listResumeVersions).mockReset()
   vi.mocked(matchJob).mockReset()
 })
-async function mountDetail() {
+async function mountDetail(cached = false) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/jobs/:id', component: JobDetailView }],
   })
   await router.push('/jobs/job_snapshot')
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  if (cached) {
+    queryClient.setQueryData(['resumes', 1], await listResumes(1))
+    queryClient.setQueryData(
+      ['resume-versions', 'resume_selected'],
+      await listResumeVersions('resume_selected'),
+    )
+  }
   const root = document.createElement('div')
   const app = createApp(JobDetailView).use(router).use(VueQueryPlugin, { queryClient })
   app.mount(root)
@@ -76,16 +83,14 @@ async function mountDetail() {
 }
 it('the chat match entry carries the selected job, resume version and structured action', async () => {
   savedResume()
-  const { root, cleanup } = await mountDetail()
+  const { root, cleanup } = await mountDetail(true)
   try {
     await vi.waitFor(() =>
       expect(root.querySelector('option[value="resume_selected"]')).not.toBeNull(),
     )
-    const select = root.querySelector<HTMLSelectElement>(
-      'select:has(option[value="resume_selected"])',
-    )!
-    select.value = 'resume_selected'
-    select.dispatchEvent(new Event('change', { bubbles: true }))
+    expect(
+      root.querySelector<HTMLSelectElement>('select:has(option[value="resume_selected"])')?.value,
+    ).toBe('resume_selected')
     await vi.waitFor(() =>
       expect(
         [...root.querySelectorAll('a')].find((a) => a.textContent?.trim() === '在聊天中匹配'),

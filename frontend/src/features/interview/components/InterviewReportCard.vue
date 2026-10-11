@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { RouterLink } from 'vue-router'
 import { asPayload } from '@/shared/utils/payload'
 import type { InterviewReportPayload } from '@/shared/types/cards'
 
@@ -34,7 +35,9 @@ const sections = [
       <p class="mt-1 break-words text-xs text-muted-foreground">
         {{ data.note || '文字规则评分；端侧表现分析未启用。' }}
       </p>
-      <p class="mt-1 break-all text-xs text-muted-foreground">会话：{{ data.id }}</p>
+      <RouterLink v-if="data.id" :to="'/interviews/' + data.id" class="btn mt-2"
+        >打开面试复盘</RouterLink
+      >
     </header>
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <div v-for="dimension in dimensions" :key="dimension.key">

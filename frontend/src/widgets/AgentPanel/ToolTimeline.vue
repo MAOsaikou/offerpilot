@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { toolArguments } from '@/shared/utils/toolPresentation'
 import { cn } from '@/shared/utils/cn'
 import type { ToolCallView } from '@/shared/stores/agentRun'
 
@@ -45,15 +46,24 @@ defineProps<{
           </summary>
 
           <div class="mt-2 space-y-1.5 border-t border-border/60 pt-2">
-            <p class="font-mono text-xs text-muted-foreground">
-              source={{ call.source }} · access={{ call.access }}
+            <p class="text-xs text-muted-foreground">
+              {{ call.access === 'READ' ? '只读分析' : '需批准的写入操作' }}
             </p>
-            <p v-if="call.resultPreview" class="text-xs leading-relaxed">
-              {{ call.resultPreview }}
+            <p v-if="call.status !== 'RUNNING'" class="text-xs leading-relaxed">
+              {{
+                call.status === 'OK'
+                  ? '已执行，结果见本轮回复与卡片。'
+                  : call.status === 'CANCELLED'
+                    ? '已停止，未继续执行。'
+                    : '未执行成功，原因见本轮回复或错误提示。'
+              }}
             </p>
-            <pre
-              class="max-h-40 overflow-auto rounded-lg bg-foreground/5 p-2 font-mono text-xs leading-relaxed"
-              >{{ JSON.stringify(call.args, null, 2) }}</pre>
+            <dl class="space-y-1 text-xs">
+              <div v-for="(row, index) in toolArguments(call.args)" :key="index">
+                <dt class="text-muted-foreground">{{ row.label }}</dt>
+                <dd class="whitespace-pre-wrap break-words">{{ row.value }}</dd>
+              </div>
+            </dl>
           </div>
         </details>
       </li>

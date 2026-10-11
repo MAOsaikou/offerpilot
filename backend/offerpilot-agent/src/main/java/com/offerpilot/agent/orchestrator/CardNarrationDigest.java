@@ -109,7 +109,12 @@ final class CardNarrationDigest {
                         turns.add(view);
                     }
                 }
-                case "interviewer_state", "interview_session" -> row.set("turn", fields(payload, "state", "questionIndex", "total", "question", "note"));
+                case "interviewer_state", "interview_session" -> {
+                    var turn = fields(payload, "state", "total", "question", "note");
+                    if (payload.path("questionIndex").isNumber())
+                        turn.put("questionNumber", payload.path("questionIndex").asInt() + 1);
+                    row.set("turn", turn);
+                }
                 case "star_story_citations" -> {
                     row.set("count", payload.path("count"));
                     var items = row.putArray("items");
@@ -123,8 +128,9 @@ final class CardNarrationDigest {
                     row.set("hollandCode", payload.path("hollandCode"));
                     var recommendations = row.putArray("recommendations");
                     for (var recommendation : payload.path("recommendations")) {
-                        if (recommendations.size() == 5) break;
+                        if (recommendations.size() == 8) break;
                         var view = fields(recommendation, "name", "family", "hollandCode", "similarity");
+                        view.put("rank", recommendations.size() + 1);
                         view.set("reasons", first(recommendation.path("reasons"), 3));
                         recommendations.add(view);
                     }
@@ -143,7 +149,7 @@ final class CardNarrationDigest {
             case "star_story" -> "STAR故事卡表示所选回答已批准保存，可引用已保存标题、角色与内容摘要。";
             case "interviewer_state", "interview_session" -> "呈现当前问题并等待回答，不代替用户作答；仅工具明确说明完成写入才声称完成。";
             case "interview_report" -> "面试卡为文字规则评分，可概括具名维度和STAR反馈，不推测端侧表现，评分不等于标记完成。";
-            case "career_recommendation" -> "职业推荐仅供探索，推荐不等于已设为目标；仅设置目标工具成功才能声称修改。";
+            case "career_recommendation" -> "职业推荐数量与顺序沿摘要的完整列表及rank，不按similarity重新排序；推荐仅供探索，推荐不等于已设为目标；仅设置目标工具成功才能声称修改。";
             case "skill_gap", "roadmap" -> "成长卡为确定性证据参考，只引用实际来源的标签和摘录，面试仅按真实关联说明岗位。保留缺报告时的去匹配/去模拟面试提示。四周沿卡片主题、差距和任务说明，不新增或重排。卡片未写入任务，无证据不等于没有能力。";
             case "resume_diagnosis" -> "简历诊断不预测录用，不表示修改了简历。";
             case "resume_diff" -> "改写卡只表示建议已保存，只读动作未执行采纳；用户需逐条核对、选择并批准，仅采纳工具成功才说明生成新版本。";

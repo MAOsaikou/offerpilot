@@ -3,6 +3,14 @@ import { createApp, nextTick, ref, type App } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { useConversationChat } from '@/features/chat/composables/useConversationChat'
 import ChatPage from './ChatPage.vue'
+import CardRenderer from '@/widgets/CardRenderer/CardRenderer.vue'
+import { cardRegistry } from '@/widgets/CardRenderer/registry'
+import PageBoundary from '@/app/layouts/PageBoundary.vue'
+import { exportJobEvalMarkdown } from '@/shared/api/jobs'
+import { saveLogin } from '@/shared/utils/authSession'
+vi.mock('@/shared/api/jobs', () => ({
+  exportJobEvalMarkdown: vi.fn().mockResolvedValue(undefined),
+}))
 
 vi.mock('@/features/chat/composables/useConversationChat', () => ({ useConversationChat: vi.fn() }))
 let app: App | undefined
@@ -39,6 +47,9 @@ it('推荐卡片选择发送结构化职业聊天请求并打开现有审批面�
                   hollandCode: 'IRC',
                   similarity: 1,
                   reasons: ['共同兴趣 IRC'],
+                  citations: [
+                    { occupationId: 'occ1', title: '软件工程师', excerpt: '设计可靠的软件服务' },
+                  ],
                 },
               ],
             },
@@ -80,6 +91,16 @@ it('推荐卡片选择发送结构化职业聊天请求并打开现有审批面�
   await vi.waitFor(() =>
     expect(root.querySelector('[aria-label="将软件工程师设为目标"]')).not.toBeNull(),
   )
+  saveLogin({
+    accessToken: 'fixture',
+    expiresIn: 43200,
+    user: { id: 'user', email: 'user@example.com', nickname: '用户', roles: ['USER'] },
+  })
+  await nextTick()
+  expect(root.textContent).toContain('对话保存在当前账号')
+  expect(root.textContent).not.toContain('访客身份保存在这个浏览器')
+  expect(root.textContent).toContain('引用来源：软件工程师 · 设计可靠的软件服务')
+  expect(root.textContent).not.toContain('occ1')
   const adopt = root.querySelector<HTMLButtonElement>('[aria-label="将软件工程师设为目标"]')!
   adopt.click()
   await nextTick()
@@ -255,4 +276,144 @@ it('没有可信简历关联的卡片采纳失败并显示错误，不发出写�
   expect(send).not.toHaveBeenCalled()
   expect(error.value).toContain('无法关联')
   expect(root.querySelector('[role="alert"]')?.textContent).toContain('无法关联')
+})
+
+it('renders current match and STAR card snapshots without fallback or visible resource ids', async () => {
+  const match = {
+    id: 'match_internal',
+    jobId: 'job_internal',
+    resumeTitle: '保存简历',
+    resumeVersionNo: 2,
+    score: 50,
+    summary: '三项要求已核对',
+    requirements: ['MET', 'PARTIAL', 'MISSING'].map((status) => ({
+      status,
+      requirement: '要求 ' + status,
+      jdQuote: '岗位原文',
+      resumeQuote: status === 'MISSING' ? '' : '真实项目',
+      reason: '已核对原文',
+      suggestion: '补充真实证据',
+    })),
+  }
+  const evaluation = {
+    matchId: 'match_internal',
+    overall: 60,
+    grade: 'E',
+    summary: '规则分',
+    note: '不是录用预测',
+    dimensions: [{ code: 'A', name: '要求覆盖', score: 50, reason: '明确、部分、未体现' }],
+    advice: [],
+  }
+  const cards = [
+    ['job_match', match],
+    ['job_eval_report', evaluation],
+    [
+      'star_story_citations',
+      {
+        count: 1,
+        items: [
+          {
+            id: 'star_internal',
+            title: '缓存项目',
+            role: '后端开发',
+            starCount: 4,
+            excerpt: '<script>原始故事</script>',
+          },
+        ],
+      },
+    ],
+    [
+      'interviewer_state',
+      {
+        state: 'ASKING',
+        sessionId: 'iv_internal',
+        questionIndex: 4,
+        total: 5,
+        question: '如何学习？',
+      },
+    ],
+  ] as const
+  const { h } = await import('vue')
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/:pathMatch(.*)*', component: { render: () => null } }],
+  })
+  await router.push('/chat')
+  const root = document.createElement('div')
+  document.body.append(root)
+  app = createApp({
+    render: () =>
+      h(
+        'div',
+        cards.map(([cardType, payload]) => h(CardRenderer, { cardType, payload })),
+      ),
+  }).use(router)
+  app.mount(root)
+  await vi.waitFor(() => {
+    expect(root.textContent).toContain('缓存项目')
+    expect(root.textContent).toContain('部分体现')
+    expect(root.textContent).toContain('5 / 5')
+  })
+  expect(root.textContent).toContain('部分体现')
+  expect(root.textContent).toContain('简历未体现')
+  expect(root.textContent).toContain('5 / 5')
+  expect(root.textContent).not.toMatch(
+    /暂不支持|查看原始数据|match_internal|job_internal|star_internal|iv_internal/,
+  )
+  expect(root.querySelector('script')).toBeNull()
+  expect(root.querySelector('a[href="/jobs/job_internal?matchId=match_internal"]')).not.toBeNull()
+  ;[...root.querySelectorAll('button')].find((b) => b.textContent?.includes('导出评估.md'))!.click()
+  await vi.waitFor(() =>
+    expect(exportJobEvalMarkdown).toHaveBeenCalledWith('match_internal', '岗位-岗位评估.md'),
+  )
+})
+
+it('slow and failed card imports stay inside the card without unmounting the active chat', async () => {
+  vi.useFakeTimers()
+  let resolve!: (component: ReturnType<typeof defineComponent>) => void
+  const { defineComponent, h } = await import('vue')
+  const slow = new Promise<ReturnType<typeof defineComponent>>((done) => {
+    resolve = done
+  })
+  let attempts = 0
+  cardRegistry.campus_calendar = () => slow
+  cardRegistry.career_compare = async () => {
+    if (++attempts === 1) throw new Error('network failed')
+    return defineComponent(() => () => h('article', '重试后的卡片'))
+  }
+  const unmounted = vi.fn()
+  const { onUnmounted } = await import('vue')
+  const chat = defineComponent(() => {
+    onUnmounted(unmounted)
+    return () =>
+      h('div', [
+        h('p', '正在接收回复'),
+        h(CardRenderer, { cardType: 'campus_calendar', payload: {} }),
+        h(CardRenderer, { cardType: 'career_compare', payload: {} }),
+      ])
+  })
+  const root = document.createElement('div')
+  document.body.append(root)
+  app = createApp(
+    defineComponent(() => () => h(PageBoundary, { resetKey: '/chat' }, { default: () => h(chat) })),
+  )
+  app.mount(root)
+  try {
+    await vi.advanceTimersByTimeAsync(15000)
+    expect(root.textContent).toContain('正在接收回复')
+    expect(root.textContent).toContain('这张卡片暂时无法显示')
+    expect(root.textContent).not.toContain('页面暂时无法显示')
+    expect(unmounted).not.toHaveBeenCalled()
+    root.querySelector<HTMLButtonElement>('[aria-label="卡片加载失败"] button')!.click()
+    resolve(defineComponent(() => () => h('article', '慢网卡片加载完成')))
+    await vi.advanceTimersByTimeAsync(200)
+    expect(root.textContent).toContain('慢网卡片加载完成')
+    expect(root.textContent).toContain('重试后的卡片')
+    expect(root.querySelector('[aria-label="卡片加载失败"]')).toBeNull()
+    expect(unmounted).not.toHaveBeenCalled()
+  } finally {
+    delete cardRegistry.campus_calendar
+    delete cardRegistry.career_compare
+    vi.useRealTimers()
+  }
 })
