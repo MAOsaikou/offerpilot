@@ -56,6 +56,29 @@ class OfferPilotMcpToolsTest {
     }
 
     @Test
+    void searchProjectsCompactUnicodeSafeItemsAndPreservesSourceMetadata() throws Exception {
+        var json = new ObjectMapper();
+        var source = json.createObjectNode().put("fetchedAt", "2026-10-11T00:00:00Z");
+        var job = source.putArray("items").addObject().put("id", "job1").put("url", "https://example.com/job1")
+                .put("title", "AI后端").put("company", "示例公司").put("locations", "北京").put("source", "LOCAL_SNAPSHOT")
+                .put("description", "字".repeat(238) + "😀" + "长描述".repeat(500)).put("requirement", "Java、Redis");
+        source.withObject("meta").put("source", "LOCAL_SNAPSHOT").put("snapshotDate", "2026-10-10");
+        source.withArray("items").add(job.deepCopy().put("id", "job2"));
+        when(jobs.search("Java", "", "all", "")).thenReturn(source);
+        var result = tools.searchJobs("Java", null, null, null, 1);
+        assertThat(result.path("items")).hasSize(1);
+        var item = result.path("items").get(0);
+        assertThat(item.path("excerpt").asText()).isEqualTo("字".repeat(238) + "…").doesNotContain("\uD83D");
+        assertThat(item.path("excerptTruncated").asBoolean()).isTrue();
+        assertThat(item.has("description") || item.has("requirement")).isFalse();
+        assertThat(item.path("url").asText()).isEqualTo(job.path("url").asText());
+        assertThat(result.path("meta")).isEqualTo(source.path("meta"));
+        assertThat(result.path("truncated").asBoolean()).isTrue();
+        assertThat(source.path("items").get(0).has("description")).isTrue();
+        assertThat(result.toString().length()).isLessThan(1200);
+    }
+
+    @Test
     void serverDisabledDoesNotCreateToolsOrProvider() {
         new ApplicationContextRunner().withUserConfiguration(OfferPilotMcpTools.class, OfferPilotMcpServerConfig.class)
                 .withPropertyValues("spring.ai.mcp.server.enabled=false")
