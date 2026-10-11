@@ -64,7 +64,9 @@ const speech = useSpeech({
   },
 })
 const {
-  supported,
+  recognitionSupported,
+  synthesisSupported,
+  finishing,
   unsupportedReason,
   canListen,
   listening,
@@ -80,10 +82,13 @@ watch(
       : '',
   (question) => {
     speech.cancelAll()
-    if (question && voiceAutoPlay.value && supported.value)
+    if (question && voiceAutoPlay.value && synthesisSupported.value)
       speech.speak(current.value?.questionText ?? '')
   },
 )
+watch(voiceAutoPlay, (enabled) => {
+  if (!enabled) speech.stopSpeaking()
+})
 let controller = new AbortController()
 let revision = 0
 
@@ -285,7 +290,7 @@ onBeforeRouteUpdate(saveBeforeLeave)
         <div class="interview-avatar"><AppIcon name="interviews" :size="38" /></div>
         <h2>{{ current?.questionText }}</h2>
         <p class="subtle">不急着给出完美答案。先把你的真实经历讲清楚。</p>
-        <div v-if="supported" class="voice-controls">
+        <div v-if="synthesisSupported" class="voice-controls">
           <button
             type="button"
             class="btn"
@@ -298,27 +303,31 @@ onBeforeRouteUpdate(saveBeforeLeave)
             ><input v-model="voiceAutoPlay" type="checkbox" :disabled="busy" />自动朗读</label
           >
           <span class="tag" role="status">{{
-            busy ? '正在保存' : speaking ? '提问中' : listening ? '倾听中' : '等待回答'
+            busy ? '正在保存' : speaking ? '提问中' : '等待回答'
           }}</span>
         </div>
       </section>
       <form class="panel form-stack" @submit.prevent="submit">
-        <div v-if="supported" class="voice-controls">
+        <div v-if="recognitionSupported" class="voice-controls">
           <button
             type="button"
             class="btn"
             :aria-pressed="listenRequested"
-            :disabled="busy || !canListen || answer.length >= 12000"
+            :disabled="busy || finishing || !canListen || answer.length >= 12000"
             @click="speech.toggleListening"
           >
-            {{ listenRequested ? '停止口述' : '开始口述' }}
+            {{ finishing ? '正在结束口述…' : listenRequested ? '停止口述' : '开始口述' }}
           </button>
-          <span class="subtle">{{
-            speaking && listenRequested
-              ? '朗读后继续倾听'
-              : listenRequested && !listening
-                ? '正在启动麦克风…'
-                : '口述结束后可编辑，再保存回答。'
+          <span class="subtle" role="status" aria-live="polite">{{
+            finishing
+              ? '麦克风已停止，正在确认最后一句…'
+              : speaking && listenRequested
+                ? '朗读后继续倾听'
+                : listenRequested && !listening
+                  ? '正在启动麦克风…'
+                  : listening
+                    ? '麦克风正在倾听；停止口述后可编辑回答。'
+                    : '麦克风未开启；口述结束后可编辑，再保存回答。'
           }}</span>
         </div>
         <label class="field"
@@ -334,7 +343,11 @@ onBeforeRouteUpdate(saveBeforeLeave)
         <p v-if="interimText" class="subtle speech-subtitle" role="status" aria-live="polite">
           {{ interimText }}
         </p>
-        <p v-if="!supported" class="helper-note">{{ unsupportedReason }}</p>
+        <p v-if="unsupportedReason" class="helper-note">{{ unsupportedReason }}</p>
+        <p v-if="recognitionSupported" class="helper-note">
+          语音由浏览器识别，可能使用浏览器厂商的在线服务。OfferPilot
+          不接收或保存音频，保存时仅提交回答文字。
+        </p>
         <p v-if="speechError" class="helper-note" role="status">{{ speechError }}</p>
         <p v-if="answer.length >= 12000" class="helper-note">回答已达到长度上限，请编辑后继续。</p>
         <div class="card-footer">
