@@ -175,7 +175,12 @@ public class ChatService {
                     if (ex instanceof BusinessException business) code = business.errorCode();
                     try { conversations.finish(turn, answer.toString(), "FAILED", null, message, cards.snapshot()); }
                     catch (RuntimeException persistenceFailure) { code = ErrorCode.DATABASE_UNAVAILABLE; message = code.message(); }
-                    return Flux.just(new AgentEvent.ErrorEvent("error", seq.incrementAndGet(), turn.runId(), Instant.now(), code.code(), message, false));
+                    boolean recoverable = ex instanceof BusinessException business && business.recoverable() && code != ErrorCode.DATABASE_UNAVAILABLE;
+                    var error = new AgentEvent.ErrorEvent("error", seq.incrementAndGet(), turn.runId(), Instant.now(), code.code(), message, recoverable);
+                    // Retryable means a fresh turn can retry. This turn is still finished, so consumers
+                    // receive their existing terminal event and do not mistake EOF for transport loss.
+                    return recoverable ? Flux.just(error, new AgentEvent.RunCompleted("run.completed", seq.incrementAndGet(),
+                            turn.runId(), Instant.now(), turn.messageId(), "FAILED", (int) Duration.between(turn.startedAt(), Instant.now()).toMillis())) : Flux.just(error);
                 })
                 .doFinally(signal -> {
                     cancellations.remove(turn.runId());

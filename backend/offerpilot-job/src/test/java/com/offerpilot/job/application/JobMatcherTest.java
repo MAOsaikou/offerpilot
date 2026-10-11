@@ -17,7 +17,7 @@ class JobMatcherTest {
         var resume=json.readTree("{\"summary\":\"完成Java项目\"}");
         assertThatCode(()->JobMatcher.validate(report(),"熟悉Java及SQL",resume)).doesNotThrowAnyException();
         var wrong=report(); ((ObjectNode)wrong.path("requirements").get(0)).put("resumeQuote","大型分布式系统");
-        assertThatThrownBy(()->JobMatcher.validate(wrong,"熟悉Java",resume)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(()->JobMatcher.validate(wrong,"熟悉Java",resume)).isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.recoverable()).isTrue());
         var path=report(); ((ObjectNode)path.path("requirements").get(0)).put("resumePath","/missing");
         assertThatThrownBy(()->JobMatcher.validate(path,"熟悉Java",resume)).isInstanceOf(BusinessException.class);
     }
@@ -46,6 +46,16 @@ class JobMatcherTest {
         assertThat(JobMatcher.canonicalQuote("Java，SQL", "Java SQL")).isNull();
         assertThat(JobMatcher.canonicalQuote("Java 和 SQL", "JavaSQL")).isNull();
         assertThat(JobMatcher.canonicalQuote("Java", " ")).isNull();
+        assertThat(JobMatcher.canonicalQuote("善于交流，有良好的团队合作精神和协调沟通能力。", "善于交流，有良好的团队合作精神和协调沟通能力；"))
+                .isEqualTo("善于交流，有良好的团队合作精神和协调沟通能力");
+        assertThat(JobMatcher.canonicalQuote("Java、C、C++、Python、Golang等，了解MySQL；\n熟练使用SQL", "Java、C、C++、Python、Golang等,了解MySQL; 熟练使用SQL；"))
+                .isEqualTo("Java、C、C++、Python、Golang等，了解MySQL；\n熟练使用SQL");
+        assertThat(JobMatcher.canonicalQuote("Java、C、C++、Python", "Java、Python")).isNull();
+        String preferred = "1. 有参与各级计算机竞赛并获奖经历；\n2. 有原创的技术博客或开源项目；\n3. 有大模型应用开发经验，如使用LangChain/LlamaIndex等框架构建RAG系统、开发AI Agent应用等；";
+        assertThat(JobMatcher.canonicalQuote(preferred, "有参与各级计算机竞赛并获奖经历；有原创的技术博客或开源项目；有大模型应用开发经验，如使用LangChain/LlamaIndex等框架构建RAG系统、开发AI Agent应用等"))
+                .isEqualTo(preferred.substring(3, preferred.length()-1));
+        assertThat(JobMatcher.canonicalQuote("修复12个线上缺陷", "修复个线上缺陷")).isNull();
+        assertThat(JobMatcher.canonicalQuote("“Java” 项目", "\"Java\"项目")).isEqualTo("“Java” 项目");
     }
 
     @Test void deepSeekLikeRepeatedCombinedJdAndInvalidLeavesDoNotLoseVerifiedItems() throws Exception {
@@ -60,7 +70,7 @@ class JobMatcherTest {
         assertThat(report.path("requirements")).hasSize(2);
         assertThat(report.path("requirements").get(0).has("unverifiedQuote")).isFalse();
         assertThat(report.has("score")).isFalse();
-        assertThat(report.path("summary").asText()).contains("未通过校验或重复");
+        assertThat(report.path("summary").asText()).contains("未核实", "不计分");
     }
 
 
@@ -127,6 +137,21 @@ class JobMatcherTest {
         assertThat(calls).hasValue(2);
         assertThat(result.path("requirements")).hasSize(1);
         assertThat(result.path("score").asInt()).isEqualTo(100);
+        // Too few verified rows get one repair; a worse repair must not destroy good evidence.
+        var partial = report();
+        var partialRows = (com.fasterxml.jackson.databind.node.ArrayNode) partial.path("requirements");
+        for (int i = 0; i < 3; i++) partialRows.add(invalid.path("requirements").get(0).deepCopy());
+        org.mockito.Mockito.clearInvocations(gateway);
+        org.mockito.Mockito.when(gateway.stream(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0)))
+                .thenReturn(reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(java.util.List.of(
+                        new org.springframework.ai.chat.model.Generation(new org.springframework.ai.chat.messages.AssistantMessage(partial.toString()))))),
+                        reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(java.util.List.of(
+                                new org.springframework.ai.chat.model.Generation(new org.springframework.ai.chat.messages.AssistantMessage("not JSON"))))));
+        var preserved = matcher.match(json.readTree("{\"requirement\":\"熟悉Java\"}"), json.readTree("{\"summary\":\"Java项目\"}"));
+        assertThat(preserved.path("score").asInt()).isEqualTo(100);
+        assertThat(preserved.path("unverifiedCount").asInt()).isEqualTo(3);
+        assertThat(preserved.path("unverifiedRequirements").toString()).doesNotContain("编造经历");
+        org.mockito.Mockito.verify(gateway,org.mockito.Mockito.times(2)).stream(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0));
         org.mockito.Mockito.when(gateway.stream(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(0.0)))
             .thenReturn(reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(java.util.List.of(
                 new org.springframework.ai.chat.model.Generation(new org.springframework.ai.chat.messages.AssistantMessage("not JSON"))))));
@@ -142,8 +167,9 @@ class JobMatcherTest {
             var row=report().path("requirements").get(0).deepCopy();
             ((ObjectNode)row).put("requirement","要求"+i).put("jdQuote","要求"+i+";"); items.add(row);
         }
-        assertThatThrownBy(()->JobMatcher.validate(report,jd.toString(),json.readTree("{\"summary\":\"Java项目\"}")))
-                .isInstanceOf(BusinessException.class);
+        JobMatcher.validate(report,jd.toString(),json.readTree("{\"summary\":\"Java项目\"}"));
+        assertThat(report.path("requirements")).hasSize(13);
+        items = (com.fasterxml.jackson.databind.node.ArrayNode) report.path("requirements");
         items.remove(12);
         JobMatcher.validate(report,jd.toString(),json.readTree("{\"summary\":\"Java项目\"}"));
         assertThat(report.path("requirements")).hasSize(12);
