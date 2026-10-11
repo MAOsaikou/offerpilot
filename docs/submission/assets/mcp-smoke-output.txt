@@ -1,0 +1,70 @@
+tools: jobs.match, jobs.search, resume.diagnose
+{
+  "items": [
+    {
+      "id": "job_01m4mqrjgyaqxten74qqna7war",
+      "site": "baidu",
+      "nature": "campus",
+      "source": "company-career-site",
+      "title": "北京-网络研发工程师(J100700)",
+      "company": "Baidu",
+      "locations": "北京市",
+      "url": "https://talent.baidu.com/jobs/detail/GRADUATE/545e6823-28d2-4cb5-aba2-3c520a31b4e0?dev=0",
+      "excerpt": "负责行业领先的超大规模云基础设施网络平台研发，打造AI时代的顶级网络技术及产品 -负责CDN、边缘计算、流量调度，以及智能负载均衡、HTTP、DNS、网络测量、网络协议栈等相关技术和产品的研发 -负责高性能网络与高性能云主机研发，包含RDMA、智能网卡、虚拟化技术等 -负责自研交换机、网络操作系统、高性能路由协议栈等相关技术和产品的研发 -本科及以上学历，计算机、通信等相关专业 -熟练掌握操作系统、算法、计算机网络等基础知识 -熟练掌握C/C++/Go/Python/Jav…",
+      "excerptTruncated": true
+    },
+    {
+      "id": "job_01m4mqrjgz788mty7yq9jx2zp2",
+      "site": "baidu",
+      "nature": "campus",
+      "source": "company-career-site",
+      "title": "深圳-数据开发工程师(J100757)",
+      "company": "Baidu",
+      "locations": "深圳市",
+      "url": "https://talent.baidu.com/jobs/detail/GRADUATE/4635bd24-347e-4e54-b97f-88d760f1b752?dev=0",
+      "excerpt": "-负责大数据平台的架构设计与开发，包括数据仓库建设、数据管道搭建、数据治理等 -设计并优化大规模数据处理作业，保障数据链路的稳定与高效 -与产品、算法团队协作，为AI模型训练与业务分析提供高质量数据支撑 -推动数据中台能力建设，提升数据资产管理与复用效率 -探索AI技术在数据质量检测与智能ETL中的应用 -本科及以上学历，计算机、统计学等相关专业优先 -熟练掌握SQL，熟悉Spark、Flink、Hive等大数据技术栈 -掌握Python/Java/Scala中至少一种编程…",
+      "excerptTruncated": true
+    },
+    {
+      "id": "job_01m4many1na5r8r0m57cv2dq8x",
+      "site": "baidu",
+      "nature": "campus",
+      "source": "company-career-site",
+      "title": "上海-前端开发工程师(J100747)",
+      "company": "Baidu",
+      "locations": "上海市",
+      "url": "https://talent.baidu.com/jobs/detail/GRADUATE/ff5a2fbf-b169-41cd-8a9d-56fa5b01267a?dev=0",
+      "excerpt": "-负责百度各产品Web前端研发 -百度各产品易用性改进和界面技术优化 -持续优化前端性能（加载速度、渲染效率），提升用户体验 -关注前端技术演进，推动工程规范与开发效率提升 -探索AI辅助前端开发（低代码生成、智能补全）的应用 -本科及以上学历，计算机、软件工程等相关专业优先 -精通HTML、CSS及JavaScript等Web前端技术 -具备跨浏览器、跨终端的前端开发经验 -了解至少一种Server端语言（Node.JS/PHP/Python/Java等） -具备扎实的计…",
+      "excerptTruncated": true
+    }
+  ],
+  "meta": {
+    "source": "company-career-site",
+    "query": "Java",
+    "nature": "campus",
+    "sites": [
+      "tencent",
+      "bytedance",
+      "meituan",
+      "xiaomi",
+      "baidu",
+      "jd",
+      "huawei",
+      "netease"
+    ],
+    "total": 30,
+    "truncated": true,
+    "cached": false,
+    "skipped": [],
+    "degradedSites": [
+      "meituan",
+      "jd",
+      "tencent",
+      "netease",
+      "huawei"
+    ]
+  },
+  "fetchedAt": "2026-10-11T09:56:18.243810301Z",
+  "limit": 3,
+  "truncated": true
+}
