@@ -153,6 +153,8 @@ it('appends finals to typed answers and saves the last recognition result before
   submit()
   await nextTick()
   expect(saveInterviewAnswer).not.toHaveBeenCalled()
+  expect(root.textContent).toContain('正在结束口述')
+  expect(root.textContent).toContain('麦克风已停止')
   active.result(
     [
       { text: '语音行动', final: true },
@@ -217,13 +219,53 @@ it('persists opt-in autoplay, reads changed questions and cleans up on unmount',
   submit()
   await vi.waitFor(() => expect(mock.synthesis.speak).toHaveBeenCalledTimes(2))
   expect(mock.synthesis.speak.mock.calls[1]![0].text).toBe(server.answers[1]!.questionText)
-  button('停止朗读').click()
+  checkbox.checked = false
+  checkbox.dispatchEvent(new Event('change', { bubbles: true }))
+  await nextTick()
+  expect(localStorage.getItem('offerpilot.voiceAutoPlay')).toBe('false')
+  expect(button('朗读题目')).toBeDefined()
+  expect(mock.synthesis.cancel).toHaveBeenCalled()
+  checkbox.checked = true
+  checkbox.dispatchEvent(new Event('change', { bubbles: true }))
+  await nextTick()
   button('开始口述').click()
   const active = mock.latest()
   unmount()
   expect(active.abort).toHaveBeenCalledOnce()
   expect(mock.synthesis.cancel).toHaveBeenCalled()
+  await mount()
+  await loaded()
+  expect(root.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(true)
+  expect(mock.synthesis.speak.mock.calls.at(-1)![0].text).toBe(server.answers[1]!.questionText)
 })
+
+it.each(['recognition', 'synthesis'])(
+  'keeps the available voice feature without %s',
+  async (missing) => {
+    const mock = installSpeechMocks()
+    if (missing === 'recognition') vi.stubGlobal('SpeechRecognition', undefined)
+    else vi.stubGlobal('speechSynthesis', undefined)
+    await mount()
+    await loaded()
+    if (missing === 'recognition') {
+      expect(button('开始口述')).toBeUndefined()
+      button('朗读题目').click()
+      expect(mock.synthesis.speak).toHaveBeenCalledOnce()
+      expect(root.textContent).toContain('不支持语音输入')
+    } else {
+      expect(button('朗读题目')).toBeUndefined()
+      button('开始口述').click()
+      mock.latest().result([{ text: '独立听写', final: true }])
+      await nextTick()
+      expect(root.querySelector('textarea')!.value).toBe('独立听写')
+      expect(root.textContent).toContain('不支持题目朗读')
+      button('停止口述').click()
+    }
+    await typeAnswer('编辑确认后的回答')
+    button('保存草稿').click()
+    await vi.waitFor(() => expect(server.answers[0]!.answerText).toBe('编辑确认后的回答'))
+  },
+)
 
 it('creates only server sessions and exports unchanged legacy records', async () => {
   server.jobId = 'job_interview'
