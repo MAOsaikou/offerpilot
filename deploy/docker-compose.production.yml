@@ -1,0 +1,42 @@
+# Production overlay: no dependency ports; authenticated S3, separate from local S3Mock data.
+# Always use together with docker-compose.yml and --profile production.
+services:
+  postgres:
+    ports: !reset []
+    mem_limit: 1536m
+  redis:
+    ports: !reset []
+    mem_limit: 256m
+  jobs-mcp:
+    ports: !reset []
+    mem_limit: 384m
+  minio: !override
+    # Official SeaweedFS 4.48 multi-platform digest, verified by docker pull.
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    restart: always
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    entrypoint: ["weed"]
+    # Leave capacity for the S3 bucket collection beyond master's initial volumes.
+    command: ["server", "-dir=/data", "-ip=minio", "-ip.bind=0.0.0.0", "-volume.max=20", "-master.volumeSizeLimitMB=1024", "-master.telemetry=false", "-filer", "-s3", "-s3.port=9000", "-s3.iam=false", "-s3.port.iceberg=0", "-s3.port.lance=0"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+    volumes: [s3_data:/data]
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9333/cluster/status | grep -q '\"IsLeader\":true' && wget -qO- http://127.0.0.1:8888/healthz >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+  backend:
+    mem_limit: 2g
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      JOBS_MCP_URL: http://jobs-mcp:7001
+  caddy:
+    mem_limit: 256m
+volumes:
+  s3_data: {}

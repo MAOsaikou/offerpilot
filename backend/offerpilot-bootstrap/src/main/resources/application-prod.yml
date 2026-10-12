@@ -3,6 +3,19 @@ server:
   forward-headers-strategy: framework
 
 spring:
+  ai:
+    # ModelGateway creates chat/vision clients; browser Web Speech handles audio.
+    # Do not require a Bailian key just to start a DeepSeek-only deployment.
+    model:
+      chat: none
+      embedding: ${LLM_EMBEDDING_PROVIDER:none}
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
+    vectorstore:
+      type: none
   threads:
     virtual:
       enabled: true

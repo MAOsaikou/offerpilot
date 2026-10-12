@@ -92,7 +92,7 @@ services:
     image: offerpilot/backend:${TAG:-latest}
     restart: always
     logging: *service-logging
-    env_file: [../.env]
+    env_file: ["${OFFERPILOT_ENV_FILE:-../.env}"]
     environment:
       SPRING_PROFILES_ACTIVE: prod
       JOBS_SOURCE_MODE: ${JOBS_SOURCE_MODE:-AUTO}
@@ -112,7 +112,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
-    profiles: ["full"]
+    profiles: ["full", "production"]
 
   frontend:
     build:
@@ -120,10 +120,11 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
     image: offerpilot/frontend:${TAG:-latest}
+    logging: *service-logging
     volumes: [frontend_dist:/dist]
     command: ["sh", "-c", "rm -rf /dist/* && cp -r /app/dist/. /dist/ && echo done"]
     restart: "no"
-    profiles: ["full"]
+    profiles: ["full", "production"]
 
   caddy:
     image: caddy:2-alpine
@@ -147,7 +148,7 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
-    profiles: ["full"]
+    profiles: ["full", "production"]
 
 volumes:
   pg_data: {}

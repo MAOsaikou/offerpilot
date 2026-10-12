@@ -1,5 +1,18 @@
+# This is the first public proxy: do not trust any client forwarding headers.
+(proxy_headers) {
+    header_up -Forwarded
+    header_up -X-Forwarded-*
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Host {hostport}
+    header_up X-Forwarded-Proto {scheme}
+}
+
 {$DOMAIN} {
-    encode zstd gzip
+    # Do not compress SSE: each event must reach the browser immediately.
+
+    request_body {
+        max_size 13MB
+    }
 
     handle /healthz {
         respond "ok" 200
@@ -9,7 +22,10 @@
     handle @sse {
         reverse_proxy backend:8081 {
             flush_interval -1
+            import proxy_headers
             transport http {
+                dial_timeout 10s
+                response_header_timeout 240s
                 read_timeout 600s
                 write_timeout 600s
             }
@@ -18,6 +34,7 @@
 
     handle /api/* {
         reverse_proxy backend:8081 {
+            import proxy_headers
             transport http {
                 dial_timeout 10s
                 response_header_timeout 240s
@@ -28,20 +45,28 @@
     }
     handle /mcp* {
         reverse_proxy backend:8081 {
+            import proxy_headers
             flush_interval -1
         }
     }
     handle /actuator/health {
-        reverse_proxy backend:8081
+        reverse_proxy backend:8081 {
+            import proxy_headers
+        }
     }
     handle /swagger-ui* {
-        reverse_proxy backend:8081
+        reverse_proxy backend:8081 {
+            import proxy_headers
+        }
     }
     handle /v3/api-docs* {
-        reverse_proxy backend:8081
+        reverse_proxy backend:8081 {
+            import proxy_headers
+        }
     }
 
     handle {
+        encode zstd gzip
         root * /srv/frontend
         try_files {path} /index.html
         file_server
