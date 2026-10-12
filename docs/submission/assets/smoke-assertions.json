@@ -1,0 +1,188 @@
+[
+  {
+    "time": "15:12:26",
+    "step": "01-demo-login",
+    "ok": true,
+    "detail": "http=200 code=0"
+  },
+  {
+    "time": "15:12:26",
+    "step": "02a-seed-resumes",
+    "ok": true,
+    "detail": "n=4 titles=['冒烟简历-张小航', '冒烟简历-张小航', '小北-Java校招', '林同学-后端实习'] status=['READY', 'READY', 'READY', 'READY']"
+  },
+  {
+    "time": "15:12:26",
+    "step": "02b-upload",
+    "ok": true,
+    "detail": "http=200 code=0 msg=ok id=rs_01m4mwwh5r4yq8tw49s3wy5mmw"
+  },
+  {
+    "time": "15:12:35",
+    "step": "02c-parse",
+    "ok": true,
+    "detail": "status=READY after=9s version=rv_01m4mwwr9gkzjn5d33n01sysn6 keys=['id', 'title', 'parseStatus', 'parseProgress', 'parseError', 'currentVersionId', 'fileName', 'createdAt', 'updatedAt', 'currentVersion']"
+  },
+  {
+    "time": "15:12:42",
+    "step": "02d-diagnosis",
+    "ok": true,
+    "detail": "dur=7s types=['run.started', 'ui.card', 'run.completed'] score=None issues=4 errs=[]"
+  },
+  {
+    "time": "15:12:45",
+    "step": "03a-career-recommend",
+    "ok": true,
+    "detail": "dur=3.1s cardTypes=['career_recommendation'] n=8 names=['后端开发工程师', '测试开发工程师', '功能与业务测试工程师', '数据开发工程师', '移动端开发工程师'] citations=8 errors=[] text='你的兴趣组合（喜欢写代码 + 喜欢分析数据 + 愿意和人沟通）在职业库里对应的是 RIS 兴趣码，本轮共给出 8 个职业推荐，按卡片顺序如下：\\n\\n1. **后端开发工程师**（软件研发）\\n2. **测试开发工程师**（测试与质量）\\n3. **功能与业务测试工程师**（测试与质量）\\n4. **数据开发工程师**（数据）\\n'"
+  },
+  {
+    "time": "15:12:47",
+    "step": "03b-set-target-approval",
+    "ok": true,
+    "detail": "types=['run.started', 'memory.used', 'plan.created', 'step.updated', 'tool.call', 'approval.required', 'approval.resolved', 'tool.result', 'step.updated', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text.delta', 'text"
+  },
+  {
+    "time": "15:12:56",
+    "step": "04a-job-search",
+    "ok": true,
+    "detail": "dur=9s n=30 source=company-career-site fallback=None sites=['tencent', 'bytedance', 'meituan', 'xiaomi', 'baidu', 'jd', 'huawei', 'netease'] first=[('AI后端开发工程师', 'Meituan'), ('软件开发工程师（后端方向）', 'Meituan'), ('选址开发岗', 'Meituan')]"
+  },
+  {
+    "time": "15:12:56",
+    "step": "04b-job-detail",
+    "ok": true,
+    "detail": "http=200 keys=['url', 'site', 'title', 'nature', 'source', 'company', 'category', 'locations', 'updatedAt', 'department', 'externalId', 'description', 'requirement', 'id', 'detailFetchedAt'] reqLen=2"
+  },
+  {
+    "time": "15:12:56",
+    "step": "05a-favorite",
+    "ok": true,
+    "detail": "http=200 code=0 msg=ok id=app_01m4many2m7hzya2ra747jvetm status=INTERVIEW"
+  },
+  {
+    "time": "15:13:06",
+    "step": "04c-match-AF",
+    "ok": true,
+    "detail": "dur=9s http=200 code=0 msg=ok status=None grade=F overall=48 dims=['A', 'B', 'C', 'D', 'E', 'F'] reqs=12 levels=['MET', 'PARTIAL', 'PARTIAL', 'PARTIAL', 'MISSING', 'MISSING', 'MISSING', 'PARTIAL', 'PARTIAL', 'MISSING']"
+  },
+  {
+    "time": "15:13:06",
+    "step": "04d-eval-md",
+    "ok": true,
+    "detail": "http=200 ctype=text/markdown;charset=UTF-8 disp=attachment; filename=\"job-eval.md\" bytes=1310"
+  },
+  {
+    "time": "15:17:01",
+    "step": "04e-chat-match-cards",
+    "ok": true,
+    "detail": "dur=18.1s cardTypes=['job_match', 'job_eval_report'] errors=[] recordLeak=False text='## 岗位匹配与评估结果\\n\\n**岗位：AI后端开发工程师 · Meituan**\\n\\n### 一、匹配概况\\n\\n- **匹配分：42**\\n- **要求总数：12 项** — 明确满足 3 项、部分满足 4 项、未体现 5 项\\n- **评估等级：E（综合 55/100）**\\n\\n说明：分数由匹配证据与岗位文'"
+  },
+  {
+    "time": "15:17:05",
+    "step": "06a-rewrite-jobId",
+    "ok": true,
+    "detail": "dur=4s types=['run.started', 'ui.card', 'run.completed'] patches=4 filtered=0 batch=pb_01m4mx51fbk5kpk6bws2frccrw errs=[]"
+  },
+  {
+    "time": "15:17:05",
+    "step": "06b-apply-patch",
+    "ok": false,
+    "detail": "http=409 code=30403 msg=简历已更新，请重新加载后保存 newVersion=None no=None"
+  },
+  {
+    "time": "15:17:05",
+    "step": "06c-pdf-export",
+    "ok": true,
+    "detail": "http=200 ctype=application/pdf bytes=74802 disp=attachment; filename=\"=?UTF-8?Q?=E5=86=92=E7=83=9F=E7=AE=80=E5=8E=86-=E5=BC=A0=E5=B0=8F=E8=88=AA.pdf?=\"; filename*=UTF-8''%E5%86%92%E7%83%9F%E7%AE%80%E5%8E%86-%E5%BC%A0%E5%B0%8F%E8%88%AA.pdf"
+  },
+  {
+    "time": "15:17:05",
+    "step": "07b-next-action-timeline",
+    "ok": true,
+    "detail": "patch=200 code=0 app={'status': 'APPLIED', 'nextAction': '周三前跟进 HR 并准备二面', 'nextActionAt': '2026-10-11'} timeline=['CREATED', 'ARTIFACT_LINKED', 'ARTIFACT_LINKED', 'ARTIFACT_LINKED', 'STATUS_CHANGED', 'NEXT_ACTION_EDITED', 'ARTIFACT_LINKED', 'ARTIFACT_LINKED', 'STATUS_CHANGED', 'NOTE_EDITED', 'ARTIFACT_LINKED', 'ARTIFACT_LINKED', 'ARTIFACT_LINKED', 'STATUS_CHANGED', 'ARTIFACT_LINKED', 'STATUS_CHANGED', 'ARTIFACT_LINKED', 'ARTIFACT_LINKED', 'ARTIFACT_LINKED', 'NEXT_ACTION_EDITED', 'STATUS_CHANGED', 'NOTE_EDITED', 'ARTIFACT_LINKED', 'ARTIFACT_LINKED', 'ARTIFACT_LINKED', 'ARTIFACT_LINKED', 'ARTIFACT_LINKED', 'NEXT_ACTION_EDITED', 'STATUS_CHANGED"
+  },
+  {
+    "time": "15:17:05",
+    "step": "07c-board-list",
+    "ok": true,
+    "detail": "n=8 due=['2026-10-11', '2026-10-11', '2026-10-11', '2026-10-11', '2026-10-11', '2026-10-11', '2026-10-11']"
+  },
+  {
+    "time": "15:13:28",
+    "step": "08a-interview-create-jobId",
+    "ok": true,
+    "detail": "http=200 code=0 msg=ok id=iv_01m4mwye6fvtnbeg90pk3byxr1 jobId=job_01m4many0rg5dq45m0ng50csef q=0"
+  },
+  {
+    "time": "15:13:28",
+    "step": "08b-answers-complete",
+    "ok": true,
+    "detail": "http=200 code=0 msg=ok completed=True report=null"
+  },
+  {
+    "time": "15:13:28",
+    "step": "09a-star-candidates",
+    "ok": true,
+    "detail": "http=200 n=1 first=[(0, 4)]"
+  },
+  {
+    "time": "15:13:28",
+    "step": "11a-recap-md",
+    "ok": true,
+    "detail": "http=200 ctype=text/markdown;charset=UTF-8 disp=attachment; filename=\"=?UTF-8?Q?=E9=9D=A2=E8=AF=95=E5=A4=8D=E7=9B=98.md?=\"; filename*=UTF-8''%E9%9D%A2%E8%AF%95%E5%A4%8D%E7%9B%98.md bytes=7168"
+  },
+  {
+    "time": "15:13:28",
+    "step": "11b-recap-wrong-accept",
+    "ok": true,
+    "detail": "http=406 body=b'{\"code\":10001,\"message\":\"\\xe5\\x93\\x8d\\xe5\\xba\\x94\\xe6\\xa0\\xbc\\xe5\\xbc\\x8f\\xe4\\xb8\\x8d\\xe6\\x94\\xaf\\xe6\\x8c\\x81\\xef\\xbc\\x8c\\xe8\\xaf\\xb7\\xe4\\xbd\\xbf\\xe7\\x94\\xa8 Accept: text/markdown \\xe6\\x88\\x96 */* \\xe4\\xb8\\x8b\\xe8\\xbd\\xbd\\xe5\\xa4\\x8d\\xe7\\x9b\\x98\\xe3\\x80\\x82\",\"traceId\":\"580'"
+  },
+  {
+    "time": "15:13:31",
+    "step": "10a-star-recall-citation",
+    "ok": true,
+    "detail": "dur=2.8s cardTypes=['interviewer_state', 'star_story_citations'] approvals=[] errors=[] text='当前面试题（第 5 题，共 5 题）：\\n\\n**你希望在未来一年掌握哪些能力？会如何安排学习？**\\n\\n这道题不是让你复述项目，而是看你的成长规划是否具体、可执行。可以结合你已入库的这几段练习/项目经历来谈，比如：\\n\\n- **校园预约系统**：你做过慢查询定位、Redis 缓存热门时段、限流和 JUni'"
+  },
+  {
+    "time": "15:13:34",
+    "step": "10b-score-card",
+    "ok": true,
+    "detail": "dur=2.4s cardTypes=['interview_report', 'star_story_citations'] citations=True leakSuspect=False errors=[] text='这场面试的文字规则评分如下：\\n\\n**综合线索分：34/100**\\n\\n| 维度 | 得分 |\\n|---|---|\\n| 专业 | 28 |\\n| 表达 | 61 |\\n| 逻辑 | 25 |\\n| 岗位关联 | 22 |\\n\\n**说明**：这是文字规则评分，只衡量回答中的表达线索，不验证事实真伪，也不预测录用结果。端侧表现分析未启用。\\n\\n**主要短板**\\n- S 背景：4 题未观察到线索\\n- T 任务：3 题'"
+  },
+  {
+    "time": "15:13:34",
+    "step": "07d-app-detail-linked",
+    "ok": true,
+    "detail": "opts=5 interviews=[('iv_01m4mwye6fvtnbeg90pk3byxr1', 'COMPLETED', 34), ('iv_01m4mqvzerwatpw0xnwtfm7vd9', 'COMPLETED', 27), ('iv_01m4mpm57wqeqbb4j7je40m5dt', 'COMPLETED', 27), ('iv_01m4mp37trdp780s54dv873sjy', 'COMPLETED', 34), ('iv_01m4mazvvdj49gd89x37sm3xct', 'COMPLETED', 34)] stars=3 timeline=['CREATED:None', 'ARTIFACT_LINKED:JOB_MATCH', 'ARTIFACT_LINKED:JOB_MATCH', 'ARTIFACT_LINKED:RESUME_OPTIMIZATION', 'STATUS_CHANGED:None', 'NEXT_ACTION_EDITED:None', 'ARTIFACT_LINKED:INTERVIEW', 'ARTIFACT_LINKED:STAR_STORY', 'STATUS_CHANGED:None', 'NOTE_EDITED:None', 'ARTIFACT_LINKED:JOB_MATCH', 'ARTIFACT_LINKED:JOB_MATCH', 'ARTIFACT_LINKED:RESUME_OPTIMI"
+  },
+  {
+    "time": "15:13:40",
+    "step": "12a-coach-evidence",
+    "ok": true,
+    "detail": "dur=6.8s cardTypes=['skill_gap', 'roadmap', 'star_story_citations'] gaps=8 evidenceTypes=['INTERVIEW', 'JOB_MATCH'] errors=[] text='# 你的四周学习计划\\n\\n先说结论：你的差距集中在**两块**——一是目标岗位（AI后端开发工程师）明确要求、但简历里完全没体现的 **LLM 原理与主流大模型 API / AI 编程工具使用经验**；二是**面试表达**（岗位关联、逻辑结构、STAR 结构）。下面按卡片给出的四周主题、差距和任务原样展开。\\n\\n---\\n\\n## 第 1 周｜梳理目标岗位要求\\n\\n**对应差距**\\n- 了解大语言模型（LL'"
+  },
+  {
+    "time": "15:13:48",
+    "step": "13-generation-cancel",
+    "ok": true,
+    "detail": "dockSeenAfter=0.6s task={'kind': 'JOB_MATCH', 'id': 'match_01m4mwz0pvffbs45egj4a1yzb0', 'status': 'RUNNING', 'label': None, 'title': '岗位匹配分析'} cancel=200/0 matchPOST=409/30205/匹配已取消，可重新分析 stillInDock=False getAfter=30205/None"
+  },
+  {
+    "time": "15:15:37",
+    "step": "14b-PRO-coach-chat",
+    "ok": true,
+    "detail": "dur=27.8s cardTypes=['skill_gap', 'roadmap', 'star_story_citations'] errors=[] text='根据你的目标职业「后端开发工程师」，已制定一份四周学习计划。当前识别出的主要短板是两部分：\\n\\n- **面试表达**：岗位关联、逻辑结构偏弱，STAR 结构尚未体现；面试复盘里岗位关联 22/100、逻辑结构 25/100，属于优先改进项。\\n'"
+  },
+  {
+    "time": "15:15:39",
+    "step": "15a-board-chat-approve",
+    "ok": true,
+    "detail": "types=['run.started', 'memory.used', 'plan.created', 'step.updated', 'tool.call', 'approval.required', 'approval.resolved', 'tool.result', 'ui.card', 'step.updated', 'usage', 'run.completed'] approvals=[{'approvalId': 'da795023-a05b-41ae-9ac9-626ad3790abf', 'tool': None, 'status': 200, 'code': 0}] status=INTERVIEW note='已约一面' errors=[] text='已更新 Meituan「AI后端开发工程师」的投递记录：\\n\\n- 阶段：面试中\\n- 备注：已约一面\\n\\n其余字段（如下一步行动）为当前记录状态，本轮未改动。需要继续调整可以随时告诉我。'"
+  },
+  {
+    "time": "15:15:42",
+    "step": "15b-board-chat-reject",
+    "ok": true,
+    "detail": "approvals=[{'approvalId': 'd63bd600-a759-47b0-aea1-d0622f7bd6c4', 'tool': None, 'status': 200, 'code': 0}] status=INTERVIEW errors=[] text='看板修改未执行，对应投递记录的阶段没有改动，数据保持原样。\\n\\n你可以随时重新发起这个修改；需要的话，也可以先告诉我要改的是哪一条投递记录（岗位标题与公司），我再帮你确认。'"
+  }
+]
