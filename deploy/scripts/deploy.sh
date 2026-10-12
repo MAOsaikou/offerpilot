@@ -143,13 +143,16 @@ PY
             "$public_url/api/v1/agent/chat" -o "$smoke_dir/chat.sse"
         python3 - "$smoke_dir/chat.sse" <<'PY'
 import json, sys
-s = open(sys.argv[1]).read()
-assert 'event: text.delta' in s and 'event: run.completed' in s, 'SSE 缺少正文或结束事件'
-assert 'event: error' not in s, 'SSE 返回业务错误'
-for block in s.split('\n\n'):
-    if 'event: run.completed' in block:
-        data = json.loads(next(x[5:].strip() for x in block.splitlines() if x.startswith('data:')))
-        assert data.get('status') == 'COMPLETED', 'SSE 未成功完成'
+events = []
+for block in open(sys.argv[1]).read().replace('\r\n', '\n').split('\n\n'):
+    event = next((x.partition(':')[2].strip() for x in block.splitlines() if x.startswith('event:')), None)
+    data = next((x.partition(':')[2].strip() for x in block.splitlines() if x.startswith('data:')), None)
+    if event:
+        events.append(event)
+    assert event != 'error', 'SSE 返回业务错误'
+    if event == 'run.completed':
+        assert json.loads(data).get('status') == 'COMPLETED', 'SSE 未成功完成'
+assert 'text.delta' in events and 'run.completed' in events, 'SSE 缺少正文或结束事件'
 print('访客沙箱登录与真实 FLASH SSE 对话通过。')
 PY
     fi
