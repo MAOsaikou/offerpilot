@@ -1,1 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="900" height="495" viewBox="0 0 900 495" role="img"><title>04-deployment</title><defs><marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0 0 L10 4 L0 8" fill="#334155"/></marker></defs><style>text{font-family:'Noto Sans CJK SC',sans-serif;fill:#172338;font-size:20px}.small{font-size:17px}.title{font-size:24px;font-weight:700}rect{fill:#f5f7fa;stroke:#334155;stroke-width:1.6}.line{fill:none;stroke:#334155;stroke-width:1.8;marker-end:url(#arrow)}.dash{stroke-dasharray:6 5}</style><rect width="900" height="495" style="fill:white;stroke:none"/><rect x="10" y="20" width="250" height="70" rx="8"/><text x="135.0" y="48.5" text-anchor="middle">浏览器</text><text x="135.0" y="75.5" text-anchor="middle">本机：Vite 5173</text><rect x="330" y="20" width="560" height="70" rx="8"/><text x="610.0" y="48.5" text-anchor="middle">Compose full：Caddy + 前端静态产物</text><text x="610.0" y="75.5" text-anchor="middle">API / SSE / 可选 MCP 反向代理</text><path class="line" d="M260 55 L330 55"/><rect x="330" y="150" width="560" height="65" rx="8"/><text x="610.0" y="176.0" text-anchor="middle">唯一业务后端 bootstrap</text><text x="610.0" y="203.0" text-anchor="middle">本机 jar：8081</text><path class="line" d="M610 90 L610 150"/><rect x="10" y="275" width="205" height="80" rx="8"/><text x="112.5" y="308.5" text-anchor="middle">PostgreSQL 17</text><text x="112.5" y="335.5" text-anchor="middle">pgvector / Flyway</text><rect x="235" y="275" width="185" height="80" rx="8"/><text x="327.5" y="308.5" text-anchor="middle">Redis 7</text><text x="327.5" y="335.5" text-anchor="middle">额度 / 认证限流</text><rect x="440" y="275" width="205" height="80" rx="8"/><text x="542.5" y="308.5" text-anchor="middle">对象存储</text><text x="542.5" y="335.5" text-anchor="middle">原件 / S3 接口</text><rect x="665" y="275" width="225" height="80" rx="8"/><text x="777.5" y="308.5" text-anchor="middle">独立 jobs-mcp</text><text x="777.5" y="335.5" text-anchor="middle">企业公开接口 / 快照</text><path class="line" d="M450 215 L113 275"/><path class="line" d="M520 215 L328 275"/><path class="line" d="M610 215 L542 275"/><path class="line" d="M760 215 L777 275"/><rect x="330" y="410" width="560" height="60" rx="8"/><text x="610.0" y="447.0" text-anchor="middle">外部模型供应商：DeepSeek / 百炼 / 兼容端点</text><path class="line" d="M665 190 L890 410"/><text x="10" y="398" class="small">拓扑依据 deploy/docker-compose.yml；公网尚未上线。</text><text x="10" y="490" class="small">Compose 默认对象服务是无鉴权 S3Mock；公网必须替换并验证鉴权。</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="950" height="490" viewBox="0 0 950 490" role="img">
+<title>部署拓扑与外部模型调用</title>
+<desc>后端分别连接数据库、Redis、对象存储、jobs-mcp；外部模型调用沿右侧独立通道连线。</desc>
+<defs>
+<marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+<path d="M0 0 L10 4 L0 8" fill="#334155"/>
+</marker>
+</defs>
+<style>text{font-family:'Noto Sans CJK SC',sans-serif;fill:#172338;font-size:20px}.small{font-size:17px}.title{font-size:24px;font-weight:700}rect{fill:#f5f7fa;stroke:#334155;stroke-width:1.6}.line{fill:none;stroke:#334155;stroke-width:1.8;marker-end:url(#arrow)}.dash{stroke-dasharray:6 5}</style>
+<rect width="950" height="490" style="fill:white;stroke:none"/>
+<rect x="10" y="20" width="250" height="70" rx="8"/>
+<text x="135.0" y="48.5" text-anchor="middle">浏览器</text>
+<text x="135.0" y="75.5" text-anchor="middle">本机：Vite 5173</text>
+<rect x="330" y="20" width="560" height="70" rx="8"/>
+<text x="610.0" y="48.5" text-anchor="middle">Compose full：Caddy + 前端静态产物</text>
+<text x="610.0" y="75.5" text-anchor="middle">API / SSE / 可选 MCP 反向代理</text>
+<path class="line" d="M260 55 L330 55"/>
+<rect x="330" y="150" width="560" height="65" rx="8"/>
+<text x="610.0" y="176.0" text-anchor="middle">唯一业务后端 bootstrap</text>
+<text x="610.0" y="203.0" text-anchor="middle">本机 jar：8081</text>
+<path class="line" d="M610 90 L610 150"/>
+<rect x="10" y="275" width="205" height="80" rx="8"/>
+<text x="112.5" y="308.5" text-anchor="middle">PostgreSQL 17</text>
+<text x="112.5" y="335.5" text-anchor="middle">pgvector / Flyway</text>
+<rect x="235" y="275" width="185" height="80" rx="8"/>
+<text x="327.5" y="308.5" text-anchor="middle">Redis 7</text>
+<text x="327.5" y="335.5" text-anchor="middle">额度 / 认证限流</text>
+<rect x="440" y="275" width="205" height="80" rx="8"/>
+<text x="542.5" y="308.5" text-anchor="middle">对象存储</text>
+<text x="542.5" y="335.5" text-anchor="middle">原件 / S3 接口</text>
+<rect x="665" y="275" width="225" height="80" rx="8"/>
+<text x="777.5" y="308.5" text-anchor="middle">独立 jobs-mcp</text>
+<text x="777.5" y="335.5" text-anchor="middle">企业公开接口 / 快照</text>
+<path class="line" d="M450 215 L113 275"/>
+<path class="line" d="M520 215 L328 275"/>
+<path class="line" d="M610 215 L542 275"/>
+<path class="line" d="M760 215 L777 275"/>
+<rect x="330" y="410" width="560" height="60" rx="8"/>
+<text x="610.0" y="447.0" text-anchor="middle">外部模型供应商：DeepSeek / 百炼 / 兼容端点</text>
+<path class="line" d="M890 182 H930 V440 H890"/>
+</svg>
