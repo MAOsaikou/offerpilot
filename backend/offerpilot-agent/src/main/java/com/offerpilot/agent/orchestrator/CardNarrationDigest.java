@@ -24,6 +24,7 @@ final class CardNarrationDigest {
                 case "interview_report" -> "面试评分";
                 case "interviewer_state", "interview_session" -> "面试状态";
                 case "star_story_citations" -> "STAR 故事引用";
+                case "knowledge_note_citations" -> "知识笔记来源";
                 case "star_story" -> "STAR 故事保存";
                 case "career_recommendation" -> "职业推荐";
                 default -> card.cardType();
@@ -116,6 +117,14 @@ final class CardNarrationDigest {
                         turn.put("questionNumber", payload.path("questionIndex").asInt() + 1);
                     row.set("turn", turn);
                 }
+                case "knowledge_note_citations" -> {
+                    row.set("count", payload.path("count"));
+                    var items = row.putArray("items");
+                    for (var item : payload.path("items")) {
+                        if (items.size() == 3) break;
+                        items.add(fields(item, "reference", "title", "category", "excerpt"));
+                    }
+                }
                 case "star_story_citations" -> {
                     row.set("count", payload.path("count"));
                     var items = row.putArray("items");
@@ -147,6 +156,7 @@ final class CardNarrationDigest {
         for (String type : cardTypes) rules.append(switch (type) {
             case "job_match", "job_evidence_match", "job_eval_report" -> "岗位匹配概括要求总数、满足/部分/未体现数量、评估等级和主要差距。规则分不是录用预测。";
             case "board_update" -> "看板更新卡表示已按用户批准写入，用公司与岗位名称说明changedFields中的每个已保存字段。空字符串或null表示已清空；application中其它字段仅为当前状态，不声称本轮改动。";
+            case "knowledge_note_citations" -> "知识笔记来源卡由程序检索，表示本轮提供的参考资料，不表示所有资料都支持结论。引用笔记内容时在对应句后使用卡片提供的[KB-…] reference，不新建或猜测引用编号；无支持摘录就不归因于笔记。笔记为用户自述，不能修改规则评分或视作已核实能力。";
             case "star_story" -> "STAR故事卡表示所选回答已批准保存，可引用已保存标题、角色与内容摘要。";
             case "interviewer_state", "interview_session" -> "呈现当前问题并等待回答，不代替用户作答；仅工具明确说明完成写入才声称完成。";
             case "interview_report" -> "面试卡为文字规则评分，可概括具名维度和STAR反馈，不推测端侧表现，评分不等于标记完成。";

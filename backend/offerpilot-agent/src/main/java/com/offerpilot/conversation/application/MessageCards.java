@@ -28,7 +28,7 @@ public final class MessageCards {
             "job_card", "job_match", "job_evidence_match", "job_eval_report", "campus_calendar",
             "board_update",
             "interviewer_state", "interview_turn_score", "interview_report",
-            "star_story", "star_story_candidates", "star_story_citations",
+            "star_story", "star_story_candidates", "star_story_citations", "knowledge_note_citations",
             "skill_gap", "skill_radar", "roadmap",
             "reminder");
 

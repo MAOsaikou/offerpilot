@@ -99,6 +99,15 @@ class KnowledgeNotesIntegrationTest extends SharedHttpIntegrationTest {
         assertThat(search.search(owner, "'; DROP TABLE knowledge_notes; --", 5).items()).isEmpty();
         notes.update(owner, first.id(), new KnowledgeNoteService.Draft("修改", "完全不同的内容", "求职心得"));
         assertThat(search.search(owner, "Redis", 5).items()).isEmpty();
+        String body = "😀背景描述。".repeat(300) + "\n我采用 Redis 缓存失效策略，避免雪崩。\n" + "后续说明。".repeat(300);
+        var longNote = notes.create(owner, new KnowledgeNoteService.Draft("长篇项目复盘", body, "项目经历"));
+        var hit = search.search(owner, "Redis 缓存失效", 5).items().get(0);
+        assertThat(hit.id()).isEqualTo(longNote.id());
+        assertThat(hit.excerpt()).contains("Redis 缓存失效策略");
+        assertThat(body).contains(hit.excerpt());
+        assertThat(hit.excerpt().codePointCount(0, hit.excerpt().length())).isEqualTo(1000);
+        assertThat(new com.offerpilot.knowledge.application.KnowledgeNotesForChat(search).retrieve(owner, "Redis 缓存失效").get(0).excerpt())
+                .contains("Redis 缓存失效策略");
         assertThatThrownBy(() -> notes.list(owner, 0, 51)).isInstanceOf(com.offerpilot.common.error.BusinessException.class);
     }
 

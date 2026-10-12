@@ -20,6 +20,7 @@ export type CardType =
   | 'interview_report'
   | 'star_story_candidates'
   | 'star_story_citations'
+  | 'knowledge_note_citations'
   | 'star_story'
   | 'skill_gap'
   | 'skill_radar'
@@ -231,6 +232,17 @@ export interface InterviewReportPayload {
   recommendedLearning: Array<{ topic: string; reason: string; estimatedHours: number }>
 }
 
+export interface KnowledgeNoteCitationsPayload {
+  count: number
+  items: Array<{
+    noteId: string
+    title: string
+    category: string
+    excerpt: string
+    reference: string
+  }>
+}
+
 export interface StarStoryCitationsPayload {
   count: number
   items: Array<{ id: string; title: string; role: string; starCount: number; excerpt: string }>
@@ -310,6 +322,7 @@ export interface CardPayloadMap {
   interview_turn_score: InterviewTurnScorePayload
   interview_report: InterviewReportPayload
   star_story_citations: StarStoryCitationsPayload
+  knowledge_note_citations: KnowledgeNoteCitationsPayload
   skill_gap: SkillGapPayload
   skill_radar: SkillRadarPayload
   roadmap: RoadmapPayload
