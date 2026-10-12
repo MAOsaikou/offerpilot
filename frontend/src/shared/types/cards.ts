@@ -261,6 +261,7 @@ export interface GrowthEvidence {
 export interface SkillGapPayload {
   id: string
   target: { type: 'JOB' | 'OCCUPATION'; id: string; title: string }
+  evidenceAvailability?: { matchAvailable: boolean; interviewAvailable: boolean }
   skills: Array<{
     name: string
     required: number

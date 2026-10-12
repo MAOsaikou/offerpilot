@@ -38,11 +38,16 @@ export function useSpeech(
   const Recognition = browser?.SpeechRecognition ?? browser?.webkitSpeechRecognition
   const synthesis = browser?.speechSynthesis
   const Utterance = browser?.SpeechSynthesisUtterance
-  const supported = computed(() =>
-    Boolean(Recognition && synthesis && browser?.SpeechSynthesisUtterance),
-  )
+  const recognitionSupported = computed(() => Boolean(Recognition))
+  const synthesisSupported = computed(() => Boolean(synthesis && Utterance))
   const unsupportedReason = computed(() =>
-    supported.value ? '' : '当前浏览器不支持语音，请使用 Chrome / Edge；也可以继续文字作答。',
+    [
+      !recognitionSupported.value &&
+        '当前浏览器不支持语音输入，可尝试 Chrome / Edge 或继续文字作答。',
+      !synthesisSupported.value && '当前浏览器不支持题目朗读，请直接阅读题目。',
+    ]
+      .filter(Boolean)
+      .join(' '),
   )
   const listening = ref(false)
   const listenRequested = ref(false)
@@ -50,7 +55,8 @@ export function useSpeech(
   const interimText = ref('')
   const error = ref('')
   const permissionDenied = ref(false)
-  const canListen = computed(() => supported.value && !permissionDenied.value)
+  const finishing = ref(false)
+  const canListen = computed(() => recognitionSupported.value && !permissionDenied.value)
   let recognition: BrowserSpeechRecognition | undefined
   let utterance: SpeechSynthesisUtterance | undefined
   let silenceTimer: ReturnType<typeof setTimeout> | undefined
@@ -118,7 +124,7 @@ export function useSpeech(
       let speechActive = false
       active.onstart = () => {
         if (!isActive()) return
-        listening.value = true
+        listening.value = !stopping
         if (!stopping) armSilence()
       }
       active.onspeechstart = () => {
@@ -181,10 +187,13 @@ export function useSpeech(
       resolve = done
     })
     const pending = stopping
+    finishing.value = true
+    listening.value = false
     const timeout = setTimeout(abortRecognition, 1000)
     finishStop = () => {
       clearTimeout(timeout)
       stopping = undefined
+      finishing.value = false
       finishStop = undefined
       resolve()
     }
@@ -197,6 +206,7 @@ export function useSpeech(
   }
 
   function toggleListening() {
+    if (finishing.value) return
     if (listenRequested.value || listening.value) void stopListening()
     else startListening()
   }
@@ -213,7 +223,7 @@ export function useSpeech(
   }
 
   function speak(text: string) {
-    if (!supported.value || !synthesis || !Utterance) {
+    if (!synthesisSupported.value || !synthesis || !Utterance) {
       error.value = unsupportedReason.value
       return
     }
@@ -265,8 +275,10 @@ export function useSpeech(
   if (getCurrentScope()) onScopeDispose(cancelAll)
 
   return {
-    supported,
+    recognitionSupported,
+    synthesisSupported,
     unsupportedReason,
+    finishing,
     canListen,
     listening,
     listenRequested,
