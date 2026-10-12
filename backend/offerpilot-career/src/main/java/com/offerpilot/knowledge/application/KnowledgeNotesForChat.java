@@ -12,13 +12,18 @@ public class KnowledgeNotesForChat {
     private static final Logger log = LoggerFactory.getLogger(KnowledgeNotesForChat.class);
     private final KnowledgeNoteSearch search;
     public KnowledgeNotesForChat(KnowledgeNoteSearch search) { this.search = search; }
-    public record Citation(String noteId, String title, String category, String excerpt) {}
+    public record Citation(String noteId, String title, String category, String excerpt, String reference) {}
+    /** Stable across steps and saved messages; derived from a retrieved resource, never model output. */
+    private static String reference(String id) {
+        return "KB-" + java.util.UUID.nameUUIDFromBytes(id.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                .toString().replace("-", "").substring(0, 12);
+    }
     public List<Citation> retrieve(String owner, String query) {
         if (query == null || query.isBlank()) return List.of();
         try {
             return search.search(owner, KnowledgeNoteSearch.bounded(query, 2000), 3).items().stream().limit(3)
                     .map(hit -> new Citation(KnowledgeNoteSearch.bounded(hit.id(), 100), KnowledgeNoteSearch.bounded(hit.title(), 120),
-                            KnowledgeNoteSearch.bounded(hit.category(), 10), KnowledgeNoteSearch.bounded(hit.excerpt(), 800))).toList();
+                            KnowledgeNoteSearch.bounded(hit.category(), 10), KnowledgeNoteSearch.bounded(hit.excerpt(), 800), reference(hit.id()))).toList();
         } catch (RuntimeException ex) {
             log.warn("Private note context unavailable ({})", ex.getClass().getSimpleName());
             return List.of();

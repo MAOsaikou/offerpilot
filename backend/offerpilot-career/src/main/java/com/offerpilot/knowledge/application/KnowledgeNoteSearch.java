@@ -33,7 +33,7 @@ public class KnowledgeNoteSearch {
         var lexical = q.isEmpty() ? List.<Hit>of() : jdbc.query("""
                 SELECT id,title,category,content,updated_at FROM knowledge_notes,to_tsquery('simple',?) q
                 WHERE user_id=? AND tsv @@ q ORDER BY ts_rank_cd(tsv,q) DESC,id LIMIT ?
-                """, KnowledgeNoteSearch::map, q, owner, candidates);
+                """, (rs, row) -> map(rs, query), q, owner, candidates);
         List<Hit> vector = List.of();
         boolean available = false;
         if (embeddings.configured() && Boolean.TRUE.equals(jdbc.queryForObject(
@@ -44,7 +44,7 @@ public class KnowledgeNoteSearch {
                         SELECT id,title,category,content,updated_at FROM knowledge_notes
                         WHERE user_id=? AND embedding IS NOT NULL
                         ORDER BY embedding <=> CAST(? AS vector),id LIMIT ?
-                        """, KnowledgeNoteSearch::map, owner, OccupationEmbeddings.literal(embedded.get(0)), candidates);
+                        """, (rs, row) -> map(rs, query), owner, OccupationEmbeddings.literal(embedded.get(0)), candidates);
                 available = true;
             }
         }
@@ -62,8 +62,21 @@ public class KnowledgeNoteSearch {
     public static String bounded(String value, int points) {
         return value.substring(0, value.offsetByCodePoints(0, Math.min(points, value.codePointCount(0, value.length()))));
     }
-    private static Hit map(ResultSet rs, int row) throws SQLException {
-        return new Hit(rs.getString("id"), rs.getString("title"), rs.getString("category"), bounded(rs.getString("content"), 1000),
+    /** A contiguous source window around a real lexical match; offsets preserve Unicode and raw text. */
+    static String excerpt(String content, String query, int limit) {
+        var tokens = OccupationDocument.lexicalTokens(query).stream().distinct()
+                .sorted(Comparator.comparingInt(String::length).reversed()).toList();
+        int match = 0;
+        for (String token : tokens) {
+            var matcher = java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(token),
+                    java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE).matcher(content);
+            if (matcher.find()) { match = content.codePointCount(0, matcher.start()); break; }
+        }
+        int start = content.offsetByCodePoints(0, Math.max(0, match - 160));
+        return bounded(content.substring(start), limit);
+    }
+    private static Hit map(ResultSet rs, String query) throws SQLException {
+        return new Hit(rs.getString("id"), rs.getString("title"), rs.getString("category"), excerpt(rs.getString("content"), query, 1000),
                 rs.getTimestamp("updated_at").toInstant().toString(), 0, false, false);
     }
 }

@@ -7,6 +7,11 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
 /** Append evidence only to the result data consumed by Orchestrator's escaped user-message boundary. */
 @Component
 public class KnowledgeNoteContext {
@@ -18,8 +23,13 @@ public class KnowledgeNoteContext {
             var citations = notes.retrieve(owner, query);
             if (citations.isEmpty()) return result;
             try {
-                return ExpertResult.cards(result.summary() + "\n用户知识笔记引用（用户自述证据）：" + json.writeValueAsString(citations), result.cards());
-            } catch (JsonProcessingException ex) { return result; }
+                var cards = new ArrayList<>(result.cards());
+                cards.add(new ExpertResult.Card("knc_" + UUID.randomUUID(), "knowledge_note_citations",
+                        Map.of("items", citations, "count", citations.size())));
+                var evidence = citations.stream().map(citation -> Map.of("reference", citation.reference(),
+                        "title", citation.title(), "category", citation.category(), "excerpt", citation.excerpt())).toList();
+                return ExpertResult.cards(result.summary() + "\n用户知识笔记引用（用户自述证据）：" + json.writeValueAsString(evidence), List.copyOf(cards));
+            } catch (JsonProcessingException ex) { throw new IllegalStateException("知识笔记引用暂时无法展示，请重试。", ex); }
         }).subscribeOn(Schedulers.boundedElastic());
     }
 }
