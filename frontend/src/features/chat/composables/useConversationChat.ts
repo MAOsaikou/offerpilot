@@ -2,6 +2,7 @@ import { normalizeModelTier, type ModelTier } from '@/shared/types/model-tier'
 import { computed, onScopeDispose, ref } from 'vue'
 import { conversationsApi } from '@/shared/api/conversations'
 import { cancelAgentRun } from '@/shared/api/agent'
+import { ApiError } from '@/shared/api/client'
 import { useAgentStream } from '@/shared/composables/useAgentStream'
 import { useAgentRunStore, type CardView } from '@/shared/stores/agentRun'
 import type { Conversation, StoredMessage } from '@/shared/types/conversation'
@@ -164,7 +165,11 @@ export function useConversationChat() {
       messages.value = data.items.map(messageView)
       before.value = data.nextBefore
       hasMoreMessages.value = data.hasMore
-      schedulePoll(id, version)
+      const running = messages.value.find((m) => m.status === 'RUNNING' && m.runId)
+      if (running) {
+        loading.value = false
+        void follow(id, running, version)
+      } else schedulePoll(id, version)
     } catch (e) {
       if (version === epoch) error.value = errorText(e)
     } finally {
@@ -243,50 +248,71 @@ export function useConversationChat() {
       if (version === epoch && !(e instanceof DOMException && e.name === 'AbortError'))
         error.value = errorText(e)
     } finally {
-      if (version === epoch) {
-        const target = messages.value.find((m) => m.id === optimisticId.value)
-        if (target) {
-          target.text = activeRun.value?.text || ''
-          target.cards = activeRun.value?.cards
-          target.reasoning = activeRun.value?.reasoning
-          target.streaming = false
-          runId ||= activeRun.value?.runId
-          if (runId && (target.cards?.length || target.reasoning))
-            runExtras.set(runId, { cards: target.cards, reasoning: target.reasoning })
-          target.status =
-            activeRun.value?.status === 'CANCELLED'
-              ? 'CANCELLED'
-              : error.value
-                ? 'FAILED'
-                : 'COMPLETED'
-        }
-        optimisticId.value = undefined
-        if (id && !mock) {
-          try {
-            const data = await conversationsApi.messages(id)
-            if (version === epoch) {
-              // Reconcile from the server without retaining optimistic duplicates.
-              const ids = new Set(data.items.map((m) => m.id))
-              messages.value = [
-                ...messages.value.filter((m) => m.runId && !ids.has(m.id)),
-                ...data.items.map(messageView),
-              ]
-              before.value = data.nextBefore
-              hasMoreMessages.value = data.hasMore
-            }
-          } catch (e) {
-            if (version === epoch) {
-              needsReload.value = true
-              error.value = `记录同步失败：${errorText(e)}。请重新加载会话后确认结果，避免重复发送。`
-            }
-          }
-        }
+      await settle(id, version, runId)
+    }
+  }
+
+  /** 一次运行结束（完成、失败、中断或续传失败）后，把流式内容落到消息上并与服务端记录对齐 */
+  async function settle(id: string | undefined, version: number, runId?: string) {
+    if (version !== epoch) return
+    const target = messages.value.find((m) => m.id === optimisticId.value)
+    if (target) {
+      target.text = activeRun.value?.text || target.text || ''
+      target.cards = activeRun.value?.cards ?? target.cards
+      target.reasoning = activeRun.value?.reasoning ?? target.reasoning
+      target.streaming = false
+      runId ||= activeRun.value?.runId
+      if (runId && (target.cards?.length || target.reasoning))
+        runExtras.set(runId, { cards: target.cards, reasoning: target.reasoning })
+      target.status =
+        activeRun.value?.status === 'CANCELLED' ? 'CANCELLED' : error.value ? 'FAILED' : 'COMPLETED'
+    }
+    optimisticId.value = undefined
+    if (id && !mock) {
+      try {
+        const data = await conversationsApi.messages(id)
         if (version === epoch) {
-          sending.value = false
-          if (id) schedulePoll(id, version)
-          void refreshList()
+          // Reconcile from the server without retaining optimistic duplicates.
+          const ids = new Set(data.items.map((m) => m.id))
+          messages.value = [
+            ...messages.value.filter((m) => m.runId && !ids.has(m.id)),
+            ...data.items.map(messageView),
+          ]
+          before.value = data.nextBefore
+          hasMoreMessages.value = data.hasMore
+        }
+      } catch (e) {
+        if (version === epoch) {
+          needsReload.value = true
+          error.value = `记录同步失败：${errorText(e)}。请重新加载会话后确认结果，避免重复发送。`
         }
       }
+    }
+    if (version === epoch) {
+      sending.value = false
+      if (id) schedulePoll(id, version)
+      void refreshList()
+    }
+  }
+
+  /**
+   * 刷新页面或重新打开会话时，最后一条回复仍在生成：接上运行的事件流，从头回放已产生的内容（AG-07）。
+   * 运行已不在服务端回放缓存中（404）时退回轮询已保存的消息。
+   */
+  async function follow(id: string, message: ChatMessageView, version: number) {
+    if (!message.runId) return
+    sending.value = true
+    optimisticId.value = message.id
+    message.streaming = true
+    try {
+      await stream.attach(message.runId)
+      if (version === epoch && activeRun.value?.error) error.value = activeRun.value.error.message
+    } catch (e) {
+      const gone = e instanceof ApiError && e.status === 404
+      if (version === epoch && !gone && !(e instanceof DOMException && e.name === 'AbortError'))
+        error.value = errorText(e)
+    } finally {
+      await settle(id, version, message.runId)
     }
   }
 
