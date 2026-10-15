@@ -76,11 +76,16 @@ public class ChatService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "当前仅支持文字聊天，附件解析尚未接入");
         // Ownership and concurrency errors remain ordinary HTTP errors before SSE starts.
         boolean explicitMemory = memory != null && com.offerpilot.memory.application.MemoryCandidate.explicit(request.content());
-        if (!explicitMemory) gateway.checkQuota(owner, tier);
+        // SC-03: crisis gets support resources first; forgery/violence requests get a fixed refusal without a model call.
+        var concern = com.offerpilot.llm.safety.InputSafety.screen(request.content());
+        boolean refuse = concern == com.offerpilot.llm.safety.InputSafety.Concern.FORGERY
+                || concern == com.offerpilot.llm.safety.InputSafety.Concern.VIOLENCE;
+        boolean crisis = concern == com.offerpilot.llm.safety.InputSafety.Concern.CRISIS;
+        if (!explicitMemory && concern == null) gateway.checkQuota(owner, tier);
         boolean memoryEnabled = memory != null && memory.enabled(owner);
         ArrayList<Message> memoryPrompt = new ArrayList<>();
-        var memoryFacts = memory == null || explicitMemory ? List.<AgentEvent.MemoryFact>of() : memory.recall(owner, request.content(), memoryPrompt);
-        var memoryCandidate = memory == null ? null : memory.candidate(owner, request.content());
+        var memoryFacts = memory == null || explicitMemory || concern != null ? List.<AgentEvent.MemoryFact>of() : memory.recall(owner, request.content(), memoryPrompt);
+        var memoryCandidate = memory == null || concern != null ? null : memory.candidate(owner, request.content());
         String model = gateway.modelName(tier);
         var turn = conversations.begin(owner, request.conversationId(), request.content(), request.mode(), model);
         var cancel = Sinks.<Void>empty();
@@ -93,7 +98,7 @@ public class ChatService {
         cancellations.put(turn.runId(), new Active(turn, answer, cancel, cards));
         long[] lastSaved = {0};
         ArrayList<Message> prompt = new ArrayList<>();
-        prompt.add(new SystemMessage(systemPromptToday()));
+        prompt.add(new SystemMessage(crisis ? systemPromptToday() + "\n" + com.offerpilot.llm.safety.InputSafety.CRISIS_GUIDANCE : systemPromptToday()));
         prompt.addAll(memoryPrompt);
         prompt.addAll(turn.history());
         prompt.add(new UserMessage(request.content()));
@@ -128,7 +133,15 @@ public class ChatService {
                             planningCompletionTokens.addAndGet(u.getCompletionTokens());
                         }, owner, context))
                 .concatWith(response);
-        if (explicitMemory) {
+        if (refuse || crisis) {
+            String fixed = com.offerpilot.llm.safety.InputSafety.refusal(concern);
+            Flux<AgentEvent> lead = Flux.defer(() -> {
+                answer.append(fixed);
+                return Flux.just(new AgentEvent.TextDelta("text.delta", seq.incrementAndGet(), turn.runId(), Instant.now(), null, fixed));
+            });
+            // A crisis turn skips tools and plans: support first, then the model's gentle follow-up.
+            work = refuse ? lead : lead.concatWith(response.onErrorResume(ex -> Flux.empty()));
+        } else if (explicitMemory) {
             AtomicReference<String> memoryReply = new AtomicReference<>(memoryEnabled
                     ? "未生成可保存的记忆。请用「记住：」加一条不超过200字的个人事实，或在设置中手动添加；引用资料不能作为记忆。"
                     : "长期记忆已关闭，未保存。可在设置中开启或手动管理已有记忆。");

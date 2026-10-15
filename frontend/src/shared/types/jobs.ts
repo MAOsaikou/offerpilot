@@ -126,6 +126,8 @@ export interface JobImportParse {
   draft: JobImportDraft
   url: string
   sourceKind: 'text' | 'url'
+  /** SC-01: labels of suspected injected instructions found in the source text. */
+  securityNotices?: string[]
 }
 export interface JobImportFields extends Omit<JobImportDraft, 'parser'> {
   url: string

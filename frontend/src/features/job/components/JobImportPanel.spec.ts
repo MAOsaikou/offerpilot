@@ -31,6 +31,7 @@ beforeEach(() => {
     },
     url: '',
     sourceKind: 'text',
+    securityNotices: ['要求忽略原有指令'],
   })
   vi.mocked(saveJobImport).mockResolvedValue({ id: 'job_imported' } as RealJob)
 })
@@ -73,6 +74,7 @@ it('parses pasted text, lets the user correct the draft, saves and opens the job
   button('解析岗位').click()
   await vi.waitFor(() => expect(root.textContent).toContain('原文中找不到的内容都已丢弃'))
   expect(parseJobImport).toHaveBeenCalledWith({ text: expect.stringContaining('数据分析实习生') })
+  expect(root.querySelector('[role="alert"]')?.textContent).toContain('要求忽略原有指令')
   const company = root.querySelector<HTMLInputElement>('input[placeholder="原文未写明"]')!
   input(company, '星河科技')
   await nextTick()
