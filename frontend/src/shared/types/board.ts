@@ -68,3 +68,6 @@ export interface ApplicationDetail {
   timeline: ApplicationEvent[]
   linkageNote: string
 }
+
+/** dataTransfer type for dragging a board card between stage columns. */
+export const APPLICATION_DRAG_TYPE = 'application/x-offerpilot-application'
