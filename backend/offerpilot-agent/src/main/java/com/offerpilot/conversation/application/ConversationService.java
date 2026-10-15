@@ -187,6 +187,8 @@ public class ConversationService {
         var ids = jdbc.queryForList("SELECT assistant_message_id FROM agent_runs WHERE id=? AND user_id=? FOR UPDATE", String.class, runId, owner);
         if (ids.isEmpty()) throw new BusinessException(ErrorCode.RUN_NOT_FOUND);
         int changed = jdbc.update("UPDATE agent_runs SET status='CANCELLED',finished_at=CURRENT_TIMESTAMP WHERE id=? AND status='RUNNING'", runId);
+        // An explicit stop withdraws this run's pending writes; only a lost connection leaves them for the board.
+        jdbc.update("UPDATE approvals SET status='TIMEOUT',decided_at=CURRENT_TIMESTAMP WHERE run_id=? AND user_id=? AND status='PENDING'", runId, owner);
         if (changed > 0) {
             if (partial == null) jdbc.update("UPDATE messages SET status='CANCELLED' WHERE id=?", ids.get(0));
             else writeMessage(ids.get(0), partial, "CANCELLED", null, cards);
