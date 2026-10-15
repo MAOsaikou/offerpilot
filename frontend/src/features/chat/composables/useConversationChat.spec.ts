@@ -178,3 +178,65 @@ it('打开会话时最后一条回复仍在生成：接上运行流，结束后�
   await vi.waitFor(() => expect(chat.sending.value).toBe(false))
   expect(chat.messages.value.map((m) => [m.text, m.status])).toEqual([['live', 'COMPLETED']])
 })
+
+describe('会话列表乐观更新（AG-01）', () => {
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    let reject!: (reason: unknown) => void
+    const promise = new Promise<T>((ok, fail) => {
+      resolve = ok
+      reject = fail
+    })
+    return { promise, resolve, reject }
+  }
+  async function loaded() {
+    vi.mocked(conversationsApi.list).mockResolvedValue({
+      items: [conv('a'), conv('b')],
+      page: 1,
+      size: 20,
+      total: 2,
+    })
+    const chat = scope.run(useConversationChat)!
+    await chat.refreshList()
+    return chat
+  }
+
+  it('重命名与置顶立即生效，服务端失败时回滚并提示', async () => {
+    const chat = await loaded()
+    const pending = deferred<Conversation>()
+    vi.mocked(conversationsApi.update).mockReturnValueOnce(pending.promise)
+    const result = chat.update('a', { title: '新标题', pinned: true })
+    expect(chat.conversations.value[0]).toMatchObject({ title: '新标题', pinned: true })
+    pending.reject(new Error('保存失败'))
+    expect(await result).toBe(false)
+    expect(chat.conversations.value.map((c) => c.title)).toEqual(['a', 'b'])
+    expect(chat.conversations.value[0]!.pinned).toBe(false)
+    expect(chat.listError.value).toContain('保存失败')
+  })
+
+  it('删除立即从列表移除，失败时恢复原位置', async () => {
+    const chat = await loaded()
+    const pending = deferred<void>()
+    vi.mocked(conversationsApi.delete).mockReturnValueOnce(pending.promise)
+    const result = chat.remove('a')
+    expect(chat.conversations.value.map((c) => c.id)).toEqual(['b'])
+    pending.reject(new Error('删除失败'))
+    expect(await result).toBe(false)
+    expect(chat.conversations.value.map((c) => c.id)).toEqual(['a', 'b'])
+  })
+
+  it('成功后采用服务端返回的会话', async () => {
+    const chat = await loaded()
+    const saved = { ...conv('a'), title: '服务端标题' }
+    vi.mocked(conversationsApi.update).mockResolvedValueOnce(saved)
+    vi.mocked(conversationsApi.list).mockResolvedValue({
+      items: [saved, conv('b')],
+      page: 1,
+      size: 20,
+      total: 2,
+    })
+    expect(await chat.update('a', { title: '本地标题' })).toBe(true)
+    await vi.waitFor(() => expect(chat.conversations.value[0]!.title).toBe('服务端标题'))
+    expect(conversationsApi.list).toHaveBeenCalledTimes(2)
+  })
+})
