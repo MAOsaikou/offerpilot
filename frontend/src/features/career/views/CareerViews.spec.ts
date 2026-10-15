@@ -26,6 +26,17 @@ let failSave = false
 let holdTasks: Promise<void> | undefined
 const ownerOf = (request: Request) => request.headers.get('Authorization')!.slice(7)
 const server = setupServer(
+  http.get('*/api/v1/career/assessment', () =>
+    HttpResponse.json({
+      data: {
+        questions: ['专业？'],
+        answers: [''],
+        inference: null,
+        confirmed: null,
+        confirmedAt: null,
+      },
+    }),
+  ),
   http.get('*/api/v1/career/profile', ({ request }) =>
     HttpResponse.json({ data: profiles[ownerOf(request)] }),
   ),

@@ -55,7 +55,7 @@ class CareerRecommendForChatTest {
             when(profiles.get("alice")).thenReturn(profile(interests));
             var result = careers.recommend("alice");
             assertThat(result.payload()).isNull();
-            assertThat(result.guidance()).contains("探索页勾选兴趣", "对话里说明").doesNotContain("占位");
+            assertThat(result.guidance()).contains("探索页完成对话测评或勾选兴趣", "对话里说明").doesNotContain("占位");
         }
         verifyNoInteractions(occupations);
     }
