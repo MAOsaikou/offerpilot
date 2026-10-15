@@ -259,3 +259,56 @@ it('opens the selected workspace, retries detail, preserves failed edits and exp
     expect(document.querySelector('dialog')?.textContent).toContain('刚保存的岗位故事'),
   )
 })
+function dragEvent(type: string, data: Map<string, string>) {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'dataTransfer', {
+    value: {
+      types: [...data.keys()],
+      setData: (k: string, v: string) => data.set(k, v),
+      getData: (k: string) => data.get(k) ?? '',
+      effectAllowed: '',
+      dropEffect: '',
+    },
+  })
+  return event
+}
+const column = (stage: string) => root.querySelector(`[data-stage="${stage}"]`)!
+it('dragging a card to another column moves it at once and rolls back if the save fails', async () => {
+  await mount()
+  await vi.waitFor(() => expect(column('TODO').querySelector('article')).not.toBeNull())
+  let release!: () => void
+  vi.mocked(updateApplication).mockImplementationOnce(async (_id, patch) => {
+    await new Promise<void>((resolve) => (release = resolve))
+    server[0] = { ...server[0]!, ...patch }
+    return structuredClone(server[0])
+  })
+  const data = new Map<string, string>()
+  column('TODO').querySelector('article')!.dispatchEvent(dragEvent('dragstart', data))
+  const over = dragEvent('dragover', data)
+  column('APPLIED').dispatchEvent(over)
+  expect(over.defaultPrevented).toBe(true)
+  column('APPLIED').dispatchEvent(dragEvent('drop', data))
+  // Optimistic: the card is in the new column before the server answers.
+  await vi.waitFor(() => expect(column('APPLIED').querySelector('article')).not.toBeNull())
+  expect(column('TODO').querySelector('article')).toBeNull()
+  expect(updateApplication).toHaveBeenCalledWith('app_1', { status: 'APPLIED' })
+  release()
+  await vi.waitFor(() => expect(server[0]!.status).toBe('APPLIED'))
+
+  vi.mocked(updateApplication).mockRejectedValueOnce(new Error('离线'))
+  column('APPLIED').querySelector('article')!.dispatchEvent(dragEvent('dragstart', data))
+  column('OFFER').dispatchEvent(dragEvent('drop', data))
+  await vi.waitFor(() => expect(root.textContent).toContain('卡片已退回原来的列'))
+  expect(column('APPLIED').querySelector('article')).not.toBeNull()
+  expect(column('OFFER').querySelector('article')).toBeNull()
+})
+it('a card with an unsaved note cannot be dragged', async () => {
+  await mount()
+  await vi.waitFor(() => expect(root.querySelector('textarea')).not.toBeNull())
+  expect(root.querySelector('article')!.getAttribute('draggable')).toBe('true')
+  const input = root.querySelector('textarea')!
+  input.value = '未保存'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  await nextTick()
+  expect(root.querySelector('article')!.getAttribute('draggable')).toBe('false')
+})
