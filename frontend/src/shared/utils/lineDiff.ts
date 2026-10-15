@@ -30,3 +30,48 @@ export function diffLines(before: string, after: string, cap = 1500): DiffLine[]
   while (j < b.length) out.push({ kind: 'add', text: b[j++]! })
   return out
 }
+
+const SECTION_LABELS: Record<string, string> = {
+  education: '教育',
+  experience: '经历',
+  projects: '项目',
+  skills: '技能',
+}
+/**
+ * Stable, field-labelled text of a structured resume for comparison. Saved plain text keeps the
+ * uploaded document's layout for the first version, so diffing it against later versions would show
+ * layout noise instead of real edits.
+ */
+export function resumeLines(structure: {
+  basics?: Record<string, string | string[]>
+  summary?: string
+  certificates?: string[]
+  [section: string]: unknown
+}): string {
+  const lines: string[] = []
+  const value = (v: unknown) => (Array.isArray(v) ? v.join('、') : String(v ?? ''))
+  const labels: Record<string, string> = {
+    name: '姓名',
+    phone: '电话',
+    email: '邮箱',
+    city: '城市',
+    links: '链接',
+  }
+  for (const [key, label] of Object.entries(labels)) {
+    const v = value(structure.basics?.[key])
+    if (v) lines.push(`${label}：${v}`)
+  }
+  if (structure.summary) lines.push(`自我评价：${structure.summary}`)
+  for (const [section, label] of Object.entries(SECTION_LABELS)) {
+    const entries = (structure[section] as Record<string, unknown>[] | undefined) ?? []
+    entries.forEach((entry, index) => {
+      for (const [field, v] of Object.entries(entry)) {
+        if (Array.isArray(v))
+          v.forEach((item) => item && lines.push(`${label}${index + 1} · ${field}：${item}`))
+        else if (v) lines.push(`${label}${index + 1} · ${field}：${value(v)}`)
+      }
+    })
+  }
+  for (const cert of structure.certificates ?? []) if (cert) lines.push(`证书：${cert}`)
+  return lines.join('\n')
+}

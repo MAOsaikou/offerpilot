@@ -161,7 +161,10 @@ it('版本树显示分支、对比文本差异，回滚创建新的当前版本�
   ): ResumeVersion => ({ ...base, id, versionNo, parentVersionId, plainText, ...extra })
   const versions = [
     v('v1', 1, null, '张三\nJava'),
-    v('v2', 2, 'v1', '张三\nJava\nSpring', { source: 'MANUAL_EDIT' }),
+    v('v2', 2, 'v1', '张三\nJava\nSpring', {
+      source: 'MANUAL_EDIT',
+      structured: { ...base.structured, skills: [{ name: 'Spring' }] },
+    }),
     v('v3', 3, 'v1', '张三\nGo', { source: 'OPTIMIZED' }),
   ]
   vi.mocked(getResume).mockResolvedValue({ ...fixture('v2'), currentVersion: versions[1]! })

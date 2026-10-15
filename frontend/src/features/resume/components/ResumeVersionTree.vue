@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { resumeVersionSource, type ResumeVersion } from '@/shared/types/resume'
-import { diffLines } from '@/shared/utils/lineDiff'
+import { diffLines, resumeLines } from '@/shared/utils/lineDiff'
 
 const props = defineProps<{
   versions: ResumeVersion[]
@@ -59,7 +59,9 @@ watch(
 const diff = computed(() => {
   const a = byId.value.get(left.value)
   const b = byId.value.get(right.value)
-  return a && b && a.id !== b.id ? diffLines(a.plainText, b.plainText) : []
+  return a && b && a.id !== b.id
+    ? diffLines(resumeLines(a.structured as never), resumeLines(b.structured as never))
+    : []
 })
 const changed = computed(() => diff.value.filter((line) => line.kind !== 'same').length)
 function compareWith(v: ResumeVersion) {
@@ -128,7 +130,7 @@ function compareWith(v: ResumeVersion) {
       >
     </div>
     <p v-if="left === right" class="subtle">请选择两个不同的版本。</p>
-    <p v-else-if="!changed" class="subtle">两个版本的文本内容相同。</p>
+    <p v-else-if="!changed" class="subtle">两个版本的内容相同。</p>
     <template v-else>
       <p class="subtle">{{ changed }} 行有变化（红色为旧版本删除，绿色为新版本新增）。</p>
       <pre class="resume-text diff"><span
