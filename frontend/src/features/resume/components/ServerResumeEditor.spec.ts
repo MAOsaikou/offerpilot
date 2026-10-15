@@ -3,8 +3,14 @@ import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ServerResumeEditor from './ServerResumeEditor.vue'
-import { exportResumePdf, getResume, saveResume } from '@/shared/api/resumes'
-import type { ServerResume } from '@/shared/types/resume'
+import {
+  exportResumePdf,
+  getResume,
+  listResumeVersions,
+  restoreResumeVersion,
+  saveResume,
+} from '@/shared/api/resumes'
+import type { ResumeVersion, ServerResume } from '@/shared/types/resume'
 
 vi.mock('@/shared/api/resumes', () => ({
   exportResumePdf: vi.fn(),
@@ -13,6 +19,7 @@ vi.mock('@/shared/api/resumes', () => ({
   renameResume: vi.fn(),
   retryResume: vi.fn(),
   listResumeVersions: vi.fn(),
+  restoreResumeVersion: vi.fn(),
 }))
 function fixture(version = 'v1', name = 'Original'): ServerResume {
   return {
@@ -141,4 +148,47 @@ it('PDF 导出使用保存版本，不提交未保存草稿，并显示下载状
   finish()
   await vi.waitFor(() => expect(button('导出 PDF').disabled).toBe(false))
   expect(root.querySelector<HTMLInputElement>('.resume-basics input')?.value).toBe('未保存的修改')
+})
+
+it('版本树显示分支、对比文本差异，回滚创建新的当前版本而不改写历史', async () => {
+  const base = fixture().currentVersion!
+  const v = (
+    id: string,
+    versionNo: number,
+    parentVersionId: string | null,
+    plainText: string,
+    extra: Partial<ResumeVersion> = {},
+  ): ResumeVersion => ({ ...base, id, versionNo, parentVersionId, plainText, ...extra })
+  const versions = [
+    v('v1', 1, null, '张三\nJava'),
+    v('v2', 2, 'v1', '张三\nJava\nSpring', {
+      source: 'MANUAL_EDIT',
+      structured: { ...base.structured, skills: [{ name: 'Spring' }] },
+    }),
+    v('v3', 3, 'v1', '张三\nGo', { source: 'OPTIMIZED' }),
+  ]
+  vi.mocked(getResume).mockResolvedValue({ ...fixture('v2'), currentVersion: versions[1]! })
+  await cache.refetchQueries({ queryKey: ['resume', 'rs1'] })
+  vi.mocked(listResumeVersions).mockResolvedValue(versions)
+  button('版本记录').click()
+  await vi.waitFor(() => expect(root.querySelectorAll('.version-tree li')).toHaveLength(3))
+  // v2 and v3 both branch from v1, so they are indented under it.
+  const rows = [...root.querySelectorAll<HTMLElement>('.version-tree li')]
+  expect(rows.map((r) => r.style.paddingInlineStart)).toEqual(['0rem', '1.5rem', '1.5rem'])
+  expect(rows[2]!.textContent).toContain('基于版本 1')
+  // Default comparison: current version against its parent.
+  expect(root.querySelector('.diff .add')?.textContent).toContain('Spring')
+  const restored = v('v4', 4, 'v2', '张三\nGo', {
+    source: 'MANUAL_EDIT',
+    parseMeta: { restoredFrom: 'v3', restoredFromNo: 3 },
+  })
+  vi.mocked(restoreResumeVersion).mockResolvedValue({ ...fixture('v4'), currentVersion: restored })
+  vi.mocked(listResumeVersions).mockResolvedValue([...versions, restored])
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  ;[...rows[2]!.querySelectorAll('button')]
+    .find((b) => b.textContent?.trim() === '回滚到此版本')!
+    .click()
+  await vi.waitFor(() => expect(root.querySelectorAll('.version-tree li')).toHaveLength(4))
+  expect(restoreResumeVersion).toHaveBeenCalledWith('rs1', 'v3', 'v2')
+  expect(root.textContent).toContain('回滚自版本 3')
 })

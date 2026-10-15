@@ -13,11 +13,16 @@ import reactor.core.publisher.Flux;
 /** Deterministic recognizers and a request-local reversible map. No content is logged or persisted. */
 public final class PiiMasker {
     private PiiMasker() {}
+    private static final String PLACE = "[\\p{IsHan}&&[^在住于是我的到从和与家位址为请帮把了往去来就]]";
     private static final Pattern ENTITIES = Pattern.compile(
             "(?<EMAIL>(?<![A-Za-z0-9_.+%-])[A-Za-z0-9_+%-]+(?:\\.[A-Za-z0-9_+%-]+)*@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,63}(?![A-Za-z0-9_-]))"
             + "|(?<ID>(?<![A-Za-z0-9_.])\\d{17}[0-9Xx](?![A-Za-z0-9_]))"
-            + "|(?<PHONE>(?<![A-Za-z0-9_.])(?:\\+86[ -]?)?1[3-9]\\d{9}(?![A-Za-z0-9_.]))");
-    private static final Pattern PLACEHOLDER = Pattern.compile("\\[(?:PHONE|EMAIL|ID_CARD)_\\d+]");
+            + "|(?<PHONE>(?<![A-Za-z0-9_.])(?:\\+86[ -]?)?1[3-9]\\d{9}(?![A-Za-z0-9_.]))"
+            // Street address: place-name characters, a road suffix and a house number ending in 号, plus
+            // optional building/unit/room. Function words are excluded so "我住在" stays outside the span.
+            + "|(?<ADDRESS>" + PLACE + "{1,20}(?:大道|大街|路|街|道|巷|弄|胡同)\\d{1,5}(?:-\\d{1,5})?号"
+            + "(?:\\d{1,4}(?:号楼|栋|幢|座|单元|楼|层|室|号)|[A-Za-z]座)*)");
+    private static final Pattern PLACEHOLDER = Pattern.compile("\\[(?:PHONE|EMAIL|ID_CARD|ADDRESS)_\\d+]");
     private static final int[] WEIGHTS = {7,9,10,5,8,4,2,1,6,3,7,9,10,5,8,4,2};
     private static boolean validId(String value) {
         if (value.charAt(0) == '0' || value.substring(14, 17).equals("000")) return false;
@@ -45,12 +50,13 @@ public final class PiiMasker {
             var matcher = ENTITIES.matcher(text);
             StringBuilder result = new StringBuilder();
             while (matcher.find()) {
-                String type = matcher.group("EMAIL") != null ? "EMAIL" : matcher.group("ID") != null ? "ID_CARD" : "PHONE";
+                String type = matcher.group("EMAIL") != null ? "EMAIL" : matcher.group("ID") != null ? "ID_CARD"
+                        : matcher.group("ADDRESS") != null ? "ADDRESS" : "PHONE";
                 String value = matcher.group();
                 if (type.equals("ID_CARD") && !validId(value)) continue;
                 // Explicit business identifiers remain identifiers, even if an 11-digit value resembles a phone.
                 String before = text.substring(Math.max(0, matcher.start() - 40), matcher.start());
-                if (!type.equals("EMAIL") && before.matches("(?is).*(?:jobId|orderId|岗位编号|订单号)\\s*[=:：]\\s*\"?$")) continue;
+                if ((type.equals("PHONE") || type.equals("ID_CARD")) && before.matches("(?is).*(?:jobId|orderId|岗位编号|订单号)\\s*[=:：]\\s*\"?$")) continue;
                 String key = type + ":" + value;
                 String alias = aliases.computeIfAbsent(key, ignored -> {
                     String candidate;

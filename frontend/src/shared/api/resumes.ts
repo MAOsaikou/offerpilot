@@ -82,3 +82,10 @@ export async function exportResumePdf(id: string, template = 'classic'): Promise
   }
   downloadBlob(filename, blob)
 }
+
+/** Rolls back to an earlier version: the server copies it into a new current version on top of `baseVersionId`. */
+export const restoreResumeVersion = (id: string, versionId: string, baseVersionId: string) =>
+  apiRequest<ServerResume>(
+    `/resumes/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/restore`,
+    { method: 'POST', body: JSON.stringify({ baseVersionId }) },
+  )

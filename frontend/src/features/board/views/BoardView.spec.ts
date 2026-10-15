@@ -3,13 +3,21 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import BoardView from './BoardView.vue'
-import { listApplications, updateApplication, getApplication } from '@/shared/api/applications'
+import {
+  listApplications,
+  updateApplication,
+  getApplication,
+  listPendingBoardApprovals,
+  decidePendingBoardApproval,
+} from '@/shared/api/applications'
 import type { ServerApplication, ApplicationDetail } from '@/shared/types/board'
 vi.mock('@/shared/api/applications', () => ({
   listApplications: vi.fn(),
   updateApplication: vi.fn(),
   favoriteJob: vi.fn(),
   getApplication: vi.fn(),
+  listPendingBoardApprovals: vi.fn(),
+  decidePendingBoardApproval: vi.fn(),
 }))
 vi.mock('@/shared/api/jobs', () => ({ exportJobEvalMarkdown: vi.fn(), getJobMatch: vi.fn() }))
 import { exportJobEvalMarkdown } from '@/shared/api/jobs'
@@ -86,6 +94,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   server = [fixture()]
   vi.mocked(listApplications).mockImplementation(async () => structuredClone(server))
+  vi.mocked(listPendingBoardApprovals).mockResolvedValue([])
   vi.mocked(updateApplication).mockImplementation(async (_id, patch) => {
     server[0] = { ...server[0]!, ...patch }
     return structuredClone(server[0])
@@ -311,4 +320,37 @@ it('a card with an unsaved note cannot be dragged', async () => {
   input.dispatchEvent(new Event('input', { bubbles: true }))
   await nextTick()
   expect(root.querySelector('article')!.getAttribute('draggable')).toBe('false')
+})
+it('an agent write left pending by a closed chat is applied only after approval on the board', async () => {
+  let pending = [
+    {
+      id: 'ap_1',
+      runId: 'run_1',
+      action: 'updateApplicationStatus' as const,
+      args: { applicationId: 'app_1', status: 'INTERVIEW' },
+      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      createdAt: new Date().toISOString(),
+      company: '企业',
+      title: '工程师',
+      currentStatus: 'TODO',
+    },
+  ]
+  vi.mocked(listPendingBoardApprovals).mockImplementation(async () => structuredClone(pending))
+  vi.mocked(decidePendingBoardApproval).mockImplementation(async () => {
+    server[0] = { ...server[0]!, status: 'INTERVIEW' }
+    pending = []
+    return { decision: 'APPROVE', applied: true }
+  })
+  await mount()
+  await vi.waitFor(() =>
+    expect(root.textContent).toContain('「企业 · 工程师」：阶段从「收藏」改为「面试中」'),
+  )
+  expect(column('TODO').querySelector('article')).not.toBeNull()
+  const approve = [...root.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === '批准',
+  )!
+  approve.click()
+  await vi.waitFor(() => expect(column('INTERVIEW').querySelector('article')).not.toBeNull())
+  expect(decidePendingBoardApproval).toHaveBeenCalledWith('ap_1', 'APPROVE')
+  await vi.waitFor(() => expect(root.textContent).not.toContain('待你确认的 Agent 看板操作'))
 })

@@ -10,6 +10,7 @@ import {
   type ApplicationStatus,
 } from '@/shared/types/board'
 import ApplicationCard from '../components/ApplicationCard.vue'
+import PendingAgentWrites from '../components/PendingAgentWrites.vue'
 const board = useBoard()
 const route = useRoute()
 const router = useRouter()
@@ -50,6 +51,7 @@ function closeDetail() {
       共 {{ board.applications.value.length }} 个机会 ·
       拖动卡片到其他列即可更新阶段（也可在卡片里选择阶段），点击机会查看材料、时间线和下一步行动。更新阶段不会发送真实投递。
     </div>
+    <PendingAgentWrites />
     <p v-if="board.query.isPending.value" class="panel" role="status">正在加载看板…</p>
     <div v-else-if="board.query.isError.value" class="error-banner" role="alert">
       {{ board.query.error.value?.message }}

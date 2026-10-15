@@ -90,6 +90,14 @@ public class ResumeController {
         return ok(resumes.version(owner(r), id, vid), r);
     }
 
+    public record RestoreRequest(String baseVersionId) {}
+
+    /** Rolls back to version {vid} by creating a new current version with its content. */
+    @PostMapping("/{id}/versions/{vid}/restore")
+    public ApiResponse<?> restore(@PathVariable String id, @PathVariable String vid, @RequestBody RestoreRequest body, HttpServletRequest r) {
+        return ok(resumes.restore(owner(r), id, body == null ? null : body.baseVersionId(), vid), r);
+    }
+
     @PutMapping("/{id}/versions/{vid}/structured")
     public ApiResponse<?> save(@PathVariable String id, @PathVariable String vid, @RequestBody JsonNode structured,
                               HttpServletRequest r) {

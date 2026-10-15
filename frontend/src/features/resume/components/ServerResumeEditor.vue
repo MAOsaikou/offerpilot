@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ResumeVersionTree from './ResumeVersionTree.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
@@ -6,16 +7,12 @@ import {
   exportResumePdf,
   getResume,
   listResumeVersions,
+  restoreResumeVersion,
   renameResume,
   retryResume,
   saveResume,
 } from '@/shared/api/resumes'
-import {
-  resumeStatus,
-  resumeVersionSource,
-  type ResumeStructure,
-  type ResumeVersion,
-} from '@/shared/types/resume'
+import { resumeStatus, type ResumeStructure, type ResumeVersion } from '@/shared/types/resume'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import ResumeSectionEditor from './ResumeSectionEditor.vue'
 import ResumeDiagnosisPanel from './ResumeDiagnosisPanel.vue'
@@ -181,6 +178,29 @@ function restore(version: ResumeVersion) {
   draft.value = JSON.parse(JSON.stringify(version.structured)) as ResumeStructure
   tab.value = '内容'
   message.value = '已载入历史版本，点击保存将创建新版本。'
+}
+async function rollback(version: ResumeVersion) {
+  if (!resume.value?.currentVersionId) return
+  if (dirty.value) {
+    error.value = '请先保存或放弃当前未保存的编辑，再回滚。'
+    return
+  }
+  if (
+    !window.confirm(`以版本 ${version.versionNo} 的内容创建一个新的当前版本吗？原有版本都会保留。`)
+  )
+    return
+  await run(async () => {
+    const updated = await restoreResumeVersion(
+      props.id,
+      version.id,
+      resume.value!.currentVersionId!,
+    )
+    cache.setQueryData(['resume', props.id], updated)
+    populate()
+    history.value = await listResumeVersions(props.id)
+    message.value = `已回滚：版本 ${updated.currentVersion?.versionNo ?? ''} 的内容来自版本 ${version.versionNo}。`
+    void cache.invalidateQueries({ queryKey: ['resumes'] })
+  })
 }
 function optimized(version: ResumeVersion) {
   if (!resume.value || dirty.value) return
@@ -399,22 +419,14 @@ const basics = [
         </ResumeOptimizationPanel>
         <section v-else class="panel form-stack">
           <p v-if="historyLoading" role="status">正在加载版本…</p>
-          <div v-for="version in history" :key="version.id" class="list-row">
-            <div>
-              <h3>
-                版本 {{ version.versionNo }}
-                {{ version.id === resume.currentVersionId ? '· 当前' : '' }}
-              </h3>
-              <small
-                >{{ new Date(version.createdAt).toLocaleString('zh-CN') }} ·
-                {{ resumeVersionSource[version.source] ?? '其他来源' }}</small
-              >
-            </div>
-            <div class="resume-actions">
-              <button class="btn" @click="selected = version">查看</button
-              ><button class="btn" :disabled="busy" @click="restore(version)">载入编辑</button>
-            </div>
-          </div>
+          <ResumeVersionTree
+            :versions="history"
+            :current-version-id="resume.currentVersionId"
+            :busy="busy"
+            @view="selected = $event"
+            @load="restore"
+            @restore="rollback"
+          />
           <article v-if="selected" class="form-stack">
             <h2>版本 {{ selected.versionNo }} 的内容</h2>
             <pre class="resume-text">{{ selected.plainText }}</pre>
