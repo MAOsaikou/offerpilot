@@ -61,7 +61,15 @@ export function useConversationChat() {
       status: m.status,
       runId: m.runId,
     }
-    if (view.role === 'user') return view
+    if (view.role === 'user') {
+      const images = (m.parts ?? []).flatMap((part) =>
+        part.type === 'image' && part.fileId
+          ? [{ fileId: part.fileId, name: part.name ?? '图片' }]
+          : [],
+      )
+      if (images.length) view.images = images
+      return view
+    }
     const extras = m.runId ? runExtras.get(m.runId) : undefined
     const cards = storedCards(m)
     if (cards.length) view.cards = cards
@@ -204,6 +212,7 @@ export function useConversationChat() {
     modelTier: ModelTier,
     created: (id: string) => void,
     context?: Record<string, unknown>,
+    images: Array<{ fileId: string; name: string }> = [],
   ) {
     if (busy.value) return
     const version = epoch
@@ -234,13 +243,26 @@ export function useConversationChat() {
       }
       optimisticId.value = crypto.randomUUID()
       messages.value.push(
-        { id: crypto.randomUUID(), role: 'user', text: content },
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          text: content,
+          ...(images.length ? { images } : {}),
+        },
         { id: optimisticId.value, role: 'assistant', text: '', streaming: true },
       )
       runId = await stream.start({
         conversationId: id,
         content,
         mode,
+        ...(images.length
+          ? {
+              attachments: images.map((image) => ({
+                fileId: image.fileId,
+                kind: 'image' as const,
+              })),
+            }
+          : {}),
         options: { modelTier: normalizeModelTier(modelTier), ...(context ? { context } : {}) },
       })
       if (version === epoch && activeRun.value?.error) error.value = activeRun.value.error.message

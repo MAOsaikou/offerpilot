@@ -11,4 +11,6 @@ export interface ChatMessageView {
   streaming?: boolean
   status?: import('@/shared/types/conversation').MessageStatus
   runId?: string
+  /** 用户随消息发送的图片 */
+  images?: Array<{ fileId: string; name: string }>
 }

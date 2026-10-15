@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import MarkdownView from '@/shared/components/MarkdownView.vue'
+import ChatImageThumb from './ChatImageThumb.vue'
 import type { ChatMessageView } from '../types'
 
 defineProps<{ message: ChatMessageView }>()
@@ -24,7 +25,17 @@ function locate(reference: string) {
 
 <template>
   <div v-if="message.role === 'user'" class="message-in flex justify-end">
-    <div class="user-bubble">{{ message.text }}</div>
+    <div class="user-turn">
+      <div v-if="message.images?.length" class="user-images" aria-label="随消息发送的图片">
+        <ChatImageThumb
+          v-for="image in message.images"
+          :key="image.fileId"
+          :file-id="image.fileId"
+          :name="image.name"
+        />
+      </div>
+      <div class="user-bubble">{{ message.text }}</div>
+    </div>
   </div>
 
   <div v-else ref="root" class="message-in assistant" :class="{ 'is-live': message.streaming }">
@@ -67,8 +78,19 @@ function locate(reference: string) {
 </template>
 
 <style scoped>
-.user-bubble {
+.user-turn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
   max-width: min(80%, 36em);
+}
+.user-images {
+  display: flex;
+  gap: 6px;
+}
+.user-bubble {
+  max-width: 100%;
   padding: 10px 16px;
   border-radius: 16px 16px 4px 16px;
   background: color-mix(in srgb, var(--foreground) 7%, var(--card));

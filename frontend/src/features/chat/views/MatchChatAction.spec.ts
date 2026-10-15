@@ -80,6 +80,7 @@ it('selected matching sends an explicit action once and leaves follow-up resourc
       resumeId: 'resume1',
       resumeVersionId: 'version1',
     },
+    [],
   ])
   expect(router.currentRoute.value.query.jobAction).toBeUndefined()
   expect(root.textContent).not.toContain('本次发送将匹配')
