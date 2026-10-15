@@ -50,6 +50,25 @@ export const saveInterviewAnswer = (
     signal,
   })
 
+/** Ask the interviewer's follow-up for a saved answer (idempotent per question). */
+export const requestInterviewFollowUp = (id: string, index: number, signal?: AbortSignal) =>
+  apiRequest<InterviewSession>(`${sessionPath(id)}/answers/${index}/follow-up`, {
+    method: 'POST',
+    signal,
+  })
+
+export const saveInterviewFollowUpAnswer = (
+  id: string,
+  index: number,
+  answerText: string,
+  signal?: AbortSignal,
+) =>
+  apiRequest<InterviewSession>(`${sessionPath(id)}/answers/${index}/follow-up`, {
+    method: 'PUT',
+    body: JSON.stringify({ answerText }),
+    signal,
+  })
+
 export async function exportInterviewRecap(id: string): Promise<void> {
   const response = await fetchWithIdentity(apiUrl(`${sessionPath(id)}/recap.md`), {
     headers: await authenticatedHeaders({ Accept: 'text/markdown' }),

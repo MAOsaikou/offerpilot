@@ -44,6 +44,38 @@ class InterviewHttpIntegrationTest extends SharedHttpIntegrationTest {
     }
 
     @Test
+    void followUpIsAskedFromTheSavedAnswerAnsweredAndScoredTogether() throws Exception {
+        String token = guests.create().accessToken();
+        String id = create(token);
+        // No answer yet: the interviewer has nothing to follow up on.
+        assertThat(request("POST", "/" + id + "/answers/1/follow-up", token, null).statusCode()).isEqualTo(400);
+        data(request("PUT", "/" + id + "/answers/1", token, Map.of("answerText", "我负责课程项目的后端接口。我设计了缓存。")));
+        var asked = data(request("POST", "/" + id + "/answers/1/follow-up", token, null)).path("answers").get(1);
+        // Offline test context has no model key, so the deterministic rule asks for the missing result.
+        assertThat(asked.path("followUpSource").asText()).isEqualTo("rule");
+        assertThat(asked.path("followUpQuestion").asText()).contains("我负责课程项目的后端接口").contains("结果");
+        // Idempotent: asking again returns the same question.
+        assertThat(data(request("POST", "/" + id + "/answers/1/follow-up", token, null)).path("answers").get(1)
+                .path("followUpQuestion").asText()).isEqualTo(asked.path("followUpQuestion").asText());
+        assertThat(request("POST", "/" + id + "/answers/1/follow-up", guests.create().accessToken(), null).statusCode()).isEqualTo(404);
+        var answered = data(request("PUT", "/" + id + "/answers/1/follow-up", token, Map.of("answerText", "最终接口响应时间降低了 40%，用压测验证。")));
+        assertThat(answered.path("answers").get(1).path("followUpAnswer").asText()).startsWith("最终接口");
+        // Rewriting an answered main answer keeps the answered follow-up; unanswered ones are reset.
+        data(request("PUT", "/" + id + "/answers/1", token, Map.of("answerText", "我负责课程项目的后端接口，我设计了缓存。")));
+        assertThat(data(request("GET", "/" + id, token, null)).path("answers").get(1).path("followUpQuestion").asText()).isNotBlank();
+        data(request("PUT", "/" + id + "/answers/2", token, Map.of("answerText", "我先排查了日志。")));
+        data(request("POST", "/" + id + "/answers/2/follow-up", token, null));
+        var reset = data(request("PUT", "/" + id + "/answers/2", token, Map.of("answerText", "我先排查了日志，再复现问题。")));
+        assertThat(reset.path("answers").get(2).path("followUpQuestion").isNull()).isTrue();
+        assertThat(request("PUT", "/" + id + "/answers/3/follow-up", token, Map.of("answerText", "x")).statusCode()).isEqualTo(400);
+        // The follow-up answer counts toward STAR evidence and is exported in the recap.
+        var recap = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port
+                + "/api/v1/interviews/" + id + "/recap.md")).header("Authorization", "Bearer " + token).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(recap.body()).contains("面试官追问（规则）").contains("用压测验证");
+    }
+
+    @Test
     void createListDetailAnswerProgressAndCompletionPersistForGuest() throws Exception {
         String token = guests.create().accessToken();
         String jobId = "job_interview_" + UUID.randomUUID();

@@ -50,7 +50,7 @@ public final class InterviewRubric {
         int professional = 0, expression = 0, logic = 0, fit = 0;
         int[] coverage = new int[4];
         for (var answer : session.answers()) {
-            String text = answer.answerText() == null ? "" : answer.answerText().strip();
+            String text = answer.fullText();
             Star star = detect(text);
             int length = text.codePointCount(0, text.length());
             int p = text.isEmpty() ? 0 : (star.task() ? 30 : 0) + (star.action() ? 45 : 0) + (star.result() ? 15 : 0) + (NUMBER.matcher(text).find() ? 10 : 0);

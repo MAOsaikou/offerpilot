@@ -9,7 +9,9 @@ import {
   createInterview,
   getInterview,
   listInterviews,
+  requestInterviewFollowUp,
   saveInterviewAnswer,
+  saveInterviewFollowUpAnswer,
   updateInterview,
 } from '@/shared/api/interviews'
 import { getJob } from '@/shared/api/jobs'
@@ -28,7 +30,9 @@ vi.mock('@/shared/api/interviews', () => ({
   createInterview: vi.fn(),
   getInterview: vi.fn(),
   listInterviews: vi.fn(),
+  requestInterviewFollowUp: vi.fn(),
   saveInterviewAnswer: vi.fn(),
+  saveInterviewFollowUpAnswer: vi.fn(),
   updateInterview: vi.fn(),
 }))
 vi.mock('@/shared/api/starStories', () => ({
@@ -59,6 +63,10 @@ const fixture = (id = 'iv_1'): InterviewSession => ({
     questionIndex,
     questionText: questionIndex === 0 ? '服务端题目快照' : questionText,
     answerText: '',
+    // Most cases exercise saving/progress after the interviewer has already followed up.
+    followUpQuestion: `追问 ${questionIndex + 1}？`,
+    followUpSource: 'model' as const,
+    followUpAnswer: null,
   })),
 })
 let app: App | undefined, root: HTMLDivElement, cache: QueryClient, router: Router
@@ -102,6 +110,12 @@ async function typeAnswer(text: string) {
 async function loaded() {
   await vi.waitFor(() => expect(root.querySelector('textarea')).not.toBeNull())
 }
+function withoutFollowUps() {
+  server.answers.forEach((item) => {
+    item.followUpQuestion = null
+    item.followUpSource = null
+  })
+}
 function submit() {
   root
     .querySelector('form')!
@@ -124,6 +138,15 @@ beforeEach(() => {
     server.answers[index]!.answerText = answerText.trim()
     return structuredClone(server)
   })
+  vi.mocked(requestInterviewFollowUp).mockImplementation(async (_id, index) => {
+    server.answers[index]!.followUpQuestion = '你提到缓存，命中率是怎么验证的？'
+    server.answers[index]!.followUpSource = 'model'
+    return structuredClone(server)
+  })
+  vi.mocked(saveInterviewFollowUpAnswer).mockImplementation(async (_id, index, answerText) => {
+    server.answers[index]!.followUpAnswer = answerText.trim()
+    return structuredClone(server)
+  })
   vi.mocked(updateInterview).mockImplementation(async (_id, patch) => {
     server = { ...server, ...patch }
     return structuredClone(server)
@@ -134,8 +157,42 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it('appends finals to typed answers and saves the last recognition result before advancing', async () => {
+it('asks one follow-up from the saved answer, saves its answer, then advances', async () => {
+  withoutFollowUps()
+  await mount()
+  await loaded()
+  expect(root.querySelectorAll('textarea')).toHaveLength(1)
+  await typeAnswer('我负责缓存设计')
+  submit()
+  await vi.waitFor(() => expect(root.textContent).toContain('你提到缓存，命中率是怎么验证的？'))
+  expect(saveInterviewAnswer).toHaveBeenCalledWith('iv_1', 0, '我负责缓存设计', expect.anything())
+  expect(requestInterviewFollowUp).toHaveBeenCalledWith('iv_1', 0, expect.anything())
+  expect(server.questionIndex).toBe(0)
+  const followUp = root.querySelectorAll('textarea')[1]!
+  followUp.value = '用压测和监控验证'
+  followUp.dispatchEvent(new Event('input', { bubbles: true }))
+  await nextTick()
+  submit()
+  await vi.waitFor(() => expect(server.questionIndex).toBe(1))
+  expect(server.answers[0]!.followUpAnswer).toBe('用压测和监控验证')
+  expect(root.querySelectorAll('textarea')).toHaveLength(1)
+})
+
+it('lets the candidate skip the follow-up when the interviewer cannot ask', async () => {
+  withoutFollowUps()
+  vi.mocked(requestInterviewFollowUp).mockRejectedValueOnce(new Error('网络错误'))
+  await mount()
+  await loaded()
+  await typeAnswer('我负责缓存设计')
+  submit()
+  await vi.waitFor(() => expect(root.textContent).toContain('面试官暂时无法追问'))
+  button('跳过追问').click()
+  await vi.waitFor(() => expect(server.questionIndex).toBe(1))
+})
+
+it('appends finals to typed answers and saves the last recognition result before the follow-up', async () => {
   const mock = installSpeechMocks()
+  withoutFollowUps()
   await mount()
   await loaded()
   expect(mock.synthesis.speak).not.toHaveBeenCalled()
@@ -163,11 +220,16 @@ it('appends finals to typed answers and saves the last recognition result before
     1,
   )
   active.onend?.()
-  await vi.waitFor(() => expect(server.questionIndex).toBe(1))
+  await vi.waitFor(() => expect(root.querySelectorAll('textarea')).toHaveLength(2))
   expect(server.answers[0]!.answerText).toBe('手动背景\n语音行动\n最后的结果')
   active.result([{ text: '迟到的文本', final: true }])
   await nextTick()
-  expect(root.querySelector('textarea')!.value).toBe('')
+  expect(root.querySelectorAll('textarea')[1]!.value).toBe('')
+  // After the follow-up appears, dictation answers it rather than the main question.
+  button('开始口述').click()
+  mock.latest().result([{ text: '压测验证', final: true }])
+  await nextTick()
+  expect(root.querySelectorAll('textarea')[1]!.value).toBe('压测验证')
 })
 
 it('keeps text entry and save usable after microphone permission is denied', async () => {
@@ -190,6 +252,7 @@ it('keeps text entry and save usable after microphone permission is denied', asy
 
 it('enforces the textarea limit for dictation and releases the microphone on leave', async () => {
   const mock = installSpeechMocks()
+  withoutFollowUps()
   await mount()
   await loaded()
   await typeAnswer('字'.repeat(11997))
@@ -243,6 +306,7 @@ it.each(['recognition', 'synthesis'])(
   'keeps the available voice feature without %s',
   async (missing) => {
     const mock = installSpeechMocks()
+    withoutFollowUps()
     if (missing === 'recognition') vi.stubGlobal('SpeechRecognition', undefined)
     else vi.stubGlobal('speechSynthesis', undefined)
     await mount()

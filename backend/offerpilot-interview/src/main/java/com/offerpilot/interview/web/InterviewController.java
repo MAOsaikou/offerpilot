@@ -70,6 +70,17 @@ public class InterviewController {
         return ok(interviews.saveAnswer(owner(request), id, parseIndex(index), body.answerText()), request);
     }
 
+    @PostMapping("/{id}/answers/{index}/follow-up")
+    public ApiResponse<?> followUp(@PathVariable String id, @PathVariable String index, HttpServletRequest request) {
+        return ok(interviews.followUp(owner(request), id, parseIndex(index)), request);
+    }
+
+    @PutMapping("/{id}/answers/{index}/follow-up")
+    public ApiResponse<?> saveFollowUpAnswer(@PathVariable String id, @PathVariable String index,
+                                             @Valid @RequestBody AnswerRequest body, HttpServletRequest request) {
+        return ok(interviews.saveFollowUpAnswer(owner(request), id, parseIndex(index), body.answerText()), request);
+    }
+
     @GetMapping(value = "/{id}/recap.md", produces = "text/markdown;charset=UTF-8")
     public ResponseEntity<byte[]> recapMarkdown(@PathVariable String id, HttpServletRequest request) {
         String markdown = recaps.markdown(owner(request), id);
