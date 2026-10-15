@@ -13,6 +13,8 @@ async function postAuth(path: string, email: string, password: string): Promise<
   const response = await fetchWithIdentity(apiUrl(path), {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
+    // Lets the browser store the HttpOnly refresh cookie even when the API is on another origin.
+    credentials: 'include',
     body: JSON.stringify({ email, password }),
   })
   if (!response.ok) throw await toApiError(response)
@@ -23,6 +25,19 @@ export const register = (email: string, password: string) =>
   postAuth('/auth/register', email, password)
 export const staffLogin = (email: string, password: string) =>
   postAuth('/auth/staff/login', email, password)
+
+/** Revoke this browser's refresh cookie; best effort, the short access token expires anyway. */
+export async function logoutSession(): Promise<void> {
+  try {
+    await fetch(apiUrl('/auth/logout'), {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+    })
+  } catch {
+    // Offline logout still clears the local session.
+  }
+}
 
 export async function demoLogin(): Promise<LoginResult> {
   const response = await fetchWithIdentity(apiUrl('/auth/demo-login'), {

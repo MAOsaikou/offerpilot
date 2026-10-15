@@ -76,7 +76,7 @@ public class DemoSandboxService {
         LoggerFactory.getLogger(getClass()).info("Demo sandbox seeded durationMs={}", (System.nanoTime() - start) / 1_000_000);
         var roles = List.of("USER");
         return new PasswordLoginService.LoginResponse(tokens.issue(sandbox.id(), roles, "体验沙箱", sandbox.expiresAt()),
-                Math.min(tokens.accessTtl().toSeconds(), Math.max(0, sandbox.expiresAt().getEpochSecond()-Instant.now().getEpochSecond())), new PasswordLoginService.UserView(sandbox.id(), sandbox.email(), "体验沙箱", roles, true, sandbox.expiresAt()));
+                Math.min(com.offerpilot.auth.application.JwtTokenService.SANDBOX_TTL_CAP.toSeconds(), Math.max(0, sandbox.expiresAt().getEpochSecond()-Instant.now().getEpochSecond())), new PasswordLoginService.UserView(sandbox.id(), sandbox.email(), "体验沙箱", roles, true, sandbox.expiresAt()));
     }
 
     /** Cheap status read; owner is always authenticated by the controller. */
