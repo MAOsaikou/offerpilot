@@ -149,11 +149,19 @@ it('PDF 导出使用保存版本，不提交未保存草稿，并显示下载状
   button('导出 PDF').click()
   await nextTick()
   expect(button('导出中…').disabled).toBe(true)
-  expect(vi.mocked(exportResumePdf)).toHaveBeenCalledWith('rs1')
+  expect(vi.mocked(exportResumePdf)).toHaveBeenCalledWith('rs1', 'classic')
   expect(saveResume).not.toHaveBeenCalled()
   finish()
   await vi.waitFor(() => expect(button('导出 PDF').disabled).toBe(false))
   expect(root.querySelector<HTMLInputElement>('.resume-basics input')?.value).toBe('未保存的修改')
+  const select = root.querySelector<HTMLSelectElement>('select[aria-label="PDF 模板"]')!
+  select.value = 'compact'
+  select.dispatchEvent(new Event('change'))
+  vi.mocked(exportResumePdf).mockResolvedValueOnce()
+  button('导出 PDF').click()
+  await vi.waitFor(() =>
+    expect(vi.mocked(exportResumePdf)).toHaveBeenLastCalledWith('rs1', 'compact'),
+  )
 })
 
 it('版本树显示分支、对比文本差异，回滚创建新的当前版本而不改写历史', async () => {
