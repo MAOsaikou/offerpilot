@@ -15,6 +15,7 @@ import java.util.Set;
 
 @Component
 public class BoardWriteTools {
+    public static final Set<String> ACTIONS = Set.of("createApplication", "updateApplicationStatus");
     private final ApplicationService applications;
     private final ApprovalService approvals;
     public BoardWriteTools(ApplicationService applications, ApprovalService approvals) {
@@ -82,9 +83,13 @@ public class BoardWriteTools {
     public Mono<ExpertResult> execute(String owner, String runId, PlanStep step, ApprovalService.Decision decision) {
         if (!"APPROVE".equals(decision.decision())) return Mono.error(new BusinessException(ErrorCode.APPROVAL_REJECTED,
                 "TIMEOUT".equals(decision.decision()) ? "审批已超时" : "用户拒绝了该操作"));
-        return Mono.fromCallable(() -> {
-            String action = (String) step.inputs().get("action");
-            var args = decision.args();
+        return Mono.fromCallable(() -> apply(applications, owner, runId, (String) step.inputs().get("action"), decision.args(), runId + "_" + step.id()))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    /** Performs an approved board write; shared by the live chat path and decisions made later from the board. */
+    static ExpertResult apply(ApplicationService applications, String owner, String runId, String action, Map<String, Object> args, String cardId) {
+        {
             validate(action, args);
             boolean create = action.equals("createApplication");
             var patch = new ApplicationService.Patch((String) args.get("status"), (String) args.get("note"),
@@ -103,7 +108,7 @@ public class BoardWriteTools {
             for (String field : java.util.List.of("status", "note", "nextAction", "nextActionAt"))
                 if (args.containsKey(field)) changedFields.put(field, application.get(field));
             return ExpertResult.card("已按用户批准的参数" + (create ? "创建" : "更新") + "投递记录：" + saved.job().path("company").asText() + " / " + saved.job().path("title").asText() + "，阶段：" + statusLabel(saved.status()),
-                    runId + "_" + step.id(), "board_update", Map.of("application", application, "change", create ? "CREATED" : "UPDATED", "changedFields", changedFields));
-        }).subscribeOn(Schedulers.boundedElastic());
+                    cardId, "board_update", Map.of("application", application, "change", create ? "CREATED" : "UPDATED", "changedFields", changedFields));
+        }
     }
 }
