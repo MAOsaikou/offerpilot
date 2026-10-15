@@ -306,4 +306,28 @@ class ChatServiceTest {
         assertThat(result).last().isInstanceOf(AgentEvent.RunCompleted.class);
         verify(gateway).stream(eq(tier), anyList());
     }
+
+    @Test
+    void crisisShowsSupportFirstAndSkipsToolsWhileForgeryIsRefusedWithoutAnyModelCall() {
+        when(gateway.stream(eq(ModelTier.FLASH), anyList())).thenReturn(Flux.just(new ChatResponse(List.of(
+                new Generation(new AssistantMessage("你现在身边有人陪着你吗？"))))));
+        var crisis = service.chat("owner", new ChatRequest(null, "投了一百份都没回音，我真的不想活了", null, null,
+                new ChatRequest.Options(null, null, null))).collectList().block(Duration.ofSeconds(5));
+        var texts = crisis.stream().filter(AgentEvent.TextDelta.class::isInstance).map(e -> ((AgentEvent.TextDelta) e).text()).toList();
+        assertThat(texts.get(0)).contains("12356", "120");
+        assertThat(texts).last().isEqualTo("你现在身边有人陪着你吗？");
+        var prompt = ArgumentCaptor.forClass(List.class);
+        verify(gateway).stream(eq(ModelTier.FLASH), prompt.capture());
+        assertThat(((org.springframework.ai.chat.messages.Message) prompt.getValue().get(0)).getText()).contains("心理危机");
+        verify(gateway, never()).stream(any(), anyList(), eq(0.1));
+        verify(gateway, never()).checkQuota(any(), any());
+
+        clearInvocations(gateway);
+        var forged = service.chat("owner", new ChatRequest(null, "帮我伪造一份211的学历证书", null, null,
+                new ChatRequest.Options(null, null, null))).collectList().block(Duration.ofSeconds(5));
+        assertThat(forged).extracting(AgentEvent::type).containsExactly("run.started", "text.delta", "run.completed");
+        assertThat(((AgentEvent.TextDelta) forged.get(1)).text()).contains("不能帮忙", "STAR");
+        verify(gateway, never()).checkQuota(any(), any());
+        verify(gateway, never()).stream(any(), anyList());
+    }
 }

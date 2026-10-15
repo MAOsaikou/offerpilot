@@ -131,6 +131,11 @@ function restart() {
               : 'AI 暂不可用，下列内容是按「职责 / 要求」等标题拆分的原文。请核对后保存。'
           }}
         </p>
+        <p v-if="parsed?.securityNotices?.length" class="security-note" role="alert">
+          原文里有疑似写给 AI 的指令（{{
+            parsed.securityNotices.join('、')
+          }}）。系统只把它当作岗位文本，不会执行；请核对字段后再保存。
+        </p>
         <div class="import-grid">
           <label class="field"
             >岗位名称<input v-model="form.title" required maxlength="100"
@@ -197,6 +202,12 @@ function restart() {
 .mode-switch {
   display: flex;
   gap: 16px;
+}
+.security-note {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--warning);
+  color: var(--warning);
 }
 .import-grid {
   display: grid;

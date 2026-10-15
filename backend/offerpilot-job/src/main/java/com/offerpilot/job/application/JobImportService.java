@@ -23,7 +23,12 @@ public class JobImportService {
     public static final String SITE = "imported";
     public static final String SOURCE = "USER_IMPORT";
 
-    public record ParseResult(JobImportParser.Draft draft, String url, String sourceKind) {}
+    /** securityNotices: SC-01 labels of suspected injected instructions found in the imported text (shown, never executed). */
+    public record ParseResult(JobImportParser.Draft draft, String url, String sourceKind, List<String> securityNotices) {}
+    private static List<String> notices(String text) {
+        return com.offerpilot.llm.safety.PromptInjectionDetector.detect(text).stream()
+                .map(com.offerpilot.llm.safety.PromptInjectionDetector::label).toList();
+    }
     public record Fields(String title, String company, String locations, String department, String nature,
                          String description, String requirement, String url, List<String> skills) {}
 
@@ -48,10 +53,10 @@ public class JobImportService {
         if (hasText) {
             if (text.strip().codePointCount(0, text.strip().length()) < 30)
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "岗位描述太短，请粘贴完整的职责与要求。");
-            return new ParseResult(parser.parse(owner, text, null), "", "text");
+            return new ParseResult(parser.parse(owner, text, null), "", "text", notices(text));
         }
         var page = fetcher.fetch(url);
-        return new ParseResult(parser.parse(owner, page.text(), page.title()), page.url(), "url");
+        return new ParseResult(parser.parse(owner, page.text(), page.title()), page.url(), "url", notices(page.text()));
     }
 
     public JsonNode save(String owner, Fields f) {
