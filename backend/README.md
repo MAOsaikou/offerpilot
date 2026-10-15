@@ -17,7 +17,7 @@ Windows 入口会复制当前后端源码（包括未提交修改）到新临时
 
 直接运行 Maven 时，`-Plive` 只开放编译和发现；仍需套件开关和真实 Key。`offerpilot.smoke.tier` 默认 FLASH，PRO 或 ALL 必须显式指定；所有七个方法统一遵守筛选。`offerpilot.smoke.max-calls` 默认 40，对本次 JVM 全套调用计数，达到上限后在供应商 IO 前拒绝。该计数不是 token 或账单金额。
 
-2026-10-12 百炼实测：`text-embedding-v4` 返回 1024 维向量，Spring AI 与业务适配器的 16 条短文本也通过（10+6 分片）；完整职业库语义质量仍待评测。dev 可在忽略的 `backend/.env.local` 设置 `BAILIAN_API_KEY`、`SPRING_AI_MODEL_EMBEDDING=openai`、`LLM_MODEL_EMBEDDING=text-embedding-v4`、`LLM_EMBEDDING_DIMENSIONS=1024`，重新构建并重启生效。首次开启会补齐职业库并启动笔记向量任务；仅测少量请求时先设置 `OCCUPATION_EMBED_ENABLED=false`、`NOTES_EMBED_ENABLED=false`。详见[验收记录](../docs/research/2026-10-12-本地验收与发布准备.md)。
+2026-10-12 百炼实测：`text-embedding-v4` 返回 1024 维向量，Spring AI 与业务适配器的 16 条短文本也通过（10+6 分片）；2026-10-16 完整职业库真实对照见[百炼实测](../docs/research/2026-10-16-occupation-rag-bailian-live.md)。dev 可在忽略的 `backend/.env.local` 设置 `BAILIAN_API_KEY`、`SPRING_AI_MODEL_EMBEDDING=openai`、`LLM_MODEL_EMBEDDING=text-embedding-v4`、`LLM_EMBEDDING_DIMENSIONS=1024`，重新构建并重启生效。首次开启会补齐职业库并启动笔记向量任务；仅测少量请求时先设置 `OCCUPATION_EMBED_ENABLED=false`、`NOTES_EMBED_ENABLED=false`。详见[验收记录](../docs/research/2026-10-12-本地验收与发布准备.md)。
 
 ## 1. 准备环境
 

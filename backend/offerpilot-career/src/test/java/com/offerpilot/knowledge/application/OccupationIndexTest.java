@@ -99,12 +99,28 @@ class OccupationIndexTest {
         when(retrieval.search("Java", 4)).thenReturn(new OccupationHybridRetriever.Retrieval(List.of(
                 new OccupationHybridRetriever.Hit("b", "分析师", "数据", "ICR", .01, "SQL", false, true)), true));
         assertThat(recommender.rankHybrid(profile, "Java", 2).get(0).retrievalReason())
-                .contains("向量检索").doesNotContain("文本中匹配");
+                .contains("语义检索").doesNotContain("文本中匹配");
         assertThat(recommender.rankHybrid(profile, " ", 2)).isEqualTo(rules);
         when(retrieval.search("Java", 4)).thenReturn(new OccupationHybridRetriever.Retrieval(List.of(), false));
         assertThat(recommender.rankHybrid(profile, "Java", 2)).isEqualTo(rules);
         when(retrieval.search("Java", 4)).thenThrow(new IllegalStateException("database unavailable"));
         assertThat(recommender.rankHybrid(profile, "Java", 2)).isEqualTo(rules);
+    }
+
+    @Test void semanticTopHitIsNotBuriedByADistantInterestPrior() {
+        var catalog = new java.util.ArrayList<OccupationRecommender.Ranked>();
+        for (int i = 0; i < 60; i++) catalog.add(new OccupationRecommender.Ranked("o" + i, "职业" + i, "技术", "IRC", 1 - i / 100.0));
+        var jdbc = mock(JdbcTemplate.class);
+        when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<OccupationRecommender.Ranked>>any()))
+                .thenReturn(catalog);
+        var retrieval = mock(OccupationHybridRetriever.class);
+        // The user's words point to o45; the interest prior alone would rank it 46th of 60.
+        when(retrieval.search("想写安卓和 iOS 应用", 6)).thenReturn(new OccupationHybridRetriever.Retrieval(List.of(
+                new OccupationHybridRetriever.Hit("o45", "职业45", "技术", "IRC", .03, "移动端", false, true),
+                new OccupationHybridRetriever.Hit("o2", "职业2", "技术", "IRC", .02, "客户端", false, true)), true));
+        var fused = new OccupationRecommender(jdbc, retrieval)
+                .rankHybrid(new com.offerpilot.career.application.RiasecProfile(1, 2, 0, 0, 0, 1), "想写安卓和 iOS 应用", 3);
+        assertThat(fused).extracting(OccupationRecommender.Ranked::id).containsExactly("o45", "o2", "o0");
     }
 
     @Test void hanBigramsAndLatinTokensAreGenericAndQuerySyntaxCannotEscape() {
