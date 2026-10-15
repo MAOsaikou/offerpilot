@@ -18,5 +18,11 @@ defineProps<{ source?: string; snapshotDate?: string; cached?: boolean }>()
   <span v-else-if="source === 'demo'" class="tag" title="虚构体验岗位，不接受实际投递"
     >演示岗位</span
   >
+  <span
+    v-else-if="source === 'USER_IMPORT'"
+    class="tag"
+    title="你粘贴或从网址导入的岗位，只有你可见；内容以原招聘页为准"
+    >我导入的岗位</span
+  >
   <span v-else class="tag">企业官网 · {{ cached ? '近期缓存' : '本次查询' }}</span>
 </template>

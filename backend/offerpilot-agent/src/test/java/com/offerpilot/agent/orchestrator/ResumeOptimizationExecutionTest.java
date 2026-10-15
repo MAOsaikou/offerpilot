@@ -40,7 +40,7 @@ class ResumeOptimizationExecutionTest {
             String value = messages.get(0).getText().equals("plan") ? plan : "{\"action\":\"" + action.get() + "\"}";
             return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(value)))));
         });
-        when(descriptions.description("job_1")).thenReturn("岗位JD");
+        when(descriptions.description(anyString(), eq("job_1"))).thenReturn("岗位JD");
         var report = json.createObjectNode().put("reportId", "opt_1").put("resumeId", "res_1").put("resumeVersionId", "ver_1");
         report.putArray("patches");
         when(optimizations.generate(eq("owner"), eq("res_1"), eq("ver_1"), eq("岗位JD"), anyString(), eq("job_1"))).thenReturn(Mono.just(report));

@@ -320,3 +320,22 @@ it('leaving a pending match ignores its later failure and releases its progress 
     cleanup()
   }
 })
+it('an imported job is marked private and offers no live refresh', async () => {
+  vi.mocked(getJob).mockResolvedValue({
+    ...snapshot,
+    site: 'imported',
+    source: 'USER_IMPORT',
+    importedAt: '2026-10-16T01:00:00Z',
+    requirement: '',
+  })
+  const { root, cleanup } = await mountDetail()
+  try {
+    expect(root.textContent).toContain('我导入的岗位')
+    expect(root.textContent).toContain('只有你可见')
+    expect(root.textContent).toContain('导入时未填写任职要求')
+    expect(root.textContent).not.toContain('获取 / 更新完整详情')
+    expect(root.textContent).not.toContain('企业更新时间')
+  } finally {
+    cleanup()
+  }
+})

@@ -18,8 +18,11 @@ public class JobController {
     private final JobMatchService matches;
     private final JobEvalMarkdownExporter evalExports;
     private final CurrentUser users;
+    private final JobImportService imports;
 
-    public JobController(JobService jobs, JobMatchService matches, JobEvalMarkdownExporter evalExports, CurrentUser users) {
+    public JobController(JobService jobs, JobMatchService matches, JobEvalMarkdownExporter evalExports, CurrentUser users,
+                         JobImportService imports) {
+        this.imports = imports;
         this.jobs = jobs;
         this.matches = matches;
         this.evalExports = evalExports;
@@ -51,16 +54,40 @@ public class JobController {
         return ok(jobs.search(query, site, nature, location), r);
     }
 
+    public record ImportParseRequest(@Size(max = 20000) String text, @Size(max = 2000) String url) {}
+
+    /** JB-06 step 1: parse pasted text or a public page into a draft; nothing is stored. */
+    @PostMapping("/import/parse")
+    public ApiResponse<?> parseImport(@Valid @RequestBody ImportParseRequest body, HttpServletRequest r) {
+        return ok(imports.parse(owner(r), body.text(), body.url()), r);
+    }
+
+    public record ImportRequest(@NotBlank @Size(max = 100) String title, @Size(max = 100) String company,
+                                @Size(max = 100) String locations, @Size(max = 100) String department,
+                                @Pattern(regexp = "campus|intern|social") String nature,
+                                @Size(max = 30000) String description, @Size(max = 30000) String requirement,
+                                @Size(max = 2000) String url, @Size(max = 12) java.util.List<@Size(max = 40) String> skills) {}
+
+    /** JB-06 step 2: save the reviewed draft as a job visible only to this user. */
+    @PostMapping("/import")
+    public ApiResponse<?> saveImport(@Valid @RequestBody ImportRequest b, HttpServletRequest r) {
+        return ok(imports.save(owner(r), new JobImportService.Fields(b.title(), b.company(), b.locations(), b.department(),
+                b.nature(), b.description(), b.requirement(), b.url(), b.skills())), r);
+    }
+
+    @GetMapping("/imported")
+    public ApiResponse<?> imported(HttpServletRequest r) {
+        return ok(imports.list(owner(r)), r);
+    }
+
     @GetMapping("/{id}")
     public ApiResponse<?> get(@PathVariable String id, HttpServletRequest r) {
-        owner(r);
-        return ok(jobs.get(id), r);
+        return ok(jobs.get(owner(r), id), r);
     }
 
     @PostMapping("/{id}/refresh")
     public ApiResponse<?> refresh(@PathVariable String id, HttpServletRequest r) {
-        owner(r);
-        return ok(jobs.detail(id, true), r);
+        return ok(jobs.detail(owner(r), id, true), r);
     }
 
     public record MatchRequest(

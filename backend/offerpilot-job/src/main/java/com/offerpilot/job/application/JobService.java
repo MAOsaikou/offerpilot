@@ -43,17 +43,25 @@ public class JobService implements JobDescriptionForChat {
             (rs,n)->view(rs.getString("id"),rs.getString("payload"),rs.getTimestamp("detail_fetched_at")),
             id,data.path("site").asText(),data.path("externalId").asText(),nature,data.toString());
     }
+    /** Unscoped lookup for rows the caller already owns through another table (application, match). */
     public JsonNode get(String id) {
         var rows=jdbc.query("SELECT id,payload,detail_fetched_at FROM jobs WHERE id=?",(rs,n)->view(rs.getString("id"),rs.getString("payload"),rs.getTimestamp("detail_fetched_at")),id);
         if(rows.isEmpty()) throw new BusinessException(ErrorCode.JOB_NOT_FOUND);
         return rows.get(0);
     }
-    public JsonNode detail(String id,boolean force) {
-        var existing=get(id);
+    /** Shared search snapshots are public; jobs a user imported (JB-06) are visible only to that user. */
+    public JsonNode get(String owner,String id) {
+        var rows=jdbc.query("SELECT id,payload,detail_fetched_at FROM jobs WHERE id=? AND (user_id IS NULL OR user_id=?)",(rs,n)->view(rs.getString("id"),rs.getString("payload"),rs.getTimestamp("detail_fetched_at")),id,owner);
+        if(rows.isEmpty()) throw new BusinessException(ErrorCode.JOB_NOT_FOUND);
+        return rows.get(0);
+    }
+    public JsonNode detail(String owner,String id,boolean force) {
+        var existing=get(owner,id);
         if(!force && !existing.path("detailFetchedAt").isNull() && Instant.parse(existing.path("detailFetchedAt").asText()).isAfter(Instant.now().minusSeconds(600))) return existing;
         if(source.localOnly() || "demo".equals(existing.path("site").asText())
                 || "demo".equals(existing.path("source").asText())
-                || "LOCAL_SNAPSHOT".equals(existing.path("source").asText())) return existing;
+                || "LOCAL_SNAPSHOT".equals(existing.path("source").asText())
+                || JobImportService.SITE.equals(existing.path("site").asText())) return existing;
         JsonNode result;
         try {
             result=source.detail(existing.path("site").asText(),existing.path("externalId").asText(),existing.path("nature").asText());
@@ -72,7 +80,7 @@ public class JobService implements JobDescriptionForChat {
         for(String field:List.of("title","company","locations","category","department","url","updatedAt"))
             if(data.path(field).asText().isBlank()) data.set(field,existing.path(field));
         jdbc.update("UPDATE jobs SET payload=?::jsonb,detail_fetched_at=now(),updated_at=now() WHERE id=?",data.toString(),id);
-        return get(id);
+        return get(owner,id);
     }
     private ObjectNode normalize(JsonNode raw,String nature) {
         var data=json.createObjectNode();
@@ -92,7 +100,7 @@ public class JobService implements JobDescriptionForChat {
         if(raw.path("skills").isArray()) data.set("skills",raw.path("skills").deepCopy());
         return data;
     }
-    private JsonNode view(String id,String payload,java.sql.Timestamp fetched) {
+    JsonNode view(String id,String payload,java.sql.Timestamp fetched) {
         try { var node=(ObjectNode)json.readTree(payload); node.put("id",id); if(fetched==null) node.putNull("detailFetchedAt"); else node.put("detailFetchedAt",fetched.toInstant().toString()); return node; }
         catch(Exception ex) { throw new IllegalStateException(ex); }
     }
@@ -100,8 +108,8 @@ public class JobService implements JobDescriptionForChat {
         return "岗位："+job.path("title").asText()+"\n职责：\n"+job.path("description").asText()+"\n要求：\n"+job.path("requirement").asText();
     }
     @Override
-    public String description(String jobId) {
-        var job = get(jobId);
+    public String description(String owner, String jobId) {
+        var job = get(owner, jobId);
         if (job.path("description").asText().isBlank() && job.path("requirement").asText().isBlank())
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "岗位缺少职责与要求，请先获取完整详情或在简历改写页粘贴JD");
         String jd = evidenceText(job);

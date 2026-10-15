@@ -134,6 +134,8 @@ public class DemoResetService {
         jdbc.update("UPDATE resumes SET current_version_id=NULL WHERE user_id=?", userId);
         jdbc.update("DELETE FROM resumes WHERE user_id=?", userId);
         jdbc.update("DELETE FROM files WHERE user_id=?", userId);
+        // Jobs the previous visitor imported (JB-06); their applications/matches were removed above.
+        jdbc.update("DELETE FROM jobs WHERE user_id=?", userId);
         // Demo jobs are public snapshots. Preserve them and any other user's references; never wipe MCP cache.
     }
 

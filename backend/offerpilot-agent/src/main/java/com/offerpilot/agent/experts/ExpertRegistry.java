@@ -426,7 +426,7 @@ public class ExpertRegistry {
             String resumeId = text(context.get("resumeId")), versionId = text(context.get("resumeVersionId"));
             Mono<com.fasterxml.jackson.databind.JsonNode> result = "read_optimization".equals(step.inputs().get("action"))
                     ? optimizations.report(owner, resumeId, versionId, text(context.get("optimizationReportId")))
-                    : Mono.fromCallable(() -> descriptions.description(text(context.get("jobId"))))
+                    : Mono.fromCallable(() -> descriptions.description(owner, text(context.get("jobId"))))
                         .subscribeOn(Schedulers.boundedElastic()).flatMap(jd -> optimizations.generate(owner, resumeId, versionId, jd,
                             requestId(runId, step.id()), optionalJob(owner,text(context.get("jobId")),null,null)));
             return result.map(report -> ExpertResult.card("已保存的改写建议（本轮未执行采纳，采纳状态请在简历页查看）：" + jsonSummary(report),
