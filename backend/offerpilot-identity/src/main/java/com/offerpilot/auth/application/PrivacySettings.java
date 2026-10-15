@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 public class PrivacySettings implements PiiMaskingPreference {
     public record Selection(@NotNull Boolean piiMasking) {}
     public record Risk(boolean detected, String warning) {}
-    public static final String WARNING = "检测到联系方式或身份证号。当前已关闭文本脱敏，相关信息可能发送给模型；建议在设置中开启。";
+    public static final String WARNING = "检测到联系方式、身份证号或住址。当前已关闭文本脱敏，相关信息可能发送给模型；建议在设置中开启。";
     private final JdbcTemplate jdbc;
     public PrivacySettings(JdbcTemplate jdbc) { this.jdbc = jdbc; }
     @Override public boolean enabled(String owner) {
