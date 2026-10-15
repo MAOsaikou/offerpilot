@@ -29,7 +29,7 @@ public class JobMatchService {
     }
     public JsonNode create(String owner,String jobId,String resumeId,String versionId,String requestId,com.offerpilot.llm.ModelTier tier) {
         var resume=resumes.snapshot(owner,resumeId,versionId);
-        var job=jobs.get(jobId);
+        var job=jobs.get(owner,jobId);
         String id=IdGenerator.next("match");
         String existing=tx.execute(status->{
             jdbc.queryForObject("SELECT id FROM users WHERE id=? FOR UPDATE",String.class,owner);
@@ -54,7 +54,7 @@ public class JobMatchService {
         cancellations.put(id, cancellation);
         try {
             rejectCancelled(owner, id);
-            job=jobs.detail(jobId,false);
+            job=jobs.detail(owner,jobId,false);
             JsonNode selectedJob = job;
             JsonNode generated=com.offerpilot.llm.quota.LlmUserContext.asUser(owner,
                     () -> matcher.match(selectedJob,resume.structured(),tier,cancellation.asMono()));

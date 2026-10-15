@@ -16,6 +16,7 @@ export interface RealJob {
   originalSource?: string
   fallbackReason?: string
   snapshotDate?: string
+  importedAt?: string
   skills?: string[]
   description: string
   requirement: string
@@ -109,4 +110,23 @@ export interface MatchHistory {
   resumeTitle: string | null
   score: string | null
   createdAt: string
+}
+export interface JobImportDraft {
+  title: string
+  company: string
+  locations: string
+  department: string
+  nature: 'campus' | 'intern' | 'social'
+  description: string
+  requirement: string
+  skills: string[]
+  parser: 'model' | 'rule'
+}
+export interface JobImportParse {
+  draft: JobImportDraft
+  url: string
+  sourceKind: 'text' | 'url'
+}
+export interface JobImportFields extends Omit<JobImportDraft, 'parser'> {
+  url: string
 }

@@ -22,10 +22,10 @@ public class JobArtifactBridge implements JobArtifacts {
         // Same lock as application creation: either writer observes the other's committed artifact.
         if (jdbc.queryForList("SELECT id FROM users WHERE id=? FOR UPDATE",String.class,owner).isEmpty())
             throw new BusinessException(ErrorCode.UNAUTHENTICATED);
-        jobs.get(jobId); // jobs are shared snapshots, not private owner rows.
+        jobs.get(owner, jobId); // shared snapshots, or a job this user imported
     }
     public String selectedJob(String owner, String jobId, String applicationId, String matchId) {
-        if (jobId != null) { jobs.get(jobId); return jobId; }
+        if (jobId != null) { jobs.get(owner, jobId); return jobId; }
         if (applicationId != null) return ownedJob("applications", owner, applicationId, ErrorCode.APPLICATION_NOT_FOUND);
         if (matchId != null) return ownedJob("job_matches", owner, matchId, ErrorCode.MATCH_NOT_FOUND);
         return null;

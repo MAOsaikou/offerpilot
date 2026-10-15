@@ -68,7 +68,7 @@ class JobsSnapshotHttpIntegrationTest {
         assertThat(item.path("snapshotDate").asText()).isEqualTo("2026-10-10");
         assertThat(JobService.evidenceText(item)).contains("Java", "Spring Boot", "MySQL");
         clearInvocations(live);
-        assertThat(jobs.detail(item.path("id").asText(), true)).isEqualTo(item);
+        assertThat(jobs.detail("anyone", item.path("id").asText(), true)).isEqualTo(item);
         verifyNoInteractions(live);
     }
 

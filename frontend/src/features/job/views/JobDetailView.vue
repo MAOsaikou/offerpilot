@@ -240,7 +240,7 @@ watch(
           >
             {{ saved ? '已收藏至看板' : '收藏至看板' }}</button
           ><button
-            v-if="!['LOCAL_SNAPSHOT', 'demo'].includes(job.data.value.source)"
+            v-if="!['LOCAL_SNAPSHOT', 'demo', 'USER_IMPORT'].includes(job.data.value.source)"
             class="btn"
             :disabled="refreshing || busy"
             @click="refresh"
@@ -248,7 +248,14 @@ watch(
             {{ refreshing ? '正在获取…' : '获取 / 更新完整详情' }}
           </button>
         </div>
-        <p class="subtle">
+        <p v-if="job.data.value.source === 'USER_IMPORT'" class="subtle">
+          你导入的岗位，只有你可见。导入时间：{{
+            job.data.value.importedAt
+              ? new Date(job.data.value.importedAt).toLocaleString('zh-CN')
+              : '未知'
+          }}。职责与要求以原招聘页为准，投递前请再次核对。
+        </p>
+        <p v-else class="subtle">
           {{ job.data.value.source === 'LOCAL_SNAPSHOT' ? '快照日期' : '企业更新时间' }}：{{
             job.data.value.source === 'LOCAL_SNAPSHOT'
               ? job.data.value.snapshotDate
@@ -274,11 +281,21 @@ watch(
         <p v-if="refreshError" class="error-banner" role="alert">{{ refreshError }}</p>
         <h2>工作职责</h2>
         <p class="prose-content">
-          {{ job.data.value.description || '搜索结果未包含完整职责，请获取详情。' }}
+          {{
+            job.data.value.description ||
+            (job.data.value.source === 'USER_IMPORT'
+              ? '导入时未填写职责。'
+              : '搜索结果未包含完整职责，请获取详情。')
+          }}
         </p>
         <h2>任职要求</h2>
         <p class="prose-content">
-          {{ job.data.value.requirement || '企业未提供独立要求字段，请结合工作职责和官网查看。' }}
+          {{
+            job.data.value.requirement ||
+            (job.data.value.source === 'USER_IMPORT'
+              ? '导入时未填写任职要求。'
+              : '企业未提供独立要求字段，请结合工作职责和官网查看。')
+          }}
         </p>
         <p class="helper-note">
           岗位可能调整或关闭，以企业官网为准。收藏与看板状态保存在服务端，不会代你投递。
