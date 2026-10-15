@@ -1,8 +1,25 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import MarkdownView from '@/shared/components/MarkdownView.vue'
 import type { ChatMessageView } from '../types'
 
 defineProps<{ message: ChatMessageView }>()
+const root = ref<HTMLElement | null>(null)
+const missingSource = ref('')
+/** AG-05: a [KB-…] reference in the reply jumps to the matching note in this turn's source card. */
+function locate(reference: string) {
+  if (!/^KB-[0-9a-f]{12}$/.test(reference)) return
+  const source = root.value?.querySelector<HTMLElement>(
+    `[data-kb-reference="${reference}"]:not(.md-citation)`,
+  )
+  missingSource.value = source ? '' : reference
+  if (!source) return
+  source.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  source.classList.remove('cite-flash')
+  void source.offsetWidth
+  source.classList.add('cite-flash')
+  source.focus({ preventScroll: true })
+}
 </script>
 
 <template>
@@ -10,7 +27,7 @@ defineProps<{ message: ChatMessageView }>()
     <div class="user-bubble">{{ message.text }}</div>
   </div>
 
-  <div v-else class="message-in assistant" :class="{ 'is-live': message.streaming }">
+  <div v-else ref="root" class="message-in assistant" :class="{ 'is-live': message.streaming }">
     <details v-if="message.reasoning" class="reasoning">
       <summary>思考摘要</summary>
       <p>{{ message.reasoning }}</p>
@@ -20,7 +37,11 @@ defineProps<{ message: ChatMessageView }>()
       v-if="message.text"
       :text="message.text"
       :streaming="message.streaming === true"
+      @cite="locate"
     />
+    <p v-if="missingSource" class="run-note" role="status">
+      本轮没有找到 {{ missingSource }} 对应的笔记来源，可能是模型写错了编号。
+    </p>
     <p v-else class="pending">
       <span v-if="!message.status || message.status === 'RUNNING'" class="live-dot pending-dot" />
       {{
@@ -98,6 +119,18 @@ defineProps<{ message: ChatMessageView }>()
   margin-top: 8px;
   font-size: 13px;
   color: var(--muted-foreground);
+}
+:deep(.cite-flash) {
+  animation: cite-flash 1.6s ease;
+}
+@keyframes cite-flash {
+  0%,
+  40% {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
 }
 .assistant-cards {
   display: flex;

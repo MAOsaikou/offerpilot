@@ -21,11 +21,14 @@ export function closeOpenFences(source: string): string {
   return source
 }
 
-/** 把正文里的 [1] 这类引用编号渲染成可点击的小标签 */
+/**
+ * 把正文里的知识笔记引用 [KB-xxxxxxxxxxxx]（由程序检索生成，见 CardNarrationDigest）渲染成可点击的小标签，
+ * 点击后定位到本轮的「知识笔记来源」卡片。没有来源的纯数字 [1] 保持原样，不渲染成无效按钮。
+ */
 function renderCitations(html: string): string {
   return html.replace(
-    /\[(\d+)\]/g,
-    '<button type="button" class="md-citation" data-citation="$1">$1</button>',
+    /\[(KB-[0-9a-f]{12})\]/g,
+    '<button type="button" class="md-citation" data-kb-reference="$1" title="查看引用的笔记">$1</button>',
   )
 }
 

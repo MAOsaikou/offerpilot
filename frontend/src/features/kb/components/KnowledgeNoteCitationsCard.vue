@@ -41,6 +41,8 @@ async function open(id: string) {
       v-for="item in payload.items"
       :key="item.noteId"
       class="form-stack rounded-lg border p-3"
+      :data-kb-reference="item.reference"
+      tabindex="-1"
     >
       <h4>{{ item.title }}</h4>
       <p class="subtle">[{{ item.reference }}] · {{ item.category }}</p>
