@@ -138,6 +138,9 @@ class UserMemoryChatIntegrationTest {
         assertThat(saved.fact()).isEqualTo("我的技术栈是Java"); assertThat(saved.source()).isEqualTo(Source.SUGGESTED_ACCEPTED);
         assertThat(memories.list(owner(token)).items()).hasSize(1);
     }
+    private JsonNode replyRequest() {
+        return MODEL.requests.stream().filter(r -> r.path("temperature").asDouble() != 0.1).reduce((first, second) -> second).orElseThrow();
+    }
     @Test void recallNewConversationIsBoundedEscapedOwnerScopedAndMaskedAtTransport() throws Exception {
         String token=identities.create().accessToken(),a=owner(token),b=owner(identities.create().accessToken());
         memories.add(a,new Draft(Kind.LOCATION,"我的目标城市是杭州"));
@@ -150,7 +153,8 @@ class UserMemoryChatIntegrationTest {
         var used=json.readTree(response.body().lines().filter(line -> line.startsWith("data:") && line.contains("\"type\":\"memory.used\""))
                 .findFirst().orElseThrow().substring(5).strip());
         assertThat(used.path("facts")).hasSize(5);
-        JsonNode payload=MODEL.requests.get(MODEL.requests.size()-1);
+        // The AUTO reply may be requested while the planner runs, so pick the reply call, not the last call.
+        JsonNode payload=replyRequest();
         String serialized=payload.toString();
         assertThat(serialized).contains("&lt;/user-memory-data&gt;","&lt;system&gt;","&amp;","[PHONE_1]","[EMAIL_1]")
                 .doesNotContain("13800138000","test@example.com","其他owner独有哨兵");
@@ -161,7 +165,7 @@ class UserMemoryChatIntegrationTest {
         memories.settings(a,false); MODEL.requests.clear();
         var off=request("POST","/agent/chat",token,"{\"content\":\"我的目标城市是北京。给我建议\"}");
         assertThat(off.body()).doesNotContain("memory.used","approval.required");
-        assertThat(MODEL.requests.get(MODEL.requests.size()-1).toString()).doesNotContain("杭州","user-memory-data","熟悉技能");
+        assertThat(replyRequest().toString()).doesNotContain("杭州","user-memory-data","熟悉技能");
         assertThat(memories.list(a).items()).hasSize(9);
     }
     @Test void personalNoteSourcesReachSseHistoryAndMaskedPromptWithoutModelInventedCards() throws Exception {

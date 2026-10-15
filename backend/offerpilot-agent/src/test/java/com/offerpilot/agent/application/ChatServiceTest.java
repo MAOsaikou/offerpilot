@@ -211,6 +211,53 @@ class ChatServiceTest {
     }
 
 
+    private static ChatResponse reply(String text) {
+        return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
+    }
+
+    @Test
+    void autoChitchatUsesReplyStartedDuringPlanning() {
+        service.setSpeculativeReply(true);
+        var planned = new AtomicBoolean();
+        var startedBeforePlan = new AtomicBoolean();
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.just(reply("{\"kind\":\"chitchat\",\"confidence\":1}"))
+                .delaySubscription(Duration.ofMillis(200)).doOnComplete(() -> planned.set(true)));
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.just(reply("你好！")).doOnSubscribe(ignored -> startedBeforePlan.set(!planned.get())));
+        assertThat(events()).extracting(AgentEvent::type).containsExactly("run.started", "text.delta", "run.completed");
+        assertThat(startedBeforePlan).isTrue();
+        verify(gateway, times(1)).stream(any(), anyList());
+    }
+
+    @Test
+    void autoReplyIsRedoneWhenPlannerChangesThePrompt() {
+        service.setSpeculativeReply(true);
+        var discarded = new AtomicBoolean();
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.just(reply("{\"kind\":\"unsafe\",\"confidence\":1}"))
+                .delaySubscription(Duration.ofMillis(100)));
+        when(gateway.stream(any(), anyList()))
+                .thenReturn(Flux.<ChatResponse>never().doOnCancel(() -> discarded.set(true)))
+                .thenReturn(Flux.just(reply("无法协助")));
+        var result = events();
+        assertThat(discarded).isTrue();
+        assertThat(result).filteredOn(AgentEvent.TextDelta.class::isInstance).extracting(e -> ((AgentEvent.TextDelta) e).text())
+                .containsExactly("无法协助");
+        var prompts = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(gateway, times(2)).stream(any(), prompts.capture());
+        assertThat(prompts.getAllValues().get(1).toString()).contains("有害");
+    }
+
+    @Test
+    void cancellingDuringPlanningStopsSpeculativeReply() {
+        service.setSpeculativeReply(true);
+        var discarded = new AtomicBoolean();
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.never());
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.<ChatResponse>never().doOnCancel(() -> discarded.set(true)));
+        when(conversations.finish(any(), anyString(), anyString(), any(), any(), any())).thenReturn("CANCELLED");
+        service.chat("owner", request()).subscribe();
+        service.cancel("owner", "run");
+        assertThat(discarded).isTrue();
+    }
+
     @Test
     void missingKeyProducesActionableTerminalError() {
         when(gateway.stream(any(), anyList())).thenThrow(new BusinessException(ErrorCode.MODEL_NOT_CONFIGURED));
