@@ -115,6 +115,38 @@ public class ResumeService {
             throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);
         return get(owner, id);
     }
+    /**
+     * RS-07: deletes a resume with every version, diagnosis, optimization, patch batch and match report (FK cascade),
+     * plus its uploaded file. The object removal is recorded in the same transaction so a storage outage only delays it:
+     * the account cleanup scheduler retries the receipt.
+     */
+    public void delete(String owner, String id) {
+        var file = tx.execute(status -> {
+            var rows = jdbc.queryForList("""
+                    SELECT f.id,f.bucket,f.object_key FROM resumes r JOIN files f ON f.id=r.source_file_id
+                    WHERE r.id=? AND r.user_id=? FOR UPDATE OF r
+                    """, id, owner);
+            if (rows.isEmpty()) throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);
+            var row = rows.get(0);
+            jdbc.update("DELETE FROM resumes WHERE id=? AND user_id=?", id, owner);
+            String receipt = null;
+            if (jdbc.queryForObject("SELECT count(*) FROM resumes WHERE source_file_id=?", Integer.class, row.get("id")) == 0) {
+                jdbc.update("DELETE FROM files WHERE id=? AND user_id=?", row.get("id"), owner);
+                receipt = com.offerpilot.common.id.IdGenerator.next("clean");
+                jdbc.update("INSERT INTO account_data_cleanup(id,kind,bucket,object_key) VALUES (?,'OBJECT',?,?)",
+                        receipt, row.get("bucket"), row.get("object_key"));
+            }
+            return receipt == null ? null : new String[]{receipt, (String) row.get("bucket"), (String) row.get("object_key")};
+        });
+        if (file == null) return;
+        try {
+            storage.remove(file[1], file[2]);
+            jdbc.update("DELETE FROM account_data_cleanup WHERE id=?", file[0]);
+        } catch (RuntimeException ex) {
+            // Receipt id only; the scheduled cleanup removes the object later.
+            org.slf4j.LoggerFactory.getLogger(getClass()).warn("Resume file removal deferred receipt={}", file[0]);
+        }
+    }
     public Resume retry(String owner, String id) {
         owned(owner, id);
         var selection = models.selection(owner);

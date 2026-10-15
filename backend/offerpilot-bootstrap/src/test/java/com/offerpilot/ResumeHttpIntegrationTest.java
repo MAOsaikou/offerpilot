@@ -281,6 +281,27 @@ class ResumeHttpIntegrationTest {
     String decision(ResumePatchService.Batch batch, String accepted) {
         return "{\"batchId\":\"" + batch.batchId() + "\",\"accepted\":[\"" + accepted + "\"]}";
     }
+    @Test void deleteRemovesResumeHistoryDerivedRecordsAndUploadedFile() throws Exception {
+        String token = identities.create().accessToken(), stranger = identities.create().accessToken();
+        var resume = patchFixture(token);
+        // Applied patches leave a second version that the batch row points at (applied_version_id has no cascade).
+        var batch = batch(token, resume);
+        assertThat(request("POST", applyPath(resume), token, decision(batch, "p1")).statusCode()).isEqualTo(200);
+        var file = jdbc.queryForMap("SELECT f.id,f.bucket,f.object_key FROM resumes r JOIN files f ON f.id=r.source_file_id WHERE r.id=?", resume.id());
+        assertThat(store.get((String) file.get("bucket"), (String) file.get("object_key"))).isNotEmpty();
+
+        assertThat(request("DELETE", "/resumes/" + resume.id(), stranger, null).statusCode()).isEqualTo(404);
+        assertThat(request("DELETE", "/resumes/" + resume.id(), null, null).statusCode()).isEqualTo(401);
+        assertThat(request("DELETE", "/resumes/" + resume.id(), token, null).statusCode()).isEqualTo(200);
+
+        assertThat(request("GET", "/resumes/" + resume.id(), token, null).statusCode()).isEqualTo(404);
+        for (String table : List.of("resume_versions", "resume_patch_batches"))
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM " + table + " WHERE resume_id=?", Integer.class, resume.id())).as(table).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM files WHERE id=?", Integer.class, file.get("id"))).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup WHERE object_key=?", Integer.class, file.get("object_key"))).isZero();
+        assertThatThrownBy(() -> store.get((String) file.get("bucket"), (String) file.get("object_key"))).isInstanceOf(RuntimeException.class);
+        assertThat(request("DELETE", "/resumes/" + resume.id(), token, null).statusCode()).isEqualTo(404);
+    }
     @Test void patchesApplyEditedSubsetPreserveHistoryAndRetryOriginalResult() throws Exception {
         String token = identities.create().accessToken(), stranger = identities.create().accessToken();
         var resume = patchFixture(token); var batch = batch(token, resume);

@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import ResumeVersionTree from './ResumeVersionTree.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { RouterLink, onBeforeRouteLeave, onBeforeRouteUpdate, useRoute } from 'vue-router'
+import {
+  RouterLink,
+  onBeforeRouteLeave,
+  onBeforeRouteUpdate,
+  useRoute,
+  useRouter,
+} from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
+  deleteResume,
   exportResumePdf,
   getResume,
   listResumeVersions,
@@ -83,8 +90,9 @@ watch(
   },
   { immediate: true },
 )
+const deleted = ref(false)
 function confirmLeave() {
-  return !dirty.value || window.confirm('有尚未保存的简历修改，确定离开吗？')
+  return deleted.value || !dirty.value || window.confirm('有尚未保存的简历修改，确定离开吗？')
 }
 onBeforeRouteLeave(confirmLeave)
 onBeforeRouteUpdate(confirmLeave)
@@ -108,6 +116,23 @@ async function run(action: () => Promise<void>) {
   } finally {
     busy.value = false
   }
+}
+const router = useRouter()
+async function remove() {
+  const name = resume.value?.title ?? '这份简历'
+  if (
+    !window.confirm(
+      `确定删除「${name}」吗？所有版本、诊断报告、改写建议、岗位匹配报告和原文件都会一并删除，且无法恢复。`,
+    )
+  )
+    return
+  await run(async () => {
+    await deleteResume(props.id)
+    deleted.value = true
+    cache.removeQueries({ queryKey: ['resume', props.id] })
+    await cache.invalidateQueries({ queryKey: ['resumes'] })
+    await router.push('/resumes')
+  })
 }
 async function save() {
   let success = false
@@ -287,6 +312,7 @@ const basics = [
       <button class="btn" :disabled="busy || query.isFetching.value" @click="reload">
         重新加载
       </button>
+      <button class="btn danger" :disabled="busy || !resume" @click="remove">删除简历</button>
     </PageHeading>
     <p v-if="query.isPending.value" role="status">正在加载简历…</p>
     <p v-if="query.error.value" class="error-banner" role="alert">
