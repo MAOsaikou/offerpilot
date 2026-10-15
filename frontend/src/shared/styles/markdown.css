@@ -104,6 +104,51 @@
   line-height: 1.6;
 }
 
+/* 代码块：语言标签、复制按钮与 shiki 双主题配色（AG-02） */
+.markdown-body .code-block {
+  margin: 0.75em 0;
+}
+.markdown-body .code-block pre {
+  margin: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.markdown-body .code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.5rem 0.25rem 0.875rem;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 0.75rem 0.75rem 0 0;
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.markdown-body .code-lang {
+  font-family: var(--app-font-mono);
+}
+.markdown-body .code-copy {
+  padding: 0.125rem 0.5rem;
+  border: 0;
+  border-radius: 0.375rem;
+  background: none;
+  color: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.markdown-body .code-copy:hover,
+.markdown-body .code-copy:focus-visible {
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+  color: var(--foreground);
+}
+.markdown-body .shiki span {
+  color: var(--shiki-light);
+}
+:root.dark .markdown-body .shiki span {
+  color: var(--shiki-dark);
+}
+
 .markdown-body table {
   width: 100%;
   border-collapse: collapse;

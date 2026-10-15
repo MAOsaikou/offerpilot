@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { renderMarkdown } from '@/shared/utils/markdown'
+import { highlightRevision } from '@/shared/utils/codeHighlight'
 
 const props = defineProps<{
   text: string
@@ -10,9 +11,31 @@ const props = defineProps<{
 
 const emit = defineEmits<{ cite: [reference: string] }>()
 
-const html = computed(() => renderMarkdown(props.text, { streaming: props.streaming }))
+const html = computed(() => {
+  // 语法高亮异步就绪后重新渲染
+  void highlightRevision.value
+  return renderMarkdown(props.text, { streaming: props.streaming })
+})
+async function copyCode(button: HTMLElement) {
+  const code = button.closest('.code-block')?.querySelector('pre')?.textContent ?? ''
+  try {
+    await navigator.clipboard.writeText(code)
+    button.textContent = '已复制'
+  } catch {
+    button.textContent = '复制失败'
+  }
+  window.setTimeout(() => {
+    button.textContent = '复制'
+  }, 1500)
+}
 function onClick(event: MouseEvent) {
-  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-kb-reference]')
+  const element = event.target as HTMLElement | null
+  const copy = element?.closest<HTMLElement>('[data-copy-code]')
+  if (copy) {
+    void copyCode(copy)
+    return
+  }
+  const target = element?.closest<HTMLElement>('[data-kb-reference]')
   if (target?.dataset.kbReference) emit('cite', target.dataset.kbReference)
 }
 </script>
