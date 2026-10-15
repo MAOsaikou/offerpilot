@@ -51,6 +51,8 @@ class ChatHttpIntegrationTest {
     @Container
     static PostgreSQLContainer<?> database = new PostgreSQLContainer<>(DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
     @MockBean ResumeOptimizationForChat optimizations;
+    @MockBean com.offerpilot.resume.application.ResumeObjectStore objects;
+    private final java.util.Map<String, byte[]> stored = new java.util.concurrent.ConcurrentHashMap<>();
     @Autowired ObjectMapper json;
     @Autowired GuestIdentityService identities;
     @Autowired ConversationService conversations;
@@ -124,6 +126,52 @@ class ChatHttpIntegrationTest {
     }
 
     private String owner(String token) { return identities.require("Bearer " + token); }
+
+    private HttpResponse<String> upload(String token, String filename, byte[] bytes) throws Exception {
+        String boundary = "op" + java.util.UUID.randomUUID();
+        var body = new java.io.ByteArrayOutputStream();
+        body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename
+                + "\"\r\nContent-Type: application/octet-stream\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        body.write(bytes);
+        body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        return HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/attachments"))
+                .header("Authorization", "Bearer " + token).header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void chatImageAttachmentReachesTheVisionModelStaysPrivateAndIsReleasedWithTheConversation() throws Exception {
+        org.mockito.Mockito.when(objects.bucket()).thenReturn("test");
+        org.mockito.Mockito.doAnswer(call -> stored.put(call.getArgument(0), call.getArgument(1))).when(objects).put(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+        org.mockito.Mockito.when(objects.get(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString())).thenAnswer(call -> stored.get(call.<String>getArgument(1)));
+        String token = identities.create().accessToken(), stranger = identities.create().accessToken(), user = owner(token);
+        byte[] png = {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10, 0, 0, 0, 13, 'I', 'H', 'D', 'R'};
+
+        assertThat(upload(token, "notes.txt", "hello".getBytes(StandardCharsets.UTF_8)).statusCode()).isEqualTo(400);
+        var uploaded = upload(token, "jd.png", png);
+        assertThat(uploaded.statusCode()).isEqualTo(200);
+        String fileId = json.readTree(uploaded.body()).path("data").path("fileId").asText();
+        assertThat(request("GET", "/agent/attachments/" + fileId, stranger, null).statusCode()).isEqualTo(404);
+        assertThat(request("GET", "/agent/attachments/" + fileId, token, null).statusCode()).isEqualTo(200);
+
+        String chat = json.writeValueAsString(java.util.Map.of("content", "帮我看看这张岗位截图", "mode", "COACH",
+                "attachments", java.util.List.of(java.util.Map.of("fileId", fileId, "kind", "image"))));
+        // Someone else's file id cannot be attached.
+        assertThat(request("POST", "/agent/chat", stranger, chat).statusCode()).isEqualTo(400);
+        var response = request("POST", "/agent/chat", token, chat);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("run.completed");
+        assertThat(requestBody.get()).contains("data:image/png;base64,");
+
+        String conversation = jdbc.queryForObject("SELECT conversation_id FROM agent_runs WHERE user_id=?", String.class, user);
+        var parts = json.readTree(jdbc.queryForObject("SELECT parts::text FROM messages WHERE conversation_id=? AND role='USER'", String.class, conversation));
+        assertThat(parts.get(1).path("type").asText()).isEqualTo("image");
+        assertThat(parts.get(1).path("fileId").asText()).isEqualTo(fileId);
+
+        assertThat(request("DELETE", "/conversations/" + conversation, token, null).statusCode()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM files WHERE id=?", Integer.class, fileId)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup WHERE object_key=?", Integer.class, "chat/" + user + "/" + fileId)).isEqualTo(1);
+    }
 
     @Test
     void legacyAndUnknownChatTiersUseFlashInsteadOfReturning400() throws Exception {

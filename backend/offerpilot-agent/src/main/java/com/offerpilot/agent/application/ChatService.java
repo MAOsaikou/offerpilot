@@ -49,6 +49,8 @@ public class ChatService {
     private static final ZoneId PROMPT_ZONE = ZoneId.of("Asia/Shanghai");
     private record Active(ConversationService.Turn turn, StringBuffer answer, Sinks.Empty<Void> signal, MessageCardBuffer cards) {}
     private final Map<String, Active> cancellations = new ConcurrentHashMap<>();
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.offerpilot.conversation.application.ChatAttachments attachments;
 
     public ChatService(ModelGateway gateway, ConversationService conversations,
                        @Value("classpath:prompts/chat/system.st") Resource prompt, Orchestrator orchestrator,
@@ -72,8 +74,9 @@ public class ChatService {
         String rawTier = request.options() == null ? null : request.options().modelTier();
         ModelTier selected = ModelTier.from(rawTier, gateway.defaultTier());
         ModelTier tier = selected == ModelTier.VISION_ALT ? gateway.defaultTier() : selected;
-        if (request.attachments() != null && !request.attachments().isEmpty())
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "当前仅支持文字聊天，附件解析尚未接入");
+        // AG-02: images go to the vision-capable model for this turn only; later turns keep the text history.
+        var images = images(owner, request.attachments());
+        if (!images.isEmpty()) gateway.requireAvailable(tier, true);
         // Ownership and concurrency errors remain ordinary HTTP errors before SSE starts.
         boolean explicitMemory = memory != null && com.offerpilot.memory.application.MemoryCandidate.explicit(request.content());
         // SC-03: crisis gets support resources first; forgery/violence requests get a fixed refusal without a model call.
@@ -87,7 +90,9 @@ public class ChatService {
         var memoryFacts = memory == null || explicitMemory || concern != null ? List.<AgentEvent.MemoryFact>of() : memory.recall(owner, request.content(), memoryPrompt);
         var memoryCandidate = memory == null || concern != null ? null : memory.candidate(owner, request.content());
         String model = gateway.modelName(tier);
-        var turn = conversations.begin(owner, request.conversationId(), request.content(), request.mode(), model);
+        var turn = images.isEmpty() ? conversations.begin(owner, request.conversationId(), request.content(), request.mode(), model)
+                : conversations.begin(owner, request.conversationId(), request.content(), request.mode(), model,
+                images.stream().map(image -> new ConversationService.ImagePart(image.fileId(), image.name())).toList());
         var cancel = Sinks.<Void>empty();
         AtomicInteger seq = new AtomicInteger();
         AtomicReference<Usage> usage = new AtomicReference<>();
@@ -101,7 +106,10 @@ public class ChatService {
         prompt.add(new SystemMessage(crisis ? systemPromptToday() + "\n" + com.offerpilot.llm.safety.InputSafety.CRISIS_GUIDANCE : systemPromptToday()));
         prompt.addAll(memoryPrompt);
         prompt.addAll(turn.history());
-        prompt.add(new UserMessage(request.content()));
+        prompt.add(images.isEmpty() ? new UserMessage(request.content()) : UserMessage.builder().text(request.content())
+                .media(images.stream().map(image -> new org.springframework.ai.content.Media(
+                        org.springframework.util.MimeTypeUtils.parseMimeType(image.mime()),
+                        new org.springframework.core.io.ByteArrayResource(image.bytes()))).toList()).build());
         AgentEvent first = new AgentEvent.RunStarted("run.started", seq.incrementAndGet(), turn.runId(), turn.startedAt(),
                 turn.conversationId(), turn.messageId(), model, turn.mode());
         Flux<AgentEvent> response = Flux.defer(() -> gateway.stream(tier, prompt))
@@ -204,6 +212,16 @@ public class ChatService {
                         }
                     }
                 }).contextWrite(quotaContext -> com.offerpilot.llm.quota.LlmUserContext.withUser(quotaContext, owner));
+    }
+
+    private List<com.offerpilot.conversation.application.ChatAttachments.Image> images(String owner, List<ChatRequest.Attachment> requested) {
+        if (requested == null || requested.isEmpty()) return List.of();
+        if (attachments == null) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "当前环境未启用图片附件");
+        for (var attachment : requested)
+            if (attachment == null || attachment.fileId() == null || attachment.fileId().isBlank()
+                    || attachment.kind() != null && !"image".equalsIgnoreCase(attachment.kind()))
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "目前只支持图片附件");
+        return attachments.load(owner, requested.stream().map(ChatRequest.Attachment::fileId).toList());
     }
 
     public void cancel(String owner, String runId) {
