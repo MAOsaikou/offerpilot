@@ -42,6 +42,21 @@ class ResumeExtractorTest {
         structure.remove("extra"); structure.withObject("/confidence").put("basics.name", 2);
         assertThatThrownBy(() -> ResumeStructure.validate(structure)).hasMessageContaining("结构");
     }
+    @Test void projectRoleInBracketsIsSplitOnlyWhenTheRoleIsMissingAndLooksLikeARole() throws Exception {
+        var json = new ObjectMapper();
+        var structure = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(ResumeStructure.SCHEMA);
+        var projects = structure.putArray("projects");
+        for (String[] p : new String[][]{{"城市共享单车需求预测（数据建模）", ""}, {"校园导航系统（微信小程序）", ""}, {"日志平台(核心开发)", "组长"}}) {
+            var item = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(ResumeStructure.SCHEMA).path("projects").get(0);
+            projects.add(item.put("name", p[0]).put("role", p[1]));
+        }
+        var result = ResumeExtractor.splitProjectRoles(ResumeStructure.validate(structure)).path("projects");
+        assertThat(result.get(0).path("name").asText()).isEqualTo("城市共享单车需求预测");
+        assertThat(result.get(0).path("role").asText()).isEqualTo("数据建模");
+        assertThat(result.get(1).path("name").asText()).isEqualTo("校园导航系统（微信小程序）");
+        assertThat(result.get(1).path("role").asText()).isEmpty();
+        assertThat(result.get(2).path("name").asText()).isEqualTo("日志平台(核心开发)");
+    }
     private Flux<ChatResponse> response(String text) { return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(text))))); }
     @Test void mapsTimeoutAndProviderStatusWithoutLeakingResponse() throws Exception {
         var gateway = mock(ModelGateway.class);
