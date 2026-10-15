@@ -243,6 +243,19 @@ class ResumeHttpIntegrationTest {
         assertThat(request("PATCH", "/resumes/" + id, stranger, "{\"title\":\"attack\"}").statusCode()).isEqualTo(404);
         assertThat(request("PUT", "/resumes/" + id + "/versions/" + base + "/structured", stranger, structure.toString()).statusCode()).isEqualTo(404);
         assertThat(request("GET", "/resumes", null, null).statusCode()).isEqualTo(401);
+
+        // RS-06 rollback to version 1: a new version 3 with v1's content, on top of v2; history stays intact.
+        String v2 = data(saved).path("currentVersionId").asText();
+        String restoreBody = "{\"baseVersionId\":\"" + v2 + "\"}";
+        assertThat(request("POST", "/resumes/" + id + "/versions/" + base + "/restore", stranger, restoreBody).statusCode()).isEqualTo(404);
+        // A stale base (another tab already saved) conflicts instead of silently branching.
+        assertThat(request("POST", "/resumes/" + id + "/versions/" + v2 + "/restore", token, "{\"baseVersionId\":\"" + base + "\"}").statusCode()).isEqualTo(409);
+        var restored = data(request("POST", "/resumes/" + id + "/versions/" + base + "/restore", token, restoreBody));
+        assertThat(restored.path("currentVersion").path("versionNo").asInt()).isEqualTo(3);
+        assertThat(restored.path("currentVersion").path("parentVersionId").asText()).isEqualTo(v2);
+        assertThat(restored.path("currentVersion").path("parseMeta").path("restoredFrom").asText()).isEqualTo(base);
+        assertThat(restored.path("currentVersion").path("structured")).isEqualTo(detail.path("currentVersion").path("structured"));
+        assertThat(data(request("GET", "/resumes/" + id + "/versions", token, null)).size()).isEqualTo(3);
     }
     ResumeService.Resume patchFixture(String token) throws Exception {
         var structure = (com.fasterxml.jackson.databind.node.ObjectNode) JSON.readTree(ResumeStructure.SCHEMA);
