@@ -3,12 +3,13 @@ import { ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useBoard } from '@/shared/composables/useBoard'
 import {
+  APPLICATION_DRAG_TYPE,
   applicationStages,
   type ApplicationStatus,
   type ServerApplication,
 } from '@/shared/types/board'
 const props = defineProps<{ application: ServerApplication }>()
-const board = useBoard()
+const board = useBoard({ cardScope: true })
 const router = useRouter()
 function open(event: MouseEvent) {
   if ((event.target as HTMLElement).closest('a,button,input,textarea,select,label')) return
@@ -27,12 +28,28 @@ async function changeStage(event: Event) {
   select.value = props.application.status
   await board.update(props.application.id, { status })
 }
+const dragging = ref(false)
+function dragStart(event: DragEvent) {
+  if (!event.dataTransfer) return
+  event.dataTransfer.setData(APPLICATION_DRAG_TYPE, props.application.id)
+  event.dataTransfer.effectAllowed = 'move'
+  dragging.value = true
+}
 async function saveNote() {
   await board.update(props.application.id, { note: note.value })
 }
 </script>
 <template>
-  <article class="application-card" :aria-busy="board.busy.value" @click="open">
+  <article
+    class="application-card"
+    :class="{ dragging }"
+    :aria-busy="board.busy.value"
+    :draggable="!board.busy.value && note === application.note"
+    :data-application-id="application.id"
+    @click="open"
+    @dragstart="dragStart"
+    @dragend="dragging = false"
+  >
     <p>{{ application.job.company }}</p>
     <RouterLink :to="{ path: '/board', query: { application: application.id } }"
       ><h3>{{ application.job.title }}</h3></RouterLink
@@ -75,3 +92,11 @@ async function saveNote() {
     </p>
   </article>
 </template>
+<style scoped>
+.application-card[draggable='true'] {
+  cursor: grab;
+}
+.application-card.dragging {
+  opacity: 0.5;
+}
+</style>
