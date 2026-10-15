@@ -2,6 +2,48 @@
 
 全部从已配置好的宿主机运行；公网步骤见 [部署文档](../../docs/09-部署与运维.md)。
 
+## 发布前配置检查
+
+Node.js 22+与Docker Compose 2.24.4+；从仓库根执行：
+
+```bash
+node deploy/scripts/preflight.mjs --env .env
+node --test deploy/scripts/preflight.test.mjs
+```
+
+preflight只渲染Compose，不启动/停止服务，不访问模型、写数据或打印凭据。它拒绝占位域名/密钥、S3Mock、未固定摘要的存储镜像、公开数据端口、共享体验或缺少额度，以及存储公网签名地址不一致。通过只代表配置检查；真实镜像、DNS/TLS、完整旅程和数据库/对象配套恢复仍要验收。当前生产模板保留占位值，直接检查该模板应失败。
+
+使用其他忽略的env文件时，preflight内部将OFFERPILOT_ENV_FILE设为该绝对路径，使后端env_file与Compose插值一致；真正启动及后续运维也要设置同一变量：
+
+```bash
+export OFFERPILOT_ENV_FILE=/opt/offerpilot/.env
+docker compose --env-file "$OFFERPILOT_ENV_FILE" -f deploy/docker-compose.yml -f deploy/docker-compose.storage-auth.example.yml --profile full up -d --build
+```
+
+根.env默认用法无需此变量。不要将 `docker compose config` 的完整展开输出写进报告或分享；可能包含凭据。默认本地S3Mock与认证覆盖使用不同卷，不能直接互换数据格式。
+
+## 认证存储与只读代理验收
+
+先按09配置认证MinIO，设置STORAGE_DOMAIN并将其DNS指向部署主机；MINIO_PUBLIC_ENDPOINT填对应https地址。覆盖文件挂载Caddyfile.storage-auth，只允许GET/HEAD并保留S3签名的Host/路径/查询，其他方法405；默认本地配置不挂载。当前应用鉴权下载API保持不变。脚本需要准备好的内部S3地址、外部代理地址、访问凭据和专用测试桶：
+
+```bash
+# 在受控shell环境注入 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD，不放进命令历史或脚本正文。
+export STORAGE_INTERNAL_URL=http://127.0.0.1:9000
+export STORAGE_PUBLIC_URL=https://storage.your-domain.tld
+export MINIO_BUCKET=offerpilot-verification
+node deploy/scripts/storage-smoke.mjs
+```
+
+脚本使用标准AWS SigV4，区域us-east-1，仅支持此MinIO模板的path-style端点。不存在的专用桶会创建；写入UUID测试对象，核对正确凭据读写、错误密钥403、匿名403、签名代理200且字节一致、公开PUT/DELETE405；finally只删除这一个已上传对象，不删除桶、其他对象或文件。HTTP(S)请求最多30秒，HTTPS验证默认开启，不接受URL里的凭据或路径/查询。用于外部云服务时应采用其区域/官方SDK与对应策略验收。
+
+## 数据库备份
+
+```bash
+bash deploy/scripts/backup.sh
+```
+
+脚本读取容器实际POSTGRES_USER/POSTGRES_DB，不依赖宿主机默认库名。每次新建唯一备份目录，成功后将单个 `database.sql.gz.partial` 改名为 `database.sql.gz`；dump/gzip失败非零退出且保留.partial，不冒充完整备份。保留所有旧文件，无自动保留期或批量清理。只备份PostgreSQL，对象仍需存储服务配套快照。非默认数据库/用户的真实备份→新库恢复、30天旧备份保留已在独立临时PostgreSQL验证。
+
 ## 健康探针
 
 ```bash

@@ -92,7 +92,7 @@ services:
     image: offerpilot/backend:${TAG:-latest}
     restart: always
     logging: *service-logging
-    env_file: [../.env]
+    env_file: ["${OFFERPILOT_ENV_FILE:-../.env}"]
     environment:
       SPRING_PROFILES_ACTIVE: prod
       JOBS_SOURCE_MODE: ${JOBS_SOURCE_MODE:-AUTO}
