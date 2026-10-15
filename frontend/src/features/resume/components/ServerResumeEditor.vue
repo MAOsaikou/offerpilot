@@ -48,6 +48,7 @@ const savedTitle = ref('')
 const baseVersion = ref('')
 const busy = ref(false)
 const exporting = ref(false)
+const pdfTemplate = ref<'classic' | 'compact'>('classic')
 const error = ref('')
 const message = ref('')
 const tab = ref(route.query.tab === 'optimize' ? '改写' : '内容')
@@ -164,7 +165,7 @@ async function exportPdf() {
   exporting.value = true
   error.value = ''
   try {
-    await exportResumePdf(props.id)
+    await exportResumePdf(props.id, pdfTemplate.value)
     message.value = '已导出服务端当前保存版本的 PDF。'
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'PDF 导出失败，请重试。'
@@ -300,6 +301,15 @@ const basics = [
       description="核对每一段经历，让真实的优势清晰可见。"
     >
       <RouterLink class="btn" to="/resumes">返回简历中心</RouterLink>
+      <select
+        v-model="pdfTemplate"
+        class="input pdf-template"
+        aria-label="PDF 模板"
+        :disabled="exporting"
+      >
+        <option value="classic">经典模板</option>
+        <option value="compact">紧凑单页模板</option>
+      </select>
       <button
         class="btn"
         :disabled="busy || exporting || resume?.parseStatus !== 'READY' || !resume?.currentVersion"

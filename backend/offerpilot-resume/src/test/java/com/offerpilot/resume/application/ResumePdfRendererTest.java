@@ -60,6 +60,23 @@ class ResumePdfRendererTest {
     }
 
 
+    @Test void compactTemplateKeepsAllFieldsReordersSkillsAndUsesFewerPages() throws Exception {
+        var root = fixture();
+        var bullets = ((ObjectNode) root.path("experience").get(0)).withArray("bullets");
+        for (int i = 0; i < 12; i++) bullets.add("第" + i + "项成果：" + "完成接口开发与压测验证。".repeat(4));
+        byte[] compact = renderer.render("技术简历", root, "compact");
+        byte[] classic = renderer.render("技术简历", root, "classic");
+        try (var c = Loader.loadPDF(compact); var k = Loader.loadPDF(classic)) {
+            String text = new PDFTextStripper().getText(c);
+            assertThat(text).contains("林小雨", "https://example.com", "浙江大学", "3.8/4.0", "示例公司", "第11项成果",
+                "校园服务平台", "Spring Boot", "英语六级", "<script>alert('原样文本')</script>");
+            assertThat(text.indexOf("专业技能")).isLessThan(text.indexOf("教育经历"));
+            assertThat(c.getNumberOfPages()).as("compact %d vs classic %d", c.getNumberOfPages(), k.getNumberOfPages()).isEqualTo(1);
+            assertThat(k.getNumberOfPages()).isGreaterThan(1);
+        }
+        Files.write(temp.resolve("resume-compact.pdf"), compact);
+    }
+
     @Test void wrapsLongContentAndKeepsLastBulletOnLaterPage() throws Exception {
         var root = fixture();
         var bullets = ((ObjectNode) root.path("experience").get(0)).withArray("bullets");
