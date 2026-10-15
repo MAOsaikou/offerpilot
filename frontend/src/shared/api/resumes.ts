@@ -45,6 +45,9 @@ export const renameResume = (id: string, title: string) =>
     method: 'PATCH',
     body: JSON.stringify({ title }),
   })
+/** RS-07: deletes the resume with all versions, diagnoses, rewrite suggestions, match reports and the uploaded file. */
+export const deleteResume = (id: string) =>
+  apiRequest<{ deleted: boolean }>(`/resumes/${encodeURIComponent(id)}`, { method: 'DELETE' })
 export const listResumeVersions = (id: string, signal?: AbortSignal) =>
   apiRequest<ResumeVersion[]>(`/resumes/${encodeURIComponent(id)}/versions`, { signal })
 export const getResumeVersion = (id: string, version: string) =>

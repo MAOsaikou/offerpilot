@@ -4,6 +4,7 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ServerResumeEditor from './ServerResumeEditor.vue'
 import {
+  deleteResume,
   exportResumePdf,
   getResume,
   listResumeVersions,
@@ -13,6 +14,7 @@ import {
 import type { ResumeVersion, ServerResume } from '@/shared/types/resume'
 
 vi.mock('@/shared/api/resumes', () => ({
+  deleteResume: vi.fn(),
   exportResumePdf: vi.fn(),
   getResume: vi.fn(),
   saveResume: vi.fn(),
@@ -55,13 +57,17 @@ function fixture(version = 'v1', name = 'Original'): ServerResume {
 let app: App
 let root: HTMLDivElement
 let cache: QueryClient
+let router: ReturnType<typeof createRouter>
 beforeEach(async () => {
   vi.resetAllMocks()
   vi.mocked(getResume).mockResolvedValue(fixture())
   cache = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const router = createRouter({
+  router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/resumes/:id', component: ServerResumeEditor, props: true }],
+    routes: [
+      { path: '/resumes', component: { render: () => null } },
+      { path: '/resumes/:id', component: ServerResumeEditor, props: true },
+    ],
   })
   await router.push('/resumes/rs1')
   root = document.createElement('div')
@@ -191,4 +197,20 @@ it('版本树显示分支、对比文本差异，回滚创建新的当前版本�
   await vi.waitFor(() => expect(root.querySelectorAll('.version-tree li')).toHaveLength(4))
   expect(restoreResumeVersion).toHaveBeenCalledWith('rs1', 'v3', 'v2')
   expect(root.textContent).toContain('回滚自版本 3')
+})
+
+it('删除需要确认，取消不调用接口；确认后即使有未保存修改也直接回到简历中心', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+  await edit('未保存的修改')
+  button('删除简历').click()
+  await nextTick()
+  expect(deleteResume).not.toHaveBeenCalled()
+  vi.mocked(deleteResume).mockResolvedValue({ deleted: true })
+  button('删除简历').click()
+  await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/resumes'))
+  expect(deleteResume).toHaveBeenCalledWith('rs1')
+  // Only the delete confirmation was shown; the unsaved-changes guard did not ask again.
+  expect(confirm).toHaveBeenCalledTimes(2)
+  expect(confirm.mock.calls[1]?.[0]).toContain('无法恢复')
+  confirm.mockRestore()
 })

@@ -80,6 +80,12 @@ public class ResumeController {
         return ok(resumes.rename(owner(r), id, body.title()), r);
     }
 
+    @DeleteMapping("/{id}")
+    public ApiResponse<?> delete(@PathVariable String id, HttpServletRequest r) {
+        resumes.delete(owner(r), id);
+        return ok(java.util.Map.of("deleted", true), r);
+    }
+
     @GetMapping("/{id}/versions")
     public ApiResponse<?> versions(@PathVariable String id, HttpServletRequest r) {
         return ok(resumes.versions(owner(r), id), r);
