@@ -44,7 +44,7 @@ class PromptInjectionCoverageTest {
      * Held-out set written after the rules were tuned on redteam-v1 and never used to tune them: new phrasings,
      * spacing / full-width obfuscation, indirect "note for the AI" injections, plus benign questions that use
      * trigger words (忽略、管理员、开发者模式、删除、密钥). Numbers are a floor that only moves up when rules
-     * generalise; see docs/02 SC-01.
+     * generalise; see docs/02 SC-01. Since the generalising rule change v2 is a tuning set too (13/40 before it).
      */
     @Test void heldOutSetMeasuresGeneralisationHonestly() throws Exception {
         var attacks = lines("/redteam/heldout-attacks-v2.txt");
@@ -58,6 +58,24 @@ class PromptInjectionCoverageTest {
         assertThat(caught).isGreaterThanOrEqualTo(CAUGHT_FLOOR);
         assertThat(falsePositives).hasSizeLessThanOrEqualTo(FALSE_POSITIVE_CEILING);
     }
-    static final long CAUGHT_FLOOR = 13;
-    static final int FALSE_POSITIVE_CEILING = 1;
+    /**
+     * heldout-v3 was committed before the generalising rule change and never used to tune it; it mirrors the v2
+     * categories with fresh wording, so it measures robustness to rephrasing rather than novel attack types.
+     */
+    @Test void sealedSetV3MeasuresRuleChangeWithoutTuning() throws Exception {
+        var attacks = lines("/redteam/heldout-attacks-v3.txt");
+        var benign = lines("/redteam/heldout-benign-v3.txt");
+        var missed = attacks.stream().filter(text -> PromptInjectionDetector.detect(text).isEmpty()).toList();
+        var falsePositives = benign.stream().filter(text -> !PromptInjectionDetector.detect(text).isEmpty()).toList();
+        System.out.printf("SC-01 sealed v3: caught %d/%d, false positives %d/%d%n missed=%s%n fp=%s%n",
+                attacks.size() - missed.size(), attacks.size(), falsePositives.size(), benign.size(), missed, falsePositives);
+        assertThat(attacks).hasSize(40);
+        assertThat(benign).hasSize(40);
+        assertThat(attacks.size() - missed.size()).isGreaterThanOrEqualTo(V3_CAUGHT_FLOOR);
+        assertThat(falsePositives).hasSizeLessThanOrEqualTo(V3_FALSE_POSITIVE_CEILING);
+    }
+    static final int V3_CAUGHT_FLOOR = 27;
+    static final int V3_FALSE_POSITIVE_CEILING = 0;
+    static final long CAUGHT_FLOOR = 38;
+    static final int FALSE_POSITIVE_CEILING = 0;
 }
