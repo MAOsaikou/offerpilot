@@ -350,23 +350,36 @@ export function useConversationChat() {
     }
   }
 
+  // AG-01: rename / pin / delete apply to the list at once and roll back if the server refuses.
   async function update(id: string, value: { title?: string; pinned?: boolean }) {
+    const before = conversations.value
+    const beforeCurrent = current.value
+    ++listEpoch // a list refresh already in flight must not overwrite the optimistic state
+    conversations.value = before.map((c) => (c.id === id ? { ...c, ...value } : c))
+    if (current.value?.id === id) current.value = { ...current.value, ...value }
     try {
       const updated = await conversationsApi.update(id, value)
+      conversations.value = conversations.value.map((c) => (c.id === id ? updated : c))
       if (current.value?.id === id) current.value = updated
-      await refreshList()
+      void refreshList()
       return true
     } catch (e) {
+      conversations.value = before
+      current.value = beforeCurrent
       listError.value = errorText(e)
       return false
     }
   }
   async function remove(id: string) {
+    const before = conversations.value
+    ++listEpoch
+    conversations.value = before.filter((c) => c.id !== id)
     try {
       await conversationsApi.delete(id)
-      await refreshList()
+      void refreshList()
       return true
     } catch (e) {
+      conversations.value = before
       listError.value = errorText(e)
       return false
     }

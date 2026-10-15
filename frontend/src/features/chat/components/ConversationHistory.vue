@@ -28,6 +28,35 @@ const titleDraft = ref('')
 const deleting = ref<string>()
 const busy = ref(false)
 
+// AG-01: group by last activity; pinned stay on top as their own group. Order inside a group is the server's.
+const groups = computed(() => {
+  const startOfDay = new Date()
+  startOfDay.setHours(0, 0, 0, 0)
+  const today = startOfDay.getTime()
+  const day = 86_400_000
+  const buckets: { label: string; items: Conversation[] }[] = [
+    { label: '置顶', items: [] },
+    { label: '今天', items: [] },
+    { label: '昨天', items: [] },
+    { label: '近 7 天', items: [] },
+    { label: '更早', items: [] },
+  ]
+  for (const conversation of props.conversations) {
+    const at = new Date(conversation.updatedAt).getTime()
+    const index = conversation.pinned
+      ? 0
+      : Number.isNaN(at) || at < today - 6 * day
+        ? 4
+        : at >= today
+          ? 1
+          : at >= today - day
+            ? 2
+            : 3
+    buckets[index]!.items.push(conversation)
+  }
+  return buckets.filter((bucket) => bucket.items.length)
+})
+
 function select(id?: string) {
   editing.value = undefined
   deleting.value = undefined
@@ -75,70 +104,78 @@ function confirmRemove(id: string) {
     <p v-else-if="!conversations.length && !error" class="history-caption">
       {{ mock ? '脚本演示，不保存历史。' : '第一段对话，从你的目标开始。' }}
     </p>
-    <ul class="conversation-list">
-      <li
-        v-for="(conversation, index) in conversations"
-        :key="conversation.id"
-        class="stagger-in"
-        :style="{ '--i': index }"
-        :class="{ selected: currentId === conversation.id }"
-      >
-        <form
-          v-if="editing === conversation.id"
-          class="history-edit"
-          @submit.prevent="saveTitle(conversation.id)"
+    <section
+      v-for="group in groups"
+      :key="group.label"
+      class="conversation-group"
+      :aria-label="group.label"
+    >
+      <h3 class="group-label">{{ group.label }}</h3>
+      <ul class="conversation-list">
+        <li
+          v-for="(conversation, index) in group.items"
+          :key="conversation.id"
+          class="stagger-in"
+          :style="{ '--i': index }"
+          :class="{ selected: currentId === conversation.id }"
         >
-          <input
-            v-model="titleDraft"
-            class="input"
-            maxlength="100"
-            aria-label="会话名称"
-            autofocus
-          />
-          <div>
-            <button class="btn text" :disabled="busy || !titleDraft.trim()">保存</button
-            ><button type="button" class="btn text" @click="editing = undefined">取消</button>
-          </div>
-        </form>
-        <template v-else>
-          <button
-            class="conversation-link"
-            :aria-current="currentId === conversation.id ? 'page' : undefined"
-            :disabled="sending"
-            @click="select(conversation.id)"
+          <form
+            v-if="editing === conversation.id"
+            class="history-edit"
+            @submit.prevent="saveTitle(conversation.id)"
           >
-            <span class="conversation-title"
-              ><span v-if="conversation.pinned" class="pin" aria-label="已置顶" />{{
-                conversation.title
-              }}</span
-            >
-            <time :datetime="conversation.updatedAt">{{
-              new Date(conversation.updatedAt).toLocaleDateString('zh-CN', {
-                month: 'short',
-                day: 'numeric',
-              })
-            }}</time>
-          </button>
-          <div class="conversation-actions">
-            <button :disabled="busy" @click="editTitle(conversation)">重命名</button>
-            <button :disabled="busy" @click="togglePin(conversation)">
-              {{ conversation.pinned ? '取消置顶' : '置顶' }}
-            </button>
-            <button :disabled="sending || busy" @click="deleting = conversation.id">删除</button>
-          </div>
-          <div v-if="deleting === conversation.id" class="delete-confirm" role="alert">
-            <p>删除这段对话及全部消息？删除后无法恢复。</p>
+            <input
+              v-model="titleDraft"
+              class="input"
+              maxlength="100"
+              aria-label="会话名称"
+              autofocus
+            />
+            <div>
+              <button class="btn text" :disabled="busy || !titleDraft.trim()">保存</button
+              ><button type="button" class="btn text" @click="editing = undefined">取消</button>
+            </div>
+          </form>
+          <template v-else>
             <button
-              class="btn text danger"
-              :disabled="busy"
-              @click="confirmRemove(conversation.id)"
+              class="conversation-link"
+              :aria-current="currentId === conversation.id ? 'page' : undefined"
+              :disabled="sending"
+              @click="select(conversation.id)"
             >
-              确认删除</button
-            ><button class="btn text" @click="deleting = undefined">保留</button>
-          </div>
-        </template>
-      </li>
-    </ul>
+              <span class="conversation-title"
+                ><span v-if="conversation.pinned" class="pin" aria-label="已置顶" />{{
+                  conversation.title
+                }}</span
+              >
+              <time :datetime="conversation.updatedAt">{{
+                new Date(conversation.updatedAt).toLocaleDateString('zh-CN', {
+                  month: 'short',
+                  day: 'numeric',
+                })
+              }}</time>
+            </button>
+            <div class="conversation-actions">
+              <button :disabled="busy" @click="editTitle(conversation)">重命名</button>
+              <button :disabled="busy" @click="togglePin(conversation)">
+                {{ conversation.pinned ? '取消置顶' : '置顶' }}
+              </button>
+              <button :disabled="sending || busy" @click="deleting = conversation.id">删除</button>
+            </div>
+            <div v-if="deleting === conversation.id" class="delete-confirm" role="alert">
+              <p>删除这段对话及全部消息？删除后无法恢复。</p>
+              <button
+                class="btn text danger"
+                :disabled="busy"
+                @click="confirmRemove(conversation.id)"
+              >
+                确认删除</button
+              ><button class="btn text" @click="deleting = undefined">保留</button>
+            </div>
+          </template>
+        </li>
+      </ul>
+    </section>
     <button v-if="hasMore" class="btn text" :disabled="loading" @click="emit('more')">
       加载更多对话
     </button>
@@ -170,6 +207,12 @@ function confirmRemove(id: string) {
 }
 .history-heading h2 {
   font-size: 15px;
+}
+.group-label {
+  margin: 12px 0 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
 }
 .history-caption {
   margin: 8px 0;
