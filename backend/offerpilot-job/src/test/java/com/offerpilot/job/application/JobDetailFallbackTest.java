@@ -21,14 +21,14 @@ class JobDetailFallbackTest {
     }
     JobService service(String mode, ObjectNode stored) {
         var service = spy(new JobService(new JobSource(live, mock(JobSnapshot.class), mode), jdbc, json));
-        doReturn(stored).when(service).get("job1");
+        doReturn(stored).when(service).get("u1", "job1");
         return service;
     }
     @Test void demoAndLocalSnapshotsNeverNeedLiveDetailEvenWhenForcedOrExpired() {
         for (String mode : new String[]{"AUTO", "LIVE", "LOCAL"}) {
             for (var job : new ObjectNode[]{stored("demo", "demo"), stored("tencent", "LOCAL_SNAPSHOT")}) {
-                assertThat(service(mode, job).detail("job1", true)).isEqualTo(job);
-                assertThat(service(mode, job).detail("job1", false)).isEqualTo(job);
+                assertThat(service(mode, job).detail("u1", "job1", true)).isEqualTo(job);
+                assertThat(service(mode, job).detail("u1", "job1", false)).isEqualTo(job);
             }
         }
         verifyNoInteractions(live, jdbc);
@@ -36,20 +36,20 @@ class JobDetailFallbackTest {
     @Test void autoReturnsMarkedStoredCopyAndLiveKeepsFailure() {
         when(live.call(eq("get_job_detail"), anyMap())).thenThrow(new BusinessException(ErrorCode.TOOL_FAILED));
         var original = stored("tencent", "company-career-site");
-        var fallback = service("AUTO", original).detail("job1", false);
+        var fallback = service("AUTO", original).detail("u1", "job1", false);
         assertThat(fallback.path("source").asText()).isEqualTo("STORED_SNAPSHOT");
         assertThat(fallback.path("originalSource").asText()).isEqualTo("company-career-site");
         assertThat(fallback.path("requirement").asText()).isEqualTo("Java");
         assertThat(original.path("source").asText()).isEqualTo("company-career-site");
-        assertThatThrownBy(() -> service("LIVE", original).detail("job1", true)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> service("LIVE", original).detail("u1", "job1", true)).isInstanceOf(BusinessException.class);
         verifyNoInteractions(jdbc);
     }
     @Test void autoHandlesMalformedDetailButDoesNotHideUnrelatedErrors() {
         when(live.call(anyString(), anyMap())).thenReturn(json.createObjectNode().set("job", json.createObjectNode()));
-        assertThat(service("AUTO", stored("tencent", "company-career-site")).detail("job1", true)
+        assertThat(service("AUTO", stored("tencent", "company-career-site")).detail("u1", "job1", true)
                 .path("source").asText()).isEqualTo("STORED_SNAPSHOT");
         when(live.call(anyString(), anyMap())).thenThrow(new BusinessException(ErrorCode.VALIDATION_FAILED));
-        assertThatThrownBy(() -> service("AUTO", stored("tencent", "company-career-site")).detail("job1", true))
+        assertThatThrownBy(() -> service("AUTO", stored("tencent", "company-career-site")).detail("u1", "job1", true))
                 .isInstanceOf(BusinessException.class).hasMessage(ErrorCode.VALIDATION_FAILED.message());
     }
 }

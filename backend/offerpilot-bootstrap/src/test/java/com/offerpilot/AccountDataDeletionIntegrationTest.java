@@ -56,7 +56,7 @@ class AccountDataDeletionIntegrationTest {
     @SpyBean ResumeObjectStore storage;
     @LocalServerPort int port;
     static final ObjectMapper JSON = new ObjectMapper();
-    static final Set<String> DIRECT = Set.of("user_memories","user_preferences","refresh_tokens","user_integrations","guest_sessions","conversations","messages","agent_runs","approvals","files","resumes","resume_versions","resume_model_preferences","resume_diagnoses","resume_patch_batches","resume_optimizations","job_matches","applications","interview_sessions","star_stories","career_profiles","career_assessments","growth_task_completions","knowledge_notes","knowledge_note_imports");
+    static final Set<String> DIRECT = Set.of("user_memories","user_preferences","refresh_tokens","user_integrations","guest_sessions","conversations","messages","agent_runs","approvals","files","resumes","resume_versions","resume_model_preferences","resume_diagnoses","resume_patch_batches","resume_optimizations","job_matches","applications","interview_sessions","star_stories","career_profiles","career_assessments","growth_task_completions","knowledge_notes","knowledge_note_imports","jobs");
     static final Map<String,String> INDIRECT = Map.of("application_events","application_id IN (SELECT id FROM applications WHERE user_id=?)", "agent_steps","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "tool_calls","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "agent_events","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "interview_answers","session_id IN (SELECT id FROM interview_sessions WHERE user_id=?)");
     HttpResponse<String> request(String path, String token, String body) throws Exception {
         var b = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1"+path)).timeout(Duration.ofSeconds(30));
@@ -87,6 +87,8 @@ class AccountDataDeletionIntegrationTest {
         jdbc.update("INSERT INTO resume_patch_batches(id,user_id,resume_id,resume_version_id,patches,applied_version_id,decision) VALUES (?,?,?,?,'[{}]',?,'{}')",o+"patch",o,o+"resume",o+"v",o+"v2");
         jdbc.update("INSERT INTO resume_optimizations(id,user_id,resume_id,version_id,request_id,status,model_tier,job_description) VALUES (?,?,?,?,'optimization','RUNNING','FLASH','private')",o+"opt",o,o+"resume",o+"v");
         jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES (?,'deletion',?,'campus','{}')",o+"job",o);
+        jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload,user_id) VALUES (?,'imported',?,'campus','{}',?)",o+"imported",o,o);
+        jdbc.update("INSERT INTO applications(id,user_id,job_id,note) VALUES (?,?,?,'private import')",o+"app-imported",o,o+"imported");
         jdbc.update("UPDATE resume_optimizations SET job_id=? WHERE id=?",o+"job",o+"opt");
         jdbc.update("INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status) VALUES (?,?,?,?,'match','RUNNING')",o+"match",o,o+"job",o+"v");
         jdbc.update("INSERT INTO applications(id,user_id,job_id,note) VALUES (?,?,?,'private')",o+"app",o,o+"job");

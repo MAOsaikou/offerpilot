@@ -3,6 +3,7 @@ import { ref, watch, computed } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import JobSourceBadge from '@/shared/components/JobSourceBadge.vue'
+import JobImportPanel from '../components/JobImportPanel.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import { listJobSites, searchJobs } from '@/shared/api/jobs'
 import { useBoard } from '@/shared/composables/useBoard'
@@ -135,6 +136,7 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
         </button>
       </div>
     </form>
+    <JobImportPanel />
     <div v-if="!criteria.query" class="panel empty-state">
       <h2>从一个岗位关键词开始</h2>
       <p>输入方向，选择企业与招聘类型。找到岗位后可以用已解析简历生成匹配报告。</p>

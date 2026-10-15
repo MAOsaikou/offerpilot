@@ -168,6 +168,8 @@ class DemoJourneyIntegrationTest {
         jdbc.update("INSERT INTO applications(id,user_id,job_id) VALUES ('app_demo_added',?,'job_real')", owner());
         jdbc.update("INSERT INTO conversations(id,user_id,title) VALUES ('conv_demo',?,'待清理')", owner());
         jdbc.update("INSERT INTO career_assessments(user_id,answers) VALUES (?,'[\"上一位访客的回答\"]'::jsonb)", owner());
+        jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload,user_id) VALUES ('job_demo_import','imported','prev-visitor','campus','{}',?)", owner());
+        jdbc.update("INSERT INTO applications(id,user_id,job_id) VALUES ('app_demo_import',?,'job_demo_import')", owner());
         var draft = new com.offerpilot.knowledge.application.KnowledgeNoteService.Draft("其他用户笔记", "保留其他用户的原文", "技术积累");
         String otherNote = notes.create("usr_other", draft).id();
         notes.importNotes(owner(), java.util.List.of(new com.offerpilot.knowledge.application.KnowledgeNoteService.ImportEntry("old-demo", draft)));
@@ -194,6 +196,7 @@ class DemoJourneyIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT target FROM career_profiles WHERE user_id='usr_other'", String.class)).isEqualTo("其他用户目标");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM conversations WHERE user_id=?", Integer.class, id)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM career_assessments WHERE user_id=?", Integer.class, id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM jobs WHERE user_id=?", Integer.class, id)).isZero();
         jdbc.update("UPDATE applications SET note='评委试用改动' WHERE user_id=?", id);
         bootstrap.run(new DefaultApplicationArguments());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM applications WHERE user_id=? AND note='评委试用改动'", Integer.class, id)).isEqualTo(6);

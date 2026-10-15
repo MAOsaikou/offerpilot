@@ -10,6 +10,8 @@ import { downloadText } from '@/shared/utils/download'
 import type { ModelTier } from '@/shared/types/model-tier'
 import type {
   EvidenceMatch,
+  JobImportFields,
+  JobImportParse,
   JobSearchResult,
   JobSite,
   MatchHistory,
@@ -25,6 +27,18 @@ export const listJobSites = (signal?: AbortSignal) =>
   apiRequest<{ sites: JobSite[] }>('/jobs/sites', { signal })
 export const searchJobs = (search: JobSearch, signal?: AbortSignal) =>
   apiRequest<JobSearchResult>('/jobs?' + new URLSearchParams({ ...search }), { signal })
+/** JB-06: parse pasted JD text or a public page URL into a draft; the server stores nothing. */
+export const parseJobImport = (source: { text?: string; url?: string }) =>
+  apiRequest<JobImportParse>('/jobs/import/parse', {
+    method: 'POST',
+    body: JSON.stringify(source),
+    signal: AbortSignal.timeout(90_000),
+  })
+/** Save the reviewed draft as a job only this user can see. */
+export const saveJobImport = (fields: JobImportFields) =>
+  apiRequest<RealJob>('/jobs/import', { method: 'POST', body: JSON.stringify(fields) })
+export const listImportedJobs = (signal?: AbortSignal) =>
+  apiRequest<RealJob[]>('/jobs/imported', { signal })
 export const getJob = (id: string, signal?: AbortSignal) =>
   apiRequest<RealJob>(`/jobs/${encodeURIComponent(id)}`, { signal })
 export const refreshJob = (id: string, signal?: AbortSignal) =>

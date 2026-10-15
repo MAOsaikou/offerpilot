@@ -143,9 +143,9 @@ class JobContextTest {
                 beans.getBeanProvider(com.offerpilot.interview.application.InterviewCoachForChat.class),
                 beans.getBeanProvider(com.offerpilot.agent.application.InterviewWriteTools.class));
         registry.setArtifacts(artifacts);
-        when(jobs.get("missing")).thenThrow(new BusinessException(ErrorCode.JOB_NOT_FOUND));
-        when(jobs.get("shared")).thenReturn(json.createObjectNode().put("id", "shared"));
-        when(descriptions.description(anyString())).thenReturn("Java JD");
+        when(jobs.get("owner", "missing")).thenThrow(new BusinessException(ErrorCode.JOB_NOT_FOUND));
+        when(jobs.get("owner", "shared")).thenReturn(json.createObjectNode().put("id", "shared"));
+        when(descriptions.description(eq("owner"), anyString())).thenReturn("Java JD");
         when(optimizations.generate(eq("owner"), eq("rs"), eq("rv"), eq("Java JD"), anyString(), nullable(String.class)))
                 .thenReturn(Mono.just(json.createObjectNode().put("reportId", "opt")));
         for (String job : List.of("missing", "shared")) {
@@ -163,11 +163,11 @@ class JobContextTest {
             var optimize = new com.offerpilot.agent.domain.PlanStep("s", "改写", com.offerpilot.agent.domain.ExpertType.RESUME,
                     Map.of("action", "optimize"), List.of());
             registry.execute("owner", selected, "run_" + job, optimize, Map.of()).block();
-            verify(descriptions).description(job);
+            verify(descriptions).description("owner", job);
             verify(optimizations).generate(eq("owner"), eq("rs"), eq("rv"), eq("Java JD"), anyString(),
                     job.equals("missing") ? isNull() : eq(job));
         }
-        when(jobs.get("unavailable")).thenThrow(new BusinessException(ErrorCode.DATABASE_UNAVAILABLE));
+        when(jobs.get("owner", "unavailable")).thenThrow(new BusinessException(ErrorCode.DATABASE_UNAVAILABLE));
         var interview = new com.offerpilot.agent.domain.PlanStep("s", "面试", com.offerpilot.agent.domain.ExpertType.INTERVIEWER,
                 Map.of("action", "startInterview", "jobId", "unavailable"), List.of());
         assertThatThrownBy(() -> registry.requestInterview("owner", "run_failed", interview))
