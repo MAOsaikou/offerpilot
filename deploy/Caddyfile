@@ -1,3 +1,6 @@
+# Empty glob is allowed; authenticated storage is enabled only by its Compose override.
+import optional/*.caddy
+
 {$DOMAIN} {
     encode zstd gzip
 
