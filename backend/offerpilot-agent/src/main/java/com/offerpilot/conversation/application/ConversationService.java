@@ -77,6 +77,7 @@ public class ConversationService {
         expire(owner);
         lock(owner, id);
         rejectActive(id);
+        releaseAttachments(owner, id);
         jdbc.update("DELETE FROM conversations WHERE id=? AND user_id=?", id, owner);
     }
 
@@ -99,8 +100,33 @@ public class ConversationService {
         return new MessagePage(items, more ? items.get(0).id() : null, more);
     }
 
+    /** Images attached to the conversation's messages go with it; the cleanup scheduler removes the objects. */
+    private void releaseAttachments(String owner, String conversationId) {
+        var fileIds = jdbc.queryForList("""
+                SELECT DISTINCT p->>'fileId' FROM messages m CROSS JOIN LATERAL jsonb_array_elements(m.parts) p
+                WHERE m.conversation_id=? AND m.user_id=? AND p->>'type'='image' AND p->>'fileId' IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM messages o CROSS JOIN LATERAL jsonb_array_elements(o.parts) q
+                                  WHERE o.conversation_id<>m.conversation_id AND o.user_id=m.user_id
+                                    AND q->>'type'='image' AND q->>'fileId'=p->>'fileId')
+                """, String.class, conversationId, owner);
+        for (String fileId : fileIds) {
+            var rows = jdbc.queryForList("DELETE FROM files WHERE id=? AND user_id=? AND purpose='ATTACHMENT' RETURNING bucket,object_key", fileId, owner);
+            for (var row : rows)
+                jdbc.update("INSERT INTO account_data_cleanup(id,kind,bucket,object_key) VALUES (?,'OBJECT',?,?)",
+                        IdGenerator.next("clean"), row.get("bucket"), row.get("object_key"));
+        }
+    }
+
     @Transactional
     public Turn begin(String owner, String conversationId, String content, AgentMode requestedMode, String model) {
+        return begin(owner, conversationId, content, requestedMode, model, List.of());
+    }
+
+    /** Image parts: {@code {"type":"image","fileId","name"}} after the text part of the user message. */
+    public record ImagePart(String fileId, String name) {}
+
+    @Transactional
+    public Turn begin(String owner, String conversationId, String content, AgentMode requestedMode, String model, List<ImagePart> images) {
         // Serialize run creation per owner, including across application instances.
         jdbc.queryForObject("SELECT id FROM users WHERE id=? FOR UPDATE", String.class, owner);
         expire(owner);
@@ -118,7 +144,7 @@ public class ConversationService {
                 INSERT INTO agent_runs(id,user_id,conversation_id,user_message_id,assistant_message_id,mode,goal,status,model,lease_expires_at)
                 VALUES (?,?,?,?,?,?,?,'RUNNING',?,?)
                 """, run, owner, conv.id(), userMessage, assistant, mode.name(), content, model, Timestamp.from(now.plusSeconds(600)));
-        insertMessage(userMessage, conv.id(), owner, "USER", content, run, model, "COMPLETED");
+        insertMessage(userMessage, conv.id(), owner, "USER", content, run, model, "COMPLETED", images);
         insertMessage(assistant, conv.id(), owner, "ASSISTANT", "", run, model, "RUNNING");
         jdbc.update("UPDATE conversations SET mode=?,title=CASE WHEN title='新对话' THEN ? ELSE title END,updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 mode.name(), title(content), conv.id());
@@ -228,8 +254,18 @@ public class ConversationService {
             throw new BusinessException(ErrorCode.CONCURRENT_RUN_LIMIT, "该会话仍在回复，请等待完成或停止后再操作");
     }
     private void insertMessage(String id, String conv, String owner, String role, String text, String run, String model, String status) {
+        insertMessage(id, conv, owner, role, text, run, model, status, List.of());
+    }
+    private void insertMessage(String id, String conv, String owner, String role, String text, String run, String model, String status, List<ImagePart> images) {
+        String parts = parts(text, List.of());
+        if (images != null && !images.isEmpty()) {
+            List<Map<String, Object>> all = new ArrayList<>();
+            all.add(Map.of("type", "text", "text", text == null ? "" : text));
+            for (ImagePart image : images) all.add(Map.of("type", "image", "fileId", image.fileId(), "name", image.name()));
+            parts = encode(all);
+        }
         jdbc.update("INSERT INTO messages(id,conversation_id,user_id,role,parts,plain_text,run_id,model,status) VALUES (?,?,?,?,CAST(? AS jsonb),?,?,?,?)",
-                id, conv, owner, role, parts(text, List.of()), text, run, model, status);
+                id, conv, owner, role, parts, text, run, model, status);
     }
     private void writeMessage(String id, String text, String status, Map<String, Object> usage, List<MessageCard> cards) {
         List<MessageCard> incoming = cards == null ? List.of() : cards;
