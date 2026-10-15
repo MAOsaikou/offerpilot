@@ -45,6 +45,33 @@ export async function streamAgentChat(
     signal: options.signal ?? null,
   })
 
+  return consume(response, options)
+}
+
+/**
+ * 断线续传：GET /agent/runs/{runId}/events，回放 Last-Event-ID 之后的事件再接上实时事件（AG-07）。
+ * 运行已结束且超过回放保留期、或服务重启后返回 404，调用方改为读取已保存的消息。
+ */
+export async function resumeAgentRun(
+  runId: string,
+  lastEventId: number,
+  options: AgentStreamOptions = {},
+): Promise<string> {
+  const response = await fetchWithIdentity(
+    apiUrl(`/agent/runs/${encodeURIComponent(runId)}/events`),
+    {
+      method: 'GET',
+      headers: await authenticatedHeaders({
+        Accept: 'text/event-stream',
+        'Last-Event-ID': String(lastEventId),
+      }),
+      signal: options.signal ?? null,
+    },
+  )
+  return consume(response, options)
+}
+
+async function consume(response: Response, options: AgentStreamOptions): Promise<string> {
   if (!response.ok || !response.body) throw await toApiError(response)
 
   let runId = ''

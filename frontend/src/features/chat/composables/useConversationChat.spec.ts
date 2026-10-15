@@ -7,6 +7,7 @@ import { useAgentRunStore } from '@/shared/stores/agentRun'
 import type { Conversation, MessagePage } from '@/shared/types/conversation'
 
 const startMock = vi.hoisted(() => vi.fn())
+const attachMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/shared/api/conversations', () => ({
   conversationsApi: {
@@ -22,6 +23,7 @@ vi.mock('@/shared/composables/useAgentStream', () => ({
   useAgentStream: () => ({
     streaming: ref(false),
     start: startMock,
+    attach: attachMock,
     stop: vi.fn().mockResolvedValue(undefined),
   }),
 }))
@@ -156,4 +158,23 @@ describe('持久会话状态', () => {
     expect(saved?.cards?.map((c) => c.cardId)).toEqual(['card_1'])
     expect(saved?.reasoning).toBe('先查岗位')
   })
+})
+
+it('打开会话时最后一条回复仍在生成：接上运行流，结束后以服务端记录为准', async () => {
+  const running = messagePage('live')
+  running.items[0]!.status = 'RUNNING'
+  running.items[0]!.plainText = '已保存的前半段'
+  vi.mocked(conversationsApi.get).mockResolvedValue(conv('a'))
+  vi.mocked(conversationsApi.messages)
+    .mockResolvedValueOnce(running)
+    .mockResolvedValueOnce(messagePage('live'))
+  let finish!: (runId: string) => void
+  attachMock.mockReturnValue(new Promise<string>((resolve) => (finish = resolve)))
+  const chat = scope.run(() => useConversationChat())!
+  await chat.open('a')
+  expect(attachMock).toHaveBeenCalledWith('run')
+  expect(chat.busy.value).toBe(true)
+  finish('run')
+  await vi.waitFor(() => expect(chat.sending.value).toBe(false))
+  expect(chat.messages.value.map((m) => [m.text, m.status])).toEqual([['live', 'COMPLETED']])
 })
