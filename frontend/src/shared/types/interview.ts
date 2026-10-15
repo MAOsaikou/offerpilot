@@ -15,6 +15,10 @@ export interface InterviewAnswer {
   questionIndex: number
   questionText: string
   answerText: string
+  /** IV-02: interviewer follow-up asked from the saved answer; source 'rule' is the offline fallback. */
+  followUpQuestion?: string | null
+  followUpAnswer?: string | null
+  followUpSource?: 'model' | 'rule' | null
 }
 
 export interface InterviewSession extends InterviewSummary {

@@ -24,7 +24,10 @@ public class InterviewService {
     private final JdbcTemplate jdbc;
 
     private final com.offerpilot.common.artifact.JobArtifacts artifacts;
-    public InterviewService(JdbcTemplate jdbc, com.offerpilot.common.artifact.JobArtifacts artifacts) { this.jdbc = jdbc; this.artifacts=artifacts; }
+    private final InterviewFollowUps followUps;
+    public InterviewService(JdbcTemplate jdbc, com.offerpilot.common.artifact.JobArtifacts artifacts, InterviewFollowUps followUps) {
+        this.jdbc = jdbc; this.artifacts=artifacts; this.followUps = followUps;
+    }
 
     public record Summary(String id, String role, String kind, int questionIndex, boolean completed,
                           String createdAt, String updatedAt, String jobId) {
@@ -32,7 +35,18 @@ public class InterviewService {
             this(id, role, kind, questionIndex, completed, createdAt, updatedAt, null);
         }
     }
-    public record Answer(int questionIndex, String questionText, String answerText) {}
+    public record Answer(int questionIndex, String questionText, String answerText,
+                         String followUpQuestion, String followUpAnswer, String followUpSource) {
+        public Answer(int questionIndex, String questionText, String answerText) {
+            this(questionIndex, questionText, answerText, null, null, null);
+        }
+        /** Main answer plus the follow-up answer: what the rubric and STAR detection should see. */
+        public String fullText() {
+            String main = answerText == null ? "" : answerText.strip();
+            String more = followUpAnswer == null ? "" : followUpAnswer.strip();
+            return more.isEmpty() ? main : main.isEmpty() ? more : main + "\n" + more;
+        }
+    }
     public record Session(String id, String role, String kind, int questionIndex, boolean completed,
                           String createdAt, String updatedAt, List<Answer> answers, String jobId) {
         public Session(String id, String role, String kind, int questionIndex, boolean completed,
@@ -93,11 +107,12 @@ public class InterviewService {
         if (rows.isEmpty()) throw new BusinessException(ErrorCode.INTERVIEW_NOT_FOUND);
         var session = rows.get(0);
         var answers = jdbc.query("""
-                SELECT a.question_index,a.question_text,a.answer_text FROM interview_answers a
-                JOIN interview_sessions s ON s.id=a.session_id
+                SELECT a.question_index,a.question_text,a.answer_text,a.follow_up_question,a.follow_up_answer,a.follow_up_source
+                FROM interview_answers a JOIN interview_sessions s ON s.id=a.session_id
                 WHERE s.id=? AND s.user_id=? ORDER BY a.question_index
                 """, (rs, row) -> new Answer(rs.getInt("question_index"), rs.getString("question_text"),
-                rs.getString("answer_text")), id, owner);
+                rs.getString("answer_text"), rs.getString("follow_up_question"), rs.getString("follow_up_answer"),
+                rs.getString("follow_up_source")), id, owner);
         return new Session(session.id(), session.role(), session.kind(), session.questionIndex(), session.completed(),
                 session.createdAt(), session.updatedAt(), answers, session.jobId());
     }
@@ -120,10 +135,50 @@ public class InterviewService {
         if (answerText == null || answerText.codePointCount(0, answerText.length()) > 12000)
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请提供 answerText，最多12000个字符，可为空字符串。");
         lock(owner, id);
+        // An unanswered follow-up was asked about the old text; drop it so the next one fits the new answer.
         jdbc.update("""
-                UPDATE interview_answers SET answer_text=? WHERE session_id=? AND question_index=?
+                UPDATE interview_answers SET answer_text=?,
+                follow_up_question=CASE WHEN answer_text IS DISTINCT FROM ? AND COALESCE(follow_up_answer,'')='' THEN NULL ELSE follow_up_question END,
+                follow_up_source=CASE WHEN answer_text IS DISTINCT FROM ? AND COALESCE(follow_up_answer,'')='' THEN NULL ELSE follow_up_source END
+                WHERE session_id=? AND question_index=?
                 AND EXISTS (SELECT 1 FROM interview_sessions WHERE id=? AND user_id=?)
-                """, answerText.strip(), id, index, id, owner);
+                """, answerText.strip(), answerText.strip(), answerText.strip(), id, index, id, owner);
+        jdbc.update("UPDATE interview_sessions SET updated_at=now() WHERE id=? AND user_id=?", id, owner);
+        return get(owner, id);
+    }
+
+    /**
+     * Ask (once) the interviewer follow-up for a saved main answer. The model call holds no transaction
+     * or row lock; the write only lands if the answer is unchanged and no follow-up exists yet.
+     */
+    public Session followUp(String owner, String id, int index) {
+        validateIndex(index);
+        var session = get(owner, id);
+        if (session.completed()) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "练习已完成，不能再生成追问。");
+        var answer = session.answers().get(index);
+        if (answer.followUpQuestion() != null) return session;
+        String text = answer.answerText() == null ? "" : answer.answerText().strip();
+        if (text.isEmpty()) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请先保存这道题的回答，再请面试官追问。");
+        var generated = followUps.generate(owner, session.role(), answer.questionText(), text);
+        jdbc.update("""
+                UPDATE interview_answers SET follow_up_question=?,follow_up_source=?
+                WHERE session_id=? AND question_index=? AND follow_up_question IS NULL AND answer_text=?
+                AND EXISTS (SELECT 1 FROM interview_sessions WHERE id=? AND user_id=?)
+                """, generated.question(), generated.source(), id, index, text, id, owner);
+        return get(owner, id);
+    }
+
+    @Transactional
+    public Session saveFollowUpAnswer(String owner, String id, int index, String answerText) {
+        validateIndex(index);
+        if (answerText == null || answerText.codePointCount(0, answerText.length()) > 12000)
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请提供 answerText，最多12000个字符，可为空字符串。");
+        lock(owner, id);
+        int updated = jdbc.update("""
+                UPDATE interview_answers SET follow_up_answer=? WHERE session_id=? AND question_index=?
+                AND follow_up_question IS NOT NULL
+                """, answerText.strip(), id, index);
+        if (updated == 0) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "这道题还没有追问。");
         jdbc.update("UPDATE interview_sessions SET updated_at=now() WHERE id=? AND user_id=?", id, owner);
         return get(owner, id);
     }

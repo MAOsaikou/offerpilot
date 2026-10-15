@@ -5,7 +5,13 @@ import { useQueryClient } from '@tanstack/vue-query'
 import InterviewJobContext from '@/shared/components/InterviewJobContext.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
-import { getInterview, saveInterviewAnswer, updateInterview } from '@/shared/api/interviews'
+import {
+  getInterview,
+  requestInterviewFollowUp,
+  saveInterviewAnswer,
+  saveInterviewFollowUpAnswer,
+  updateInterview,
+} from '@/shared/api/interviews'
 import {
   listStarStoryCandidates,
   saveStarStory,
@@ -20,6 +26,8 @@ const route = useRoute()
 const cache = useQueryClient()
 const session = ref<InterviewSession>()
 const answer = ref('')
+const followUpDraft = ref('')
+const askingFollowUp = ref(false)
 const loading = ref(true)
 const loadError = ref('')
 const notFound = ref(false)
@@ -35,7 +43,18 @@ const exportError = ref('')
 const current = computed(() =>
   session.value?.answers.find((a) => a.questionIndex === session.value?.questionIndex),
 )
-const dirty = computed(() => Boolean(session.value) && answer.value !== current.value?.answerText)
+const hasFollowUp = computed(() => Boolean(current.value?.followUpQuestion))
+const followUpDirty = computed(
+  () => hasFollowUp.value && followUpDraft.value !== (current.value?.followUpAnswer ?? ''),
+)
+const dirty = computed(
+  () =>
+    Boolean(session.value) && (answer.value !== current.value?.answerText || followUpDirty.value),
+)
+function syncDrafts() {
+  answer.value = current.value?.answerText || ''
+  followUpDraft.value = current.value?.followUpAnswer || ''
+}
 const voiceAutoPlay = ref(false)
 try {
   voiceAutoPlay.value = localStorage.getItem('offerpilot.voiceAutoPlay') === 'true'
@@ -52,14 +71,16 @@ watch(voiceAutoPlay, (enabled) => {
 const speech = useSpeech({
   onFinal(text) {
     if (!session.value || session.value.completed || loading.value) return
-    const separator = answer.value && !/\s$/.test(answer.value) ? '\n' : ''
+    // Once the interviewer has followed up, dictation answers the follow-up.
+    const target = hasFollowUp.value ? followUpDraft : answer
+    const separator = target.value && !/\s$/.test(target.value) ? '\n' : ''
     let addition = ''
     for (const character of separator + text) {
-      if (answer.value.length + addition.length + character.length > 12000) break
+      if (target.value.length + addition.length + character.length > 12000) break
       addition += character
     }
-    answer.value += addition
-    if (answer.value.length >= 12000 || addition.length < separator.length + text.length)
+    target.value += addition
+    if (target.value.length >= 12000 || addition.length < separator.length + text.length)
       void speech.stopListening()
   },
 })
@@ -78,12 +99,16 @@ const {
 watch(
   () =>
     session.value && !session.value.completed
-      ? `${session.value.id}:${session.value.questionIndex}:${current.value?.questionText}`
+      ? `${session.value.id}:${session.value.questionIndex}:${current.value?.questionText}:${current.value?.followUpQuestion ?? ''}`
       : '',
-  (question) => {
+  (question, previous) => {
     speech.cancelAll()
-    if (question && voiceAutoPlay.value && synthesisSupported.value)
-      speech.speak(current.value?.questionText ?? '')
+    if (!question || !voiceAutoPlay.value || !synthesisSupported.value) return
+    // A newly asked follow-up is read on its own; a new question reads the main question.
+    const followUpOnly = previous && question.startsWith(previous) && hasFollowUp.value
+    speech.speak(
+      followUpOnly ? (current.value?.followUpQuestion ?? '') : (current.value?.questionText ?? ''),
+    )
   },
 )
 watch(voiceAutoPlay, (enabled) => {
@@ -113,7 +138,7 @@ async function load() {
     const loaded = await getInterview(String(route.params.id), controller.signal)
     if (requestRevision !== revision) return
     session.value = loaded
-    answer.value = current.value?.answerText || ''
+    syncDrafts()
     if (loaded.completed) void loadCandidates()
   } catch (e) {
     if (requestRevision !== revision) return
@@ -182,7 +207,8 @@ async function persist(questionIndex?: number, completed?: boolean): Promise<boo
     speech.stopSpeaking(false)
     await speech.stopListening()
     if (requestRevision !== revision) return false
-    if (dirty.value) {
+    const pendingFollowUp = followUpDirty.value ? followUpDraft.value : undefined
+    if (answer.value !== current.value?.answerText) {
       const saved = await saveInterviewAnswer(
         id,
         session.value.questionIndex,
@@ -193,6 +219,17 @@ async function persist(questionIndex?: number, completed?: boolean): Promise<boo
       session.value = saved
       answer.value = current.value?.answerText || ''
     }
+    if (pendingFollowUp !== undefined && current.value?.followUpQuestion) {
+      const saved = await saveInterviewFollowUpAnswer(
+        id,
+        session.value.questionIndex,
+        pendingFollowUp,
+        controller.signal,
+      )
+      if (requestRevision !== revision) return false
+      session.value = saved
+    }
+    followUpDraft.value = current.value?.followUpAnswer || ''
     if (questionIndex !== undefined || completed !== undefined) {
       const progress: { questionIndex?: number; completed?: boolean } = {}
       if (questionIndex !== undefined) progress.questionIndex = questionIndex
@@ -200,7 +237,7 @@ async function persist(questionIndex?: number, completed?: boolean): Promise<boo
       const saved = await updateInterview(id, progress, controller.signal)
       if (requestRevision !== revision) return false
       session.value = saved
-      answer.value = current.value?.answerText || ''
+      syncDrafts()
     }
     void cache.invalidateQueries({ queryKey: ['interviews'] })
     return true
@@ -212,11 +249,36 @@ async function persist(questionIndex?: number, completed?: boolean): Promise<boo
   }
 }
 
-async function submit() {
-  if (!session.value || !answer.value.trim()) return
+async function advance() {
+  if (!session.value) return
   if (session.value.questionIndex === session.value.answers.length - 1)
     await persist(undefined, true)
   else await persist(session.value.questionIndex + 1)
+}
+
+/** IV-02: first submit saves the answer and lets the interviewer follow up; the second moves on. */
+async function submit() {
+  if (!session.value || !answer.value.trim()) return
+  if (hasFollowUp.value) return advance()
+  if (!(await persist())) return
+  const requestRevision = revision
+  const id = session.value.id
+  askingFollowUp.value = true
+  busy.value = true
+  try {
+    const saved = await requestInterviewFollowUp(id, session.value.questionIndex, controller.signal)
+    if (requestRevision !== revision) return
+    session.value = saved
+    syncDrafts()
+  } catch (e) {
+    if (requestRevision === revision)
+      error.value = `面试官暂时无法追问：${(e as Error).message}。可以重试，或跳过追问进入下一题`
+  } finally {
+    if (requestRevision === revision) {
+      askingFollowUp.value = false
+      busy.value = false
+    }
+  }
 }
 
 async function saveCandidate(candidate: StarStoryCandidate) {
@@ -267,7 +329,7 @@ onBeforeRouteUpdate(saveBeforeLeave)
   <section v-else-if="session" class="page-stack">
     <PageHeading
       :title="session.completed ? '一次练习，一份积累' : session.role + ' · 面试练习'"
-      :description="session.kind + ' · 固定题库自练'"
+      :description="session.kind + ' · 五道主问题，每题面试官根据你的回答追问一次'"
     >
       <RouterLink to="/interviews" class="btn">返回练习列表</RouterLink>
       <button
@@ -290,6 +352,24 @@ onBeforeRouteUpdate(saveBeforeLeave)
         <div class="interview-avatar"><AppIcon name="interviews" :size="38" /></div>
         <h2>{{ current?.questionText }}</h2>
         <p class="subtle">不急着给出完美答案。先把你的真实经历讲清楚。</p>
+        <div v-if="hasFollowUp" class="follow-up-bubble" aria-live="polite">
+          <span class="tag"
+            >面试官追问{{ current?.followUpSource === 'rule' ? ' · 规则' : '' }}</span
+          >
+          <p>{{ current?.followUpQuestion }}</p>
+          <button
+            v-if="synthesisSupported"
+            type="button"
+            class="btn text"
+            :disabled="busy"
+            @click="speech.speak(current?.followUpQuestion ?? '')"
+          >
+            朗读追问
+          </button>
+        </div>
+        <p v-else-if="askingFollowUp" class="subtle" role="status">
+          面试官正在根据你的回答准备追问…
+        </p>
         <div v-if="synthesisSupported" class="voice-controls">
           <button
             type="button"
@@ -303,7 +383,7 @@ onBeforeRouteUpdate(saveBeforeLeave)
             ><input v-model="voiceAutoPlay" type="checkbox" :disabled="busy" />自动朗读</label
           >
           <span class="tag" role="status">{{
-            busy ? '正在保存' : speaking ? '提问中' : '等待回答'
+            askingFollowUp ? '思考追问' : busy ? '正在保存' : speaking ? '提问中' : '等待回答'
           }}</span>
         </div>
       </section>
@@ -340,6 +420,15 @@ onBeforeRouteUpdate(saveBeforeLeave)
             placeholder="可以从背景、任务、行动、结果四个角度展开…"
           />
         </label>
+        <label v-if="hasFollowUp" class="field"
+          >回答追问<textarea
+            v-model="followUpDraft"
+            rows="4"
+            maxlength="12000"
+            :disabled="busy"
+            placeholder="针对追问补充细节；也可以留空，直接进入下一题。"
+          />
+        </label>
         <p v-if="interimText" class="subtle speech-subtitle" role="status" aria-live="polite">
           {{ interimText }}
         </p>
@@ -366,9 +455,28 @@ onBeforeRouteUpdate(saveBeforeLeave)
           >
             上一题
           </button>
-          <button class="btn primary" :disabled="busy || !answer.trim()">
+          <button
+            v-if="!hasFollowUp"
+            type="button"
+            class="btn"
+            :disabled="busy || !answer.trim()"
+            @click="advance"
+          >
+            跳过追问
+          </button>
+          <button
+            class="btn primary"
+            :disabled="busy || !answer.trim()"
+            :aria-busy="askingFollowUp"
+          >
             {{
-              session.questionIndex === session.answers.length - 1 ? '完成并复盘' : '保存，下一题'
+              !hasFollowUp
+                ? askingFollowUp
+                  ? '面试官思考中…'
+                  : '提交回答'
+                : session.questionIndex === session.answers.length - 1
+                  ? '完成并复盘'
+                  : '保存，下一题'
             }}
           </button>
         </div>
@@ -385,6 +493,10 @@ onBeforeRouteUpdate(saveBeforeLeave)
           <article v-for="item in session.answers" :key="item.questionIndex" class="answer-card">
             <h3>{{ item.questionIndex + 1 }}. {{ item.questionText }}</h3>
             <p class="prose-content">{{ item.answerText || '未作答' }}</p>
+            <template v-if="item.followUpQuestion">
+              <p class="subtle">追问：{{ item.followUpQuestion }}</p>
+              <p class="prose-content">{{ item.followUpAnswer || '未回答追问' }}</p>
+            </template>
           </article>
         </section>
         <aside class="panel form-stack" style="align-self: start">
@@ -455,6 +567,18 @@ onBeforeRouteUpdate(saveBeforeLeave)
 .voice-preference input {
   width: auto;
   accent-color: var(--primary);
+}
+.follow-up-bubble {
+  margin-top: 12px;
+  padding: 12px 16px;
+  border-left: 3px solid var(--primary);
+  background: var(--surface-muted, rgba(0, 0, 0, 0.03));
+  border-radius: 8px;
+  text-align: left;
+}
+.follow-up-bubble p {
+  margin: 6px 0;
+  font-weight: 600;
 }
 .speech-subtitle {
   overflow-wrap: anywhere;

@@ -68,6 +68,12 @@ public class InterviewRecapExporter {
             out.append("**").append(safe(answer.questionText())).append("**\n\n");
             String text = answer.answerText();
             out.append(text == null || text.isBlank() ? "未作答" : text.strip()).append('\n');
+            if (answer.followUpQuestion() != null) {
+                out.append("\n**面试官追问").append("rule".equals(answer.followUpSource()) ? "（规则）" : "").append("：")
+                        .append(safe(answer.followUpQuestion())).append("**\n\n");
+                String more = answer.followUpAnswer();
+                out.append(more == null || more.isBlank() ? "未作答" : more.strip()).append('\n');
+            }
         }
         out.append('\n');
         return out.toString();

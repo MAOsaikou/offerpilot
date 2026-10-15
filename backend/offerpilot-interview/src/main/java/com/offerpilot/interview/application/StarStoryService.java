@@ -51,7 +51,7 @@ public class StarStoryService {
         var session = interviews.get(owner, sessionId);
         var out = new ArrayList<Candidate>();
         for (var answer : session.answers()) {
-            String body = answer.answerText() == null ? "" : answer.answerText().strip();
+            String body = answer.fullText();
             if (body.isEmpty()) continue;
             var star = InterviewRubric.detect(body);
             if (star.count() < MIN_STAR) continue;
@@ -75,7 +75,7 @@ public class StarStoryService {
         var session = interviews.get(owner, sessionId);
         var answer = session.answers().stream().filter(a -> a.questionIndex() == questionIndex).findFirst()
                 .orElseThrow(() -> invalid("题目不存在"));
-        String body = answer.answerText() == null ? "" : answer.answerText().strip();
+        String body = answer.fullText();
         if (body.isEmpty()) throw invalid("该题尚未作答，无法入库");
         var star = InterviewRubric.detect(body);
         if (star.count() < MIN_STAR) throw invalid("STAR 线索不足 3 项，请先补全回答再保存");
@@ -125,7 +125,7 @@ public class StarStoryService {
         var session = interviews.get(owner, sessionId);
         var evidence = new StringBuilder(session.role());
         for (var answer : session.answers()) {
-            String text = answer.answerText() == null ? "" : answer.answerText();
+            String text = answer.fullText();
             int end = text.offsetByCodePoints(0, Math.min(240, text.codePointCount(0, text.length())));
             evidence.append(' ').append(text, 0, end);
         }
