@@ -6,6 +6,9 @@ import type { ToolCallView } from '@/shared/stores/agentRun'
 defineProps<{
   toolCalls: ToolCallView[]
 }>()
+// AG-04 source column: local tools vs. an MCP server (raw args and ids stay hidden by design).
+const sourceLabel = (source: string) =>
+  source === 'local' ? '本地工具' : source ? `MCP · ${source}` : ''
 </script>
 
 <template>
@@ -48,6 +51,7 @@ defineProps<{
           <div class="mt-2 space-y-1.5 border-t border-border/60 pt-2">
             <p class="text-xs text-muted-foreground">
               {{ call.access === 'READ' ? '只读分析' : '需批准的写入操作' }}
+              <template v-if="sourceLabel(call.source)"> · {{ sourceLabel(call.source) }}</template>
             </p>
             <p v-if="call.status !== 'RUNNING'" class="text-xs leading-relaxed">
               {{

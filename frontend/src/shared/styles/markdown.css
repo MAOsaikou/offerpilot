@@ -122,7 +122,7 @@
   font-weight: 600;
 }
 
-/* 引用编号 [1] */
+/* 知识笔记引用 [KB-…] */
 .md-citation {
   display: inline-flex;
   align-items: center;
