@@ -126,6 +126,18 @@ public class ResumeService {
         appendVersion(owner, id, baseId, structured, "MANUAL_EDIT", json.createObjectNode().put("channel", "manual"));
         return get(owner, id);
     }
+    /**
+     * RS-06 rollback: copies an earlier version's content into a new version on top of the current
+     * one, so history is never rewritten. parse_meta records which version it came from.
+     */
+    public Resume restore(String owner, String id, String baseId, String fromId) {
+        if (baseId == null || baseId.isBlank()) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "缺少当前版本");
+        var from = version(owner, id, fromId);
+        if (from.id().equals(baseId)) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "该版本已是当前版本");
+        appendVersion(owner, id, baseId, from.structured(), "MANUAL_EDIT",
+                json.createObjectNode().put("channel", "restore").put("restoredFrom", from.id()).put("restoredFromNo", from.versionNo()));
+        return get(owner, id);
+    }
     Version appendVersion(String owner, String id, String baseId, JsonNode structured, String source, JsonNode metadata) {
         ResumeStructure.validate(structured);
         return tx.execute(status -> {
