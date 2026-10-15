@@ -9,20 +9,20 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.*;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Fetch a public job page for JB-06. This is a server-side request driven by user input, so every hop
  * (including redirects) is re-validated: http(s) on default ports only, no credentials, and every resolved
- * address must be public. Bodies are capped and only HTML / plain text is read.
+ * address must be public. The host is resolved once per hop and the connection goes to that validated
+ * address ({@link PinnedHttpGet}), so a DNS answer that changes between check and connect (rebinding)
+ * cannot redirect the request to an internal address. Bodies are capped and only HTML / plain text is read.
  */
 @Component
 public class JobPageFetcher {
@@ -32,61 +32,68 @@ public class JobPageFetcher {
 
     public record Page(String url, String title, String text) {}
 
-    private final boolean enabled;
-    private final HttpClient client = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .connectTimeout(Duration.ofSeconds(5))
-            .build();
+    /** Host name resolution, injectable so tests can simulate a DNS answer that changes between lookups. */
+    interface Resolver { InetAddress[] resolve(String host) throws UnknownHostException; }
+    record Target(URI uri, InetAddress address) {}
 
+    private final boolean enabled;
+    private final Resolver resolver;
+    private final java.util.function.Predicate<InetAddress> allowed;
+
+    @org.springframework.beans.factory.annotation.Autowired
     public JobPageFetcher(@Value("${offerpilot.job-import.url-fetch-enabled:true}") boolean enabled) {
+        this(enabled, InetAddress::getAllByName, JobPageFetcher::isPublic);
+    }
+
+    JobPageFetcher(boolean enabled, Resolver resolver, java.util.function.Predicate<InetAddress> allowed) {
         this.enabled = enabled;
+        this.resolver = resolver;
+        this.allowed = allowed;
     }
 
     public Page fetch(String url) {
         if (!enabled) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "当前部署未开启网址导入，请直接粘贴岗位描述文本。");
-        URI uri = validate(url);
+        Target target = target(url);
         for (int hop = 0; hop <= MAX_REDIRECTS; hop++) {
-            HttpResponse<InputStream> response;
-            try {
-                response = client.send(HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(10))
-                        .header("User-Agent", "Mozilla/5.0 (compatible; OfferPilot-JobImport/1.0)")
-                        .header("Accept", "text/html,text/plain;q=0.9").GET().build(),
-                        HttpResponse.BodyHandlers.ofInputStream());
+            URI uri = target.uri();
+            try (var response = PinnedHttpGet.get(uri, target.address(), Duration.ofSeconds(5), Duration.ofSeconds(10), Map.of(
+                    "User-Agent", "Mozilla/5.0 (compatible; OfferPilot-JobImport/1.0)",
+                    "Accept", "text/html,text/plain;q=0.9"))) {
+                int status = response.status();
+                if (status >= 300 && status < 400) {
+                    String location = response.header("Location");
+                    if (location == null || location.isBlank()) break;
+                    target = target(uri.resolve(location).toString());
+                    continue;
+                }
+                if (status != 200)
+                    throw new BusinessException(ErrorCode.VALIDATION_FAILED, "网页返回 " + status + "，无法读取。请直接粘贴岗位描述文本。");
+                String type = java.util.Objects.requireNonNullElse(response.header("Content-Type"), "text/html").toLowerCase(Locale.ROOT);
+                if (!type.startsWith("text/html") && !type.startsWith("text/plain") && !type.startsWith("application/xhtml"))
+                    throw new BusinessException(ErrorCode.VALIDATION_FAILED, "该网址不是网页（" + type.split(";")[0] + "），请直接粘贴岗位描述文本。");
+                return page(uri, type, read(response.body(), charset(type)));
             } catch (IOException ex) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "无法打开该网址，请检查链接，或直接粘贴岗位描述文本。");
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "读取网址被中断，请重试。");
             }
-            int status = response.statusCode();
-            if (status >= 300 && status < 400) {
-                close(response);
-                String location = response.headers().firstValue("Location").orElse("");
-                if (location.isBlank()) break;
-                uri = validate(uri.resolve(location).toString());
-                continue;
-            }
-            if (status != 200) {
-                close(response);
-                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "网页返回 " + status + "，无法读取。请直接粘贴岗位描述文本。");
-            }
-            String type = response.headers().firstValue("Content-Type").orElse("text/html").toLowerCase(Locale.ROOT);
-            if (!type.startsWith("text/html") && !type.startsWith("text/plain") && !type.startsWith("application/xhtml")) {
-                close(response);
-                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "该网址不是网页（" + type.split(";")[0] + "），请直接粘贴岗位描述文本。");
-            }
-            String body = read(response, charset(type));
-            String title = type.startsWith("text/plain") ? "" : HtmlText.title(body);
-            String text = type.startsWith("text/plain") ? body.strip() : HtmlText.text(body);
-            if (text.codePointCount(0, text.length()) < 80)
-                throw new BusinessException(ErrorCode.VALIDATION_FAILED,
-                        "没有从该网页读到岗位正文（很多招聘站需要登录或由浏览器脚本渲染）。请在浏览器中复制岗位描述后粘贴。");
-            return new Page(uri.toString(), title, text);
         }
         throw new BusinessException(ErrorCode.VALIDATION_FAILED, "网址跳转次数过多，请直接粘贴岗位描述文本。");
     }
 
+    private static Page page(URI uri, String type, String body) {
+        String title = type.startsWith("text/plain") ? "" : HtmlText.title(body);
+        String text = type.startsWith("text/plain") ? body.strip() : HtmlText.text(body);
+        if (text.codePointCount(0, text.length()) < 80)
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED,
+                    "没有从该网页读到岗位正文（很多招聘站需要登录或由浏览器脚本渲染）。请在浏览器中复制岗位描述后粘贴。");
+        return new Page(uri.toString(), title, text);
+    }
+
     static URI validate(String url) {
+        return new JobPageFetcher(true).target(url).uri();
+    }
+
+    /** Validates the URL and resolves its host once; the returned address is the one the request must use. */
+    Target target(String url) {
         URI uri;
         try { uri = new URI(url == null ? "" : url.strip()); }
         catch (URISyntaxException ex) { throw invalid(); }
@@ -96,10 +103,11 @@ public class JobPageFetcher {
         int port = uri.getPort();
         if (port != -1 && port != 80 && port != 443) throw invalid();
         InetAddress[] addresses;
-        try { addresses = InetAddress.getAllByName(uri.getHost()); }
+        try { addresses = resolver.resolve(uri.getHost()); }
         catch (UnknownHostException ex) { throw new BusinessException(ErrorCode.VALIDATION_FAILED, "无法解析该网址的域名。"); }
-        for (InetAddress address : addresses) if (!isPublic(address)) throw invalid();
-        return uri;
+        if (addresses.length == 0) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "无法解析该网址的域名。");
+        for (InetAddress address : addresses) if (!allowed.test(address)) throw invalid();
+        return new Target(uri, addresses[0]);
     }
 
     /** Reject loopback, private, link-local (incl. cloud metadata), CGNAT, unique-local and multicast ranges. */
@@ -134,8 +142,8 @@ public class JobPageFetcher {
         catch (RuntimeException ex) { return StandardCharsets.UTF_8; }
     }
 
-    private static String read(HttpResponse<InputStream> response, Charset charset) {
-        try (InputStream in = response.body()) {
+    private static String read(InputStream in, Charset charset) {
+        try {
             var out = new ByteArrayOutputStream();
             byte[] buffer = new byte[8192];
             int n;
@@ -149,7 +157,4 @@ public class JobPageFetcher {
         }
     }
 
-    private static void close(HttpResponse<InputStream> response) {
-        try { response.body().close(); } catch (IOException ignored) { }
-    }
 }
