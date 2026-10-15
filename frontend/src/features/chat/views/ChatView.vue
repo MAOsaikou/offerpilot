@@ -13,6 +13,7 @@ import { optimizationContext } from '../optimizationContext'
 import { normalizeModelTier, type ModelTier } from '@/shared/types/model-tier'
 import type { AgentMode } from '@/shared/types/agent-events'
 import type { Conversation } from '@/shared/types/conversation'
+import { getPreferences } from '@/shared/api/preferences'
 import type { PatchDecision } from '@/shared/types/optimization'
 import type { CareerTargetSelection } from '@/shared/types/cards'
 const privacyWarning = ref('')
@@ -56,13 +57,24 @@ watch(
   { immediate: true },
 )
 const tier = ref<ModelTier>('FLASH')
+let tierTouched = false
 watch(
   () => route.query.modelTier ?? route.query.tier,
   (value) => {
     tier.value = normalizeModelTier(value)
+    if (value) tierTouched = true
   },
   { immediate: true },
 )
+watch(tier, (_, previous) => {
+  if (previous) tierTouched = true
+})
+// AC-03: without an explicit tier in the link, start from the account's default tier.
+getPreferences()
+  .then((preferences) => {
+    if (!tierTouched) tier.value = preferences.defaultModelTier
+  })
+  .catch(() => undefined)
 const seed = ref('')
 const matchingSelection = computed(
   () => route.query.jobAction === 'match' && ['AUTO', 'JOB'].includes(mode.value),

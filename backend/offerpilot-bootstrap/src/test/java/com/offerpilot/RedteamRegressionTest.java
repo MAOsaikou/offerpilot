@@ -224,6 +224,23 @@ class RedteamRegressionTest {
         };
         assertThat(matcher.match(JSON.createObjectNode().put("description",jd),source).path("requirements").get(0).path("resumeQuote").asText()).isEqualTo(source.path("summary").asText());
     }
+    @Test void accountPreferencesPersistPerIdentityAndReportWhetherSaved() throws Exception {
+        String token = identities.create().accessToken(), other = identities.create().accessToken();
+        var initial = data(http("GET","/preferences",token,null));
+        assertThat(initial.path("defaultModelTier").asText()).isEqualTo("FLASH");
+        assertThat(initial.path("saved").asBoolean()).isFalse();
+        var saved = data(http("PUT","/preferences",token,"{\"defaultModelTier\":\"PRO\",\"theme\":\"dark\"}"));
+        assertThat(saved.path("saved").asBoolean()).isTrue();
+        // Saving another settings page must not reset these preferences.
+        http("PUT","/privacy-settings",token,"{\"piiMasking\":true}");
+        var reread = data(http("GET","/preferences",token,null));
+        assertThat(reread.path("defaultModelTier").asText()).isEqualTo("PRO");
+        assertThat(reread.path("theme").asText()).isEqualTo("dark");
+        assertThat(data(http("GET","/preferences",other,null)).path("saved").asBoolean()).isFalse();
+        assertThat(http("GET","/preferences",null,null).statusCode()).isEqualTo(401);
+        for (String invalid : List.of("{}", "{\"defaultModelTier\":\"CHEAP\",\"theme\":\"dark\"}", "{\"defaultModelTier\":\"PRO\",\"theme\":\"blue\"}"))
+            assertThat(http("PUT","/preferences",token,invalid).statusCode()).isEqualTo(400);
+    }
     @Test void settingsHttpPersistPerIdentityAndOffUploadAndChatRiskAreDetected() throws Exception {
         String token = identities.create().accessToken(), other = identities.create().accessToken();
         assertThat(data(http("GET","/privacy-settings",token,null)).path("piiMasking").asBoolean()).isTrue();
