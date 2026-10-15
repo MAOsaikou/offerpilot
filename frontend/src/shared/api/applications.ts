@@ -16,25 +16,3 @@ export const updateApplication = (id: string, patch: ApplicationPatch) =>
 
 export const getApplication = (id: string, signal?: AbortSignal) =>
   apiRequest<ApplicationDetail>(`/applications/${encodeURIComponent(id)}`, { signal })
-
-/** Agent board writes whose chat stream ended before the user decided (BD-02 recovery). */
-export interface PendingBoardApproval {
-  id: string
-  runId: string
-  action: 'createApplication' | 'updateApplicationStatus'
-  args: Partial<
-    Record<'jobId' | 'applicationId' | 'status' | 'note' | 'nextAction' | 'nextActionAt', string>
-  >
-  expiresAt: string
-  createdAt: string
-  company: string | null
-  title: string | null
-  currentStatus: string | null
-}
-export const listPendingBoardApprovals = (signal?: AbortSignal) =>
-  apiRequest<PendingBoardApproval[]>('/agent/approvals/pending', { signal })
-export const decidePendingBoardApproval = (id: string, decision: 'APPROVE' | 'REJECT') =>
-  apiRequest<{ decision: string; applied: boolean }>(`/agent/approvals/${encodeURIComponent(id)}`, {
-    method: 'POST',
-    body: JSON.stringify({ decision }),
-  })

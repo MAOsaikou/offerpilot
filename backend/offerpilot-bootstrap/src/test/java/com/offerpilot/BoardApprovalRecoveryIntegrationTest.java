@@ -20,7 +20,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** BD-02: an agent board write survives a closed chat stream and is decided exactly once from the board. */
+/** BD-02: agent writes (board and the other tools) survive a closed chat stream and is decided exactly once from the board. */
 class BoardApprovalRecoveryIntegrationTest extends SharedHttpIntegrationTest {
     static final ObjectMapper JSON = new ObjectMapper();
     @LocalServerPort int port;
@@ -86,5 +86,35 @@ class BoardApprovalRecoveryIntegrationTest extends SharedHttpIntegrationTest {
         ticket.await().subscribe().dispose();
         assertThat(data(call(token, "/pending", null))).isEmpty();
         assertThat(jdbc.queryForObject("SELECT status FROM applications WHERE id=?", String.class, owner + "app")).isEqualTo("INTERVIEW");
+    }
+
+    /** The same recovery covers the other write tools: memory (still grounded on the run's own message) and interviews. */
+    @Test void otherAgentWritesSurviveStreamLossAndApplyFromWorkbench() throws Exception {
+        String token = guests.create().accessToken(), owner = guests.require("Bearer " + token);
+        String content = "记住：我只考虑杭州的岗位";
+        var candidate = com.offerpilot.memory.application.MemoryCandidate.extract(content);
+        var turn = conversations.begin(owner, null, content, AgentMode.AUTO, "fixture");
+        var memory = approvals.request(owner, turn.runId(), "saveUserFact",
+                Map.of("kind", candidate.kind().name(), "fact", candidate.fact(), "source", candidate.source().name()));
+        memory.await().subscribe().dispose();
+        conversations.finish(turn, "", "CANCELLED", null, null);
+        var interviewTurn = conversations.begin(owner, null, "开始模拟面试", AgentMode.AUTO, "fixture");
+        var interview = approvals.request(owner, interviewTurn.runId(), "startInterview", Map.of("role", "后端工程师", "kind", "项目与经历"));
+        interview.await().subscribe().dispose();
+        conversations.finish(interviewTurn, "", "CANCELLED", null, null);
+
+        var pending = data(call(token, "/pending", null));
+        assertThat(pending.findValuesAsText("summary")).containsExactlyInAnyOrder(
+                "记住：「" + candidate.fact() + "」", "开始一场「后端工程师」项目与经历模拟面试");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_memories WHERE user_id=?", Integer.class, owner)).isZero();
+        // Non-board approvals take no edits.
+        assertThat(call(token, "/" + memory.id(), Map.of("decision", "APPROVE", "args", Map.of("fact", "改写"))).statusCode()).isEqualTo(400);
+
+        assertThat(data(call(token, "/" + memory.id(), Map.of("decision", "APPROVE"))).path("summary").asText()).contains("记忆已保存");
+        assertThat(jdbc.queryForObject("SELECT fact FROM user_memories WHERE user_id=?", String.class, owner)).isEqualTo(candidate.fact());
+        assertThat(data(call(token, "/" + interview.id(), Map.of("decision", "APPROVE"))).path("summary").asText()).contains("面试已创建");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM interview_sessions WHERE user_id=?", Integer.class, owner)).isEqualTo(1);
+        assertThat(call(token, "/" + interview.id(), Map.of("decision", "APPROVE")).statusCode()).isEqualTo(409);
+        assertThat(data(call(token, "/pending", null))).isEmpty();
     }
 }

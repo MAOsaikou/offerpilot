@@ -8,6 +8,7 @@ import { useWorkspace, learningTasks } from '@/shared/stores/workspace'
 import { useBoard } from '@/shared/composables/useBoard'
 import { applicationStages } from '@/shared/types/board'
 import RouteStrip from '../components/RouteStrip.vue'
+import PendingAgentWrites from '@/shared/components/PendingAgentWrites.vue'
 const workspace = useWorkspace()
 const board = useBoard()
 const router = useRouter()
@@ -96,6 +97,7 @@ function send() {
       </div>
     </div>
 
+    <PendingAgentWrites />
     <section class="route-section">
       <div class="section-heading">
         <h2>你的航线</h2>
