@@ -127,7 +127,7 @@ public class DemoResetService {
     private void clear(String userId) {
         // FK cascades remove answers, versions, messages, agent steps/calls/approvals/events.
         jdbc.update("DELETE FROM application_events WHERE application_id IN (SELECT id FROM applications WHERE user_id=?)", userId);
-        for (String table : List.of("user_memories", "star_stories", "knowledge_note_imports", "knowledge_notes", "interview_sessions", "applications", "job_matches", "growth_task_completions",
+        for (String table : List.of("user_memories", "star_stories", "knowledge_note_imports", "knowledge_notes", "interview_sessions", "applications", "job_matches", "growth_task_completions", "career_assessments",
                 "career_profiles", "resume_optimizations", "resume_patch_batches", "resume_diagnoses", "conversations")) {
             jdbc.update("DELETE FROM " + table + " WHERE user_id=?", userId);
         }

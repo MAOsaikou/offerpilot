@@ -9,16 +9,25 @@ import java.util.Locale;
 public class DefaultCareerRecommendForChat implements CareerRecommendForChat {
     private final CareerProfileService profiles;
     private final OccupationRecommender occupations;
+    private final CareerAssessmentService assessments;
     public DefaultCareerRecommendForChat(CareerProfileService profiles, OccupationRecommender occupations) {
+        this(profiles, occupations, null);
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public DefaultCareerRecommendForChat(CareerProfileService profiles, OccupationRecommender occupations,
+                                         CareerAssessmentService assessments) {
         this.profiles = profiles;
         this.occupations = occupations;
+        this.assessments = assessments;
     }
     @Override public Result recommend(String owner) { return recommend(owner, ""); }
     @Override public Result recommend(String owner, String request) {
         var profile = profiles.get(owner);
+        var confirmed = assessments == null ? null : assessments.confirmed(owner);
+        if (confirmed != null) return fromAssessment(owner, profile, confirmed, request);
         var derived = InterestHollandMapping.derive(profile.interests());
         if (derived.code().isEmpty()) return new Result(
-                "请先在探索页勾选兴趣，或在对话里说明你对技术研发、产品策划、数据分析、创意设计、沟通协作或研究探索的偏好；保存兴趣后可获得职业推荐。", null);
+                "请先在探索页完成对话测评或勾选兴趣，或在对话里说明你对技术研发、产品策划、数据分析、创意设计、沟通协作或研究探索的偏好；保存兴趣后可获得职业推荐。", null);
         String query = String.join(" ", derived.interestsUsed()) + " " + profile.skills() + " " + profile.target() + " " + (request == null ? "" : request);
         var ranked = occupations.rankHybrid(derived.profile(), query.strip(), 8).stream().map(item ->
                 new Recommendation(item.id(), item.name(), item.family(), item.hollandCode(), item.similarity(),
@@ -29,6 +38,26 @@ public class DefaultCareerRecommendForChat implements CareerRecommendForChat {
         return new Result(null, new Payload(derived.code(), derived.interestsUsed(), ranked),
                 new CurrentProfile(profile.target(), profile.city()));
     }
+    /** CD-02 confirmed profile: six user-confirmed strengths, and reasons quoting the user's own words. */
+    private Result fromAssessment(String owner, CareerProfileService.Profile profile,
+                                  CareerAssessmentService.Confirmed confirmed, String request) {
+        var answers = assessments.get(owner).answers();
+        // Hobbies, achievement and preferred work (steps 1-3) describe the person; feed them to retrieval.
+        String story = String.join(" ", answers.subList(1, Math.min(4, answers.size())));
+        String query = (profile.skills() + " " + profile.target() + " " + story + " " + (request == null ? "" : request)).strip();
+        var quotes = confirmed.traits().stream().filter(t -> !t.evidence().isBlank()).limit(2)
+                .map(t -> t.name() + "：「" + t.evidence() + "」").toList();
+        String evidence = quotes.isEmpty() ? "画像依据：你在测评中确认的兴趣分数与特质" : "画像依据（你的原话）：" + String.join("；", quotes);
+        var ranked = occupations.rankHybrid(CareerAssessmentService.profile(confirmed), query, 8).stream().map(item ->
+                new Recommendation(item.id(), item.name(), item.family(), item.hollandCode(), item.similarity(),
+                        List.of(String.format(Locale.ROOT, "与你确认的六维兴趣画像相似度 r=%.3f（Pearson）；卡片值为 (r+1)/2", item.similarity() * 2 - 1),
+                                "你的兴趣码 " + confirmed.code() + "，职业码 " + item.hollandCode(), evidence,
+                                item.retrievalReason().isEmpty() ? "本项按兴趣画像排序；本轮未检索到对应职业文本" : item.retrievalReason()),
+                        item.citations())).toList();
+        return new Result(null, new Payload(confirmed.code(), List.of("对话测评"), ranked),
+                new CurrentProfile(profile.target(), profile.city()));
+    }
+
     @Override public OccupationRecommender.Ranked occupation(String occupationId, String name) {
         return occupations.find(occupationId, name);
     }

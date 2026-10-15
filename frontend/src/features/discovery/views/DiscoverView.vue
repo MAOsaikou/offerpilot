@@ -3,7 +3,12 @@ import { RouterLink } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { useCareerProfile } from '@/shared/composables/useCareerProfile'
+import CareerAssessment from '../components/CareerAssessment.vue'
 const { profile, loading, ready, error, pending, saveProfile, retry } = useCareerProfile()
+// The server copies a confirmed city into the profile; mirror it without another write.
+function reloadProfile(city: string) {
+  if (city) profile.value.city = city
+}
 const interests = ['技术研发', '产品策划', '数据分析', '创意设计', '沟通协作', '研究探索']
 const directions = [
   {
@@ -54,6 +59,7 @@ function choose(role: string) {
     <p v-if="ready" role="status" class="subtle">
       {{ pending ? '职业档案尚未保存' : '职业档案已与服务器同步' }}
     </p>
+    <CareerAssessment @confirmed="reloadProfile" />
     <div class="split-content">
       <section class="panel form-stack">
         <h2>我的职业画像</h2>
@@ -111,7 +117,9 @@ function choose(role: string) {
         <p class="subtle">
           回想一件让你投入的事：你在做什么？其中哪一部分让你有成就感？这些具体经历，比一个简单的标签更有价值。
         </p>
-        <div class="helper-note">此处是自填偏好与通用方向介绍，不是心理测评或 AI 匹配报告。</div>
+        <div class="helper-note">
+          左侧是自填偏好；上方对话测评由 AI 根据你的原话推断，仅供探索参考，不是标准化心理测评。
+        </div>
         <RouterLink to="/career" class="btn">把方向变成行动</RouterLink>
       </aside>
     </div>
