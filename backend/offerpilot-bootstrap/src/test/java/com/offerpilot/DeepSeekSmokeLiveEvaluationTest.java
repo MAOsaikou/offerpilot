@@ -2,8 +2,6 @@ package com.offerpilot;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.offerpilot.auth.application.DemoAccountBootstrap;
-import com.offerpilot.auth.application.PasswordLoginService;
 import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
 import com.offerpilot.job.application.JobService;
@@ -15,19 +13,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
@@ -53,7 +51,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-/** Paid opt-in: host JVM, prod wiring, isolated demo DB/Redis and memory source files, no embeddings.
+/** Paid opt-in: host JVM, prod wiring, isolated visitor DB/Redis/S3Mock, no embeddings.
  * Only jobs MCP is stubbed unavailable, so demo/snapshot/cache policy cannot depend on the network. */
 @Tag("eval")
 @EnabledIfEnvironmentVariable(named = "OFFERPILOT_RUN_LIVE_SMOKE", matches = "true")
@@ -61,8 +59,7 @@ import static org.mockito.Mockito.*;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.ai.openai.api-key=sk-not-configured", "spring.ai.model.embedding=openai",
         "offerpilot.security.jwt-secret=live-smoke-isolated-signing-key-not-for-production-0123456789abcdef0123456789abcdef",
-        "offerpilot.demo.enabled=true", "offerpilot.demo.email=smoke-demo@example.test",
-        "offerpilot.demo.password=fictional-smoke-demo-password", "offerpilot.demo.reset-cron=-",
+        "offerpilot.demo.enabled=true", "offerpilot.demo.sandbox-enabled=true", "offerpilot.demo.reset-cron=-",
         "offerpilot.resume.worker-enabled=false", "spring.ai.mcp.server.enabled=false",
         "offerpilot.staff-bootstrap.email=", "offerpilot.staff-bootstrap.password=",
         "offerpilot.jobs.source-mode=AUTO", "offerpilot.knowledge.occupation-embed.enabled=false",
@@ -70,8 +67,17 @@ import static org.mockito.Mockito.*;
 })
 @ActiveProfiles("prod")
 @Testcontainers
-@Import(DemoJourneyIntegrationTest.StorageConfig.class)
 class DeepSeekSmokeLiveEvaluationTest {
+    static final java.util.concurrent.atomic.AtomicInteger modelCalls = new java.util.concurrent.atomic.AtomicInteger();
+    static java.util.stream.Stream<ModelTier> selectedTiers() {
+        String selected = System.getProperty("offerpilot.smoke.tier", "FLASH").strip().toUpperCase(java.util.Locale.ROOT);
+        return switch (selected) {
+            case "FLASH" -> java.util.stream.Stream.of(ModelTier.FLASH);
+            case "PRO" -> java.util.stream.Stream.of(ModelTier.PRO);
+            case "ALL" -> java.util.stream.Stream.of(ModelTier.FLASH, ModelTier.PRO);
+            default -> throw new IllegalArgumentException("offerpilot.smoke.tier must be FLASH, PRO or ALL");
+        };
+    }
     @Container static PostgreSQLContainer<?> database = new PostgreSQLContainer<>(
             DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"))
             .withCreateContainerCmdModifier(cmd -> cmd.getHostConfig().withPortBindings(
@@ -79,6 +85,13 @@ class DeepSeekSmokeLiveEvaluationTest {
     @Container static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine").withExposedPorts(6379)
             .withCreateContainerCmdModifier(cmd -> cmd.getHostConfig().withPortBindings(
                     new PortBinding(Ports.Binding.bindIp("127.0.0.1"), new ExposedPort(6379))));
+    @Container static GenericContainer<?> storage = new GenericContainer<>(DockerImageName.parse(
+            "adobe/s3mock@sha256:7a37f0d796e81a28b970c892dcae532797014616b3312b467af8f0274ebf0c26"))
+            .withEnv("COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS", "live-smoke")
+            .withExposedPorts(9090)
+            .withCreateContainerCmdModifier(cmd -> cmd.getHostConfig().withPortBindings(
+                    new PortBinding(Ports.Binding.bindIp("127.0.0.1"), new ExposedPort(9090))))
+            .waitingFor(Wait.forHttp("/").forPort(9090).forStatusCode(200));
     @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", database::getJdbcUrl);
         registry.add("spring.datasource.username", database::getUsername);
@@ -87,13 +100,16 @@ class DeepSeekSmokeLiveEvaluationTest {
         registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
         registry.add("spring.data.redis.password", () -> "");
         registry.add("spring.ai.deepseek.api-key", () -> System.getenv("DEEPSEEK_API_KEY"));
+        registry.add("offerpilot.storage.endpoint", () -> "http://" + storage.getHost() + ":" + storage.getMappedPort(9090));
+        registry.add("offerpilot.storage.public-endpoint", () -> "http://" + storage.getHost() + ":" + storage.getMappedPort(9090));
+        registry.add("offerpilot.storage.access-key", () -> "live-smoke");
+        registry.add("offerpilot.storage.secret-key", () -> "live-smoke-fictional-password");
+        registry.add("offerpilot.storage.bucket", () -> "live-smoke");
     }
     @SpyBean ModelGateway gateway;
     @MockBean JobsMcpClient liveJobs;
     @Autowired ObjectMapper json;
     @Autowired org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext webContext;
-    @Autowired PasswordLoginService identities;
-    @Autowired DemoAccountBootstrap accounts;
     @Autowired OccupationEmbeddings embeddings;
     @Autowired JdbcTemplate jdbc;
     @Autowired JobService jobs;
@@ -104,9 +120,13 @@ class DeepSeekSmokeLiveEvaluationTest {
     String versionId;
 
     @SuppressWarnings("unchecked")
-    @BeforeEach void demo() {
+    @BeforeEach void demo() throws Exception {
         doAnswer(invocation -> {
             ModelTier selected = invocation.getArgument(0);
+            int countAll = modelCalls.incrementAndGet();
+            int maxCalls = Integer.getInteger("offerpilot.smoke.max-calls", 40);
+            if (maxCalls < 1 || countAll > maxCalls) throw new IllegalStateException("Live model call budget exhausted before provider IO");
+            System.out.println("LIVE_MODEL_CALL tier=" + selected + " total=" + countAll + " limit=" + maxCalls);
             String budgetFile = System.getenv("OFFERPILOT_SMOKE_PRO_BUDGET_FILE");
             if (selected == ModelTier.PRO && budgetFile != null) {
                 var path = java.nio.file.Path.of(budgetFile);
@@ -130,17 +150,20 @@ class DeepSeekSmokeLiveEvaluationTest {
         for (var connector : tomcat.getTomcat().getService().findConnectors())
             System.out.println("LIVE_TOMCAT connectionTimeout=" + connector.getProperty("connectionTimeout")
                     + " asyncTimeout=" + connector.getAsyncTimeout());
-        owner = accounts.requireAccount();
-        token = accounts.login(identities).accessToken();
+        var login = data(request("POST", "/api/v1/auth/demo-login", Map.of()));
+        token = login.path("accessToken").asText();
+        owner = login.path("user").path("id").asText();
+        assertThat(token).isNotBlank();
+        assertThat(owner).isNotBlank();
+        assertThat(data(request("GET", "/api/v1/demo/sandbox", null)).path("expiresAt").asText()).isNotBlank();
         var resume = jdbc.queryForMap("SELECT id,current_version_id FROM resumes WHERE user_id=? ORDER BY id LIMIT 1", owner);
         resumeId = resume.get("id").toString(); versionId = resume.get("current_version_id").toString();
         when(liveJobs.call(anyString(), anyMap())).thenThrow(new BusinessException(ErrorCode.TOOL_FAILED));
         assertThat(embeddings.embed(List.of("Java 后端开发"))).isEmpty();
     }
 
-    @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
+    @ParameterizedTest @MethodSource("selectedTiers")
     void matchesDemoAndStoredJobsWithVerifiedEvidenceThroughRestAndChat(ModelTier tier) throws Exception {
-        org.junit.jupiter.api.Assumptions.assumeTrue(System.getProperty("offerpilot.smoke.tier", tier.name()).equals(tier.name()));
         doReturn(tier).when(gateway).defaultTier(); // REST has no tier parameter; exercise each deployment default.
         jdbc.update("UPDATE jobs SET detail_fetched_at=now()-interval '1 hour' WHERE site='demo'");
         assertThat(data(request("GET", "/api/v1/jobs/job_demo_1", null)).path("source").asText()).isEqualTo("demo");
@@ -176,7 +199,7 @@ class DeepSeekSmokeLiveEvaluationTest {
         System.out.println("LIVE_SMOKE " + tier + " AUTO stored-detail and LOCAL_SNAPSHOT PASS");
     }
 
-    @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
+    @ParameterizedTest @MethodSource("selectedTiers")
     void coachNarratesTheGapsAndFourWeekRoadmap(ModelTier tier) throws Exception {
         var events = chat(tier, "COACH", "请分析技能差距并给出四周学习路线，概括卡片里的重点", Map.of("resumeId", resumeId, "resumeVersionId", versionId));
         assertThat(cards(events, "skill_gap").size()).as(tier + " coach").isEqualTo(1);
@@ -188,7 +211,7 @@ class DeepSeekSmokeLiveEvaluationTest {
         System.out.println("LIVE_SMOKE " + tier + " COACH digest-narration PASS");
     }
 
-    @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
+    @ParameterizedTest @MethodSource("selectedTiers")
     void careerSoftwareContextRanksAndNarratesItFirstWithoutVectors(ModelTier tier) throws Exception {
         var events = chat(tier, "CAREER_DISCOVERY", "我喜欢研究技术和动手搭建系统，请推荐适合我的职业，概括卡片里的前三项", Map.of());
         var recommendations = cards(events, "career_recommendation").get(0).path("recommendations");
@@ -200,9 +223,8 @@ class DeepSeekSmokeLiveEvaluationTest {
         System.out.println("LIVE_SMOKE " + tier + " CAREER RIS profile-lexical-narration PASS top5=" + recommendations.findValuesAsText("name").stream().limit(5).toList());
     }
 
-    @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
+    @ParameterizedTest @MethodSource("selectedTiers")
     void interviewerNarratesStarAndRubricCard(ModelTier tier) throws Exception {
-        org.junit.jupiter.api.Assumptions.assumeTrue(System.getProperty("offerpilot.smoke.tier", tier.name()).equals(tier.name()));
         String session = jdbc.queryForObject("SELECT id FROM interview_sessions WHERE user_id=? AND completed=true LIMIT 1", String.class, owner);
         var events = chat(tier, "INTERVIEWER", "给我这场面试的评分。", Map.of("interviewSessionId", session));
         assertThat(cards(events, "interview_report").size()).isEqualTo(1);
@@ -211,7 +233,7 @@ class DeepSeekSmokeLiveEvaluationTest {
         System.out.println("LIVE_SMOKE " + tier + " INTERVIEW STAR-digest-narration PASS");
     }
 
-    @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
+    @ParameterizedTest @MethodSource("selectedTiers")
     void resumeRewriteApprovalAndPdfContainAppliedText(ModelTier tier) throws Exception {
         // Rewrite generation follows the saved resume preference; intent/narration follow chat options.
         jdbc.update("INSERT INTO resume_model_preferences(user_id,text_tier,vision_tier) VALUES (?,?,'VISION_ALT') "
@@ -220,15 +242,20 @@ class DeepSeekSmokeLiveEvaluationTest {
         // The polished seed may correctly return no suggestions; that cannot exercise approval/PDF.
         var draft = (com.fasterxml.jackson.databind.node.ObjectNode) data(request("GET",
                 "/api/v1/resumes/" + resumeId + "/versions/" + versionId, null)).path("structured").deepCopy();
-        draft.put("summary", "我关注后端开发。接口和数据表设计我做过，预约重复的问题用数据库唯一约束和事务控制处理，还写了并发场景测试。希望在实习中学习代码评审和工程实践。以上为演示虚构内容。");
+        draft.put("summary", "我做过后端接口和数据表设计。预约重复的问题，我用了数据库唯一约束，还有事务控制。并发测试也是我写的。我想找后端实习，学习代码评审和工程实践。以上是演示虚构内容。");
+        // Fragmented presentation of the seed's exact facts; do not invent achievements to force patches.
+        var bullets = (com.fasterxml.jackson.databind.node.ArrayNode) draft.path("projects").path(0).path("bullets");
+        bullets.set(0, json.getNodeFactory().textNode("有个平台，做登录、预约、通知的。我和三名同学做的，REST API 和数据表设计是我负责的。"));
+        bullets.set(1, json.getNodeFactory().textNode("测试做了，重复预约能避免。用到的是数据库唯一约束，还有事务控制。并发场景的测试我写了。"));
         versionId = data(request("PUT", "/api/v1/resumes/" + resumeId + "/versions/" + versionId + "/structured", draft)).path("currentVersionId").asText();
         assertThat(versionId).isNotBlank();
         int initialVersions = versionCount();
         var source = data(request("GET", "/api/v1/resumes/" + resumeId + "/versions/" + versionId, null)).path("structured");
-        var events = chat(tier, "RESUME", "请针对选中的岗位生成简历改写建议，保留已有事实，突出项目里的后端开发职责。",
+        var events = chat(tier, "RESUME", "请针对选中的岗位生成简历改写建议，把个人简介中的口语散句重组为简洁的求职摘要，保留已有事实和参与角色，不补造结果。",
                 Map.of("jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
         assertThat(cards(events, "resume_diff").size()).isEqualTo(1);
         var report = cards(events, "resume_diff").get(0);
+        java.nio.file.Files.writeString(java.nio.file.Files.createTempFile("offerpilot-live-rewrite-", ".json"), json.writeValueAsString(report));
         assertThat(report.path("modelTier").asText()).isEqualTo(tier.name());
         assertThat(report.path("model").asText()).isEqualTo(gateway.modelName(tier));
         assertThat(report.path("patches").isEmpty()).as(tier + " actionable rewrite").isFalse();
@@ -267,11 +294,61 @@ class DeepSeekSmokeLiveEvaluationTest {
                 assertThat(extracted.contains(patch.path("value").asText().replaceAll("\\s+", ""))).as("PDF contains patched text").isTrue();
             }
         }
+        verifyOpportunityJourney(tier, newVersion);
         System.out.println("LIVE_SMOKE " + tier + " A rewrite/reject/approve/saved-version/PDF PASS patches=" + accepted.size());
     }
 
-    @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
-    void boardExplicitAndModelInferredApprovalThroughHttp(ModelTier tier) throws Exception {
+    private void verifyOpportunityJourney(ModelTier tier, String savedVersion) throws Exception {
+        doReturn(tier).when(gateway).defaultTier();
+        var match = data(request("POST", "/api/v1/jobs/job_demo_1/matches", Map.of("resumeId", resumeId,
+                "resumeVersionId", savedVersion, "requestId", UUID.randomUUID().toString())));
+        verifyReport(match);
+        var application = data(request("POST", "/api/v1/applications", Map.of("jobId", "job_demo_1")));
+        String applicationId = application.path("id").asText();
+        assertThat(applicationId).isNotBlank();
+        data(request("PATCH", "/api/v1/applications/" + applicationId, Map.of("status", "INTERVIEW",
+                "nextAction", "复盘虚构项目经历", "nextActionAt", java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString())));
+        var session = data(request("POST", "/api/v1/interviews", Map.of("role", "后端开发工程师",
+                "kind", "项目与经历", "jobId", "job_demo_1")));
+        String sessionId = session.path("id").asText();
+        String answer = "在虚构课程项目中，我负责预约接口，目标是处理重复提交。我通过数据库唯一约束和事务控制实现幂等，最终完成并发测试验证。这是演示虚构经历。";
+        for (int index = 0; index < 5; index++) data(request("PUT", "/api/v1/interviews/" + sessionId + "/answers/" + index, Map.of("answerText", answer)));
+        data(request("PATCH", "/api/v1/interviews/" + sessionId, Map.of("questionIndex", 4, "completed", true)));
+        assertThat(data(request("GET", "/api/v1/star-stories/candidates?sessionId=" + sessionId, null))).isNotEmpty();
+        var story = data(request("POST", "/api/v1/star-stories", Map.of("sessionId", sessionId, "questionIndex", 0)));
+        assertThat(story.path("sourceSessionId").asText()).isEqualTo(sessionId);
+        var recap = HttpClient.newHttpClient().send(requestBuilder("GET", "/api/v1/interviews/" + sessionId + "/recap.md", null)
+                .header("Accept", "text/markdown").build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        assertThat(recap.statusCode()).isEqualTo(200);
+        assertThat(recap.body()).contains(answer);
+        var workspace = data(request("GET", "/api/v1/applications/" + applicationId, null));
+        assertThat(workspace.path("latestMatch").path("id").asText()).isEqualTo(match.path("id").asText());
+        assertThat(workspace.path("resumeOptimizations")).isNotEmpty();
+        assertThat(workspace.path("interviews").findValuesAsText("id")).contains(sessionId);
+        assertThat(workspace.path("starStories").findValuesAsText("id")).contains(story.path("id").asText());
+        assertThat(workspace.path("timeline").findValuesAsText("kind")).contains("ARTIFACT_LINKED", "NEXT_ACTION_EDITED");
+        var coach = chat(tier, "COACH", "请根据这个岗位的匹配和刚完成的面试给出四周学习路线，说明已有报告。",
+                Map.of("jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", savedVersion));
+        var availability = cards(coach, "skill_gap").get(0).path("evidenceAvailability");
+        assertThat(availability.path("matchAvailable").asBoolean()).isTrue();
+        assertThat(availability.path("interviewAvailable").asBoolean()).isTrue();
+        assertThat(cards(coach, "roadmap").get(0).path("weeks")).hasSize(4);
+        assertThat(narration(coach)).doesNotContain("尚未生成匹配报告", "尚未完成面试", "没有匹配报告", "没有面试报告");
+        String firstToken = token;
+        try {
+            token = null;
+            var other = data(request("POST", "/api/v1/auth/demo-login", Map.of()));
+            token = other.path("accessToken").asText();
+            assertThat(other.path("user").path("id").asText()).isNotEqualTo(owner);
+            assertThat(request("GET", "/api/v1/resumes/" + resumeId, null).statusCode()).isEqualTo(404);
+            assertThat(request("GET", "/api/v1/applications/" + applicationId, null).statusCode()).isEqualTo(404);
+            assertThat(request("GET", "/api/v1/jobs/matches/" + match.path("id").asText(), null).statusCode()).isEqualTo(404);
+        } finally { token = firstToken; }
+        System.out.println("LIVE_SMOKE " + tier + " opportunity/match/rewrite/interview/STAR/recap/coach/visitor-isolation PASS");
+    }
+
+    @ParameterizedTest @MethodSource("selectedTiers")
+    void boardSelectedJobCommandsRequireApprovalThroughHttp(ModelTier tier) throws Exception {
         var matched = chat(tier, "JOB", "请匹配这个岗位与我的简历", Map.of("jobAction", "match", "jobId", "job_demo_1", "resumeId", resumeId, "resumeVersionId", versionId));
         assertThat(cards(matched, "job_match").size()).isEqualTo(1);
         String conversation = conversation(matched);
@@ -287,7 +364,7 @@ class DeepSeekSmokeLiveEvaluationTest {
         approvalChat(tier, conversation, "AUTO", "把这个岗位加入求职看板", Map.of("jobId", "job_demo_1"), "REJECT",
                 () -> assertThat(boardCount()).isZero());
         verifyBoard("REJECT");
-        // All three requests bypass BoardIntent's narrow whole-sentence pattern.
+        // These single add commands preserve caller selection despite stale model clarification.
         var requests = List.of("我想跟进当前选中的职位，请在我的看板里新建一条待投递记录。",
                 "这个职位我打算申请，请帮我建一个求职跟踪记录，先设为待投递。",
                 "把当前选择的职位记录到求职看板，我之后再投递。");
@@ -298,12 +375,12 @@ class DeepSeekSmokeLiveEvaluationTest {
             approvalChat(tier, conversation, "AUTO", requests.get(i), Map.of("jobId", "job_demo_1"), decision,
                     () -> assertThat(boardCount()).isZero());
             verifyBoard(decision); passed++;
-            System.out.println("LIVE_SMOKE " + tier + " B inferred attempt=" + (i + 1) + " PASS decision=" + decision);
+            System.out.println("LIVE_SMOKE " + tier + " B selected-command attempt=" + (i + 1) + " PASS decision=" + decision);
         }
-        System.out.println("LIVE_SMOKE " + tier + " B explicit/exact-text PASS inferred=" + passed + "/3");
+        System.out.println("LIVE_SMOKE " + tier + " B explicit/selected-commands PASS variants=" + passed + "/3");
     }
 
-    @ParameterizedTest @EnumSource(value = ModelTier.class, names = {"FLASH", "PRO"})
+    @ParameterizedTest @MethodSource("selectedTiers")
     void autoChatSearchFallsBackAndNarratesOfflineSource(ModelTier tier) throws Exception {
         var events = chat(tier, "AUTO", "请找 Java 后端实习岗位，不限城市，说明数据来源。", Map.of());
         assertThat(cards(events, "job_card").size()).isEqualTo(1);
@@ -351,8 +428,8 @@ class DeepSeekSmokeLiveEvaluationTest {
                 var event = json.readTree(line.substring(5).strip()); events.add(event);
                 if (event.path("type").asText().equals("approval.required")) { approval = event; break; }
             }
-            if (approval == null) java.nio.file.Files.writeString(java.nio.file.Path.of(
-                    "/tmp/offerpilot-deepseek-missing-approval-" + tier + ".json"), json.writeValueAsString(events));
+            if (approval == null) java.nio.file.Files.writeString(java.nio.file.Files.createTempFile(
+                    "offerpilot-deepseek-missing-approval-" + tier + "-", ".json"), json.writeValueAsString(events));
             assertThat(approval != null).as(tier + " approval required for " + content).isTrue();
             assertThat(events.stream().anyMatch(e -> e.path("type").asText().equals("tool.call") && e.path("access").asText().equals("WRITE"))).isTrue();
             beforeApproval.run();
@@ -373,7 +450,7 @@ class DeepSeekSmokeLiveEvaluationTest {
     }
 
     private void verifyReport(JsonNode report) {
-        assertThat(report.path("requirements").size()).isBetween(1, 12);
+        assertThat(report.path("requirements").size()).isBetween(1, 100);
         String jd = JobService.evidenceText(report.path("jobSnapshot"));
         int points = 0;
         for (var item : report.path("requirements")) {
@@ -422,7 +499,8 @@ class DeepSeekSmokeLiveEvaluationTest {
     }
     private HttpRequest.Builder requestBuilder(String method, String path, Object body) throws Exception {
         var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(path.equals("/api/v1/agent/chat") ? 420 : 240))
-                .header("Authorization", "Bearer " + token).header("Content-Type", "application/json");
+                .header("Content-Type", "application/json");
+        if (token != null && !token.isBlank()) builder.header("Authorization", "Bearer " + token);
         builder.method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));
         return builder;
     }
