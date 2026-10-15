@@ -161,7 +161,7 @@ class ChatHttpIntegrationTest {
         var response = request("POST", "/agent/chat", token, chat);
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("run.completed");
-        assertThat(requestBody.get()).contains("data:image/png;base64,");
+        assertThat(requestBody.get()).contains("data:image/png;base64,", "用户本轮附带了 1 张图片");
 
         String conversation = jdbc.queryForObject("SELECT conversation_id FROM agent_runs WHERE user_id=?", String.class, user);
         var parts = json.readTree(jdbc.queryForObject("SELECT parts::text FROM messages WHERE conversation_id=? AND role='USER'", String.class, conversation));

@@ -116,7 +116,8 @@ export type AgentEventType = AgentEvent['type']
 export interface ChatRequest {
   conversationId?: string
   content: string
-  attachments?: Array<{ fileId: string; kind: 'IMAGE' | 'PDF' | 'DOCX' | 'AUDIO' }>
+  /** AG-02：目前只支持图片，先经 POST /agent/attachments 上传 */
+  attachments?: Array<{ fileId: string; kind: 'image' }>
   mode?: AgentMode
   options?: {
     modelTier?: ModelTier

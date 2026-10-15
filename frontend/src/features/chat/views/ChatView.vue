@@ -3,6 +3,7 @@ import { checkPrivacyText } from '@/shared/api/privacy-settings'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Composer from '../components/Composer.vue'
+import type { ChatImage } from '@/shared/api/attachments'
 import MessageList from '../components/MessageList.vue'
 import ConversationHistory from '../components/ConversationHistory.vue'
 import ChatWelcome from '../components/ChatWelcome.vue'
@@ -132,7 +133,7 @@ async function select(id?: string) {
   if (!id && !route.params.conversationId) await chat.open()
   else await router.push(id ? `/chat/${encodeURIComponent(id)}` : '/chat')
 }
-async function onSend(content: string) {
+async function onSend(content: string, images: ChatImage[] = []) {
   if (preparingSend.value || busy.value || missingConversation.value) return
   preparingSend.value = true
   try {
@@ -196,6 +197,7 @@ async function onSend(content: string) {
           : Object.keys(context).length
             ? context
             : undefined,
+      images,
     )
     await nextTick()
     if (scrollArea.value) scrollArea.value.scrollTop = scrollArea.value.scrollHeight
@@ -457,7 +459,7 @@ async function remove(id: string) {
             {{
               mock
                 ? 'Mock 脚本演示，内容只在当前页面可见。'
-                : '历史保存在服务端，上下文最多参考最近 10 轮完整对话。附件解析尚未接入。'
+                : '历史保存在服务端，上下文最多参考最近 10 轮完整对话。图片只在发送的这一轮交给模型。'
             }}
           </p>
         </div>

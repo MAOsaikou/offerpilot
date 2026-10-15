@@ -9,13 +9,16 @@ export interface Conversation {
   updatedAt: string
 }
 export type MessageStatus = 'RUNNING' | 'COMPLETED' | 'CANCELLED' | 'FAILED'
-/** docs/05 §3 消息 parts；目前后端只写 text，card 等类型按契约兼容读取 */
+/** docs/05 §3 消息 parts；text、card，以及用户消息的 image（fileId/name） */
 export interface MessagePart {
   type: string
   text?: string
   cardId?: string
   cardType?: string
   payload?: unknown
+  /** type=image：用户随消息发送的图片 */
+  fileId?: string
+  name?: string
 }
 export interface StoredMessage {
   id: string
