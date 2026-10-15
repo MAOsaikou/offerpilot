@@ -52,7 +52,7 @@ public class ModelGateway {
     public boolean piiMaskingEnabled(String owner) { return owner == null || privacy == null || privacy.enabled(owner); }
     public String privacyWarning(String owner, String text) {
         return !piiMaskingEnabled(owner) && com.offerpilot.llm.privacy.PiiMasker.detects(text)
-                ? "检测到联系方式或身份证号。当前已关闭文本脱敏，相关信息可能发送给模型；建议在设置中开启。" : null;
+                ? "检测到联系方式、身份证号或住址。当前已关闭文本脱敏，相关信息可能发送给模型；建议在设置中开启。" : null;
     }
     private com.offerpilot.llm.privacy.PiiMasker.Session masking(String owner, Prompt prompt) {
         return piiMaskingEnabled(owner) ? com.offerpilot.llm.privacy.PiiMasker.forPrompt(prompt) : null;
@@ -60,7 +60,20 @@ public class ModelGateway {
     private Flux<ChatResponse> protectedStream(String owner, Prompt prompt, java.util.function.Function<Prompt, Flux<ChatResponse>> provider) {
         prompt = com.offerpilot.llm.privacy.ModelInputBoundary.apply(prompt);
         var session = masking(owner, prompt);
-        return session == null ? provider.apply(prompt) : session.restore(provider.apply(session.mask(prompt)));
+        return moderation().guard(session == null ? provider.apply(prompt) : session.restore(provider.apply(session.mask(prompt))));
+    }
+    private volatile com.offerpilot.llm.safety.OutputModeration moderation;
+    /** Built lazily from the configured provider keys and JWT secret; their values are never logged. */
+    com.offerpilot.llm.safety.OutputModeration moderation() {
+        if (moderation == null) {
+            var secrets = new java.util.ArrayList<String>();
+            for (String key : List.of("spring.ai.deepseek.api-key", "spring.ai.deepseek.chat.api-key", "spring.ai.openai.api-key",
+                    "spring.ai.openai.chat.api-key", "spring.ai.openai.embedding.api-key", "offerpilot.security.jwt-secret",
+                    "offerpilot.llm.providers.custom.api-key", "offerpilot.mcp.search-api-key"))
+                secrets.add(environment.getProperty(key, ""));
+            moderation = new com.offerpilot.llm.safety.OutputModeration(secrets);
+        }
+        return moderation;
     }
 
     /** Compatibility constructor for isolated tests/live evaluations without business identity or Redis. */
@@ -117,7 +130,7 @@ public class ModelGateway {
                 ChatResponse response = delegate.call(session == null ? prompt : session.mask(prompt));
                 if (session != null) response = session.restore(response);
                 record(admission, tokens(response));
-                return response;
+                return moderation().check(response);
             }
             @Override public Flux<ChatResponse> stream(Prompt prompt) {
                 return guardedStream(tier, capturedOwner, owner -> protectedStream(owner, prompt, delegate::stream));
@@ -157,7 +170,7 @@ public class ModelGateway {
                 var response = compatibleModel(tier).stream(new Prompt(outbound,
                         OpenAiChatOptions.builder().model(modelName(tier)).temperature(temperature)
                                 .maxTokens(configuration(tier).maxTokens()).streamUsage(true).build()));
-                return session == null ? response : session.restore(response);
+                return moderation().guard(session == null ? response : session.restore(response));
             }
             ChatOptions options = "deepseek".equalsIgnoreCase(configuration(tier).provider())
                     ? DeepSeekChatOptions.builder().model(modelName(tier)).temperature(temperature)
@@ -165,7 +178,7 @@ public class ModelGateway {
                     : OpenAiChatOptions.builder().model(modelName(tier)).temperature(temperature)
                             .maxTokens(configuration(tier).maxTokens()).streamUsage(true).build();
             var response = providerModel(tier).stream(new Prompt(outbound, options));
-            return session == null ? response : session.restore(response);
+            return moderation().guard(session == null ? response : session.restore(response));
         });
     }
 
