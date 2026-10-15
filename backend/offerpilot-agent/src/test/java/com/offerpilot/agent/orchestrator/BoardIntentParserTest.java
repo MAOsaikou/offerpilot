@@ -40,18 +40,28 @@ class BoardIntentParserTest {
         var parser = new JobIntentParser(gateway, new ObjectMapper(), new ByteArrayResource("board".getBytes()));
         var experts = new com.offerpilot.agent.experts.ExpertRegistry();
         var planner = new IntentPlanner(gateway, new ObjectMapper(), experts, new ByteArrayResource("planner".getBytes()), parser, null);
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(
+                "{\"kind\":\"single\",\"expert\":\"JOB\",\"confidence\":1,\"needsClarification\":true,\"clarifyingQuestion\":\"当前岗位不明\"}"))))));
+        var commands = List.of("把这个岗位加入求职看板",
+                "我想跟进当前选中的职位，请在我的看板里新建一条待投递记录。",
+                "这个职位我打算申请，请帮我建一个求职跟踪记录，先设为待投递。",
+                "把当前选择的职位记录到求职看板，我之后再投递。");
         for (var tier : List.of(ModelTier.FLASH, ModelTier.PRO)) {
             for (var mode : List.of(com.offerpilot.agent.domain.AgentMode.AUTO, com.offerpilot.agent.domain.AgentMode.JOB)) {
-                var decision = planner.prepare(mode, "把这个岗位加入求职看板", List.of(), tier, u -> {}, Map.of("jobId", "selected-job")).block();
-                assertThat(decision.needsClarification()).isFalse();
-                assertThat(decision.plan().steps().get(0).inputs()).containsExactlyInAnyOrderEntriesOf(Map.of("action", "createApplication", "jobId", "selected-job"));
-                assertThat(planner.prepare(mode, "把这个岗位加入求职看板", List.of(), tier, u -> {}, Map.of()).block().needsClarification()).isTrue();
+                for (String command : commands) {
+                    var decision = planner.prepare(mode, command, List.of(), tier, u -> {}, Map.of("jobId", "selected-job")).block();
+                    assertThat(decision.needsClarification()).as(command).isFalse();
+                    assertThat(decision.plan().steps().get(0).inputs()).containsExactlyInAnyOrderEntriesOf(Map.of("action", "createApplication", "jobId", "selected-job"));
+                    assertThat(planner.prepare(mode, command, List.of(), tier, u -> {}, Map.of()).block().needsClarification()).isTrue();
+                }
             }
         }
         verifyNoInteractions(gateway);
         assertThat(BoardIntent.matches("不要把这个岗位加入求职看板", Map.of("jobId", "selected-job"))).isFalse();
         assertThat(BoardIntent.matches("把这个岗位加入求职看板后搜索Java", Map.of("jobId", "selected-job"))).isFalse();
         assertThat(BoardIntent.matches("帮我匹配这个岗位", Map.of("jobId", "selected-job"))).isFalse();
+        assertThat(BoardIntent.matches("我不想跟进当前选中的职位，请在我的看板里新建一条待投递记录。", Map.of("jobId", "selected-job"))).isFalse();
+        assertThat(BoardIntent.matches("把当前选择的职位记录到求职看板后删除其它记录", Map.of("jobId", "selected-job"))).isFalse();
     }
     @Test void autoPlanningReceivesTheSameBoundedSelectionsAsJobActionParsing() throws Exception {
         var gateway = mock(ModelGateway.class);
@@ -70,7 +80,7 @@ class BoardIntentParserTest {
                 new ByteArrayResource("planner".getBytes()), parser, null);
         for (var tier : List.of(ModelTier.FLASH, ModelTier.PRO)) {
             var decision = planner.prepare(com.offerpilot.agent.domain.AgentMode.AUTO,
-                    "这个职位我打算申请，请帮我建一个求职跟踪记录，先设为待投递。", List.of(), tier, u -> {},
+                    "请登记这个岗位的申请进度到我的跟踪记录中，阶段先记待投递。", List.of(), tier, u -> {},
                     Map.of("jobId", "private-selected-id", "resumeId", "resume-selected", "resumeVersionId", "x".repeat(81), "applicationId", List.of("invalid"))).block();
             assertThat(decision.needsClarification()).isFalse();
             assertThat(decision.plan().steps().get(0).inputs()).containsExactlyInAnyOrderEntriesOf(

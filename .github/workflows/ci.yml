@@ -11,6 +11,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  deployment:
+    name: Deployment preparation (no provider calls)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node --test deploy/scripts/preflight.test.mjs
+      - run: node --check deploy/scripts/storage-smoke.mjs
+      - run: bash -n deploy/scripts/backup.sh
+      - name: Validate authenticated storage Compose template
+        run: docker compose --env-file deploy/.env.demo.example -f deploy/docker-compose.yml -f deploy/docker-compose.storage-auth.example.yml --profile full config --quiet
+        env:
+          OFFERPILOT_ENV_FILE: ${{ github.workspace }}/deploy/.env.demo.example
+      - name: Reject placeholder public deployment
+        run: |
+          if node deploy/scripts/preflight.mjs --env deploy/.env.demo.example; then
+            echo 'Placeholder deployment was incorrectly accepted'
+            exit 1
+          fi
   frontend:
     name: Frontend (lint / typecheck / test / build)
     runs-on: ubuntu-latest

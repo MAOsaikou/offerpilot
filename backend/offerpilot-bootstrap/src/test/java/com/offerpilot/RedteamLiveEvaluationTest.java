@@ -59,7 +59,7 @@ class RedteamLiveEvaluationTest {
                     var registry = new ExpertRegistry();
                     if(c.route().equals("NOTE")) {
                         var notes = mock(KnowledgeNotesForChat.class);
-                        when(notes.retrieve(eq("fictional-owner"),anyString())).thenReturn(List.of(new KnowledgeNotesForChat.Citation("fictional-note","Redis复盘","技术积累",c.text())));
+                        when(notes.retrieve(eq("fictional-owner"),anyString())).thenReturn(List.of(new KnowledgeNotesForChat.Citation("fictional-note","Redis复盘","技术积累",c.text(),"KB-a8e332025c49")));
                         registry.setNoteContext(new KnowledgeNoteContext(notes,JSON));
                     }
                     var resumes = new ResumeIntentParser(gateway,JSON,new ClassPathResource("prompts/agent/resume-intent.st"));

@@ -21,6 +21,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
       - run: mvn -q -B -DskipTests compile
         working-directory: backend
+      - name: Compile opt-in live evaluations without provider calls
+        run: mvn -q -B -Plive -DskipTests test-compile
+        working-directory: backend
       - run: mvn -q -B test
         working-directory: backend
         env: { SPRING_PROFILES_ACTIVE: test }
