@@ -34,6 +34,7 @@ it('a [KB-…] reference in the reply jumps to that note in the turn source card
   const chips = root.querySelectorAll<HTMLButtonElement>('button.md-citation')
   expect([...chips].map((b) => b.textContent)).toEqual(['KB-0123456789ab'])
   expect(root.textContent).toContain('第[1]条')
+  expect(root.textContent).not.toContain('正在思考')
   chips[0]!.click()
   await nextTick()
   const note = root.querySelector('article')!

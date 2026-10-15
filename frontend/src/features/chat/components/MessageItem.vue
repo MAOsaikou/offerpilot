@@ -39,9 +39,6 @@ function locate(reference: string) {
       :streaming="message.streaming === true"
       @cite="locate"
     />
-    <p v-if="missingSource" class="run-note" role="status">
-      本轮没有找到 {{ missingSource }} 对应的笔记来源，可能是模型写错了编号。
-    </p>
     <p v-else class="pending">
       <span v-if="!message.status || message.status === 'RUNNING'" class="live-dot pending-dot" />
       {{
@@ -51,6 +48,9 @@ function locate(reference: string) {
             ? '本轮已停止'
             : '正在思考'
       }}
+    </p>
+    <p v-if="missingSource" class="run-note" role="status">
+      本轮没有找到 {{ missingSource }} 对应的笔记来源，可能是模型写错了编号。
     </p>
     <p v-if="message.status === 'FAILED' || message.status === 'CANCELLED'" class="run-note">
       {{
