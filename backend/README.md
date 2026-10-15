@@ -1,10 +1,27 @@
 # 后端本地启动（DeepSeek + PostgreSQL）
 
-当前实现包括账号/访客认证、持久化多轮聊天、简历上传解析与诊断、岗位定向改写及明确采纳、服务器岗位板。聊天链路通过专家编排复用岗位搜索/匹配、诊断与改写应用服务，支持停止、刷新恢复、分页与用户隔离。简历原件存入对象存储，后台解析后保存不可变结构化版本，支持失败重试、手动编辑及改写建议采纳。岗位收藏、阶段和备注按用户保存。启动时执行唯一的 V1–V15 迁移；已执行旧功能分支迁移的数据库按 [升级说明](../deploy/migrations/README.md) 先对齐历史。RAG、长期记忆和通用 MCP 工具编排仍为后续规划。集成测试需要 Docker，使用隔离 PostgreSQL/S3Mock 和本地模型协议桩。
+当前实现包括账号/访客认证、持久化聊天与专家编排、简历解析/诊断/岗位定向改写/采纳/PDF、岗位搜索与匹配、投递工作区、面试/STAR/复盘、职业推荐与成长路线、私有知识笔记和长期事实记忆。公开体验默认创建有期限和额度的独立访客沙箱。启动执行 V1–V26 迁移；旧分支迁移先按 [升级说明](../deploy/migrations/README.md) 对齐历史。职业与笔记支持全文及可选向量检索，未配置百炼 embedding 时降级；真实向量效果、真人评分与公网部署仍待验收。默认集成测试使用隔离 PostgreSQL/S3Mock 和本地模型协议桩，不调用真实模型。
+
+## 最新主线真实模型验收
+
+Windows 入口会复制当前后端源码（包括未提交修改）到新临时目录，保留原工作区、旧构建产物及数据；不执行 clean 或删除。先检查所有 live 评测可编译，再按需显式运行：
+
+```powershell
+# 在仓库根目录：只编译，零模型调用
+.\backend\scripts\live-smoke.ps1
+# 付费：仅 FLASH，最多 40 次流式模型入口调用；从进程或忽略的 backend/.env.local 读取 DeepSeek Key
+.\backend\scripts\live-smoke.ps1 -RunLive -Tier FLASH -MaxCalls 40
+```
+
+真实模型套件使用生产装配、独立 PostgreSQL/Redis/S3Mock、新沙箱和虚构简历，覆盖推荐、匹配、改写→审批→PDF、投递材料→面试→STAR→复盘→教练以及跨访客隔离。岗位 MCP 被桩设为不可用，检查离线回退；不代表实时企业源、真实 embedding、语音或公网验收。S3Mock 不校验凭据，认证存储须另用 [存储验收](../deploy/scripts/README.md) 检查。证据留在临时目录，不打印凭据、不自动清理。
+
+直接运行 Maven 时，`-Plive` 只开放编译和发现；仍需套件开关和真实 Key。`offerpilot.smoke.tier` 默认 FLASH，PRO 或 ALL 必须显式指定；所有七个方法统一遵守筛选。`offerpilot.smoke.max-calls` 默认 40，对本次 JVM 全套调用计数，达到上限后在供应商 IO 前拒绝。该计数不是 token 或账单金额。
+
+2026-10-12 百炼实测：`text-embedding-v4` 返回 1024 维向量，Spring AI 与业务适配器的 16 条短文本也通过（10+6 分片）；完整职业库语义质量仍待评测。dev 可在忽略的 `backend/.env.local` 设置 `BAILIAN_API_KEY`、`SPRING_AI_MODEL_EMBEDDING=openai`、`LLM_MODEL_EMBEDDING=text-embedding-v4`、`LLM_EMBEDDING_DIMENSIONS=1024`，重新构建并重启生效。首次开启会补齐职业库并启动笔记向量任务；仅测少量请求时先设置 `OCCUPATION_EMBED_ENABLED=false`、`NOTES_EMBED_ENABLED=false`。详见[验收记录](../docs/research/2026-10-12-本地验收与发布准备.md)。
 
 ## 1. 准备环境
 
-需要 JDK 17、Maven 3.9+、Docker Desktop。Windows 安装并打开 [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)，选择 Linux 容器 / WSL 2，等待引擎运行，再开 PowerShell 验证。MinIO 使用官方 Quay 镜像（Docker Hub 上的旧仓库已归档）：
+需要 JDK 17、Maven 3.9+、Docker Desktop。Windows 安装并打开 [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/)，选择 Linux 容器 / WSL 2，等待引擎运行，再开 PowerShell 验证。本地对象存储使用 Compose 中的 S3Mock；公网使用部署文档中的认证存储覆盖：
 
 ```powershell
 java -version
@@ -42,7 +59,7 @@ Key 来自 [DeepSeek 控制台](https://platform.deepseek.com/api_keys)。文件
 
 默认 `dev` profile 从仓库根目录或 `backend` 工作目录读取此文件。Key 只在后端使用，不要放进前端 `.env` / `VITE_*`。修改后重启 Java 进程。根目录 `.env` 是完整 Docker 部署的配置，和本机 Java 使用的 `backend/.env.local` 区分。
 
-开发环境 FLASH「快速」映射到 DeepSeek Flash，PRO「深度」映射到 DeepSeek Pro；文字聊天和文本简历解析可只配置 DeepSeek。图文简历默认共用 DEEPSEEK_API_KEY，模型名为 deepseek-flash；VISION_ALT 保留为视觉路由档位，默认也使用 DeepSeek。要改用百炼，显式设置 LLM_VISION_PROVIDER=bailian、LLM_MODEL_VISION_ALT 和 BAILIAN_API_KEY / BAILIAN_BASE_URL。旧环境中曾填写的视觉模型名需同步调整，不能把百炼模型名交给 DeepSeek。模式下拉框目前不代表已接入不同专家。
+开发环境 FLASH「快速」映射到 DeepSeek Flash，PRO「深度」映射到 DeepSeek Pro；文字聊天和文本简历解析可只配置 DeepSeek。图文简历默认共用 DEEPSEEK_API_KEY，模型名为 deepseek-flash；VISION_ALT 保留为视觉路由档位，默认也使用 DeepSeek。要改用百炼，显式设置 LLM_VISION_PROVIDER=bailian、LLM_MODEL_VISION_ALT 和 BAILIAN_API_KEY / BAILIAN_BASE_URL。旧环境中曾填写的视觉模型名需同步调整，不能把百炼模型名交给 DeepSeek。聊天模式已接入对应专家，写操作经审批。
 
 简历上传还需要对象存储：`deploy/docker-compose.yml` 的 `minio` 服务运行 Adobe S3Mock，backend/.env.local 中的 MINIO_ENDPOINT / MINIO_ROOT_USER / MINIO_ROOT_PASSWORD / MINIO_BUCKET 必须与容器一致（见 .env.example）。S3Mock 不校验访问密钥，后端仍用这对密钥签名。上传支持 PDF、DOCX、PNG、JPG、UTF-8 TXT/Markdown，单文件≤10MB、PDF≤10页；DOCX 支持正文、页眉、页脚和 PNG/JPEG 嵌入图片（最多20张）；其他嵌入媒体需导出 PDF。PDF 每页同时提供文本与图像以避免混合内容遗漏。原有前端本地草稿仍保留，不会自动上传。
 
@@ -55,9 +72,9 @@ docker compose --env-file backend/.env.local -f deploy/docker-compose.yml up -d 
 docker compose --env-file backend/.env.local -f deploy/docker-compose.yml ps
 ```
 
-等待 postgres、redis、minio 显示 `healthy`。首次需要下载镜像。端口为 PostgreSQL `5432`、Redis `6379`、对象存储 `127.0.0.1:9000`（无 9001 控制台）。Redis 要求使用 `REDIS_PASSWORD` 认证，且宿主机端口仅绑定 `127.0.0.1`。聊天不调用 jobs-mcp，暂时不需要启动它。
+等待 postgres、redis、minio 显示 `healthy`。首次需要下载镜像。端口为 PostgreSQL `5432`、Redis `6379`、对象存储 `127.0.0.1:9000`（无 9001 控制台）。Redis 要求使用 `REDIS_PASSWORD` 认证，且宿主机端口仅绑定 `127.0.0.1`。实时岗位搜索需要 jobs-mcp；使用 LOCAL 快照或不搜索岗位时可暂不启动它。
 
-PostgreSQL 镜像已包含 pgvector。Java 启动自动执行 Flyway V1–V15，创建用户、会话、消息、文件元数据、简历与版本等表；无需手工运行 SQL。既有数据库只执行尚未应用的迁移，聊天和简历数据均按当前身份隔离。
+PostgreSQL 镜像已包含 pgvector。Java 启动自动执行 Flyway V1–V26，创建用户、会话、消息、简历与版本、投递材料及沙箱等表；无需手工运行 SQL。既有数据库只执行尚未应用的迁移，私有数据按当前身份隔离。
 
 如果之前已经建立数据库卷，修改 `POSTGRES_PASSWORD` 不会重置库内密码，应填写现有密码；不要删除数据库卷来解决连接问题。
 
@@ -73,7 +90,7 @@ java -jar offerpilot-bootstrap/target/offerpilot-bootstrap-0.1.0-SNAPSHOT.jar --
 
 保持窗口打开。健康检查：`http://localhost:8081/actuator/health`，预期 `{"status":"UP"}`；接口文档：`http://localhost:8081/swagger-ui.html`。健康检查覆盖数据库 / Redis，不代表模型 Key 有效。当前已接入 12 小时密码登录 JWT 和 30 天访客凭据；公网部署仍需 HTTPS、正式随机密钥及部署规范中的环境配置。
 
-RAG 尚未实现，dev 只关闭 Embedding 与 Spring AI VectorStore 自动装配，不关闭 PostgreSQL、Flyway、JPA 或 Redis，也不需要百炼 Key。
+dev 默认关闭 Embedding 与 Spring AI VectorStore 自动装配，保留规则/全文检索，不关闭 PostgreSQL、Flyway、JPA 或 Redis。需要向量检索时按部署文档配置百炼 Key 并显式开启 embedding。
 
 ## 5. 前端发送真实消息
 

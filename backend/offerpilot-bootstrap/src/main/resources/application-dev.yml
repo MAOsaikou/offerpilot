@@ -5,10 +5,10 @@ spring:
       - optional:file:./.env.local[.properties]
   ai:
     vectorstore:
-      type: none # RAG 尚未接入；PostgreSQL 与 Flyway 仍正常启动。
+      type: none # 使用业务域的全文/可选向量检索，不自动创建 Spring AI 通用向量表。
     model:
       chat: deepseek
-      embedding: none
+      embedding: ${SPRING_AI_MODEL_EMBEDDING:none}
     retry:
       max-attempts: 1
   jpa:

@@ -7,6 +7,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -14,6 +15,8 @@ import java.util.List;
 @Component
 public class OccupationEmbeddings {
     private static final Logger log = LoggerFactory.getLogger(OccupationEmbeddings.class);
+    // Bailian text-embedding-v3/v4 accepts at most ten inputs per HTTP request.
+    private static final int PROVIDER_BATCH_SIZE = 10;
     private final ObjectProvider<EmbeddingModel> models;
     private final Environment env;
 
@@ -45,10 +48,15 @@ public class OccupationEmbeddings {
             String owner = com.offerpilot.llm.quota.LlmUserContext.current();
             var outbound = owner == null || privacy == null || privacy.enabled(owner)
                     ? documents.stream().map(text -> new com.offerpilot.llm.privacy.PiiMasker.Session(List.of(text)).mask(text)).toList() : documents;
-            var vectors = model.embed(outbound);
-            if (vectors.size() != documents.size()) throw new IllegalArgumentException("Embedding batch size mismatch");
-            vectors.forEach(OccupationEmbeddings::literal);
-            return vectors;
+            List<float[]> vectors = new ArrayList<>(documents.size());
+            for (int offset = 0; offset < outbound.size(); offset += PROVIDER_BATCH_SIZE) {
+                var batch = outbound.subList(offset, Math.min(offset + PROVIDER_BATCH_SIZE, outbound.size()));
+                var result = model.embed(batch);
+                if (result.size() != batch.size()) throw new IllegalArgumentException("Embedding batch size mismatch");
+                result.forEach(OccupationEmbeddings::literal);
+                vectors.addAll(result);
+            }
+            return List.copyOf(vectors);
         } catch (Exception ex) {
             // Supplier exception messages may contain URLs/credentials; log only the exception type.
             log.warn("职业向量调用失败 ({})；保留全文索引与规则推荐", ex.getClass().getSimpleName());

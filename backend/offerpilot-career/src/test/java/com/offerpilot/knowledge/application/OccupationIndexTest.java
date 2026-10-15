@@ -13,6 +13,44 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class OccupationIndexTest {
+    @Test void occupationBatchRespectsBailianLimitAndPreservesVectorOrder() {
+        @SuppressWarnings("unchecked") ObjectProvider<EmbeddingModel> provider = mock(ObjectProvider.class);
+        EmbeddingModel model = mock(EmbeddingModel.class);
+        when(provider.getIfAvailable()).thenReturn(model);
+        when(model.embed(anyList())).thenAnswer(invocation -> {
+            List<String> inputs = invocation.getArgument(0);
+            if (inputs.size() > 10) throw new IllegalArgumentException("Bailian input limit exceeded");
+            return inputs.stream().map(text -> {
+                float[] vector = new float[1024];
+                vector[0] = Integer.parseInt(text.substring("document-".length())) + 1;
+                return vector;
+            }).toList();
+        });
+        var env = new MockEnvironment().withProperty("spring.ai.openai.api-key", "test-only")
+                .withProperty("spring.ai.model.embedding", "openai");
+        var documents = java.util.stream.IntStream.range(0, 16).mapToObj(i -> "document-" + i).toList();
+        var vectors = new OccupationEmbeddings(provider, env).embed(documents);
+        assertThat(vectors).hasSize(16);
+        for (int i = 0; i < vectors.size(); i++) assertThat(vectors.get(i)[0]).isEqualTo(i + 1);
+        verify(model).embed(documents.subList(0, 10));
+        verify(model).embed(documents.subList(10, 16));
+    }
+
+    @Test void laterProviderBatchFailureDiscardsPartialResults() {
+        @SuppressWarnings("unchecked") ObjectProvider<EmbeddingModel> provider = mock(ObjectProvider.class);
+        EmbeddingModel model = mock(EmbeddingModel.class);
+        when(provider.getIfAvailable()).thenReturn(model);
+        var vector = new float[1024];
+        vector[0] = 1;
+        when(model.embed(anyList())).thenReturn(java.util.Collections.nCopies(10, vector))
+                .thenThrow(new IllegalStateException("supplier unavailable"));
+        var env = new MockEnvironment().withProperty("spring.ai.openai.api-key", "test-only")
+                .withProperty("spring.ai.model.embedding", "openai");
+        var documents = java.util.Collections.nCopies(16, "Java");
+        assertThat(new OccupationEmbeddings(provider, env).embed(documents)).isEmpty();
+        verify(model, times(2)).embed(anyList());
+    }
+
     @Test void rrfUsesOneBasedRanksAndOneVotePerList() {
         var scores = OccupationRrf.scores(List.of("a", "a", "b"), List.of("b", "c"));
         assertThat(scores.get("a")).isEqualTo(1.0 / 61);
