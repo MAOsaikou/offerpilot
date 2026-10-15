@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import { useWorkspace } from '@/shared/stores/workspace'
-import { getStoredTheme, setTheme, type ThemeMode } from '@/shared/utils/theme'
 import { downloadText } from '@/shared/utils/download'
 import { API_BASE } from '@/shared/api/client'
 import DeleteMyData from '../components/DeleteMyData.vue'
@@ -11,6 +10,7 @@ import PrivacySettings from '../components/PrivacySettings.vue'
 import MemorySettings from '../components/MemorySettings.vue'
 import { sessionRevision } from '@/shared/utils/authSession'
 import ResumeModelSettings from '../components/ResumeModelSettings.vue'
+import AccountPreferences from '../components/AccountPreferences.vue'
 const workspace = useWorkspace()
 const route = useRoute()
 const router = useRouter()
@@ -34,7 +34,6 @@ function selectTab(value: string) {
           : ''
   void router.replace('/settings' + suffix)
 }
-const theme = ref<ThemeMode>(getStoredTheme())
 const checking = ref(false)
 const result = ref('')
 const ok = ref(false)
@@ -95,14 +94,7 @@ function exportWorkspace() {
           >目标方向<input v-model="workspace.state.target" maxlength="100"
         /></label>
       </div>
-      <label class="field"
-        >外观主题<select v-model="theme" @change="setTheme(theme)">
-          <option value="light">明亮</option>
-          <option value="dark">深色</option>
-          <option value="system">跟随系统</option>
-        </select></label
-      >
-      <p class="subtle">修改即时生效，偏好保存在当前浏览器。</p>
+      <AccountPreferences />
     </section>
     <ResumeModelSettings v-else-if="tab === '模型选择'" />
     <section v-else-if="tab === '连接与联调'" class="split-content">
