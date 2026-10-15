@@ -53,3 +53,7 @@ deploy/windows/runtime/
 .cursor/
 .claude/
 .workbuddy/
+
+# Python bytecode from eval scripts
+__pycache__/
+*.pyc
