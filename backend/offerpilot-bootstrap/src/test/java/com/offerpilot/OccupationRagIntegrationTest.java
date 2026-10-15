@@ -60,6 +60,15 @@ class OccupationRagIntegrationTest extends OccupationRecommendationTest {
         assertThat(job.reindex(false)).isEqualTo(new OccupationEmbeddingJob.Result(1, 1));
     }
 
+    @Test void switchingEmbeddingModelDropsIncomparableVectorsAndReindexes() {
+        int total = jdbc.queryForObject("SELECT count(*) FROM occupations", Integer.class);
+        assertThat(jdbc.queryForObject("SELECT fingerprint FROM embedding_index_state", String.class)).isEqualTo(embeddings.fingerprint());
+        jdbc.update("UPDATE embedding_index_state SET fingerprint='bge-m3@local'");
+        assertThat(job.reindex(false).embedded()).isEqualTo(total);
+        assertThat(jdbc.queryForObject("SELECT fingerprint FROM embedding_index_state", String.class)).isEqualTo(embeddings.fingerprint());
+        assertThat(job.reindex(false).embedded()).isZero();
+    }
+
     @Test void fulltextWorksWithoutVectorsAndChatFusesWithRealCitations() {
         jdbc.update("UPDATE occupations SET embedding=NULL,tsv=NULL");
         var disabled = new OccupationEmbeddingJob(jdbc, embeddings, false, false);
@@ -107,7 +116,7 @@ class OccupationRagIntegrationTest extends OccupationRecommendationTest {
                 """, OccupationEmbeddings.literal(OccupationMockEmbeddingConfiguration.hash("Java")), "Java ".repeat(100));
         var dual = retrieval.search("Java", 5);
         assertThat(dual.hits().get(0).id()).isEqualTo("occ_test_rrf");
-        assertThat(dual.hits().get(0).rrf()).isEqualTo(2.0 / 61);
+        assertThat(dual.hits().get(0).rrf()).isEqualTo((1.0 + OccupationRrf.LEXICAL_WITH_VECTOR) / 61);
         assertThat(recommender.retrieve(query, 5)).isEqualTo(recommender.retrieve(query, 5));
         var profiles = mock(CareerProfileService.class);
         when(profiles.get("alice")).thenReturn(new CareerProfileService.Profile("后端开发工程师", "", "Java",

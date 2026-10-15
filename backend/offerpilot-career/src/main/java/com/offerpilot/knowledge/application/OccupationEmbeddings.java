@@ -27,9 +27,17 @@ public class OccupationEmbeddings {
 
     public boolean configured() {
         boolean mock = Arrays.asList(env.getActiveProfiles()).contains("mock-llm");
-        String key = env.getProperty("spring.ai.openai.api-key", "");
+        String key = env.getProperty("spring.ai.openai.embedding.api-key", env.getProperty("spring.ai.openai.api-key", ""));
         return mock || !("none".equals(env.getProperty("spring.ai.model.embedding"))
                 || key.isBlank() || "sk-not-configured".equals(key));
+    }
+
+    /** Vectors from different models/endpoints share no space; stored vectors are tagged with this. */
+    public String fingerprint() {
+        String base = env.getProperty("spring.ai.openai.embedding.base-url", env.getProperty("spring.ai.openai.base-url", ""));
+        String host = base.replaceFirst("^[a-z]+://", "").replaceFirst("/.*$", "");
+        if (host.matches("(localhost|127\\.0\\.0\\.1|host\\.docker\\.internal|ollama)(:\\d+)?")) host = "local";
+        return env.getProperty("spring.ai.openai.embedding.options.model", "") + "@" + host;
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required=false)

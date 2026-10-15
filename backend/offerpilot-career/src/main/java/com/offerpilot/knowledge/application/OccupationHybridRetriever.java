@@ -52,7 +52,8 @@ public class OccupationHybridRetriever {
                 available = true;
             }
         }
-        var scores = OccupationRrf.scores(vector.stream().map(Hit::id).toList(), fts.stream().map(Hit::id).toList());
+        var scores = OccupationRrf.weighted(new double[]{1.0, available ? OccupationRrf.LEXICAL_WITH_VECTOR : 1.0},
+                vector.stream().map(Hit::id).toList(), fts.stream().map(Hit::id).toList());
         var hits = new LinkedHashMap<String, Hit>();
         vector.forEach(item -> hits.put(item.id(), item));
         fts.forEach(item -> hits.put(item.id(), item));
