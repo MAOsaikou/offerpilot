@@ -114,8 +114,10 @@ offerpilot:
     password: ${STAFF_BOOTSTRAP_PASSWORD:}
   security:
     jwt-secret: ${JWT_SECRET:}
-    access-ttl: 12h
+    access-ttl: 15m
     refresh-ttl: 7d
+    # HttpOnly refresh Cookie 仅经 HTTPS 发送；本地 http 开发在 dev profile 里关闭。
+    refresh-cookie-secure: ${REFRESH_COOKIE_SECURE:true}
     cors-origins: ${CORS_ORIGINS:}
   demo:
     enabled: ${DEMO_ACCOUNT_ENABLED:true}

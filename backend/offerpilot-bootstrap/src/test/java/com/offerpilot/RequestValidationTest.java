@@ -50,7 +50,7 @@ class RequestValidationTest {
     void setup() {
         validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
-        mvc = MockMvcBuilders.standaloneSetup(new LoginController(logins), new StaffUserController(admin),
+        mvc = MockMvcBuilders.standaloneSetup(new LoginController(logins, mock(com.offerpilot.auth.application.RefreshTokenService.class), true), new StaffUserController(admin),
                         new ApplicationController(applications, users), new ResumeModelSettingsController(settings, users),
                         new com.offerpilot.interview.web.InterviewController(interviews, mock(com.offerpilot.interview.application.InterviewRecapExporter.class), users))
                 .setValidator(validator).setControllerAdvice(new GlobalExceptionHandler()).build();

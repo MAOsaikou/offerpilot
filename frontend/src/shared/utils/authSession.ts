@@ -17,8 +17,14 @@ export const loginRequired = () => localStorage.getItem(LOGIN_REQUIRED_KEY) === 
 export const guestAvailable = () =>
   Boolean(getStoredGuest()) && localStorage.getItem(INVALID_GUEST_KEY) !== getStoredGuest()
 
+/** Signed-in identity is the JWT subject, so a refreshed access token is still the same session. */
+export function identityOf(credential: string | null): string | null {
+  if (!credential) return null
+  const subject = tokenSubject(credential)
+  return subject ? `user:${subject}` : credential
+}
 const storedIdentity = () =>
-  getStoredToken() || (!loginRequired() && guestAvailable() ? getStoredGuest() : null)
+  identityOf(getStoredToken()) || (!loginRequired() && guestAvailable() ? getStoredGuest() : null)
 let observedIdentity = storedIdentity()
 function publishSession(): void {
   observedIdentity = storedIdentity()
@@ -32,6 +38,22 @@ export function readStoredUser(): AuthUser | null {
   } catch {
     return null
   }
+}
+
+function tokenPayload(token: string): Record<string, unknown> | null {
+  try {
+    const part = token.split('.')[1]
+    if (!part) return null
+    const payload = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')))
+    return payload && typeof payload === 'object' ? payload : null
+  } catch {
+    return null
+  }
+}
+
+export function tokenSubject(token: string): string | null {
+  const sub = tokenPayload(token)?.sub
+  return typeof sub === 'string' && sub ? sub : null
 }
 
 /** 仅用于浏览器安排重新登录；可信身份和签名仍由服务端校验。 */
@@ -60,6 +82,21 @@ export function saveLogin(result: LoginResult): void {
   localStorage.setItem(ACCESS_TOKEN_KEY, result.accessToken)
   localStorage.setItem(USER_KEY, JSON.stringify(result.user))
   localStorage.removeItem(LOGIN_REQUIRED_KEY)
+  publishSession()
+}
+
+/**
+ * AC-01: store a refreshed access token. Same subject means same session, so private caches,
+ * in-flight requests and open views stay untouched; a different subject is a real identity switch.
+ */
+export function replaceLoginToken(result: LoginResult): void {
+  const current = getStoredToken()
+  if (!current || tokenSubject(current) !== tokenSubject(result.accessToken)) {
+    saveLogin(result)
+    return
+  }
+  localStorage.setItem(ACCESS_TOKEN_KEY, result.accessToken)
+  localStorage.setItem(USER_KEY, JSON.stringify(result.user))
   publishSession()
 }
 

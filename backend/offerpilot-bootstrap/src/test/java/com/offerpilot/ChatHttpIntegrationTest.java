@@ -243,7 +243,7 @@ class ChatHttpIntegrationTest {
         var data = json.readTree(registered.body()).path("data");
         String token = data.path("accessToken").asText();
         String userId = data.path("user").path("id").asText();
-        assertThat(data.path("expiresIn").asLong()).isEqualTo(43200);
+        assertThat(data.path("expiresIn").asLong()).isEqualTo(900);
         assertThat(request("POST", "/auth/register", null, payload).statusCode()).isEqualTo(409);
         assertThat(request("POST", "/auth/login", null, payload).statusCode()).isEqualTo(200);
         assertThat(request("POST", "/auth/staff/login", null, payload).statusCode()).isEqualTo(403);

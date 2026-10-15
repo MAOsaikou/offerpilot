@@ -19,10 +19,12 @@ import java.util.List;
 
 /**
  * JWT 令牌服务：生成、解析、比对校验。
- * 失效时间取 offerpilot.security.access-ttl（当前 12 小时）。
+ * 账号登录的访问令牌取 offerpilot.security.access-ttl（15 分钟），过期后用 HttpOnly refresh Cookie 续期；
+ * 体验沙箱没有 refresh，其令牌以沙箱到期时间为准，最长 {@link #SANDBOX_TTL_CAP}。
  */
 @Service
 public class JwtTokenService {
+    public static final Duration SANDBOX_TTL_CAP = Duration.ofHours(12);
     private final SecretKey key;
     private final Duration accessTtl;
 
@@ -41,13 +43,22 @@ public class JwtTokenService {
 
     /** 生成签名令牌，claims 携带用户 ID、角色与昵称。 */
     public String issue(String userId, List<String> roles, String nickname) {
-        return issue(userId, roles, nickname, Instant.now().plus(accessTtl));
+        return issueUntil(userId, roles, nickname, Instant.now().plus(accessTtl));
     }
 
-    /** Sandbox credentials never outlive the sandbox or the normal access-token TTL. */
+    /** Sandbox credentials (no refresh) never outlive the sandbox or {@link #SANDBOX_TTL_CAP}. */
     public String issue(String userId, List<String> roles, String nickname, Instant expiresAt) {
+        return sign(userId, roles, nickname, earliest(expiresAt, Instant.now().plus(SANDBOX_TTL_CAP)));
+    }
+
+    private static Instant earliest(Instant a, Instant b) { return a.isBefore(b) ? a : b; }
+
+    private String issueUntil(String userId, List<String> roles, String nickname, Instant expiresAt) {
+        return sign(userId, roles, nickname, earliest(expiresAt, Instant.now().plus(accessTtl)));
+    }
+
+    private String sign(String userId, List<String> roles, String nickname, Instant expiry) {
         Instant now = Instant.now();
-        Instant expiry = expiresAt.isBefore(now.plus(accessTtl)) ? expiresAt : now.plus(accessTtl);
         return Jwts.builder()
                 .subject(userId)
                 .claim("roles", roles)

@@ -54,7 +54,9 @@ public class SecurityConfig {
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/guest",
                                 "/api/v1/auth/staff/login",
-                                "/api/v1/auth/demo-login"
+                                "/api/v1/auth/demo-login",
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout"
                         ).permitAll()
                         .requestMatchers(mcpAuth::isMcpRequest).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

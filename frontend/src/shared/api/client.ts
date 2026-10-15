@@ -6,8 +6,12 @@ import {
   ACCESS_TOKEN_KEY,
   GUEST_TOKEN_KEY,
   expireLoginIfNeeded,
+  clearLogin,
   getStoredToken,
+  identityOf,
   invalidateCredential,
+  replaceLoginToken,
+  tokenExpiresAt,
   loginRequired,
   identitySignal,
   saveGuest,
@@ -56,7 +60,9 @@ const responseSessions = new WeakMap<Response, AbortSignal>()
 
 function assertCredential(credential: string): void {
   const active = getStoredToken() || (loginRequired() ? null : localStorage.getItem(IDENTITY_KEY))
-  if (credential !== active) throw new ApiError('身份已切换，请重新读取数据', { code: 20001 })
+  // A refreshed access token belongs to the same identity; compare subjects, not token strings.
+  if (identityOf(credential) !== identityOf(active))
+    throw new ApiError('身份已切换，请重新读取数据', { code: 20001 })
 }
 
 export function assertResponseIdentity(response: Response): void {
@@ -119,11 +125,55 @@ async function guestToken(): Promise<string> {
   return pendingIdentity
 }
 
+/** Refresh this long before expiry so clock skew and slow requests never present an expired token. */
+const REFRESH_MARGIN_MS = 2 * 60_000
+let pendingRefresh: Promise<void> | undefined
+
+/**
+ * AC-01: renew a soon-to-expire access token with the HttpOnly refresh cookie. Single-flight within
+ * the tab and serialized across tabs (Web Locks), re-checking after the lock because another tab may
+ * already have stored a fresh token. A 401 ends the session; network errors leave it to expiry.
+ */
+export function ensureFreshLogin(): Promise<void> | undefined {
+  const fresh = (token: string | null) => {
+    const expiry = token ? tokenExpiresAt(token) : null
+    return !token || (expiry !== null && expiry - Date.now() > REFRESH_MARGIN_MS)
+  }
+  // Synchronous fast path: callers that need no refresh must not yield (lock ordering relies on it).
+  if (fresh(getStoredToken())) return undefined
+  pendingRefresh ??= (async () => {
+    const run = async () => {
+      const current = getStoredToken()
+      if (fresh(current)) return
+      const response = await fetch(apiUrl('/auth/refresh'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: authHeaders(),
+      })
+      if (getStoredToken() !== current) return
+      if (response.ok) replaceLoginToken((await response.json()).data)
+      else if (response.status === 401) clearLogin()
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.locks)
+        await navigator.locks.request('offerpilot-refresh', run)
+      else await run()
+    } catch {
+      // Offline or server unavailable: keep the current state; expiry handling still applies.
+    } finally {
+      pendingRefresh = undefined
+    }
+  })()
+  return pendingRefresh
+}
+
 export async function authenticatedHeaders(
   extra: Record<string, string> = {},
 ): Promise<Record<string, string>> {
   if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK === 'true') return authHeaders(extra)
   // 已登录（邮箱密码）优先使用 JWT；否则回退到访客身份。
+  const refreshing = ensureFreshLogin()
+  if (refreshing) await refreshing
   expireLoginIfNeeded()
   const jwt = getStoredToken()
   if (jwt) return authHeaders({ ...extra, Authorization: `Bearer ${jwt}` })

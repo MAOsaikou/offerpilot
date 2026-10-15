@@ -4,9 +4,9 @@ import { useAuthStore } from '@/shared/stores/auth'
 const APP_NAME = import.meta.env.VITE_APP_NAME || 'OfferPilot'
 
 export function registerGuards(router: Router): void {
-  router.beforeEach((to) => {
+  router.beforeEach(async (to) => {
     const auth = useAuthStore()
-    auth.refreshSession()
+    await auth.refreshSession()
     if (to.meta.staff && !auth.isStaff) {
       return { name: 'staff-login', query: { redirect: to.fullPath } }
     }
