@@ -99,13 +99,19 @@ public class UserMemoryService {
     /** Called after approval only. Re-derive from the persisted USER message, never trust model/card args. */
     @Transactional
     public Memory saveApproved(String owner, String runId, MemoryCandidate.Candidate candidate) {
+        return saveApproved(owner, runId, candidate, true);
+    }
+
+    /** requireRunning=false is for an approval decided after its chat stream ended; grounding is unchanged. */
+    @Transactional
+    public Memory saveApproved(String owner, String runId, MemoryCandidate.Candidate candidate, boolean requireRunning) {
         lock(owner);
         if (!enabled(owner)) throw conflict("长期记忆已关闭，未保存");
         var sources = jdbc.queryForList("""
                 SELECT r.conversation_id,r.user_message_id,m.plain_text FROM agent_runs r
                 JOIN messages m ON m.id=r.user_message_id AND m.user_id=r.user_id AND m.role='USER'
-                WHERE r.id=? AND r.user_id=? AND r.status='RUNNING' FOR UPDATE OF r
-                """, runId, owner);
+                WHERE r.id=? AND r.user_id=? AND (r.status='RUNNING' OR NOT ?) FOR UPDATE OF r
+                """, runId, owner, requireRunning);
         if (sources.isEmpty()) throw conflict("运行已结束，未保存记忆");
         var row = sources.get(0);
         var grounded = MemoryCandidate.extract((String) row.get("plain_text"));

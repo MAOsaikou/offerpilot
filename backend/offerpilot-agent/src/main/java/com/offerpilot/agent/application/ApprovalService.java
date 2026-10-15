@@ -14,9 +14,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Approval waits. No thread or database transaction is held while waiting. Board writes are also
- * stored durably: if the chat stream goes away while one is pending, the in-memory wait is dropped
- * and the approval can still be decided later from the board (see {@link BoardWriteTools#resolveDetached}).
+ * Approval waits. No thread or database transaction is held while waiting. Every write tool's
+ * approval is also stored durably: if the chat stream goes away while one is pending, the in-memory
+ * wait is dropped and the approval can still be decided later (see {@link DetachedApprovals}).
  */
 @Service
 public class ApprovalService {
@@ -34,7 +34,7 @@ public class ApprovalService {
         this.store = store;
     }
 
-    static boolean durable(String action) { return BoardWriteTools.ACTIONS.contains(action); }
+    static boolean durable(String action) { return DetachedApprovals.durable(action); }
 
     public final class Ticket {
         private final String id = UUID.randomUUID().toString();
@@ -125,7 +125,7 @@ public class ApprovalService {
         Ticket ticket = tickets.get(runId + ":" + approvalId);
         if (ticket == null) throw new BusinessException(ErrorCode.RUN_NOT_FOUND, "审批不存在");
         Decision decision = ticket.decide(owner, body);
-        if (decision == null) throw new BusinessException(ErrorCode.APPROVAL_EXPIRED, "对话已中断，请到求职看板处理待确认操作");
+        if (decision == null) throw new BusinessException(ErrorCode.APPROVAL_EXPIRED, "对话已中断，请到工作台的待确认操作中处理");
         return decision;
     }
 
@@ -143,8 +143,9 @@ public class ApprovalService {
                 || (body.reason() != null && body.reason().length() > 2000))
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "审批决策无效");
         var finalArgs = new java.util.LinkedHashMap<>(args);
-        if (body.args() != null) {
-            if (!java.util.Set.of("status", "note", "nextAction", "nextActionAt").containsAll(body.args().keySet()))
+        if (body.args() != null && !body.args().isEmpty()) {
+            var editable = BoardWriteTools.ACTIONS.contains(action) ? java.util.Set.of("status", "note", "nextAction", "nextActionAt") : java.util.Set.<String>of();
+            if (!editable.containsAll(body.args().keySet()))
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "审批包含不允许编辑的参数");
             finalArgs.putAll(body.args());
         }
