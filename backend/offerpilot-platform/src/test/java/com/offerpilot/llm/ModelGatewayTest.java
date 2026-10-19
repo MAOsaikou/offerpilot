@@ -108,7 +108,8 @@ class ModelGatewayTest {
         try {
             var env = new MockEnvironment().withProperty("spring.ai.deepseek.base-url", "http://127.0.0.1:" + server.getAddress().getPort())
                     .withProperty("spring.ai.deepseek.api-key", "isolated-key")
-                    .withProperty("offerpilot.llm.injection-classifier-enabled", "true");
+                    .withProperty("offerpilot.llm.injection-classifier-enabled", "true")
+                    .withProperty("offerpilot.agent.parallel-safety-screen", "false");
             var gateway = gateway("deepseek", false, env);
             var prompt = new org.springframework.ai.chat.prompt.Prompt("请分析这个项目，联系13800138000");
             gateway.chatModel(ModelTier.PRO).call(prompt);

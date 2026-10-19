@@ -27,6 +27,15 @@ RESUME_QUESTIONS = [
 ]
 
 
+ACCEPTANCE_QUESTIONS = [
+    ("chit-chat", "你好，简单介绍一下你能帮我做什么？一句话。"),
+    ("resume-advice", "简历里的项目经历怎么写更有说服力？给两条要点。"),
+    ("job-search", "帮我找上海的 Java 后端实习岗位。"),
+    ("coach", "我想制定四周学习计划，从哪里开始？一句话指导。"),
+    ("career", "我不知道自己适合什么职业，怎么开始探索？一句话。"),
+]
+
+
 def post(url, body=None, token=None, accept="application/json"):
     headers = {"Content-Type": "application/json", "Accept": accept}
     if token:
@@ -71,23 +80,47 @@ def main():
     parser.add_argument("--runs", type=int, default=20)
     parser.add_argument("--mode", default="AUTO")
     parser.add_argument("--pause", type=float, default=1.0)
-    parser.add_argument("--question-set", choices=("mixed", "resume"), default="mixed")
+    parser.add_argument("--question-set", choices=("mixed", "resume", "acceptance"), default="mixed")
+    parser.add_argument("--control-base", help="Alternate default/control servers; --runs counts default-server turns")
+    parser.add_argument("--output", help="Write complete raw rows and per-category summaries as JSON")
     args = parser.parse_args()
     questions = RESUME_QUESTIONS if args.question_set == "resume" else QUESTIONS
     rows = []
     for i in range(args.runs):
-        marks = one(args.base, args.mode, questions[i % len(questions)])
-        rows.append(marks)
-        print(json.dumps({"run": i + 1, **{k: (round(v, 3) if isinstance(v, float) else v) for k, v in marks.items()}}, ensure_ascii=False))
-        time.sleep(args.pause)
-    summary = {}
-    for key in ("started", "first", "total"):
-        values = [r[key] for r in rows if key in r]
-        summary[key] = {"n": len(values), "p50": round(statistics.median(values), 3) if values else None,
-                        "p95": round(pct(values, 95), 3) if values else None, "max": round(max(values), 3) if values else None}
-    print(json.dumps({"mode": args.mode, "question_set": args.question_set,
-                      "completed": sum(r.get("status") == "run.completed" for r in rows),
-                      "errors": sum(r.get("status") == "error" for r in rows), "summary": summary}, ensure_ascii=False))
+        if args.question_set == "acceptance":
+            category, question = ACCEPTANCE_QUESTIONS[i % len(ACCEPTANCE_QUESTIONS)]
+        else:
+            category, question = args.question_set, questions[i % len(questions)]
+        # Reverse each pair on alternate rounds to reduce systematic order bias.
+        targets = [("parallel", args.base)]
+        if args.control_base:
+            targets.append(("serial", args.control_base))
+            if i % 2:
+                targets.reverse()
+        for label, base in targets:
+            marks = one(base, args.mode, question)
+            row = {"run": i + 1, "configuration": label, "category": category, "question": question, **marks}
+            rows.append(row)
+            print(json.dumps({k: (round(v, 3) if isinstance(v, float) else v) for k, v in row.items()}, ensure_ascii=False), flush=True)
+            time.sleep(args.pause)
+    def summarize(group):
+        summary = {}
+        for key in ("started", "first", "total"):
+            values = [r[key] for r in group if key in r]
+            summary[key] = {"n": len(values), "p50": round(statistics.median(values), 3) if values else None,
+                            "p95": round(pct(values, 95), 3) if values else None, "max": round(max(values), 3) if values else None}
+        return {"completed": sum(r.get("status") == "run.completed" for r in group),
+                "errors": sum(r.get("status") == "error" for r in group), "summary": summary}
+    result = {"mode": args.mode, "question_set": args.question_set, **summarize(rows),
+              "configurations": {label: {**summarize([r for r in rows if r["configuration"] == label]),
+                  "categories": {category: summarize([r for r in rows if r["configuration"] == label and r["category"] == category])
+                      for category in sorted({r["category"] for r in rows})}}
+                  for label in sorted({r["configuration"] for r in rows})}}
+    print(json.dumps(result, ensure_ascii=False), flush=True)
+    if args.output:
+        with open(args.output, "w") as output:
+            json.dump({**result, "rows": rows}, output, ensure_ascii=False, indent=2)
+            output.write("\n")
 
 
 if __name__ == "__main__":
