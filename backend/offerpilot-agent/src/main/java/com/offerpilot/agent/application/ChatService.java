@@ -257,9 +257,11 @@ public class ChatService {
                     return recoverable ? Flux.just(error, new AgentEvent.RunCompleted("run.completed", seq.incrementAndGet(),
                             turn.runId(), Instant.now(), turn.messageId(), "FAILED", (int) Duration.between(turn.startedAt(), Instant.now()).toMillis())) : Flux.just(error);
                 })
+                // Remove before terminal delivery or upstream cancellation; doFinally runs afterwards.
+                .doOnTerminate(() -> cancellations.remove(turn.runId()))
+                .doOnCancel(() -> cancellations.remove(turn.runId()))
                 .doFinally(signal -> {
                     dropEarly.run();
-                    cancellations.remove(turn.runId());
                     if (signal == reactor.core.publisher.SignalType.CANCEL) {
                         try { conversations.finish(turn, answer.toString(), "CANCELLED", null, null, cards.snapshot()); }
                         catch (RuntimeException ex) {

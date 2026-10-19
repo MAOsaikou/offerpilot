@@ -26,8 +26,10 @@ import reactor.core.publisher.Flux;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -63,6 +65,27 @@ class ChatServiceTest {
 
     private List<AgentEvent> events() {
         return service.chat("owner", request()).collectList().block(Duration.ofSeconds(5));
+    }
+
+    private Map<?, ?> activeRuns() {
+        return (Map<?, ?>) org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void registryIsEmptyWhenSubscriberObservesSuccessOrFailure(boolean failure) {
+        when(gateway.stream(any(), anyList())).thenReturn(failure
+                ? Flux.error(new RuntimeException("provider failed")) : Flux.just(reply("回复")));
+        var terminalRuns = new AtomicReference<Map<?, ?>>();
+        var chat = service.chat("owner", request());
+        assertThat(activeRuns()).hasSize(1);
+        var result = chat.doOnComplete(() -> terminalRuns.set(Map.copyOf(activeRuns())))
+                .collectList().block(Duration.ofSeconds(5));
+
+        assertThat(terminalRuns.get()).isNotNull().isEmpty();
+        assertThat(result).last().isInstanceOf(failure ? AgentEvent.ErrorEvent.class : AgentEvent.RunCompleted.class);
+        service.cancel("owner", "run");
+        verify(conversations).cancel(eq("owner"), eq("run"), isNull(), eq(List.of()));
     }
 
     @Test
@@ -367,11 +390,15 @@ class ChatServiceTest {
 
     @Test
     void cancellingDownstreamCancelsProvider() {
-        AtomicBoolean cancelled = new AtomicBoolean();
-        when(gateway.stream(any(), anyList())).thenReturn(Flux.<ChatResponse>never().doOnCancel(() -> cancelled.set(true)));
+        var runsAtProviderCancellation = new AtomicReference<Map<?, ?>>();
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.<ChatResponse>never()
+                .doOnCancel(() -> runsAtProviderCancellation.set(Map.copyOf(activeRuns()))));
         var subscription = service.chat("owner", request()).subscribe();
+        assertThat(activeRuns()).hasSize(1);
         subscription.dispose();
-        assertThat(cancelled).isTrue();
+        assertThat(runsAtProviderCancellation.get()).isNotNull().isEmpty();
+        assertThat(activeRuns()).isEmpty();
+        verify(conversations).finish(any(), eq(""), eq("CANCELLED"), isNull(), isNull(), eq(List.of()));
     }
 
     @Test
