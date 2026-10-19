@@ -5,9 +5,13 @@ export interface CareerProfileFields {
   city: string
   skills: string
   interests: string[]
+  major: string
+  courses: string
+  valuesText: string
 }
 
 export interface CareerProfile extends CareerProfileFields {
+  assessment: AssessmentConfirmed | null
   completedTasks: string[]
   updatedAt: string | null
 }

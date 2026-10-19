@@ -8,11 +8,16 @@ import {
   resetCareerAssessment,
   saveAssessmentAnswer,
   type AssessmentTrait,
+  type AssessmentConfirmed,
   type CareerAssessment,
   type RiasecLetter,
 } from '@/shared/api/career'
 
-const emit = defineEmits<{ confirmed: [city: string] }>()
+const props = defineProps<{ beforeConfirm?: () => Promise<void> }>()
+const emit = defineEmits<{
+  confirmed: [city: string]
+  changed: [assessment: AssessmentConfirmed | null]
+}>()
 const LETTERS: RiasecLetter[] = ['R', 'I', 'A', 'S', 'E', 'C']
 const LABELS: Record<RiasecLetter, string> = {
   R: '实际型 · 动手做出东西',
@@ -151,15 +156,18 @@ function addTrait() {
 
 function confirm() {
   void run(
-    () =>
-      confirmCareerAssessment({
+    async () => {
+      await props.beforeConfirm?.()
+      return confirmCareerAssessment({
         riasec: scores.value,
         traits: traits.value.map((t) => t.name),
         ...constraints.value,
-      }),
-    () => {
+      })
+    },
+    (next) => {
       editing.value = false
       emit('confirmed', constraints.value.city.trim())
+      emit('changed', next.confirmed)
     },
   )
 }
@@ -168,7 +176,7 @@ function restart() {
   if (!window.confirm('清空测评回答和画像，重新开始？')) return
   editing.value = false
   chatting.value = false
-  void run(resetCareerAssessment)
+  void run(resetCareerAssessment, () => emit('changed', null))
 }
 </script>
 

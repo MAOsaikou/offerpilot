@@ -16,6 +16,10 @@ const initial = (): CareerProfile => ({
   city: '上海',
   skills: 'SQL',
   interests: ['技术研发'],
+  major: '软件工程',
+  courses: '数据库',
+  valuesText: '成长',
+  assessment: null,
   completedTasks: [learningTasks[0]!],
   updatedAt: null,
 })
@@ -126,6 +130,9 @@ it('loads the server profile, debounces text, saves interest and target, then re
     city: '上海',
     skills: 'SQL',
     interests: ['技术研发'],
+    major: '软件工程',
+    courses: '数据库',
+    valuesText: '成长',
   })
   root.querySelectorAll<HTMLInputElement>('.chip input')[2]!.click()
   await vi.waitFor(() => expect(profiles['career-owner']!.interests).toContain('数据分析'))
@@ -224,5 +231,82 @@ it('shows a load error and disables writes until retry succeeds', async () => {
   await vi.waitFor(() =>
     expect(root.querySelector<HTMLInputElement>('input[maxlength="100"]')!.disabled).toBe(false),
   )
+  expect(profileWrites).toHaveLength(0)
+})
+
+it('edits all three panels, preserves failed drafts, and restores them after navigation', async () => {
+  await mount('/discover')
+  expect(root.textContent).toContain('专业与课程')
+  expect(root.textContent).toContain('兴趣与技能')
+  expect(root.textContent).toContain('性格与价值观')
+  expect(root.querySelector('a[href="#career-assessment"]')?.textContent).toContain('继续职业测评')
+  failSave = true
+  await edit('input[name="major"]', '统计学')
+  await edit('textarea[name="courses"]', '概率论\n数据挖掘')
+  await edit('textarea[name="valuesText"]', '成长\n平衡')
+  await vi.waitFor(() => expect(root.textContent).toContain('保存暂不可用'))
+  expect(root.querySelector<HTMLTextAreaElement>('textarea[name="courses"]')!.value).toBe(
+    '概率论\n数据挖掘',
+  )
+  failSave = false
+  clickButton('重试')
+  await vi.waitFor(() => expect(profiles['career-owner']!.major).toBe('统计学'))
+  await router.push('/career')
+  await router.push('/discover')
+  await vi.waitFor(() =>
+    expect(root.querySelector<HTMLInputElement>('input[name="major"]')?.value).toBe('统计学'),
+  )
+  expect(root.querySelector<HTMLTextAreaElement>('textarea[name="valuesText"]')!.value).toBe(
+    '成长\n平衡',
+  )
+})
+
+it('edits the confirmed projection through assessment confirm and refreshes both panels without reloading', async () => {
+  profiles['career-owner']!.assessment = {
+    riasec: { R: 20, I: 90, A: 10, S: 30, E: 60, C: 40 },
+    code: 'IEC',
+    traits: [{ name: '好奇', confidence: 0.8, evidence: '喜欢研究' }],
+    constraints: { city: '上海', salary: '', overtime: '' },
+  }
+  let confirms = 0
+  server.use(
+    http.put('*/api/v1/career/assessment/confirm', async ({ request }) => {
+      const body = (await request.json()) as {
+        riasec: Record<'R' | 'I' | 'A' | 'S' | 'E' | 'C', number>
+        traits: string[]
+        city: string
+        salary: string
+        overtime: string
+      }
+      confirms++
+      if (confirms === 1)
+        return HttpResponse.json({ code: 50000, message: '确认暂不可用' }, { status: 503 })
+      const confirmed = {
+        riasec: body.riasec,
+        code: 'SIC',
+        traits: body.traits.map((name) => ({ name, confidence: 1, evidence: '' })),
+        constraints: { city: body.city, salary: body.salary, overtime: body.overtime },
+      }
+      profiles['career-owner']!.assessment = confirmed
+      return HttpResponse.json({
+        data: { questions: [], answers: [], inference: null, confirmed, confirmedAt: 'now' },
+      })
+    }),
+  )
+  await mount('/discover')
+  expect(root.textContent).toContain('喜欢研究')
+  clickButton('编辑性格与约束')
+  await nextTick()
+  await edit('input[name="riasec-S"]', '95')
+  root
+    .querySelector<HTMLFormElement>('.personality-panel form')!
+    .dispatchEvent(new Event('submit', { cancelable: true }))
+  await vi.waitFor(() => expect(root.textContent).toContain('确认暂不可用'))
+  expect(root.querySelector<HTMLInputElement>('input[name="riasec-S"]')!.value).toBe('95')
+  root
+    .querySelector<HTMLFormElement>('.personality-panel form')!
+    .dispatchEvent(new Event('submit', { cancelable: true }))
+  await vi.waitFor(() => expect(root.textContent).toContain('SIC'))
+  expect(root.querySelector('input[name="riasec-S"]')).toBeNull()
   expect(profileWrites).toHaveLength(0)
 })

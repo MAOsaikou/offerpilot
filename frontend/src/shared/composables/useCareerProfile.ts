@@ -4,6 +4,7 @@ import {
   saveCareerProfile,
   saveCareerTasks,
   type CareerProfile,
+  type AssessmentConfirmed,
 } from '@/shared/api/career'
 import { useAuthStore } from '@/shared/stores/auth'
 import { identitySignal } from '@/shared/utils/authSession'
@@ -16,6 +17,10 @@ const emptyProfile = (): CareerProfile => ({
   city: '',
   skills: '',
   interests: [],
+  major: '',
+  courses: '',
+  valuesText: '',
+  assessment: null,
   completedTasks: [],
   updatedAt: null,
 })
@@ -62,8 +67,9 @@ export function useCareerProfile() {
     const current = generation
     const revision = revisions[kind]
     const session = identitySignal()
-    const { target, city, skills, interests, completedTasks } = profile.value
-    const fields = { target, city, skills, interests: [...interests] }
+    const { target, city, skills, interests, major, courses, valuesText, completedTasks } =
+      profile.value
+    const fields = { target, city, skills, interests: [...interests], major, courses, valuesText }
     const completed = [...completedTasks]
     writes = writes.then(async () => {
       try {
@@ -104,6 +110,21 @@ export function useCareerProfile() {
     enqueue('tasks')
   }
 
+  async function flushProfile() {
+    clearTimeout(timer)
+    timer = undefined
+    if (dirty.profile.value) enqueue('profile')
+    await writes
+    if (dirty.profile.value) throw new Error(error.value || '请先重试保存职业画像')
+  }
+
+  function applyAssessment(assessment: AssessmentConfirmed | null) {
+    profile.value.assessment = assessment
+    // Preserve any edits made while assessment confirmation was in flight.
+    if (!dirty.profile.value && assessment?.constraints.city)
+      profile.value.city = assessment.constraints.city
+  }
+
   function retry() {
     if (!ready.value) return void load()
     clearTimeout(timer)
@@ -134,5 +155,16 @@ export function useCareerProfile() {
     reader?.abort()
   })
 
-  return { profile, loading, ready, error, pending, saveProfile, saveTasks, retry }
+  return {
+    profile,
+    loading,
+    ready,
+    error,
+    pending,
+    saveProfile,
+    saveTasks,
+    retry,
+    flushProfile,
+    applyAssessment,
+  }
 }

@@ -1,13 +1,27 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import type { AssessmentConfirmed } from '@/shared/api/career'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { useCareerProfile } from '@/shared/composables/useCareerProfile'
 import CareerAssessment from '../components/CareerAssessment.vue'
-const { profile, loading, ready, error, pending, saveProfile, retry } = useCareerProfile()
-// The server copies a confirmed city into the profile; mirror it without another write.
-function reloadProfile(city: string) {
-  if (city) profile.value.city = city
+import ProfilePersonality from '../components/ProfilePersonality.vue'
+const {
+  profile,
+  loading,
+  ready,
+  error,
+  pending,
+  saveProfile,
+  retry,
+  flushProfile,
+  applyAssessment,
+} = useCareerProfile()
+const assessmentRevision = ref(0)
+function personalityConfirmed(assessment: AssessmentConfirmed) {
+  applyAssessment(assessment)
+  assessmentRevision.value++
 }
 const interests = ['技术研发', '产品策划', '数据分析', '创意设计', '沟通协作', '研究探索']
 const directions = [
@@ -41,8 +55,8 @@ function choose(role: string) {
 <template>
   <section class="page-stack">
     <PageHeading
-      title="从了解自己，到找到方向"
-      description="先写下你的偏好，再探索值得投入的职业方向。"
+      title="我的职业画像"
+      description="从专业、兴趣和性格三个维度认识自己，把方向变成下一步行动。"
       ><RouterLink
         :to="{
           path: '/chat',
@@ -59,10 +73,9 @@ function choose(role: string) {
     <p v-if="ready" role="status" class="subtle">
       {{ pending ? '职业档案尚未保存' : '职业档案已与服务器同步' }}
     </p>
-    <CareerAssessment @confirmed="reloadProfile" />
     <div class="split-content">
       <section class="panel form-stack">
-        <h2>我的职业画像</h2>
+        <h2>职业方向</h2>
         <div class="form-grid">
           <label class="field"
             >目标方向<input
@@ -80,11 +93,58 @@ function choose(role: string) {
               @input="saveProfile()"
           /></label>
         </div>
+        <p class="subtle">文字编辑会自动保存。保存失败时保留本页草稿，请点击重试。</p>
+      </section>
+      <aside class="panel form-stack">
+        <span class="stat-icon"><AppIcon name="discover" /></span>
+        <h2>探索没有标准答案</h2>
+        <p class="subtle">
+          回想一件让你投入的事：你在做什么？其中哪一部分让你有成就感？这些具体经历，比一个简单的标签更有价值。
+        </p>
+        <div class="helper-note">
+          开启长期记忆时，目标、城市、专业和兴趣码会同步到记忆；仅用已有记忆补充空白项。可在设置中管理或关闭。
+        </div>
+        <RouterLink to="/career" class="btn">把方向变成行动</RouterLink>
+      </aside>
+    </div>
+    <div class="profile-panels">
+      <section class="panel form-stack" aria-labelledby="education-title">
+        <span class="tag">01 · 学习积累</span>
+        <h2 id="education-title">专业与课程</h2>
+        <label class="field"
+          >专业<input
+            v-model="profile.major"
+            name="major"
+            :disabled="!ready"
+            maxlength="100"
+            placeholder="例如：软件工程"
+            @input="saveProfile()"
+        /></label>
+        <label class="field"
+          >课程（每行一门）<textarea
+            v-model="profile.courses"
+            name="courses"
+            :disabled="!ready"
+            rows="5"
+            maxlength="3000"
+            placeholder="数据结构与算法&#10;数据库原理"
+            @input="saveProfile()"
+          />
+        </label>
+        <p class="subtle">写下与你的方向有关的课程、实验或选修经历，没想好可以先留空。</p>
+      </section>
+      <section class="panel form-stack" aria-labelledby="interests-title">
+        <span class="tag">02 · 喜欢与擅长</span>
+        <h2 id="interests-title">兴趣与技能</h2>
+        <p v-if="profile.assessment" class="helper-note">
+          已确认的 Holland 兴趣码：<strong>{{ profile.assessment.code }}</strong>
+        </p>
         <label class="field"
           >已有技能<textarea
             v-model="profile.skills"
+            name="skills"
             :disabled="!ready"
-            rows="3"
+            rows="4"
             maxlength="3000"
             placeholder="你会什么？有哪些实践经历？"
             @input="saveProfile()"
@@ -104,24 +164,40 @@ function choose(role: string) {
                 :value="interest"
                 :disabled="!ready"
                 @change="saveProfile(0)"
-              />
-              {{ interest }}</label
+              />{{ interest }}</label
             >
           </div>
         </div>
-        <p class="subtle">你的选择会自动保存到当前用户的职业档案，并显示在成长路线中。</p>
       </section>
-      <aside class="panel form-stack">
-        <span class="stat-icon"><AppIcon name="discover" /></span>
-        <h2>探索没有标准答案</h2>
-        <p class="subtle">
-          回想一件让你投入的事：你在做什么？其中哪一部分让你有成就感？这些具体经历，比一个简单的标签更有价值。
-        </p>
-        <div class="helper-note">
-          左侧是自填偏好；上方对话测评由 AI 根据你的原话推断，仅供探索参考，不是标准化心理测评。
-        </div>
-        <RouterLink to="/career" class="btn">把方向变成行动</RouterLink>
-      </aside>
+      <section class="panel form-stack personality-panel" aria-labelledby="personality-title">
+        <span class="tag">03 · 做事方式与选择</span>
+        <h2 id="personality-title">性格与价值观</h2>
+        <label class="field"
+          >价值观（每行一项）<textarea
+            v-model="profile.valuesText"
+            name="valuesText"
+            :disabled="!ready"
+            rows="3"
+            maxlength="1000"
+            placeholder="持续成长&#10;工作生活平衡"
+            @input="saveProfile()"
+          />
+        </label>
+        <ProfilePersonality
+          v-if="ready"
+          :assessment="profile.assessment"
+          :before-confirm="flushProfile"
+          @confirmed="personalityConfirmed"
+        />
+        <p v-else class="subtle">{{ loading ? '正在读取性格画像…' : '请先重试读取职业画像。' }}</p>
+      </section>
+    </div>
+    <div id="career-assessment" tabindex="-1">
+      <CareerAssessment
+        :key="assessmentRevision"
+        :before-confirm="flushProfile"
+        @changed="applyAssessment"
+      />
     </div>
     <div class="section-heading">
       <h2>从这些方向开始了解</h2>
@@ -140,3 +216,32 @@ function choose(role: string) {
     </div>
   </section>
 </template>
+
+<style scoped>
+.profile-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.profile-panels > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.chips input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 0;
+}
+.personality-panel {
+  grid-column: 1 / -1;
+}
+#career-assessment {
+  scroll-margin-top: 24px;
+}
+@media (max-width: 700px) {
+  .profile-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>
