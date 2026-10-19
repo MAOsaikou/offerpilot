@@ -27,7 +27,6 @@ export function toolArguments(args: unknown): Array<{ label: string; value: stri
     location: '工作地点',
     nature: '岗位类型',
     site: '官网站点',
-    city: '城市',
     questionIndex: '面试题号（从 0 开始）',
     nextQuestion: '进入下一题',
     taskTitles: '确认已完成的任务',
