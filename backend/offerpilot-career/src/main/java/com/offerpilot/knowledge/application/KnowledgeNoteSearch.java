@@ -22,7 +22,7 @@ public class KnowledgeNoteSearch {
         this.embeddings = embeddings;
     }
     public record Hit(String id, String title, String category, String excerpt, String updatedAt,
-                      double score, boolean lexicalMatch, boolean vectorMatch) {}
+                      double score, boolean lexicalMatch, boolean vectorMatch, String indexStatus, String indexError, String sourceFilename, boolean sourceTruncated) {}
     public record Result(List<Hit> items, boolean vectorAvailable) {}
 
     public Result search(String owner, String query, int limit) {
@@ -31,7 +31,7 @@ public class KnowledgeNoteSearch {
         int candidates = Math.min(200, Math.max(20, limit * 4));
         String q = OccupationDocument.lexicalQuery(query.strip());
         var lexical = q.isEmpty() ? List.<Hit>of() : jdbc.query("""
-                SELECT id,title,category,content,updated_at FROM knowledge_notes,to_tsquery('simple',?) q
+                SELECT id,title,category,content,updated_at,index_status,index_error,source_filename,source_truncated FROM knowledge_notes,to_tsquery('simple',?) q
                 WHERE user_id=? AND tsv @@ q ORDER BY ts_rank_cd(tsv,q) DESC,id LIMIT ?
                 """, (rs, row) -> map(rs, query), q, owner, candidates);
         List<Hit> vector = List.of();
@@ -41,7 +41,7 @@ public class KnowledgeNoteSearch {
             var embedded = com.offerpilot.llm.quota.LlmUserContext.asUser(owner, () -> embeddings.embed(List.of(query.strip())));
             if (!embedded.isEmpty()) {
                 vector = jdbc.query("""
-                        SELECT id,title,category,content,updated_at FROM knowledge_notes
+                        SELECT id,title,category,content,updated_at,index_status,index_error,source_filename,source_truncated FROM knowledge_notes
                         WHERE user_id=? AND embedding IS NOT NULL
                         ORDER BY embedding <=> CAST(? AS vector),id LIMIT ?
                         """, (rs, row) -> map(rs, query), owner, OccupationEmbeddings.literal(embedded.get(0)), candidates);
@@ -55,7 +55,7 @@ public class KnowledgeNoteSearch {
         var lexicalIds = lexical.stream().map(Hit::id).collect(Collectors.toSet());
         var vectorIds = vector.stream().map(Hit::id).collect(Collectors.toSet());
         return new Result(merged.values().stream().map(hit -> new Hit(hit.id(), hit.title(), hit.category(), hit.excerpt(),
-                hit.updatedAt(), scores.get(hit.id()), lexicalIds.contains(hit.id()), vectorIds.contains(hit.id())))
+                hit.updatedAt(), scores.get(hit.id()), lexicalIds.contains(hit.id()), vectorIds.contains(hit.id()), hit.indexStatus(), hit.indexError(), hit.sourceFilename(), hit.sourceTruncated()))
                 .sorted(Comparator.comparingDouble(Hit::score).reversed().thenComparing(Hit::id)).limit(limit).toList(), available);
     }
 
@@ -77,6 +77,6 @@ public class KnowledgeNoteSearch {
     }
     private static Hit map(ResultSet rs, String query) throws SQLException {
         return new Hit(rs.getString("id"), rs.getString("title"), rs.getString("category"), excerpt(rs.getString("content"), query, 1000),
-                rs.getTimestamp("updated_at").toInstant().toString(), 0, false, false);
+                rs.getTimestamp("updated_at").toInstant().toString(), 0, false, false, rs.getString("index_status"), rs.getString("index_error"), rs.getString("source_filename"), rs.getBoolean("source_truncated"));
     }
 }

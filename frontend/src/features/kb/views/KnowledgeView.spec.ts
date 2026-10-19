@@ -11,6 +11,7 @@ import {
   listKnowledgeNotes,
   searchKnowledgeNotes,
   updateKnowledgeNote,
+  uploadKnowledgeDocument,
   type KnowledgeNote,
 } from '@/shared/api/knowledge'
 import { useWorkspace } from '@/shared/stores/workspace'
@@ -26,8 +27,9 @@ vi.mock('@/shared/api/knowledge', async (importOriginal) => ({
   listKnowledgeNotes: vi.fn(),
   searchKnowledgeNotes: vi.fn(),
   updateKnowledgeNote: vi.fn(),
+  uploadKnowledgeDocument: vi.fn(),
 }))
-vi.mock('@/shared/utils/download', () => ({ downloadText: vi.fn() }))
+vi.mock('@/shared/utils/download', () => ({ downloadText: vi.fn(), downloadBlob: vi.fn() }))
 const fixture = (id = 'note_1'): KnowledgeNote => ({
   id,
   title: '事务与并发',
@@ -236,3 +238,62 @@ it('does not erase the new identity local notes when an old import finishes late
   expect(workspace.state.notes[0]!.title).toBe('另一身份的笔记')
   expect(root.textContent).not.toContain('已导入服务器确认接收')
 })
+
+it('uploads a document, polls pending status to completion and stops, preserving drafts on errors', async () => {
+  const note = { ...fixture(), sourceFilename: '项目.md', indexStatus: 'QUEUED' as const }
+  vi.mocked(uploadKnowledgeDocument).mockResolvedValue(note)
+  vi.mocked(listKnowledgeNotes).mockResolvedValue({ items: [note], total: 1, page: 1, size: 20 })
+  await mount()
+  await fill('form input', '未保存草稿')
+  const input = root.querySelector<HTMLInputElement>('input[type=file]')!
+  const file = new File(['Redis 项目经验'], '项目.md', { type: 'text/markdown' })
+  Object.defineProperty(input, 'files', { configurable: true, value: [file] })
+  input.dispatchEvent(new Event('change'))
+  await settle()
+  expect(uploadKnowledgeDocument).toHaveBeenCalledWith(file)
+  expect(root.textContent).toContain('排队')
+  expect(root.textContent).toContain('项目.md')
+  vi.mocked(listKnowledgeNotes).mockResolvedValue({
+    items: [{ ...note, indexStatus: 'INDEXING' }],
+    total: 1,
+    page: 1,
+    size: 20,
+  })
+  await vi.waitFor(() => expect(root.textContent).toContain('索引中'), { timeout: 4500 })
+  vi.mocked(listKnowledgeNotes).mockResolvedValue({
+    items: [{ ...note, indexStatus: 'READY' }],
+    total: 1,
+    page: 1,
+    size: 20,
+  })
+  await vi.waitFor(
+    () => expect(root.querySelector('article [role=status]')?.textContent).toBe('完成'),
+    { timeout: 4500 },
+  )
+  const calls = vi.mocked(listKnowledgeNotes).mock.calls.length
+  await new Promise((resolve) => setTimeout(resolve, 3200))
+  expect(listKnowledgeNotes).toHaveBeenCalledTimes(calls)
+  vi.mocked(uploadKnowledgeDocument).mockRejectedValue(new Error('文本文件必须是 UTF-8 编码'))
+  input.dispatchEvent(new Event('change'))
+  await settle()
+  expect(root.querySelector('[role=alert]')?.textContent).toContain('UTF-8')
+  expect(root.querySelector<HTMLInputElement>('form input')?.value).toBe('未保存草稿')
+  vi.mocked(listKnowledgeNotes).mockResolvedValue({
+    items: [
+      {
+        ...note,
+        indexStatus: 'FAILED',
+        indexError: '向量索引失败，全文检索仍可用',
+        sourceTruncated: true,
+      },
+    ],
+    total: 1,
+    page: 1,
+    size: 20,
+  })
+  await cache.invalidateQueries({ queryKey: ['knowledge-notes'] })
+  await settle()
+  expect(root.textContent).toContain('失败')
+  expect(root.textContent).toContain('全文检索仍可用')
+  expect(root.textContent).toContain('正文仅前 30000 字入库')
+}, 15000)

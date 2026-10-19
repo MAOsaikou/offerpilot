@@ -224,9 +224,11 @@ class DemoJourneyIntegrationTest {
         String id = owner();
         jdbc.update("UPDATE career_profiles SET target='保留试用改动' WHERE user_id=?", id);
         var memory = (MemoryDemoStorage) storage;
-        String key = "resumes/" + id + "/extra-upload";
+        String key = "knowledge/" + id + "/extra-upload";
         memory.put(key, new byte[]{1, 2, 3}, "application/pdf");
-        jdbc.update("INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256) VALUES ('file_extra',?,'RESUME',?,?,'extra.pdf','application/pdf',3,'fixture')", id, storage.bucket(), key);
+        jdbc.update("INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256) VALUES ('file_extra',?,'KB_DOCUMENT',?,?,'extra.pdf','application/pdf',3,'fixture')", id, storage.bucket(), key);
+        String note = notes.create(id, new com.offerpilot.knowledge.application.KnowledgeNoteService.Draft("上传资料", "保留上传原文", "技术积累")).id();
+        jdbc.update("UPDATE knowledge_notes SET source_file_id='file_extra',source_filename='extra.pdf' WHERE id=?", note);
         memory.failWrites = true;
         try { assertThatThrownBy(resets::reset).isInstanceOf(com.offerpilot.common.error.BusinessException.class); }
         finally { memory.failWrites = false; }
@@ -235,6 +237,8 @@ class DemoJourneyIntegrationTest {
         assertThat(memory.get(storage.bucket(), key)).containsExactly(1, 2, 3);
         resets.reset();
         assertThat(memory.get(storage.bucket(), key)).isNull();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM knowledge_notes WHERE id=?", Integer.class, note)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM files WHERE purpose='KB_DOCUMENT' AND user_id=?", Integer.class, id)).isZero();
     }
 
     @Test void concurrentResetsAndScheduledResetKeepOneCompleteJourney() {
