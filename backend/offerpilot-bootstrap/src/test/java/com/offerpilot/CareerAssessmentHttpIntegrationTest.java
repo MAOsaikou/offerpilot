@@ -24,6 +24,8 @@ class CareerAssessmentHttpIntegrationTest extends SharedHttpIntegrationTest {
     @Autowired GuestIdentityService guests;
     @Autowired CurrentUser users;
     @Autowired CareerRecommendForChat careers;
+    @Autowired com.offerpilot.memory.application.UserMemoryService memories;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     HttpResponse<String> call(String method, String path, String token, Object body) throws Exception {
         var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/career" + path))
@@ -35,6 +37,69 @@ class CareerAssessmentHttpIntegrationTest extends SharedHttpIntegrationTest {
     JsonNode data(HttpResponse<String> response) throws Exception {
         assertThat(response.statusCode()).withFailMessage(response.body()).isEqualTo(200);
         return JSON.readTree(response.body()).path("data");
+    }
+
+    @Test void threePanelsRoundTripAndLegacyWritesPreserveNewFields() throws Exception {
+        String token = guests.create().accessToken();
+        var empty = data(call("GET", "/profile", token, null));
+        assertThat(empty.path("major").asText()).isEmpty();
+        assertThat(empty.path("assessment").isNull()).isTrue();
+        var fields = Map.of("target", "工程师", "city", "成都", "skills", "SQL", "interests", List.of("技术研发"),
+                "major", "软件工程", "courses", "数据库\n算法", "valuesText", "成长\n平衡");
+        var saved = data(call("PUT", "/profile", token, fields));
+        assertThat(saved.path("courses").asText()).isEqualTo("数据库\n算法");
+        var legacy = data(call("PUT", "/profile", token, Map.of("target", "新目标", "city", "成都", "skills", "SQL", "interests", List.of())));
+        assertThat(legacy.path("major").asText()).isEqualTo("软件工程");
+        assertThat(legacy.path("valuesText").asText()).isEqualTo("成长\n平衡");
+        assertThat(call("PUT", "/profile", token, Map.of("target", "", "city", "", "skills", "", "interests", List.of(), "major", 42)).statusCode()).isEqualTo(400);
+        assertThat(data(call("GET", "/profile", guests.create().accessToken(), null)).path("major").asText()).isEmpty();
+    }
+
+    @Test void memorySyncIsIdempotentImportsEmptyFieldsAndHonorsToggleAndClear() throws Exception {
+        String token = guests.create().accessToken();
+        String owner = users.require("Bearer " + token);
+        var kind = com.offerpilot.memory.application.UserMemoryService.Kind.OTHER;
+        memories.add(owner, new com.offerpilot.memory.application.UserMemoryService.Draft(kind, "专业：统计学"));
+        memories.add(owner, new com.offerpilot.memory.application.UserMemoryService.Draft(kind, "意向城市：成都"));
+        var imported = data(call("GET", "/profile", token, null));
+        assertThat(imported.path("major").asText()).isEqualTo("统计学");
+        assertThat(imported.path("city").asText()).isEqualTo("成都");
+        assertThat(data(call("GET", "/profile", token, null)).path("updatedAt")).isEqualTo(imported.path("updatedAt"));
+        var fields = Map.of("target", "分析师", "city", "成都", "skills", "SQL", "interests", List.of(), "major", "计算机");
+        data(call("PUT", "/profile", token, fields));
+        var first = memories.list(owner).items();
+        data(call("PUT", "/profile", token, fields));
+        assertThat(memories.list(owner).items()).isEqualTo(first);
+        data(call("PUT", "/profile", token, Map.of("target", "工程师", "city", "成都", "skills", "SQL", "interests", List.of())));
+        assertThat(memories.list(owner).items()).hasSize(3);
+        var targetFact = memories.list(owner).items().stream().filter(m -> m.fact().startsWith("目标职业：")).findFirst().orElseThrow();
+        assertThat(targetFact.fact()).isEqualTo("目标职业：工程师");
+        assertThat(first).anySatisfy(f -> assertThat(f.id()).isEqualTo(targetFact.id()));
+        // Memory management must not overwrite a populated user edit.
+        memories.upsertPrefixed(owner, kind, "专业：", "物理学");
+        assertThat(data(call("GET", "/profile", token, null)).path("major").asText()).isEqualTo("计算机");
+        memories.settings(owner, false);
+        data(call("PUT", "/profile", token, Map.of("target", "保留自填目标", "city", "成都", "skills", "", "interests", List.of(), "major", "")));
+        assertThat(data(call("GET", "/profile", token, null)).path("major").asText()).isEmpty();
+        assertThat(memories.list(owner).items()).anySatisfy(m -> assertThat(m.fact()).isEqualTo("目标职业：工程师"));
+        memories.settings(owner, true);
+        data(call("PUT", "/profile", token, Map.of("target", "", "city", "", "skills", "", "interests", List.of(), "major", "")));
+        assertThat(memories.list(owner).items()).isEmpty();
+        assertThat(data(call("GET", "/profile", token, null)).path("major").asText()).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT major FROM career_profiles WHERE user_id=?", String.class, owner)).isEmpty();
+    }
+
+    @Test void memoryCapRollsBackProfileWriteAndExistingPrefixCanStillUpdate() throws Exception {
+        String token = guests.create().accessToken();
+        String owner = users.require("Bearer " + token);
+        memories.upsertPrefixed(owner, com.offerpilot.memory.application.UserMemoryService.Kind.GOAL, "目标职业：", "旧目标");
+        for (int i = 1; i < 50; i++) memories.add(owner, new com.offerpilot.memory.application.UserMemoryService.Draft(
+                com.offerpilot.memory.application.UserMemoryService.Kind.OTHER, "事实" + i));
+        data(call("PUT", "/profile", token, Map.of("target", "新目标", "city", "", "skills", "", "interests", List.of())));
+        var before = data(call("GET", "/profile", token, null));
+        assertThat(call("PUT", "/profile", token, Map.of("target", "会回滚", "city", "杭州", "skills", "", "interests", List.of())).statusCode()).isEqualTo(409);
+        assertThat(data(call("GET", "/profile", token, null))).isEqualTo(before);
+        assertThat(memories.list(owner).items()).hasSize(50).anySatisfy(m -> assertThat(m.fact()).isEqualTo("目标职业：新目标"));
     }
 
     @Test void answerInferCorrectAndConfirmDrivesRecommendations() throws Exception {
@@ -68,7 +133,15 @@ class CareerAssessmentHttpIntegrationTest extends SharedHttpIntegrationTest {
         var traits = confirmed.path("confirmed").path("traits");
         assertThat(traits.get(0).path("evidence").asText()).contains("弄懂原理");
         assertThat(traits.get(1).path("evidence").asText()).isEmpty();
-        assertThat(data(call("GET", "/profile", token, null)).path("city").asText()).isEqualTo("杭州");
+        var profile = data(call("GET", "/profile", token, null));
+        assertThat(profile.path("city").asText()).isEqualTo("杭州");
+        assertThat(profile.path("assessment")).isEqualTo(confirmed.path("confirmed"));
+        assertThat(memories.list(users.require("Bearer " + token)).items()).anySatisfy(m -> assertThat(m.fact()).isEqualTo("兴趣码：IER"));
+        data(call("PUT", "/assessment/answers/0", token, Map.of("answer", "修订后的专业")));
+        var edited = data(call("PUT", "/assessment/confirm", token, Map.of(
+                "riasec", Map.of("R", 40, "I", 90, "A", 10, "S", 20, "E", 75, "C", 30),
+                "traits", List.of("好奇钻研", "自己补充的特质"), "city", "杭州")));
+        assertThat(edited.path("confirmed").path("traits").get(0).path("evidence").asText()).contains("弄懂原理");
 
         var result = careers.recommend(users.require("Bearer " + token));
         assertThat(result.payload().hollandCode()).isEqualTo("IER");
@@ -76,5 +149,6 @@ class CareerAssessmentHttpIntegrationTest extends SharedHttpIntegrationTest {
                 assertThat(item.reasons()).anySatisfy(reason -> assertThat(reason).contains("你的原话").contains("弄懂原理")));
 
         assertThat(data(call("DELETE", "/assessment", token, null)).path("confirmed").isNull()).isTrue();
+        assertThat(memories.list(users.require("Bearer " + token)).items()).noneSatisfy(m -> assertThat(m.fact()).startsWith("兴趣码："));
     }
 }

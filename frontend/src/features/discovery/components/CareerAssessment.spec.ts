@@ -23,6 +23,7 @@ let server: Assessment
 let app: App | undefined
 let root: HTMLDivElement
 const confirmed = vi.fn()
+const changed = vi.fn()
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -74,7 +75,9 @@ async function mount() {
   })
   root = document.createElement('div')
   document.body.append(root)
-  app = createApp({ render: () => h(CareerAssessment, { onConfirmed: confirmed }) }).use(router)
+  app = createApp({
+    render: () => h(CareerAssessment, { onConfirmed: confirmed, onChanged: changed }),
+  }).use(router)
   app.mount(root)
   await vi.waitFor(() => expect(root.textContent).toContain('专业？'))
 }
@@ -128,4 +131,5 @@ it('asks one question at a time, infers, lets the user correct and confirms', as
     overtime: '',
   })
   expect(confirmed).toHaveBeenCalledWith('杭州')
+  expect(changed).toHaveBeenCalledWith(server.confirmed)
 })
