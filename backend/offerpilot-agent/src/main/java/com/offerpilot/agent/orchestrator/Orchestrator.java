@@ -40,7 +40,7 @@ public class Orchestrator {
                                String owner, Map<String, Object> context) {
         var selected=context==null ? Map.<String,Object>of() : context;
         if (selected.containsKey("jobId") || selected.containsKey("applicationId") || selected.containsKey("matchId") || selected.containsKey("jobMatchId"))
-            return experts.withJobContext(owner,selected)
+            return com.offerpilot.llm.ModelGateway.beforeEffects().then(Mono.defer(() -> experts.withJobContext(owner,selected)))
                 .flatMapMany(resolved -> runSelected(mode,content,history,tier,runId,seq,replyPrompt,onUsage,owner,resolved));
         return runSelected(mode,content,history,tier,runId,seq,replyPrompt,onUsage,owner,selected);
     }
@@ -54,7 +54,8 @@ public class Orchestrator {
         AtomicBoolean interviewFailed = new AtomicBoolean();
         AtomicBoolean producedCoachOutcome = new AtomicBoolean();
         AtomicBoolean producedCareerOutcome = new AtomicBoolean();
-        return planner.prepare(mode, content, history, tier, onUsage, safeContext).flatMapMany(decision -> {
+        return planner.prepare(mode, content, history, tier, onUsage, safeContext).flatMapMany(decision ->
+                com.offerpilot.llm.ModelGateway.beforeEffects().thenMany(Flux.defer(() -> {
             if (decision.plan() == null) {
                 if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.JOB)
                         && SelectedResources.matchReady(safeContext)
@@ -202,7 +203,7 @@ public class Orchestrator {
                 }
                 return Flux.empty();
             }));
-        });
+        })));
     }
 
     private static String approvalSummary(String action, String decision) {

@@ -1,0 +1,2888 @@
+{
+  "date": "2026-10-19",
+  "base_commit": "845349f",
+  "code_commit": null,
+  "worktree": "feat/ag02-sc01-parallel (uncommitted; shared Git metadata read-only)",
+  "post_measurement_change": "Serial rollback retains original generation-before-classifier quota admission at the last RPM slot; added regression tests. No normal-load timing paths changed. Pending-output cap applies only until verdict, preserving approved long streams; regression tested. No observed sample hits this cap.",
+  "method": "HTTP POST /api/v1/agent/chat to first real text.delta; fresh guest per request, no warmup/retries/exclusions; 20 paired rounds, pair order reversed each round",
+  "percentile_method": "Existing measure.py estimator: sorted values[clamp(round(p/100*n+0.5)-1)]. For n=20 P95 is the maximum (conservative). P50 is statistics.median.",
+  "environment": {
+    "profile": "test",
+    "model_tier": "FLASH",
+    "model": "deepseek-flash",
+    "provider": "deepseek",
+    "thinking": "disabled",
+    "injection_classifier_enabled": true,
+    "speculative_reply": true,
+    "resume_advice_fast_path": true,
+    "early_expert_handoff": true,
+    "database": "isolated local pgvector/PostgreSQL 17; shared by two ports, fresh guests",
+    "embedding": "local bge-m3 configuration retained; SPRING_AI_MODEL_EMBEDDING=none for isolated evaluation; no external embedding calls",
+    "history": false,
+    "selected_resources": false,
+    "images": false,
+    "auth_guest_per_minute": 60,
+    "spring_ai_retry_max_attempts": 1
+  },
+  "limitations": [
+    "One machine/time window; four samples per category; no concurrent traffic or warmup",
+    "Actual job-search request may use local snapshot fallback; no selected resources or authenticated career/coach evidence",
+    "No production SLO claim. History/images/selected resources/HITL/quota/cancel tested offline",
+    "Expert optimization overlaps RESUME/JOB action parsing only; final narration still waits for necessary tool/note results",
+    "No fixed SC-01 injection error exists in blocking implementation; parallel hit discards candidate and reruns exact category-warning prompt"
+  ],
+  "acceptance": {
+    "mode": "AUTO",
+    "question_set": "acceptance",
+    "completed": 40,
+    "errors": 0,
+    "summary": {
+      "started": {
+        "n": 40,
+        "p50": 0.012,
+        "p95": 0.029,
+        "max": 0.261
+      },
+      "first": {
+        "n": 40,
+        "p50": 2.308,
+        "p95": 6.295,
+        "max": 7.021
+      },
+      "total": {
+        "n": 40,
+        "p50": 3.208,
+        "p95": 7.016,
+        "max": 7.65
+      }
+    },
+    "configurations": {
+      "parallel": {
+        "completed": 20,
+        "errors": 0,
+        "summary": {
+          "started": {
+            "n": 20,
+            "p50": 0.013,
+            "p95": 0.261,
+            "max": 0.261
+          },
+          "first": {
+            "n": 20,
+            "p50": 1.879,
+            "p95": 3.068,
+            "max": 3.068
+          },
+          "total": {
+            "n": 20,
+            "p50": 2.082,
+            "p95": 3.906,
+            "max": 3.906
+          }
+        },
+        "categories": {
+          "career": {
+            "completed": 4,
+            "errors": 0,
+            "summary": {
+              "started": {
+                "n": 4,
+                "p50": 0.016,
+                "p95": 0.019,
+                "max": 0.019
+              },
+              "first": {
+                "n": 4,
+                "p50": 1.944,
+                "p95": 2.047,
+                "max": 2.047
+              },
+              "total": {
+                "n": 4,
+                "p50": 1.997,
+                "p95": 2.117,
+                "max": 2.117
+              }
+            }
+          },
+          "chit-chat": {
+            "completed": 4,
+            "errors": 0,
+            "summary": {
+              "started": {
+                "n": 4,
+                "p50": 0.013,
+                "p95": 0.261,
+                "max": 0.261
+              },
+              "first": {
+                "n": 4,
+                "p50": 1.071,
+                "p95": 1.578,
+                "max": 1.578
+              },
+              "total": {
+                "n": 4,
+                "p50": 1.112,
+                "p95": 1.586,
+                "max": 1.586
+              }
+            }
+          },
+          "coach": {
+            "completed": 4,
+            "errors": 0,
+            "summary": {
+              "started": {
+                "n": 4,
+                "p50": 0.011,
+                "p95": 0.021,
+                "max": 0.021
+              },
+              "first": {
+                "n": 4,
+                "p50": 1.91,
+                "p95": 2.128,
+                "max": 2.128
+              },
+              "total": {
+                "n": 4,
+                "p50": 1.981,
+                "p95": 2.13,
+                "max": 2.13
+              }
+            }
+          },
+          "job-search": {
+            "completed": 4,
+            "errors": 0,
+            "summary": {
+              "started": {
+                "n": 4,
+                "p50": 0.015,
+                "p95": 0.02,
+                "max": 0.02
+              },
+              "first": {
+                "n": 4,
+                "p50": 2.932,
+                "p95": 3.068,
+                "max": 3.068
+              },
+              "total": {
+                "n": 4,
+                "p50": 3.744,
+                "p95": 3.906,
+                "max": 3.906
+              }
+            }
+          },
+          "resume-advice": {
+            "completed": 4,
+            "errors": 0,
+            "summary": {
+              "started": {
+                "n": 4,
+                "p50": 0.01,
+                "p95": 0.025,
+                "max": 0.025
+              },
+              "first": {
+                "n": 4,
+                "p50": 1.786,
+                "p95": 2.221,
+                "max": 2.221
+              },
+              "total": {
+                "n": 4,
+                "p50": 3.264,
+                "p95": 3.736,
+                "max": 3.736
+              }
+            }
+          }
+        }
+      },
+      "serial": {
+        "completed": 20,
+        "errors": 0,
+        "summary": {
+          "started": {
+            "n": 20,
+            "p50": 0.011,
+            "p95": 0.242,
+            "max": 0.242
+          },
+          "first": {
+            "n": 20,
+            "p50": 2.778,
+            "p95": 7.021,
+            "max": 7.021
+          },
+          "total": {
+            "n": 20,
+            "p50": 4.059,
+            "p95": 7.65,
+            "max": 7.65
+          }
+        },
+        "categories": {
+          "career": {
+            "completed": 4,
+            "errors": 0,
+            "summary": {
+              "started": {
+                "n": 4,
+                "p50": 0.013,
+                "p95": 0.017,
+                "max": 0.017
+              },
+              "first": {
+                "n": 4,
+                "p50": 4.294,
+                "p95": 4.847,
+                "max": 4.847
+              },
+              "total": {
+                "n": 4,
+                "p50": 4.428,
+                "p95": 5.007,
+                "max": 5.007
+              }
+            }
+          },
+          "chit-chat": {
+            "completed": 4,
+            "errors": 0,
+            "summary": {
+              "started": {
+                "n": 4,
+                "p50": 0.011,
+                "p95": 0.242,
+                "max": 0.242
+              },
+              "first": {
+                "n": 4,
+                "p50": 1.915,
+                "p95": 3.551,
+                "max": 3.551
+              },
+              "total": {
+                "n": 4,
+                "p50": 1.997,
+                "p95": 3.558,
+                "max": 3.558
+              }
+            }
+          },
+          "coach": {
+            "completed": 4,
+            "errors": 0,
+            "summary": {
+              "started": {
+                "n": 4,
+                "p50": 0.012,
+                "p95": 0.016,
+                "max": 0.016
+              },
+              "first": {
+                "n": 4,
+                "p50": 2.629,
+                "p95": 2.749,
+                "max": 2.749
+              },
+              "total": {
+                "n": 4,
+                "p50": 2.778,
+                "p95": 2.902,
+                "max": 2.902
+              }
+            }
+          },
+          "job-search": {
+            "completed": 4,
+            "errors": 0,
+            "summary": {
+              "started": {
+                "n": 4,
+                "p50": 0.011,
+                "p95": 0.015,
+                "max": 0.015
+              },
+              "first": {
+                "n": 4,
+                "p50": 6.533,
+                "p95": 7.021,
+                "max": 7.021
+              },
+              "total": {
+                "n": 4,
+                "p50": 7.276,
+                "p95": 7.65,
+                "max": 7.65
+              }
+            }
+          },
+          "resume-advice": {
+            "completed": 4,
+            "errors": 0,
+            "summary": {
+              "started": {
+                "n": 4,
+                "p50": 0.01,
+                "p95": 0.029,
+                "max": 0.029
+              },
+              "first": {
+                "n": 4,
+                "p50": 2.482,
+                "p95": 2.807,
+                "max": 2.807
+              },
+              "total": {
+                "n": 4,
+                "p50": 4.082,
+                "p95": 4.266,
+                "max": 4.266
+              }
+            }
+          }
+        }
+      }
+    },
+    "rows": [
+      {
+        "run": 1,
+        "configuration": "parallel",
+        "category": "chit-chat",
+        "question": "你好，简单介绍一下你能帮我做什么？一句话。",
+        "started": 0.26111150099859515,
+        "first": 1.5776495629997953,
+        "total": 1.5856561809996492,
+        "status": "run.completed"
+      },
+      {
+        "run": 1,
+        "configuration": "serial",
+        "category": "chit-chat",
+        "question": "你好，简单介绍一下你能帮我做什么？一句话。",
+        "started": 0.2417433370010258,
+        "first": 3.5505971320017125,
+        "total": 3.5576490690000355,
+        "status": "run.completed"
+      },
+      {
+        "run": 2,
+        "configuration": "serial",
+        "category": "resume-advice",
+        "question": "简历里的项目经历怎么写更有说服力？给两条要点。",
+        "started": 0.02908430000024964,
+        "first": 2.8067081419994793,
+        "total": 4.26640159300041,
+        "status": "run.completed"
+      },
+      {
+        "run": 2,
+        "configuration": "parallel",
+        "category": "resume-advice",
+        "question": "简历里的项目经历怎么写更有说服力？给两条要点。",
+        "started": 0.024640308000016375,
+        "first": 2.2211407120012154,
+        "total": 3.7364218510010687,
+        "status": "run.completed"
+      },
+      {
+        "run": 3,
+        "configuration": "parallel",
+        "category": "job-search",
+        "question": "帮我找上海的 Java 后端实习岗位。",
+        "started": 0.020101922000321792,
+        "first": 3.0578344099994865,
+        "total": 3.759725855999932,
+        "status": "run.completed"
+      },
+      {
+        "run": 3,
+        "configuration": "serial",
+        "category": "job-search",
+        "question": "帮我找上海的 Java 后端实习岗位。",
+        "started": 0.01457370199932484,
+        "first": 6.295158876999267,
+        "total": 7.016268494999167,
+        "status": "run.completed"
+      },
+      {
+        "run": 4,
+        "configuration": "serial",
+        "category": "coach",
+        "question": "我想制定四周学习计划，从哪里开始？一句话指导。",
+        "started": 0.016012992999094422,
+        "first": 2.748873728000035,
+        "total": 2.9017250659999263,
+        "status": "run.completed"
+      },
+      {
+        "run": 4,
+        "configuration": "parallel",
+        "category": "coach",
+        "question": "我想制定四周学习计划，从哪里开始？一句话指导。",
+        "started": 0.02137519299867563,
+        "first": 1.9271950349993858,
+        "total": 2.0302770959988266,
+        "status": "run.completed"
+      },
+      {
+        "run": 5,
+        "configuration": "parallel",
+        "category": "career",
+        "question": "我不知道自己适合什么职业，怎么开始探索？一句话。",
+        "started": 0.013000987000850728,
+        "first": 1.8541415430008783,
+        "total": 1.9468769680006517,
+        "status": "run.completed"
+      },
+      {
+        "run": 5,
+        "configuration": "serial",
+        "category": "career",
+        "question": "我不知道自己适合什么职业，怎么开始探索？一句话。",
+        "started": 0.016659185999742476,
+        "first": 4.577938636999534,
+        "total": 4.712429428000178,
+        "status": "run.completed"
+      },
+      {
+        "run": 6,
+        "configuration": "serial",
+        "category": "chit-chat",
+        "question": "你好，简单介绍一下你能帮我做什么？一句话。",
+        "started": 0.01110422599958838,
+        "first": 1.897084411000833,
+        "total": 2.059358947999499,
+        "status": "run.completed"
+      },
+      {
+        "run": 6,
+        "configuration": "parallel",
+        "category": "chit-chat",
+        "question": "你好，简单介绍一下你能帮我做什么？一句话。",
+        "started": 0.013643164000313845,
+        "first": 1.0003379600002518,
+        "total": 1.002642575000209,
+        "status": "run.completed"
+      },
+      {
+        "run": 7,
+        "configuration": "parallel",
+        "category": "resume-advice",
+        "question": "简历里的项目经历怎么写更有说服力？给两条要点。",
+        "started": 0.010057954999865615,
+        "first": 1.708016853001027,
+        "total": 3.2912481100011064,
+        "status": "run.completed"
+      },
+      {
+        "run": 7,
+        "configuration": "serial",
+        "category": "resume-advice",
+        "question": "简历里的项目经历怎么写更有说服力？给两条要点。",
+        "started": 0.00932574000034947,
+        "first": 2.5215825270006462,
+        "total": 4.185008717999153,
+        "status": "run.completed"
+      },
+      {
+        "run": 8,
+        "configuration": "serial",
+        "category": "job-search",
+        "question": "帮我找上海的 Java 后端实习岗位。",
+        "started": 0.012976213000001735,
+        "first": 7.020534537999993,
+        "total": 7.6500140789994475,
+        "status": "run.completed"
+      },
+      {
+        "run": 8,
+        "configuration": "parallel",
+        "category": "job-search",
+        "question": "帮我找上海的 Java 后端实习岗位。",
+        "started": 0.015334711000832613,
+        "first": 3.0675833220011555,
+        "total": 3.9062595010000223,
+        "status": "run.completed"
+      },
+      {
+        "run": 9,
+        "configuration": "parallel",
+        "category": "coach",
+        "question": "我想制定四周学习计划，从哪里开始？一句话指导。",
+        "started": 0.01063488400177448,
+        "first": 2.1279568130012194,
+        "total": 2.129538142000456,
+        "status": "run.completed"
+      },
+      {
+        "run": 9,
+        "configuration": "serial",
+        "category": "coach",
+        "question": "我想制定四周学习计划，从哪里开始？一句话指导。",
+        "started": 0.01195415599977423,
+        "first": 2.6099974770004337,
+        "total": 2.7536679879995063,
+        "status": "run.completed"
+      },
+      {
+        "run": 10,
+        "configuration": "serial",
+        "category": "career",
+        "question": "我不知道自己适合什么职业，怎么开始探索？一句话。",
+        "started": 0.0104733939988364,
+        "first": 3.9431994629994733,
+        "total": 4.138848779999535,
+        "status": "run.completed"
+      },
+      {
+        "run": 10,
+        "configuration": "parallel",
+        "category": "career",
+        "question": "我不知道自己适合什么职业，怎么开始探索？一句话。",
+        "started": 0.019051953000598587,
+        "first": 2.0472995010004524,
+        "total": 2.1174972709995927,
+        "status": "run.completed"
+      },
+      {
+        "run": 11,
+        "configuration": "parallel",
+        "category": "chit-chat",
+        "question": "你好，简单介绍一下你能帮我做什么？一句话。",
+        "started": 0.010790790998726152,
+        "first": 1.026553519999652,
+        "total": 1.1031717059995572,
+        "status": "run.completed"
+      },
+      {
+        "run": 11,
+        "configuration": "serial",
+        "category": "chit-chat",
+        "question": "你好，简单介绍一下你能帮我做什么？一句话。",
+        "started": 0.01108375300100306,
+        "first": 1.9331483300011314,
+        "total": 1.9350678999999218,
+        "status": "run.completed"
+      },
+      {
+        "run": 12,
+        "configuration": "serial",
+        "category": "resume-advice",
+        "question": "简历里的项目经历怎么写更有说服力？给两条要点。",
+        "started": 0.010150007999982336,
+        "first": 2.4420711470011156,
+        "total": 3.9797523409997666,
+        "status": "run.completed"
+      },
+      {
+        "run": 12,
+        "configuration": "parallel",
+        "category": "resume-advice",
+        "question": "简历里的项目经历怎么写更有说服力？给两条要点。",
+        "started": 0.009580306001225836,
+        "first": 1.8648855090013967,
+        "total": 3.236392924000029,
+        "status": "run.completed"
+      },
+      {
+        "run": 13,
+        "configuration": "parallel",
+        "category": "job-search",
+        "question": "帮我找上海的 Java 后端实习岗位。",
+        "started": 0.009871119000308681,
+        "first": 2.8056548010008555,
+        "total": 3.728460440001072,
+        "status": "run.completed"
+      },
+      {
+        "run": 13,
+        "configuration": "serial",
+        "category": "job-search",
+        "question": "帮我找上海的 Java 后端实习岗位。",
+        "started": 0.008765122000113479,
+        "first": 6.771636732000843,
+        "total": 7.53564860699953,
+        "status": "run.completed"
+      },
+      {
+        "run": 14,
+        "configuration": "serial",
+        "category": "coach",
+        "question": "我想制定四周学习计划，从哪里开始？一句话指导。",
+        "started": 0.009235679000994423,
+        "first": 2.6477690009996877,
+        "total": 2.8013439549995383,
+        "status": "run.completed"
+      },
+      {
+        "run": 14,
+        "configuration": "parallel",
+        "category": "coach",
+        "question": "我想制定四周学习计划，从哪里开始？一句话指导。",
+        "started": 0.010473263999301707,
+        "first": 1.893799602999934,
+        "total": 1.9324698219988932,
+        "status": "run.completed"
+      },
+      {
+        "run": 15,
+        "configuration": "parallel",
+        "category": "career",
+        "question": "我不知道自己适合什么职业，怎么开始探索？一句话。",
+        "started": 0.008485918999213027,
+        "first": 1.6470211439991544,
+        "total": 1.792963697000232,
+        "status": "run.completed"
+      },
+      {
+        "run": 15,
+        "configuration": "serial",
+        "category": "career",
+        "question": "我不知道自己适合什么职业，怎么开始探索？一句话。",
+        "started": 0.014629601999331499,
+        "first": 4.009466559999055,
+        "total": 4.144296173999464,
+        "status": "run.completed"
+      },
+      {
+        "run": 16,
+        "configuration": "serial",
+        "category": "chit-chat",
+        "question": "你好，简单介绍一下你能帮我做什么？一句话。",
+        "started": 0.010069025000120746,
+        "first": 1.6745189510002092,
+        "total": 1.9042692330003774,
+        "status": "run.completed"
+      },
+      {
+        "run": 16,
+        "configuration": "parallel",
+        "category": "chit-chat",
+        "question": "你好，简单介绍一下你能帮我做什么？一句话。",
+        "started": 0.012391536998620722,
+        "first": 1.1155126719986583,
+        "total": 1.119999671000187,
+        "status": "run.completed"
+      },
+      {
+        "run": 17,
+        "configuration": "parallel",
+        "category": "resume-advice",
+        "question": "简历里的项目经历怎么写更有说服力？给两条要点。",
+        "started": 0.009340838998468826,
+        "first": 1.5874710859989136,
+        "total": 3.1786125659982645,
+        "status": "run.completed"
+      },
+      {
+        "run": 17,
+        "configuration": "serial",
+        "category": "resume-advice",
+        "question": "简历里的项目经历怎么写更有说服力？给两条要点。",
+        "started": 0.009502197999609052,
+        "first": 2.1631726670002536,
+        "total": 3.5278925049988175,
+        "status": "run.completed"
+      },
+      {
+        "run": 18,
+        "configuration": "serial",
+        "category": "job-search",
+        "question": "帮我找上海的 Java 后端实习岗位。",
+        "started": 0.008177800998964813,
+        "first": 6.182492064999678,
+        "total": 6.968712770998536,
+        "status": "run.completed"
+      },
+      {
+        "run": 18,
+        "configuration": "parallel",
+        "category": "job-search",
+        "question": "帮我找上海的 Java 后端实习岗位。",
+        "started": 0.014600276999772177,
+        "first": 2.6516497550001077,
+        "total": 3.4032933340004092,
+        "status": "run.completed"
+      },
+      {
+        "run": 19,
+        "configuration": "parallel",
+        "category": "coach",
+        "question": "我想制定四周学习计划，从哪里开始？一句话指导。",
+        "started": 0.009094635001019924,
+        "first": 1.6277928910003538,
+        "total": 1.8082042650003132,
+        "status": "run.completed"
+      },
+      {
+        "run": 19,
+        "configuration": "serial",
+        "category": "coach",
+        "question": "我想制定四周学习计划，从哪里开始？一句话指导。",
+        "started": 0.012398599001244293,
+        "first": 2.3941059120006685,
+        "total": 2.5157518590003747,
+        "status": "run.completed"
+      },
+      {
+        "run": 20,
+        "configuration": "serial",
+        "category": "career",
+        "question": "我不知道自己适合什么职业，怎么开始探索？一句话。",
+        "started": 0.009361428999909549,
+        "first": 4.846919869998601,
+        "total": 5.007469412999853,
+        "status": "run.completed"
+      },
+      {
+        "run": 20,
+        "configuration": "parallel",
+        "category": "career",
+        "question": "我不知道自己适合什么职业，怎么开始探索？一句话。",
+        "started": 0.018109664999428787,
+        "first": 2.0332850459999463,
+        "total": 2.047329687000456,
+        "status": "run.completed"
+      }
+    ]
+  },
+  "baseline_profile": [
+    {
+      "run": 1,
+      "started": 0.191,
+      "first": 2.592,
+      "total": 3.836,
+      "status": "run.completed"
+    },
+    {
+      "run": 2,
+      "started": 0.017,
+      "first": 2.055,
+      "total": 3.328,
+      "status": "run.completed"
+    },
+    {
+      "run": 3,
+      "started": 0.013,
+      "first": 1.99,
+      "total": 2.256,
+      "status": "run.completed"
+    },
+    {
+      "run": 4,
+      "started": 0.026,
+      "first": 2.817,
+      "total": 4.427,
+      "status": "run.completed"
+    },
+    {
+      "run": 5,
+      "started": 0.014,
+      "first": 2.013,
+      "total": 2.055,
+      "status": "run.completed"
+    },
+    {
+      "mode": "AUTO",
+      "question_set": "mixed",
+      "completed": 5,
+      "errors": 0,
+      "summary": {
+        "started": {
+          "n": 5,
+          "p50": 0.017,
+          "p95": 0.191,
+          "max": 0.191
+        },
+        "first": {
+          "n": 5,
+          "p50": 2.055,
+          "p95": 2.817,
+          "max": 2.817
+        },
+        "total": {
+          "n": 5,
+          "p50": 3.328,
+          "p95": 4.427,
+          "max": 4.427
+        }
+      }
+    }
+  ],
+  "timers": {
+    "baseline": [
+      {
+        "run": "run_01m59sj33e53x3hzaamvksy4ya",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T17:58:21.597+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1275,
+        "local_time": "2026-10-19T17:58:22.880+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1589,
+        "local_time": "2026-10-19T17:58:23.204+08:00"
+      },
+      {
+        "run": "run_01m59sj33e53x3hzaamvksy4ya",
+        "phase": "speculative-reply",
+        "firstMs": 2017,
+        "local_time": "2026-10-19T17:58:23.614+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 2428,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T17:58:24.032+08:00"
+      },
+      {
+        "run": "run_01m59sj33e53x3hzaamvksy4ya",
+        "phase": "speculative-reply",
+        "elapsedMs": 3683,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T17:58:25.280+08:00"
+      },
+      {
+        "run": "run_01m59sj7r50nptdx8c3p4e42gs",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T17:58:26.311+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 913,
+        "local_time": "2026-10-19T17:58:27.225+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 981,
+        "local_time": "2026-10-19T17:58:27.297+08:00"
+      },
+      {
+        "run": "run_01m59sj7r50nptdx8c3p4e42gs",
+        "phase": "speculative-reply",
+        "firstMs": 1671,
+        "local_time": "2026-10-19T17:58:27.982+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 2036,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T17:58:28.348+08:00"
+      },
+      {
+        "run": "run_01m59sj7r50nptdx8c3p4e42gs",
+        "phase": "speculative-reply",
+        "elapsedMs": 3309,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T17:58:29.620+08:00"
+      },
+      {
+        "run": "run_01m59sjbznyqppcz68x91bnkgh",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T17:58:30.646+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1007,
+        "local_time": "2026-10-19T17:58:31.655+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1130,
+        "local_time": "2026-10-19T17:58:31.780+08:00"
+      },
+      {
+        "run": "run_01m59sjbznyqppcz68x91bnkgh",
+        "phase": "speculative-reply",
+        "firstMs": 1904,
+        "local_time": "2026-10-19T17:58:32.551+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1973,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T17:58:32.621+08:00"
+      },
+      {
+        "run": "run_01m59sjbznyqppcz68x91bnkgh",
+        "phase": "speculative-reply",
+        "elapsedMs": 2241,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T17:58:32.888+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 15,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T17:58:33.923+08:00"
+      },
+      {
+        "run": "run_01m59sjf5jn8zmw5dhe0t019km",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T17:58:33.931+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 2218,
+        "local_time": "2026-10-19T17:58:36.151+08:00"
+      },
+      {
+        "run": "run_01m59sjf5jn8zmw5dhe0t019km",
+        "phase": "expert-reply",
+        "firstMs": 2778,
+        "local_time": "2026-10-19T17:58:36.710+08:00"
+      },
+      {
+        "run": "run_01m59sjf5jn8zmw5dhe0t019km",
+        "phase": "expert-reply",
+        "elapsedMs": 4390,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T17:58:38.322+08:00"
+      },
+      {
+        "run": "run_01m59sjmfh15m4qaz72s86yndt",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T17:58:39.346+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 981,
+        "local_time": "2026-10-19T17:58:40.329+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1093,
+        "local_time": "2026-10-19T17:58:40.442+08:00"
+      },
+      {
+        "run": "run_01m59sjmfh15m4qaz72s86yndt",
+        "phase": "speculative-reply",
+        "firstMs": 1806,
+        "local_time": "2026-10-19T17:58:41.152+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1997,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T17:58:41.344+08:00"
+      },
+      {
+        "run": "run_01m59sjmfh15m4qaz72s86yndt",
+        "phase": "speculative-reply",
+        "elapsedMs": 2029,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T17:58:41.376+08:00"
+      }
+    ],
+    "parallel": [
+      {
+        "run": "run_01m59t4gbk1et7qbhqqa156vq6",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:08:25.003+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 924,
+        "local_time": "2026-10-19T18:08:25.949+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1087,
+        "local_time": "2026-10-19T18:08:26.086+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1066,
+        "local_time": "2026-10-19T18:08:26.086+08:00"
+      },
+      {
+        "run": "run_01m59t4gbk1et7qbhqqa156vq6",
+        "phase": "speculative-reply",
+        "firstMs": 1083,
+        "local_time": "2026-10-19T18:08:26.086+08:00"
+      },
+      {
+        "run": "run_01m59t4gbk1et7qbhqqa156vq6",
+        "phase": "speculative-reply",
+        "elapsedMs": 1212,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:26.215+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1388,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:26.399+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 4,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:35.820+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1194,
+        "local_time": "2026-10-19T18:08:37.010+08:00"
+      },
+      {
+        "run": "run_01m59t4tz4denkxkn320cjg8ht",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:08:37.044+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 892,
+        "local_time": "2026-10-19T18:08:37.938+08:00"
+      },
+      {
+        "run": "run_01m59t4tz4denkxkn320cjg8ht",
+        "phase": "expert-reply",
+        "firstMs": 973,
+        "local_time": "2026-10-19T18:08:38.018+08:00"
+      },
+      {
+        "run": "run_01m59t4tz4denkxkn320cjg8ht",
+        "phase": "expert-reply",
+        "elapsedMs": 2489,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:39.534+08:00"
+      },
+      {
+        "run": "run_01m59t4z3xw2qyggsd33j5hw6v",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:08:40.064+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1074,
+        "local_time": "2026-10-19T18:08:41.144+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1178,
+        "local_time": "2026-10-19T18:08:41.245+08:00"
+      },
+      {
+        "run": "run_01m59t4z3xw2qyggsd33j5hw6v",
+        "phase": "speculative-reply",
+        "elapsedMs": 1181,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:08:41.246+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1213,
+        "local_time": "2026-10-19T18:08:41.278+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1147,
+        "local_time": "2026-10-19T18:08:42.405+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 2378,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:42.443+08:00"
+      },
+      {
+        "run": "run_01m59t4z3xw2qyggsd33j5hw6v",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:08:42.467+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 631,
+        "local_time": "2026-10-19T18:08:43.102+08:00"
+      },
+      {
+        "run": "run_01m59t4z3xw2qyggsd33j5hw6v",
+        "phase": "expert-reply",
+        "firstMs": 636,
+        "local_time": "2026-10-19T18:08:43.103+08:00"
+      },
+      {
+        "run": "run_01m59t4z3xw2qyggsd33j5hw6v",
+        "phase": "expert-reply",
+        "elapsedMs": 1338,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:43.805+08:00"
+      },
+      {
+        "run": "run_01m59t5dza9dd01d5drmgwsrd5",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:08:55.280+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:55.281+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1047,
+        "local_time": "2026-10-19T18:08:56.328+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1045,
+        "local_time": "2026-10-19T18:08:56.330+08:00"
+      },
+      {
+        "run": "run_01m59t5dza9dd01d5drmgwsrd5",
+        "phase": "speculative-reply",
+        "firstMs": 1049,
+        "local_time": "2026-10-19T18:08:56.330+08:00"
+      },
+      {
+        "run": "run_01m59t5dza9dd01d5drmgwsrd5",
+        "phase": "speculative-reply",
+        "elapsedMs": 1063,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:08:56.344+08:00"
+      },
+      {
+        "run": "run_01m59t5dza9dd01d5drmgwsrd5",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:08:56.345+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 817,
+        "local_time": "2026-10-19T18:08:57.164+08:00"
+      },
+      {
+        "run": "run_01m59t5dza9dd01d5drmgwsrd5",
+        "phase": "expert-reply",
+        "firstMs": 839,
+        "local_time": "2026-10-19T18:08:57.184+08:00"
+      },
+      {
+        "run": "run_01m59t5dza9dd01d5drmgwsrd5",
+        "phase": "expert-reply",
+        "elapsedMs": 944,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:57.290+08:00"
+      },
+      {
+        "run": "run_01m59t5genap4rw72rz67ankdt",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:08:57.816+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 974,
+        "local_time": "2026-10-19T18:08:58.792+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1023,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:58.840+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1051,
+        "local_time": "2026-10-19T18:08:58.868+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1050,
+        "local_time": "2026-10-19T18:08:58.868+08:00"
+      },
+      {
+        "run": "run_01m59t5genap4rw72rz67ankdt",
+        "phase": "speculative-reply",
+        "firstMs": 1052,
+        "local_time": "2026-10-19T18:08:58.869+08:00"
+      },
+      {
+        "run": "run_01m59t5genap4rw72rz67ankdt",
+        "phase": "speculative-reply",
+        "elapsedMs": 1052,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:58.869+08:00"
+      },
+      {
+        "run": "run_01m59t5genap4rw72rz67ankdt",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:08:58.878+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 739,
+        "local_time": "2026-10-19T18:08:59.618+08:00"
+      },
+      {
+        "run": "run_01m59t5genap4rw72rz67ankdt",
+        "phase": "expert-reply",
+        "firstMs": 777,
+        "local_time": "2026-10-19T18:08:59.655+08:00"
+      },
+      {
+        "run": "run_01m59t5genap4rw72rz67ankdt",
+        "phase": "expert-reply",
+        "elapsedMs": 871,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:59.749+08:00"
+      },
+      {
+        "run": "run_01m59t5tf8ntssevcszd7eak8v",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:09:08.075+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 910,
+        "local_time": "2026-10-19T18:09:08.986+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 909,
+        "local_time": "2026-10-19T18:09:08.986+08:00"
+      },
+      {
+        "run": "run_01m59t5tf8ntssevcszd7eak8v",
+        "phase": "speculative-reply",
+        "firstMs": 911,
+        "local_time": "2026-10-19T18:09:08.986+08:00"
+      },
+      {
+        "run": "run_01m59t5tf8ntssevcszd7eak8v",
+        "phase": "speculative-reply",
+        "elapsedMs": 911,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:08.986+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 981,
+        "local_time": "2026-10-19T18:09:09.059+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 984,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:09.060+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:09.583+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 922,
+        "local_time": "2026-10-19T18:09:10.506+08:00"
+      },
+      {
+        "run": "run_01m59t5vydk9wkevnfg5aw33qn",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:09:10.510+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 765,
+        "local_time": "2026-10-19T18:09:11.279+08:00"
+      },
+      {
+        "run": "run_01m59t5vydk9wkevnfg5aw33qn",
+        "phase": "expert-reply",
+        "firstMs": 768,
+        "local_time": "2026-10-19T18:09:11.279+08:00"
+      },
+      {
+        "run": "run_01m59t5vydk9wkevnfg5aw33qn",
+        "phase": "expert-reply",
+        "elapsedMs": 2351,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:12.862+08:00"
+      },
+      {
+        "run": "run_01m59t6c74sp2gz2jqarkmx71z",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:09:26.247+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 901,
+        "local_time": "2026-10-19T18:09:27.154+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1032,
+        "local_time": "2026-10-19T18:09:27.282+08:00"
+      },
+      {
+        "run": "run_01m59t6c74sp2gz2jqarkmx71z",
+        "phase": "speculative-reply",
+        "elapsedMs": 1035,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:09:27.283+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1090,
+        "local_time": "2026-10-19T18:09:27.338+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1003,
+        "local_time": "2026-10-19T18:09:28.290+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 2042,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:28.291+08:00"
+      },
+      {
+        "run": "run_01m59t6c74sp2gz2jqarkmx71z",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:09:28.295+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 828,
+        "local_time": "2026-10-19T18:09:29.128+08:00"
+      },
+      {
+        "run": "run_01m59t6c74sp2gz2jqarkmx71z",
+        "phase": "expert-reply",
+        "firstMs": 1003,
+        "local_time": "2026-10-19T18:09:29.299+08:00"
+      },
+      {
+        "run": "run_01m59t6c74sp2gz2jqarkmx71z",
+        "phase": "expert-reply",
+        "elapsedMs": 1843,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:30.138+08:00"
+      },
+      {
+        "run": "run_01m59t6gh008h1j3f6nb3gyekd",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:09:30.658+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:30.659+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1043,
+        "local_time": "2026-10-19T18:09:31.701+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1041,
+        "local_time": "2026-10-19T18:09:31.701+08:00"
+      },
+      {
+        "run": "run_01m59t6gh008h1j3f6nb3gyekd",
+        "phase": "speculative-reply",
+        "firstMs": 1043,
+        "local_time": "2026-10-19T18:09:31.702+08:00"
+      },
+      {
+        "run": "run_01m59t6gh008h1j3f6nb3gyekd",
+        "phase": "speculative-reply",
+        "elapsedMs": 1050,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:09:31.709+08:00"
+      },
+      {
+        "run": "run_01m59t6gh008h1j3f6nb3gyekd",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:09:31.709+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1061,
+        "local_time": "2026-10-19T18:09:32.772+08:00"
+      },
+      {
+        "run": "run_01m59t6gh008h1j3f6nb3gyekd",
+        "phase": "expert-reply",
+        "firstMs": 1063,
+        "local_time": "2026-10-19T18:09:32.773+08:00"
+      },
+      {
+        "run": "run_01m59t6gh008h1j3f6nb3gyekd",
+        "phase": "expert-reply",
+        "elapsedMs": 1063,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:32.773+08:00"
+      },
+      {
+        "run": "run_01m59t6tttxtckmtt584v9c85n",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:09:41.212+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1061,
+        "local_time": "2026-10-19T18:09:42.274+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1060,
+        "local_time": "2026-10-19T18:09:42.275+08:00"
+      },
+      {
+        "run": "run_01m59t6tttxtckmtt584v9c85n",
+        "phase": "speculative-reply",
+        "firstMs": 1062,
+        "local_time": "2026-10-19T18:09:42.275+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1217,
+        "local_time": "2026-10-19T18:09:42.433+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1221,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:42.435+08:00"
+      },
+      {
+        "run": "run_01m59t6tttxtckmtt584v9c85n",
+        "phase": "speculative-reply",
+        "elapsedMs": 1226,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:09:42.439+08:00"
+      },
+      {
+        "run": "run_01m59t6tttxtckmtt584v9c85n",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:09:42.439+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 800,
+        "local_time": "2026-10-19T18:09:43.243+08:00"
+      },
+      {
+        "run": "run_01m59t6tttxtckmtt584v9c85n",
+        "phase": "expert-reply",
+        "firstMs": 803,
+        "local_time": "2026-10-19T18:09:43.243+08:00"
+      },
+      {
+        "run": "run_01m59t6tttxtckmtt584v9c85n",
+        "phase": "expert-reply",
+        "elapsedMs": 874,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:43.314+08:00"
+      },
+      {
+        "run": "run_01m59t6xcqvnjqkyqe2angktzc",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:09:43.833+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 660,
+        "local_time": "2026-10-19T18:09:44.496+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 803,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:44.637+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1013,
+        "local_time": "2026-10-19T18:09:44.847+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1012,
+        "local_time": "2026-10-19T18:09:44.847+08:00"
+      },
+      {
+        "run": "run_01m59t6xcqvnjqkyqe2angktzc",
+        "phase": "speculative-reply",
+        "firstMs": 1014,
+        "local_time": "2026-10-19T18:09:44.848+08:00"
+      },
+      {
+        "run": "run_01m59t6xcqvnjqkyqe2angktzc",
+        "phase": "speculative-reply",
+        "elapsedMs": 1091,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:44.925+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:52.379+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 879,
+        "local_time": "2026-10-19T18:09:53.258+08:00"
+      },
+      {
+        "run": "run_01m59t75qsj5nfwme9w94q148x",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:09:53.263+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 967,
+        "local_time": "2026-10-19T18:09:54.232+08:00"
+      },
+      {
+        "run": "run_01m59t75qsj5nfwme9w94q148x",
+        "phase": "expert-reply",
+        "firstMs": 969,
+        "local_time": "2026-10-19T18:09:54.232+08:00"
+      },
+      {
+        "run": "run_01m59t75qsj5nfwme9w94q148x",
+        "phase": "expert-reply",
+        "elapsedMs": 2340,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:55.603+08:00"
+      },
+      {
+        "run": "run_01m59t79cthv5znrbt708rw6kh",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:09:56.124+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1017,
+        "local_time": "2026-10-19T18:09:57.145+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1086,
+        "local_time": "2026-10-19T18:09:57.213+08:00"
+      },
+      {
+        "run": "run_01m59t79cthv5znrbt708rw6kh",
+        "phase": "speculative-reply",
+        "elapsedMs": 1088,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:09:57.213+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1214,
+        "local_time": "2026-10-19T18:09:57.338+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 833,
+        "local_time": "2026-10-19T18:09:58.049+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1925,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:58.050+08:00"
+      },
+      {
+        "run": "run_01m59t79cthv5znrbt708rw6kh",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:09:58.053+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 783,
+        "local_time": "2026-10-19T18:09:58.839+08:00"
+      },
+      {
+        "run": "run_01m59t79cthv5znrbt708rw6kh",
+        "phase": "expert-reply",
+        "firstMs": 864,
+        "local_time": "2026-10-19T18:09:58.917+08:00"
+      },
+      {
+        "run": "run_01m59t79cthv5znrbt708rw6kh",
+        "phase": "expert-reply",
+        "elapsedMs": 1786,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:59.840+08:00"
+      },
+      {
+        "run": "run_01m59t7rm323gee9k6fppk75aa",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:11.717+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:11.718+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1045,
+        "local_time": "2026-10-19T18:10:12.763+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1044,
+        "local_time": "2026-10-19T18:10:12.763+08:00"
+      },
+      {
+        "run": "run_01m59t7rm323gee9k6fppk75aa",
+        "phase": "speculative-reply",
+        "firstMs": 1046,
+        "local_time": "2026-10-19T18:10:12.764+08:00"
+      },
+      {
+        "run": "run_01m59t7rm323gee9k6fppk75aa",
+        "phase": "speculative-reply",
+        "elapsedMs": 1055,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:10:12.773+08:00"
+      },
+      {
+        "run": "run_01m59t7rm323gee9k6fppk75aa",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:12.773+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 824,
+        "local_time": "2026-10-19T18:10:13.599+08:00"
+      },
+      {
+        "run": "run_01m59t7rm323gee9k6fppk75aa",
+        "phase": "expert-reply",
+        "firstMs": 826,
+        "local_time": "2026-10-19T18:10:13.599+08:00"
+      },
+      {
+        "run": "run_01m59t7rm323gee9k6fppk75aa",
+        "phase": "expert-reply",
+        "elapsedMs": 864,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:13.638+08:00"
+      },
+      {
+        "run": "run_01m59t7v0b4hgrjmspd1mzq9ze",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:14.156+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 591,
+        "local_time": "2026-10-19T18:10:14.747+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 589,
+        "local_time": "2026-10-19T18:10:14.747+08:00"
+      },
+      {
+        "run": "run_01m59t7v0b4hgrjmspd1mzq9ze",
+        "phase": "speculative-reply",
+        "firstMs": 699,
+        "local_time": "2026-10-19T18:10:14.856+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 979,
+        "local_time": "2026-10-19T18:10:15.138+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 982,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:15.139+08:00"
+      },
+      {
+        "run": "run_01m59t7v0b4hgrjmspd1mzq9ze",
+        "phase": "speculative-reply",
+        "elapsedMs": 986,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:10:15.143+08:00"
+      },
+      {
+        "run": "run_01m59t7v0b4hgrjmspd1mzq9ze",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:15.143+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 621,
+        "local_time": "2026-10-19T18:10:15.766+08:00"
+      },
+      {
+        "run": "run_01m59t7v0b4hgrjmspd1mzq9ze",
+        "phase": "expert-reply",
+        "firstMs": 649,
+        "local_time": "2026-10-19T18:10:15.793+08:00"
+      },
+      {
+        "run": "run_01m59t7v0b4hgrjmspd1mzq9ze",
+        "phase": "expert-reply",
+        "elapsedMs": 795,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:15.939+08:00"
+      },
+      {
+        "run": "run_01m59t845f2dy5fr47nps1q68n",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:23.537+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 842,
+        "local_time": "2026-10-19T18:10:24.379+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 841,
+        "local_time": "2026-10-19T18:10:24.379+08:00"
+      },
+      {
+        "run": "run_01m59t845f2dy5fr47nps1q68n",
+        "phase": "speculative-reply",
+        "firstMs": 842,
+        "local_time": "2026-10-19T18:10:24.379+08:00"
+      },
+      {
+        "run": "run_01m59t845f2dy5fr47nps1q68n",
+        "phase": "speculative-reply",
+        "elapsedMs": 885,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:24.422+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 903,
+        "local_time": "2026-10-19T18:10:24.442+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1101,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:24.639+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:25.163+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 703,
+        "local_time": "2026-10-19T18:10:25.866+08:00"
+      },
+      {
+        "run": "run_01m59t85r968deby7w4qhy10py",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:25.869+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 867,
+        "local_time": "2026-10-19T18:10:26.738+08:00"
+      },
+      {
+        "run": "run_01m59t85r968deby7w4qhy10py",
+        "phase": "expert-reply",
+        "firstMs": 868,
+        "local_time": "2026-10-19T18:10:26.738+08:00"
+      },
+      {
+        "run": "run_01m59t85r968deby7w4qhy10py",
+        "phase": "expert-reply",
+        "elapsedMs": 2460,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:28.330+08:00"
+      },
+      {
+        "run": "run_01m59t8mkh55ex1aecka33rtz6",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:40.371+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 852,
+        "local_time": "2026-10-19T18:10:41.226+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 909,
+        "local_time": "2026-10-19T18:10:41.281+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 907,
+        "local_time": "2026-10-19T18:10:41.281+08:00"
+      },
+      {
+        "run": "run_01m59t8mkh55ex1aecka33rtz6",
+        "phase": "speculative-reply",
+        "elapsedMs": 972,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:10:41.344+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 605,
+        "local_time": "2026-10-19T18:10:41.952+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1841,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:42.214+08:00"
+      },
+      {
+        "run": "run_01m59t8mkh55ex1aecka33rtz6",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:42.218+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 707,
+        "local_time": "2026-10-19T18:10:42.928+08:00"
+      },
+      {
+        "run": "run_01m59t8mkh55ex1aecka33rtz6",
+        "phase": "expert-reply",
+        "firstMs": 787,
+        "local_time": "2026-10-19T18:10:43.006+08:00"
+      },
+      {
+        "run": "run_01m59t8mkh55ex1aecka33rtz6",
+        "phase": "expert-reply",
+        "elapsedMs": 1539,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:43.757+08:00"
+      },
+      {
+        "run": "run_01m59t8rdk2vntvm6pd6qmk6j1",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:44.277+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:44.278+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 700,
+        "local_time": "2026-10-19T18:10:44.977+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 698,
+        "local_time": "2026-10-19T18:10:44.977+08:00"
+      },
+      {
+        "run": "run_01m59t8rdk2vntvm6pd6qmk6j1",
+        "phase": "speculative-reply",
+        "firstMs": 700,
+        "local_time": "2026-10-19T18:10:44.978+08:00"
+      },
+      {
+        "run": "run_01m59t8rdk2vntvm6pd6qmk6j1",
+        "phase": "speculative-reply",
+        "elapsedMs": 708,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:10:44.985+08:00"
+      },
+      {
+        "run": "run_01m59t8rdk2vntvm6pd6qmk6j1",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:44.985+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 894,
+        "local_time": "2026-10-19T18:10:45.881+08:00"
+      },
+      {
+        "run": "run_01m59t8rdk2vntvm6pd6qmk6j1",
+        "phase": "expert-reply",
+        "firstMs": 908,
+        "local_time": "2026-10-19T18:10:45.894+08:00"
+      },
+      {
+        "run": "run_01m59t8rdk2vntvm6pd6qmk6j1",
+        "phase": "expert-reply",
+        "elapsedMs": 1089,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:46.075+08:00"
+      },
+      {
+        "run": "run_01m59t930yn5rmv47kac4t7nxh",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:55.136+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 974,
+        "local_time": "2026-10-19T18:10:56.111+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 966,
+        "local_time": "2026-10-19T18:10:56.112+08:00"
+      },
+      {
+        "run": "run_01m59t930yn5rmv47kac4t7nxh",
+        "phase": "speculative-reply",
+        "firstMs": 988,
+        "local_time": "2026-10-19T18:10:56.124+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1026,
+        "local_time": "2026-10-19T18:10:56.173+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1138,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:56.275+08:00"
+      },
+      {
+        "run": "run_01m59t930yn5rmv47kac4t7nxh",
+        "phase": "speculative-reply",
+        "elapsedMs": 1142,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:10:56.279+08:00"
+      },
+      {
+        "run": "run_01m59t930yn5rmv47kac4t7nxh",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:56.279+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 875,
+        "local_time": "2026-10-19T18:10:57.156+08:00"
+      },
+      {
+        "run": "run_01m59t930yn5rmv47kac4t7nxh",
+        "phase": "expert-reply",
+        "firstMs": 877,
+        "local_time": "2026-10-19T18:10:57.156+08:00"
+      },
+      {
+        "run": "run_01m59t930yn5rmv47kac4t7nxh",
+        "phase": "expert-reply",
+        "elapsedMs": 893,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:57.172+08:00"
+      }
+    ],
+    "serial": [
+      {
+        "run": "run_01m59t4jdj5rt23fwrf1sdbq43",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:08:27.122+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1291,
+        "local_time": "2026-10-19T18:08:28.422+08:00"
+      },
+      {
+        "run": "run_01m59t4jdj5rt23fwrf1sdbq43",
+        "phase": "speculative-reply",
+        "firstMs": 2162,
+        "local_time": "2026-10-19T18:08:29.284+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 2254,
+        "local_time": "2026-10-19T18:08:29.401+08:00"
+      },
+      {
+        "run": "run_01m59t4jdj5rt23fwrf1sdbq43",
+        "phase": "speculative-reply",
+        "elapsedMs": 2298,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:29.420+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 3367,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:30.498+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 13,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:31.046+08:00"
+      },
+      {
+        "run": "run_01m59t4p9ppjkb076rgsvc7jjv",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:08:31.063+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 2064,
+        "local_time": "2026-10-19T18:08:33.129+08:00"
+      },
+      {
+        "run": "run_01m59t4p9ppjkb076rgsvc7jjv",
+        "phase": "expert-reply",
+        "firstMs": 2760,
+        "local_time": "2026-10-19T18:08:33.824+08:00"
+      },
+      {
+        "run": "run_01m59t4p9ppjkb076rgsvc7jjv",
+        "phase": "expert-reply",
+        "elapsedMs": 4219,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:35.283+08:00"
+      },
+      {
+        "run": "run_01m59t539dy47ps0vpjd0xwabk",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:08:44.336+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 746,
+        "local_time": "2026-10-19T18:08:45.084+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 783,
+        "local_time": "2026-10-19T18:08:45.122+08:00"
+      },
+      {
+        "run": "run_01m59t539dy47ps0vpjd0xwabk",
+        "phase": "speculative-reply",
+        "elapsedMs": 1649,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:08:45.986+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 752,
+        "local_time": "2026-10-19T18:08:46.750+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 3544,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:47.881+08:00"
+      },
+      {
+        "run": "run_01m59t539dy47ps0vpjd0xwabk",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:08:47.902+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1844,
+        "local_time": "2026-10-19T18:08:49.748+08:00"
+      },
+      {
+        "run": "run_01m59t539dy47ps0vpjd0xwabk",
+        "phase": "expert-reply",
+        "firstMs": 2711,
+        "local_time": "2026-10-19T18:08:50.614+08:00"
+      },
+      {
+        "run": "run_01m59t539dy47ps0vpjd0xwabk",
+        "phase": "expert-reply",
+        "elapsedMs": 3434,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:51.336+08:00"
+      },
+      {
+        "run": "run_01m59t5amj76k4srk5xzdrk9x4",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:08:51.859+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:51.861+08:00"
+      },
+      {
+        "run": "run_01m59t5amj76k4srk5xzdrk9x4",
+        "phase": "speculative-reply",
+        "elapsedMs": 18,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:08:51.878+08:00"
+      },
+      {
+        "run": "run_01m59t5amj76k4srk5xzdrk9x4",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:08:51.878+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 18,
+        "local_time": "2026-10-19T18:08:51.879+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1916,
+        "local_time": "2026-10-19T18:08:53.797+08:00"
+      },
+      {
+        "run": "run_01m59t5amj76k4srk5xzdrk9x4",
+        "phase": "expert-reply",
+        "firstMs": 2715,
+        "local_time": "2026-10-19T18:08:54.593+08:00"
+      },
+      {
+        "run": "run_01m59t5amj76k4srk5xzdrk9x4",
+        "phase": "expert-reply",
+        "elapsedMs": 2867,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:08:54.746+08:00"
+      },
+      {
+        "run": "run_01m59t5jvsr533wyd6pbcqgkwx",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:09:00.284+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 869,
+        "local_time": "2026-10-19T18:09:01.155+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1108,
+        "local_time": "2026-10-19T18:09:01.394+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1841,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:02.126+08:00"
+      },
+      {
+        "run": "run_01m59t5jvsr533wyd6pbcqgkwx",
+        "phase": "speculative-reply",
+        "elapsedMs": 1849,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:09:02.133+08:00"
+      },
+      {
+        "run": "run_01m59t5jvsr533wyd6pbcqgkwx",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:09:02.133+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1924,
+        "local_time": "2026-10-19T18:09:04.059+08:00"
+      },
+      {
+        "run": "run_01m59t5jvsr533wyd6pbcqgkwx",
+        "phase": "expert-reply",
+        "firstMs": 2709,
+        "local_time": "2026-10-19T18:09:04.843+08:00"
+      },
+      {
+        "run": "run_01m59t5jvsr533wyd6pbcqgkwx",
+        "phase": "expert-reply",
+        "elapsedMs": 2845,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:04.978+08:00"
+      },
+      {
+        "run": "run_01m59t5qyv66hvwvmj8n9e6j2m",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:09:05.501+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 969,
+        "local_time": "2026-10-19T18:09:06.473+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1007,
+        "local_time": "2026-10-19T18:09:06.510+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1854,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:07.356+08:00"
+      },
+      {
+        "run": "run_01m59t5qyv66hvwvmj8n9e6j2m",
+        "phase": "speculative-reply",
+        "firstMs": 1881,
+        "local_time": "2026-10-19T18:09:07.383+08:00"
+      },
+      {
+        "run": "run_01m59t5qyv66hvwvmj8n9e6j2m",
+        "phase": "speculative-reply",
+        "elapsedMs": 2045,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:07.547+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:13.382+08:00"
+      },
+      {
+        "run": "run_01m59t5zn46kexh4h2zdhx31eg",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:09:13.384+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1777,
+        "local_time": "2026-10-19T18:09:15.162+08:00"
+      },
+      {
+        "run": "run_01m59t5zn46kexh4h2zdhx31eg",
+        "phase": "expert-reply",
+        "firstMs": 2508,
+        "local_time": "2026-10-19T18:09:15.892+08:00"
+      },
+      {
+        "run": "run_01m59t5zn46kexh4h2zdhx31eg",
+        "phase": "expert-reply",
+        "elapsedMs": 4170,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:17.555+08:00"
+      },
+      {
+        "run": "run_01m59t647y38fjjvn4j9chzcsz",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:09:18.080+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 761,
+        "local_time": "2026-10-19T18:09:18.843+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 995,
+        "local_time": "2026-10-19T18:09:19.077+08:00"
+      },
+      {
+        "run": "run_01m59t647y38fjjvn4j9chzcsz",
+        "phase": "speculative-reply",
+        "firstMs": 1664,
+        "local_time": "2026-10-19T18:09:19.744+08:00"
+      },
+      {
+        "run": "run_01m59t647y38fjjvn4j9chzcsz",
+        "phase": "speculative-reply",
+        "elapsedMs": 1723,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:09:19.804+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1100,
+        "local_time": "2026-10-19T18:09:20.906+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 3680,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:21.761+08:00"
+      },
+      {
+        "run": "run_01m59t647y38fjjvn4j9chzcsz",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:09:21.764+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 2032,
+        "local_time": "2026-10-19T18:09:23.798+08:00"
+      },
+      {
+        "run": "run_01m59t647y38fjjvn4j9chzcsz",
+        "phase": "expert-reply",
+        "firstMs": 3318,
+        "local_time": "2026-10-19T18:09:25.083+08:00"
+      },
+      {
+        "run": "run_01m59t647y38fjjvn4j9chzcsz",
+        "phase": "expert-reply",
+        "elapsedMs": 3948,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:25.713+08:00"
+      },
+      {
+        "run": "run_01m59t6k3g8sdr0e82a72c4gsr",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:09:33.298+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:33.299+08:00"
+      },
+      {
+        "run": "run_01m59t6k3g8sdr0e82a72c4gsr",
+        "phase": "speculative-reply",
+        "elapsedMs": 6,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:09:33.305+08:00"
+      },
+      {
+        "run": "run_01m59t6k3g8sdr0e82a72c4gsr",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:09:33.305+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 3,
+        "local_time": "2026-10-19T18:09:33.305+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1831,
+        "local_time": "2026-10-19T18:09:35.137+08:00"
+      },
+      {
+        "run": "run_01m59t6k3g8sdr0e82a72c4gsr",
+        "phase": "expert-reply",
+        "firstMs": 2588,
+        "local_time": "2026-10-19T18:09:35.894+08:00"
+      },
+      {
+        "run": "run_01m59t6k3g8sdr0e82a72c4gsr",
+        "phase": "expert-reply",
+        "elapsedMs": 2733,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:36.038+08:00"
+      },
+      {
+        "run": "run_01m59t6p9e05bfpcr6vptdzjtd",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:09:36.560+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 867,
+        "local_time": "2026-10-19T18:09:37.429+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 949,
+        "local_time": "2026-10-19T18:09:37.511+08:00"
+      },
+      {
+        "run": "run_01m59t6p9e05bfpcr6vptdzjtd",
+        "phase": "speculative-reply",
+        "firstMs": 1577,
+        "local_time": "2026-10-19T18:09:38.138+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1718,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:38.278+08:00"
+      },
+      {
+        "run": "run_01m59t6p9e05bfpcr6vptdzjtd",
+        "phase": "speculative-reply",
+        "elapsedMs": 1722,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:09:38.282+08:00"
+      },
+      {
+        "run": "run_01m59t6p9e05bfpcr6vptdzjtd",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:09:38.283+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1663,
+        "local_time": "2026-10-19T18:09:39.948+08:00"
+      },
+      {
+        "run": "run_01m59t6p9e05bfpcr6vptdzjtd",
+        "phase": "expert-reply",
+        "firstMs": 2207,
+        "local_time": "2026-10-19T18:09:40.490+08:00"
+      },
+      {
+        "run": "run_01m59t6p9e05bfpcr6vptdzjtd",
+        "phase": "expert-reply",
+        "elapsedMs": 2404,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:40.687+08:00"
+      },
+      {
+        "run": "run_01m59t6yz4f64n7qktbwqvzxmv",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:09:45.446+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 602,
+        "local_time": "2026-10-19T18:09:46.050+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 749,
+        "local_time": "2026-10-19T18:09:46.198+08:00"
+      },
+      {
+        "run": "run_01m59t6yz4f64n7qktbwqvzxmv",
+        "phase": "speculative-reply",
+        "firstMs": 1204,
+        "local_time": "2026-10-19T18:09:46.651+08:00"
+      },
+      {
+        "run": "run_01m59t6yz4f64n7qktbwqvzxmv",
+        "phase": "speculative-reply",
+        "elapsedMs": 1420,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:46.867+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1919,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:47.367+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:47.889+08:00"
+      },
+      {
+        "run": "run_01m59t71beyxw3d4rgbz3espec",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:09:47.890+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1777,
+        "local_time": "2026-10-19T18:09:49.668+08:00"
+      },
+      {
+        "run": "run_01m59t71beyxw3d4rgbz3espec",
+        "phase": "expert-reply",
+        "firstMs": 2427,
+        "local_time": "2026-10-19T18:09:50.318+08:00"
+      },
+      {
+        "run": "run_01m59t71beyxw3d4rgbz3espec",
+        "phase": "expert-reply",
+        "elapsedMs": 3965,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:09:51.856+08:00"
+      },
+      {
+        "run": "run_01m59t7dh83smsx0zx9yh30dtc",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:00.361+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 854,
+        "local_time": "2026-10-19T18:10:01.217+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 967,
+        "local_time": "2026-10-19T18:10:01.330+08:00"
+      },
+      {
+        "run": "run_01m59t7dh83smsx0zx9yh30dtc",
+        "phase": "speculative-reply",
+        "elapsedMs": 1992,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:10:02.354+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1073,
+        "local_time": "2026-10-19T18:10:03.430+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 4077,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:04.439+08:00"
+      },
+      {
+        "run": "run_01m59t7dh83smsx0zx9yh30dtc",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:04.443+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1777,
+        "local_time": "2026-10-19T18:10:06.223+08:00"
+      },
+      {
+        "run": "run_01m59t7dh83smsx0zx9yh30dtc",
+        "phase": "expert-reply",
+        "firstMs": 2678,
+        "local_time": "2026-10-19T18:10:07.121+08:00"
+      },
+      {
+        "run": "run_01m59t7dh83smsx0zx9yh30dtc",
+        "phase": "expert-reply",
+        "elapsedMs": 3443,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:07.887+08:00"
+      },
+      {
+        "run": "run_01m59t7ncm6redf62mm4x4rtpc",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:08.406+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:08.407+08:00"
+      },
+      {
+        "run": "run_01m59t7ncm6redf62mm4x4rtpc",
+        "phase": "speculative-reply",
+        "elapsedMs": 4,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:10:08.410+08:00"
+      },
+      {
+        "run": "run_01m59t7ncm6redf62mm4x4rtpc",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:08.410+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 4,
+        "local_time": "2026-10-19T18:10:08.411+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1634,
+        "local_time": "2026-10-19T18:10:10.046+08:00"
+      },
+      {
+        "run": "run_01m59t7ncm6redf62mm4x4rtpc",
+        "phase": "expert-reply",
+        "firstMs": 2631,
+        "local_time": "2026-10-19T18:10:11.042+08:00"
+      },
+      {
+        "run": "run_01m59t7ncm6redf62mm4x4rtpc",
+        "phase": "expert-reply",
+        "elapsedMs": 2786,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:11.197+08:00"
+      },
+      {
+        "run": "run_01m59t7x8e8emv20374dykfpjv",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:16.465+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 723,
+        "local_time": "2026-10-19T18:10:17.191+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1027,
+        "local_time": "2026-10-19T18:10:17.494+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1659,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:18.125+08:00"
+      },
+      {
+        "run": "run_01m59t7x8e8emv20374dykfpjv",
+        "phase": "speculative-reply",
+        "elapsedMs": 1663,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:10:18.128+08:00"
+      },
+      {
+        "run": "run_01m59t7x8e8emv20374dykfpjv",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:18.128+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1625,
+        "local_time": "2026-10-19T18:10:19.755+08:00"
+      },
+      {
+        "run": "run_01m59t7x8e8emv20374dykfpjv",
+        "phase": "expert-reply",
+        "firstMs": 2328,
+        "local_time": "2026-10-19T18:10:20.457+08:00"
+      },
+      {
+        "run": "run_01m59t7x8e8emv20374dykfpjv",
+        "phase": "expert-reply",
+        "elapsedMs": 2465,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:20.593+08:00"
+      },
+      {
+        "run": "run_01m59t81syvmn93zsq2a1159wq",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:21.119+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 851,
+        "local_time": "2026-10-19T18:10:21.974+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 904,
+        "local_time": "2026-10-19T18:10:22.026+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 1588,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:22.708+08:00"
+      },
+      {
+        "run": "run_01m59t81syvmn93zsq2a1159wq",
+        "phase": "speculative-reply",
+        "firstMs": 1662,
+        "local_time": "2026-10-19T18:10:22.782+08:00"
+      },
+      {
+        "run": "run_01m59t81syvmn93zsq2a1159wq",
+        "phase": "speculative-reply",
+        "elapsedMs": 1890,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:23.010+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:28.852+08:00"
+      },
+      {
+        "run": "run_01m59t89bj75b7r43rgc5dz6pz",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:28.854+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1570,
+        "local_time": "2026-10-19T18:10:30.426+08:00"
+      },
+      {
+        "run": "run_01m59t89bj75b7r43rgc5dz6pz",
+        "phase": "expert-reply",
+        "firstMs": 2148,
+        "local_time": "2026-10-19T18:10:31.002+08:00"
+      },
+      {
+        "run": "run_01m59t89bj75b7r43rgc5dz6pz",
+        "phase": "expert-reply",
+        "elapsedMs": 3513,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:32.367+08:00"
+      },
+      {
+        "run": "run_01m59t8d9kw14sp0hynmbktry6",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:32.885+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 821,
+        "local_time": "2026-10-19T18:10:33.707+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1002,
+        "local_time": "2026-10-19T18:10:33.889+08:00"
+      },
+      {
+        "run": "run_01m59t8d9kw14sp0hynmbktry6",
+        "phase": "speculative-reply",
+        "elapsedMs": 1736,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:10:34.621+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 951,
+        "local_time": "2026-10-19T18:10:35.574+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 3541,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:36.426+08:00"
+      },
+      {
+        "run": "run_01m59t8d9kw14sp0hynmbktry6",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:36.433+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1788,
+        "local_time": "2026-10-19T18:10:38.223+08:00"
+      },
+      {
+        "run": "run_01m59t8d9kw14sp0hynmbktry6",
+        "phase": "expert-reply",
+        "firstMs": 2623,
+        "local_time": "2026-10-19T18:10:39.056+08:00"
+      },
+      {
+        "run": "run_01m59t8d9kw14sp0hynmbktry6",
+        "phase": "expert-reply",
+        "elapsedMs": 3409,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:39.843+08:00"
+      },
+      {
+        "run": "run_01m59t8tp3sjfcxk1zhtp8dgk9",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:46.597+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 0,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:46.598+08:00"
+      },
+      {
+        "run": "run_01m59t8tp3sjfcxk1zhtp8dgk9",
+        "phase": "speculative-reply",
+        "elapsedMs": 4,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:10:46.602+08:00"
+      },
+      {
+        "run": "run_01m59t8tp3sjfcxk1zhtp8dgk9",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:46.602+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 3,
+        "local_time": "2026-10-19T18:10:46.602+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1624,
+        "local_time": "2026-10-19T18:10:48.227+08:00"
+      },
+      {
+        "run": "run_01m59t8tp3sjfcxk1zhtp8dgk9",
+        "phase": "expert-reply",
+        "firstMs": 2373,
+        "local_time": "2026-10-19T18:10:48.976+08:00"
+      },
+      {
+        "run": "run_01m59t8tp3sjfcxk1zhtp8dgk9",
+        "phase": "expert-reply",
+        "elapsedMs": 2497,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:49.100+08:00"
+      },
+      {
+        "run": "run_01m59t8xmfqwd5s3r4pmazyc3x",
+        "phase": "speculative-reply",
+        "local_time": "2026-10-19T18:10:49.617+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 837,
+        "local_time": "2026-10-19T18:10:50.457+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 857,
+        "local_time": "2026-10-19T18:10:50.477+08:00"
+      },
+      {
+        "run": "run_01m59t8xmfqwd5s3r4pmazyc3x",
+        "phase": "speculative-reply",
+        "firstMs": 1734,
+        "local_time": "2026-10-19T18:10:51.351+08:00"
+      },
+      {
+        "phase": "planner",
+        "elapsedMs": 2065,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:51.683+08:00"
+      },
+      {
+        "run": "run_01m59t8xmfqwd5s3r4pmazyc3x",
+        "phase": "speculative-reply",
+        "elapsedMs": 2070,
+        "signal": "cancel",
+        "local_time": "2026-10-19T18:10:51.688+08:00"
+      },
+      {
+        "run": "run_01m59t8xmfqwd5s3r4pmazyc3x",
+        "phase": "expert-reply",
+        "local_time": "2026-10-19T18:10:51.688+08:00"
+      },
+      {
+        "phase": "safety",
+        "elapsedMs": 1949,
+        "local_time": "2026-10-19T18:10:53.639+08:00"
+      },
+      {
+        "run": "run_01m59t8xmfqwd5s3r4pmazyc3x",
+        "phase": "expert-reply",
+        "firstMs": 2765,
+        "local_time": "2026-10-19T18:10:54.453+08:00"
+      },
+      {
+        "run": "run_01m59t8xmfqwd5s3r4pmazyc3x",
+        "phase": "expert-reply",
+        "elapsedMs": 2926,
+        "signal": "onComplete",
+        "local_time": "2026-10-19T18:10:54.614+08:00"
+      }
+    ]
+  },
+  "jar_sha256_after_first_verify": "f0cad6b6e7da45291b3b436037a204f8fdcfc729d45fd53639a6b233215b9c53",
+  "build_identification": "Working tree build on 845349f. JAR hash captured after first verify, not at live-run start; do not treat it as an immutable measured-build digest."
+}

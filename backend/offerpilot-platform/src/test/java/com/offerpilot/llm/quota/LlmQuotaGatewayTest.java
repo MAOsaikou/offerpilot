@@ -113,6 +113,16 @@ class LlmQuotaGatewayTest {
                 .errorCode()).isEqualTo(ErrorCode.DAILY_QUOTA_EXCEEDED);
         limiter.check("another-user", ModelTier.FLASH, false);
     }
+    @Test void serialRollbackReservesGenerationBeforeOptionalClassifierAtLastRpmSlot() {
+        environment.withProperty("offerpilot.llm.injection-classifier-enabled", "true")
+                .withProperty("offerpilot.agent.parallel-safety-screen", "false");
+        limiter.check("guest", ModelTier.FLASH, true); // one of two slots remains
+        stream("guest"); // classifier admission fails open; already-reserved reply must still run
+        assertThat(calls.get()).isEqualTo(1);
+        assertThat(catchThrowableOfType(() -> stream("guest"), BusinessException.class).errorCode())
+                .isEqualTo(ErrorCode.LLM_RATE_LIMITED);
+    }
+
     @RestController static class Probe {
         final ModelGateway gateway;
         Probe(ModelGateway gateway) { this.gateway = gateway; }

@@ -25,6 +25,12 @@ import java.util.function.Consumer;
 
 @Component
 public class IntentPlanner {
+    public static final String ON_EXPERT_ROUTE = IntentPlanner.class.getName() + ".route";
+    private boolean earlyExpertHandoff = true;
+
+    @Value("${offerpilot.agent.early-expert-handoff:true}")
+    void setEarlyExpertHandoff(boolean enabled) { this.earlyExpertHandoff = enabled; }
+
     public record Decision(String kind, ExpertType expert, Double confidence, boolean needsClarification,
                            String clarifyingQuestion, Plan plan) {}
     private final ModelGateway gateway;
@@ -73,6 +79,16 @@ public class IntentPlanner {
 
     public Mono<Decision> prepare(AgentMode mode, String content, List<Message> history, ModelTier tier,
                                   Consumer<Usage> onUsage, Map<String, Object> context) {
+        return Mono.defer(() -> {
+            long started = System.nanoTime();
+            return prepareDecision(mode, content, history, tier, onUsage, context)
+                    .doFinally(signal -> org.slf4j.LoggerFactory.getLogger(IntentPlanner.class)
+                            .debug("AG02 phase=planner elapsedMs={} signal={}", (System.nanoTime() - started) / 1_000_000, signal));
+        });
+    }
+
+    private Mono<Decision> prepareDecision(AgentMode mode, String content, List<Message> history, ModelTier tier,
+                                           Consumer<Usage> onUsage, Map<String, Object> context) {
         Map<String, Object> safeContext = context == null ? Map.of() : context;
         if (safeContext.containsKey("jobAction")) {
             if (!"match".equals(safeContext.get("jobAction"))
@@ -132,8 +148,13 @@ public class IntentPlanner {
         messages.add(new SystemMessage(prompt.replace("{experts}", experts.capabilities())));
         messages.addAll(history.subList(Math.max(0, history.size() - 12), history.size()));
         messages.add(new UserMessage(SelectedResources.describe(safeContext) + "\n本轮请求：" + content));
-        return attempt(messages, content, tier, onUsage, 0, safeContext)
-                .flatMap(decision -> resolveActions(decision, content, history, tier, onUsage, safeContext));
+        return Mono.deferContextual(reactorContext -> {
+            var early = new EarlyHandoff(content, history, tier, safeContext,
+                    reactorContext.getOrDefault(ON_EXPERT_ROUTE, (Runnable) () -> {}), reactorContext);
+            return attempt(messages, content, tier, onUsage, 0, safeContext, early)
+                    .flatMap(decision -> early.adopt(decision, onUsage))
+                    .doFinally(signal -> early.close());
+        });
     }
 
     private Mono<Decision> resolveActions(Decision decision, String content, List<Message> history, ModelTier tier,
@@ -167,7 +188,7 @@ public class IntentPlanner {
     }
 
     private Mono<Decision> attempt(List<Message> messages, String content, ModelTier tier,
-                                   Consumer<Usage> onUsage, int retry, Map<String, Object> context) {
+                                   Consumer<Usage> onUsage, int retry, Map<String, Object> context, EarlyHandoff early) {
         return Mono.defer(() -> {
             AtomicReference<Usage> usage = new AtomicReference<>();
             return gateway.stream(tier, messages, 0.1).doOnNext(chunk -> {
@@ -177,7 +198,9 @@ public class IntentPlanner {
                     ? "" : chunk.getResult().getOutput().getText())
                     .reduce(new StringBuilder(), (text, delta) -> {
                         if (text.length() + delta.length() > 16000) throw new IllegalArgumentException("规划输出过长");
-                        return text.append(delta);
+                        text.append(delta);
+                        early.observe(text.toString());
+                        return text;
                     }).timeout(Duration.ofSeconds(60))
                     .doOnSuccess(ignored -> { if (usage.get() != null) onUsage.accept(usage.get()); })
                     .map(text -> decode(text.toString(), content, context));
@@ -185,8 +208,78 @@ public class IntentPlanner {
             if (retry >= 2) return Mono.just(new Decision("fallback", null, 0.0, false, null, null));
             List<Message> corrected = new ArrayList<>(messages);
             corrected.add(new SystemMessage("上次输出不符合 JSON 契约。请重新输出完整合法对象，检查步骤及依赖。"));
-            return attempt(corrected, content, tier, onUsage, retry + 1, context);
+            early.close();
+            return attempt(corrected, content, tier, onUsage, retry + 1, context, early);
         });
+    }
+
+    /** At most one expert action stream; no tool, approval, or domain mutation runs speculatively. */
+    private final class EarlyHandoff implements AutoCloseable {
+        final String content;
+        final List<Message> history;
+        final ModelTier tier;
+        final Map<String, Object> context;
+        final Runnable onRoute;
+        final List<Usage> usage = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Decision route;
+        Mono<Decision> result;
+        final reactor.core.Disposable.Swap connection = reactor.core.Disposables.swap();
+        final reactor.util.context.ContextView reactorContext;
+        boolean attempted;
+
+        EarlyHandoff(String content, List<Message> history, ModelTier tier, Map<String, Object> context, Runnable onRoute, reactor.util.context.ContextView reactorContext) {
+            this.content = content; this.history = history; this.tier = tier; this.context = context; this.onRoute = onRoute;
+            this.reactorContext = reactorContext;
+        }
+
+        void observe(String prefix) {
+            if (!earlyExpertHandoff || attempted || connection.isDisposed()) return;
+            String kind = null, expert = null;
+            Double confidence = null;
+            Boolean clarify = null;
+            // Read complete top-level JSON scalar fields, never substring matches inside strings or nested plans.
+            try (var parser = mapper.getFactory().createParser(prefix)) {
+                if (parser.nextToken() != com.fasterxml.jackson.core.JsonToken.START_OBJECT) return;
+                while (parser.nextToken() == com.fasterxml.jackson.core.JsonToken.FIELD_NAME) {
+                    String name = parser.currentName();
+                    var token = parser.nextToken();
+                    if (token == null) break;
+                    if ("kind".equals(name) && token == com.fasterxml.jackson.core.JsonToken.VALUE_STRING) kind = parser.getText();
+                    else if ("expert".equals(name) && token == com.fasterxml.jackson.core.JsonToken.VALUE_STRING) expert = parser.getText();
+                    else if ("confidence".equals(name) && token.isNumeric()) confidence = parser.getDoubleValue();
+                    else if ("needsClarification".equals(name) && token.isBoolean()) clarify = parser.getBooleanValue();
+                    else parser.skipChildren();
+                    if ("single".equals(kind) && expert != null && confidence != null && Boolean.FALSE.equals(clarify)) {
+                        var type = ExpertType.valueOf(expert);
+                        // Other experts are local rule/data services. Only these two have an LLM handoff.
+                        if (type != ExpertType.RESUME && type != ExpertType.JOB
+                                || type == ExpertType.RESUME && resumes == null || type == ExpertType.JOB && jobs == null) return;
+                        route = decode(mapper.writeValueAsString(new Decision(kind, type, confidence, false, null, null)), content, context);
+                        attempted = true;
+                        onRoute.run(); // cancel the ordinary speculative reply before starting one extra expert call
+                        var replay = resolveActions(route, content, history, tier, usage::add, context)
+                                .flux().contextWrite(reactorContext).replay(1);
+                        result = replay.next();
+                        connection.update(replay.connect());
+                        return;
+                    }
+                }
+            } catch (IOException | IllegalArgumentException ignored) {
+                // Incomplete/invalid JSON cannot authorize anything. The final decoder remains authoritative.
+            }
+        }
+
+        Mono<Decision> adopt(Decision decision, Consumer<Usage> onUsage) {
+            if (result != null && "single".equals(decision.kind()) && !decision.needsClarification()
+                    && decision.expert() == route.expert() && java.util.Objects.equals(decision.plan(), route.plan()))
+                return result.doOnSuccess(ignored -> usage.forEach(onUsage));
+            close();
+            return resolveActions(decision, content, history, tier, onUsage, context);
+        }
+
+        @Override public void close() {
+            connection.dispose();
+        }
     }
 
     Decision decode(String text, String content) {
