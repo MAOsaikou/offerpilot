@@ -2,7 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import GrowthEvidenceChips from './GrowthEvidenceChips.vue'
 import type { RoadmapPayload } from '@/shared/types/cards'
-const props = defineProps<{ payload: RoadmapPayload; interactive?: boolean; disabled?: boolean }>()
+const props = defineProps<{
+  payload: RoadmapPayload
+  interactive?: boolean
+  disabled?: boolean
+  startDate?: string
+}>()
 const emit = defineEmits<{ adoptGrowth: [taskTitles: string[]] }>()
 const selected = ref<string[]>([])
 watch(
@@ -13,18 +18,34 @@ watch(
   { immediate: true },
 )
 const hasItems = computed(() => props.payload.weeks.some((week) => week.items.length > 0))
+function weekRange(index: number) {
+  if (!props.startDate) return ''
+  const start = new Date(props.startDate + 'T00:00:00Z')
+  start.setUTCDate(start.getUTCDate() + (index - 1) * 7)
+  const end = new Date(start)
+  end.setUTCDate(end.getUTCDate() + 6)
+  return `${start.toISOString().slice(0, 10)} — ${end.toISOString().slice(0, 10)}`
+}
 </script>
 
 <template>
   <section class="min-w-0 rounded-xl border border-border bg-card p-4" aria-label="学习路线图">
     <h3 class="font-semibold">四周学习路线图</h3>
     <p class="mt-2 text-sm text-muted-foreground">
-      按自己的节奏调整投入时间。路线图仅为建议；勾选已完成任务并批准同步后才会记录完成状态，保留已有完成项。
+      按自己的节奏调整投入时间。路线图仅为建议。<template v-if="interactive"
+        >勾选已完成任务并批准同步后才会记录完成状态，保留已有完成项。</template
+      >
     </p>
     <p v-if="!hasItems" class="mt-3 text-sm" role="status">暂无学习任务，请补充职业目标后重试。</p>
-    <ol class="mt-3 space-y-4">
+    <ol class="mt-3 space-y-4 border-l-2 border-primary pl-4" aria-label="每周时间轴">
       <li v-for="week in payload.weeks" :key="week.index" class="min-w-0">
         <h4 class="break-words font-medium">第 {{ week.index }} 周 · {{ week.theme }}</h4>
+        <p v-if="startDate" class="mt-1 text-xs text-muted-foreground">
+          {{ weekRange(week.index) }}
+        </p>
+        <p v-if="!week.items.length" class="mt-2 text-sm text-muted-foreground">
+          本周巩固已练习内容，按里程碑检查进展。
+        </p>
         <GrowthEvidenceChips v-if="week.evidenceSources?.length" :sources="week.evidenceSources" />
         <ul class="mt-2 space-y-2">
           <li

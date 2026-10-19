@@ -28,5 +28,6 @@ public interface CoachPlanForChat {
     default Result plan(String owner, String resumeId, String versionId, String requestId, String jobId, String applicationId) {
         return plan(owner, resumeId, versionId, requestId);
     }
+    RoadmapPayload fromInterview(InterviewLearningSource.Report report);
     CareerProfileService.Profile adoptGrowthPlan(String owner, List<String> taskTitles);
 }

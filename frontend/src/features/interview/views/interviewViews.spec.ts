@@ -8,12 +8,15 @@ import InterviewRoomView from './InterviewRoomView.vue'
 import {
   createInterview,
   getInterview,
+  getInterviewReport,
   listInterviews,
   requestInterviewFollowUp,
   saveInterviewAnswer,
   saveInterviewFollowUpAnswer,
   updateInterview,
 } from '@/shared/api/interviews'
+import { listResumes, listResumeVersions } from '@/shared/api/resumes'
+import { createReportLearningPlan } from '@/shared/api/learningPlans'
 import { getJob } from '@/shared/api/jobs'
 import { listApplications } from '@/shared/api/applications'
 import { ApiError } from '@/shared/api/client'
@@ -29,12 +32,15 @@ vi.mock('@/shared/api/applications', () => ({ listApplications: vi.fn() }))
 vi.mock('@/shared/api/interviews', () => ({
   createInterview: vi.fn(),
   getInterview: vi.fn(),
+  getInterviewReport: vi.fn(),
   listInterviews: vi.fn(),
   requestInterviewFollowUp: vi.fn(),
   saveInterviewAnswer: vi.fn(),
   saveInterviewFollowUpAnswer: vi.fn(),
   updateInterview: vi.fn(),
 }))
+vi.mock('@/shared/api/resumes', () => ({ listResumes: vi.fn(), listResumeVersions: vi.fn() }))
+vi.mock('@/shared/api/learningPlans', () => ({ createReportLearningPlan: vi.fn() }))
 vi.mock('@/shared/api/starStories', () => ({
   listStarStoryCandidates: vi.fn(),
   listStarStories: vi.fn(),
@@ -130,6 +136,19 @@ beforeEach(() => {
   vi.stubGlobal('speechSynthesis', undefined)
   vi.mocked(listStarStoryCandidates).mockResolvedValue([])
   vi.mocked(listStarStories).mockResolvedValue({ items: [], limit: 30 })
+  vi.mocked(listApplications).mockResolvedValue([])
+  vi.mocked(listResumes).mockResolvedValue({ items: [], page: 1, size: 20, total: 0 })
+  vi.mocked(listResumeVersions).mockResolvedValue([])
+  vi.mocked(getInterviewReport).mockResolvedValue({
+    id: 'iv_1',
+    overall: 20,
+    dimensions: { professional: 20, expression: 20, logic: 20, jobFit: 20 },
+    turns: [],
+    strengths: [],
+    weaknesses: ['R 结果不足'],
+    advice: [],
+    recommendedLearning: [{ topic: '结果表达', reason: '缺少验证', estimatedHours: 1 }],
+  })
   server = fixture()
   vi.mocked(listInterviews).mockImplementation(async () => [structuredClone(server)])
   vi.mocked(createInterview).mockImplementation(async () => structuredClone(server))
@@ -369,7 +388,7 @@ it('creates only server sessions and exports unchanged legacy records', async ()
   submit()
   await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/interviews/iv_1'))
   expect(createInterview).toHaveBeenCalledWith(
-    { role: '新岗位', kind: '项目与经历' },
+    { role: '新岗位', kind: '综合', difficulty: 'STANDARD', mode: 'TEXT', durationMinutes: 30 },
     expect.any(AbortSignal),
   )
   await vi.waitFor(() => expect(root.textContent).toContain('针对：Java 后端实习生'))
@@ -539,4 +558,91 @@ it('retries list failures and leaves local data untouched after creation failure
   await vi.waitFor(() => expect(root.textContent).toContain('创建失败'))
   expect(useWorkspace(pinia).state.interviews).toHaveLength(0)
   expect(router.currentRoute.value.path).toBe('/interviews')
+})
+
+it('submits saved resume version, type, difficulty, voice mode and duration with optional job', async () => {
+  installSpeechMocks()
+  vi.mocked(listResumes).mockResolvedValue({
+    items: [{ id: 'r1', title: '已保存简历', parseStatus: 'READY' }] as Awaited<
+      ReturnType<typeof listResumes>
+    >['items'],
+    total: 1,
+    page: 1,
+    size: 20,
+  })
+  vi.mocked(listResumeVersions).mockResolvedValue([
+    { id: 'v1', versionNo: 1, createdAt: '2026-10-19T00:00:00Z' },
+  ] as Awaited<ReturnType<typeof listResumeVersions>>)
+  await mount('/interviews')
+  await vi.waitFor(() => expect(root.textContent).toContain('已保存简历'))
+  async function choose(label: string, value: string) {
+    const select = [...root.querySelectorAll('label')]
+      .find((el) => el.textContent?.startsWith(label))!
+      .querySelector('select')!
+    select.value = value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+  }
+  await choose('简历', 'r1')
+  await vi.waitFor(() => expect(root.textContent).toContain('第 1 版'))
+  expect(button('开始练习').disabled).toBe(true)
+  await choose('简历版本', 'v1')
+  await choose('面试类型', '技术')
+  await choose('难度', 'HARD')
+  await choose('模式', 'VOICE')
+  await choose('时长', '60')
+  const input = root.querySelector('input')!
+  input.value = '后端'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  await nextTick()
+  submit()
+  await vi.waitFor(() =>
+    expect(createInterview).toHaveBeenCalledWith(
+      {
+        role: '后端',
+        kind: '技术',
+        difficulty: 'HARD',
+        mode: 'VOICE',
+        durationMinutes: 60,
+        resumeId: 'r1',
+        versionId: 'v1',
+      },
+      expect.any(AbortSignal),
+    ),
+  )
+})
+it('disables unavailable voice and preserves options after create failure', async () => {
+  await mount('/interviews')
+  const option = [...root.querySelectorAll('option')].find((el) => el.value === 'VOICE')!
+  expect(option.disabled).toBe(true)
+  expect(option.textContent).toContain('暂不支持')
+})
+it('creates a report learning plan with retry and links to the saved plan', async () => {
+  server.completed = true
+  vi.mocked(createReportLearningPlan)
+    .mockRejectedValueOnce(new Error('保存失败'))
+    .mockResolvedValue({
+      id: 'lp_1',
+      reportId: 'iv_1',
+      startDate: '2026-10-19',
+      roadmap: { weeks: [], milestones: [] },
+    })
+  await mount()
+  await vi.waitFor(() => expect(button('一键生成学习计划')).toBeDefined())
+  button('一键生成学习计划').click()
+  await vi.waitFor(() => expect(root.textContent).toContain('保存失败'))
+  button('一键生成学习计划').click()
+  await vi.waitFor(() => expect(root.querySelector('a[href="/career?plan=lp_1"]')).not.toBeNull())
+  expect(createReportLearningPlan).toHaveBeenCalledWith('iv_1', expect.any(AbortSignal))
+})
+it('restores duration timer from persisted creation time and ends without dropping the draft', async () => {
+  server.options = { difficulty: 'STANDARD', mode: 'TEXT', durationMinutes: 15 }
+  server.createdAt = new Date(Date.now() - 16 * 60000).toISOString()
+  await mount()
+  await loaded()
+  expect(root.querySelector('[role="timer"]')?.textContent).toContain('时间已到')
+  await typeAnswer('需要保留的回答')
+  button('保存并结束面试').click()
+  await vi.waitFor(() => expect(server.completed).toBe(true))
+  expect(server.answers[0]!.answerText).toBe('需要保留的回答')
 })

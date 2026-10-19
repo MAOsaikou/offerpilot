@@ -1,8 +1,18 @@
-export type InterviewKind = '项目与经历' | '表达与结构' | '职业动机'
+export type InterviewKind =
+  '技术' | '行为' | 'HR' | '综合' | '项目与经历' | '表达与结构' | '职业动机'
+
+export interface InterviewOptions {
+  resumeId?: string | null
+  versionId?: string | null
+  difficulty: 'EASY' | 'STANDARD' | 'HARD'
+  mode: 'TEXT' | 'VOICE'
+  durationMinutes: number
+}
 
 export interface InterviewSummary {
   id: string
   jobId?: string | null
+  options?: InterviewOptions | null
   role: string
   kind: InterviewKind
   questionIndex: number

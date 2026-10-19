@@ -48,7 +48,7 @@ class InterviewValidationTest {
                 Arguments.of("POST", "", Map.of("role", "工程师", "kind", "其他")),
                 Arguments.of("POST", "", Map.of("role", "工程师")),
                 Arguments.of("PATCH", "/iv_1", Map.of("questionIndex", -1)),
-                Arguments.of("PATCH", "/iv_1", Map.of("questionIndex", 5)),
+                Arguments.of("PATCH", "/iv_1", Map.of("questionIndex", 10)),
                 Arguments.of("PUT", "/iv_1/answers/0", Map.of()),
                 Arguments.of("PUT", "/iv_1/answers/0", Map.of("answerText", "a".repeat(12001))),
                 Arguments.of("PUT", "/iv_1/answers/0", Map.of("answerText", "😀".repeat(12001))));

@@ -16,6 +16,13 @@ public class JobArtifactBridge implements JobArtifacts {
     private final JobService jobs;
     public JobArtifactBridge(JdbcTemplate jdbc, JobService jobs) { this.jdbc=jdbc; this.jobs=jobs; }
 
+    public String interviewContext(String owner, String jobId) {
+        if (jobId == null) return null;
+        var job = jobs.get(owner, jobId);
+        String text = job.path("title").asText() + "：" + job.path("description").asText("");
+        return text.substring(0, text.offsetByCodePoints(0, Math.min(400, text.codePointCount(0, text.length()))));
+    }
+
     public void lockJob(String owner, String jobId) {
         if (jobId == null) return;
         if (!jobId.matches("\\S{1,80}")) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
