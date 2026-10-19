@@ -12,7 +12,11 @@ public final class CareerIntentParser {
     private CareerIntentParser() {}
     public static PlanStep prepare(PlanStep step, String content, Map<String, Object> context) {
         var args = new LinkedHashMap<String, Object>();
-        if ("setCareerTarget".equals(context.get("careerAction"))) {
+        if ("rerankCareers".equals(context.get("careerAction"))) {
+            for (String key : java.util.List.of("revisionId", "city", "minSalaryK", "avoidOvertime", "research"))
+                if (context.containsKey(key)) args.put(key, context.get(key));
+            args.put("action", "rerankCareers");
+        } else if ("setCareerTarget".equals(context.get("careerAction"))) {
             for (String key : java.util.List.of("occupationId", "name"))
                 if (context.containsKey(key)) args.put(key, context.get(key));
             if (args.isEmpty()) return clarify(step);
@@ -25,7 +29,7 @@ public final class CareerIntentParser {
             } else if (com.offerpilot.agent.application.CareerWriteTools.recognizes(step)) return clarify(step);
             else { args.put("action", "recommend"); args.put("request", content); }
         }
-        return new PlanStep(step.id(), "setCareerTarget".equals(args.get("action")) ? "确认目标职业" : "职业兴趣推荐",
+        return new PlanStep(step.id(), "setCareerTarget".equals(args.get("action")) ? "确认目标职业" : "rerankCareers".equals(args.get("action")) ? "确认推荐重排" : "职业兴趣推荐",
                 step.agent(), args, step.dependsOn());
     }
     private static PlanStep clarify(PlanStep step) {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
+import CareerRecommendations from '../components/CareerRecommendations.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import { learningTasks } from '@/shared/stores/workspace'
 import { useCareerProfile } from '@/shared/composables/useCareerProfile'
@@ -78,5 +79,6 @@ const progress = computed(() =>
         </section>
       </aside>
     </div>
+    <CareerRecommendations />
   </section>
 </template>

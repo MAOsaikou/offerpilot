@@ -6,6 +6,10 @@ export function toolArguments(args: unknown): Array<{ label: string; value: stri
   const data = args as Record<string, unknown>
   const fields: Record<string, string> = {
     name: '目标职业',
+    city: '意向城市',
+    minSalaryK: '期望月薪下限（k 元）',
+    avoidOvertime: '不想加班',
+    research: '偏研究',
     role: '目标岗位',
     kind: '练习侧重点',
     status: '阶段',
@@ -23,7 +27,11 @@ export function toolArguments(args: unknown): Array<{ label: string; value: stri
         ? (applicationStages[raw as ApplicationStatus] ?? String(raw))
         : Array.isArray(raw)
           ? raw.join('、')
-          : String(raw)
+          : typeof raw === 'boolean'
+            ? raw
+              ? '是'
+              : '否'
+            : String(raw)
     return [{ label, value: value || '清空' }]
   })
   const accepted = Array.isArray(data.accepted) ? data.accepted.length : 0

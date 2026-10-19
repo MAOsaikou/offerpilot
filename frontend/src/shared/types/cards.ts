@@ -53,6 +53,8 @@ export interface CareerProfileConfirmPayload {
 }
 
 export interface CareerRecommendationPayload {
+  revisionId?: string
+  elapsedMs?: number
   hollandCode: string
   interestsUsed: string[]
   recommendations: Array<{
@@ -61,6 +63,8 @@ export interface CareerRecommendationPayload {
     family: string | null
     hollandCode: string
     similarity: number
+    rankDelta?: number
+    changeReason?: string
     reasons: string[]
     citations?: Array<{ occupationId: string; title: string; excerpt: string }>
   }>

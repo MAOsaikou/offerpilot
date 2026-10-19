@@ -175,6 +175,7 @@ class DemoJourneyIntegrationTest {
         notes.importNotes(owner(), java.util.List.of(new com.offerpilot.knowledge.application.KnowledgeNoteService.ImportEntry("old-demo", draft)));
         int occupations = jdbc.queryForObject("SELECT count(*) FROM occupations", Integer.class);
         String id = owner();
+        jdbc.update("INSERT INTO career_recommendation_revisions(id,user_id,snapshot) VALUES (? ,?,'{}')", id+"old-revision",id);
         jdbc.update("UPDATE career_profiles SET major='上一位专业',courses='上一位课程',values_text='上一位价值观' WHERE user_id=?", id);
         jdbc.update("INSERT INTO user_memories(id,user_id,kind,fact,normalized_fact,source,tsv) VALUES ('cd03-demo-memory',?,'OTHER','专业：上一位专业','专业：上一位专业','MANUAL','')", id);
         var first = resets.reset();
@@ -200,6 +201,7 @@ class DemoJourneyIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT note FROM applications WHERE id='app_other'", String.class)).isEqualTo("保留其他用户");
         assertThat(jdbc.queryForObject("SELECT target FROM career_profiles WHERE user_id='usr_other'", String.class)).isEqualTo("其他用户目标");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM conversations WHERE user_id=?", Integer.class, id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM career_recommendation_revisions WHERE user_id=?", Integer.class, id)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM career_assessments WHERE user_id=?", Integer.class, id)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM jobs WHERE user_id=?", Integer.class, id)).isZero();
         jdbc.update("UPDATE applications SET note='评委试用改动' WHERE user_id=?", id);

@@ -121,7 +121,7 @@ public class IntentPlanner {
                     single(content, ExpertType.INTERVIEWER, safeContext)), content, history, tier, onUsage, safeContext);
         }
         if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.CAREER_DISCOVERY)
-                && "setCareerTarget".equals(safeContext.get("careerAction"))) {
+                && java.util.Set.of("setCareerTarget", "rerankCareers").contains(String.valueOf(safeContext.get("careerAction")))) {
             return resolveActions(new Decision("single", ExpertType.CAREER_DISCOVERY, 1.0, false, null,
                     single(content, ExpertType.CAREER_DISCOVERY, safeContext)), content, history, tier, onUsage, safeContext);
         }

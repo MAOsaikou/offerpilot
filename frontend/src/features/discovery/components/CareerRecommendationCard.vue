@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RouterLink } from 'vue-router'
 import type { CareerRecommendationPayload, CareerTargetSelection } from '@/shared/types/cards'
 
 defineProps<{
@@ -22,7 +23,13 @@ const emit = defineEmits<{ adoptTarget: [selection: CareerTargetSelection] }>()
     <p v-if="!payload.recommendations.length" class="mt-3 text-sm" role="status">
       暂无匹配职业，请调整探索页兴趣后重试。
     </p>
-    <ol v-else class="mt-3 space-y-3">
+    <RouterLink
+      v-if="payload.revisionId"
+      :to="{ path: '/career', query: { revision: payload.revisionId } }"
+      class="btn"
+      >打开本轮推荐与对比</RouterLink
+    >
+    <ol v-if="payload.recommendations.length" class="mt-3 space-y-3">
       <li
         v-for="(item, index) in payload.recommendations"
         :key="item.occupationId"
@@ -34,6 +41,15 @@ const emit = defineEmits<{ adoptTarget: [selection: CareerTargetSelection] }>()
             >{{ item.family }} · {{ item.hollandCode }}</span
           >
         </div>
+        <p v-if="item.rankDelta != null" class="mt-2 text-sm">
+          {{
+            item.rankDelta > 0
+              ? '↑ 上升 ' + item.rankDelta
+              : item.rankDelta < 0
+                ? '↓ 下降 ' + Math.abs(item.rankDelta)
+                : '名次未变'
+          }}
+        </p>
         <ul class="mt-2 space-y-1 text-sm text-muted-foreground">
           <li v-for="reason in item.reasons" :key="reason" class="break-words">{{ reason }}</li>
         </ul>

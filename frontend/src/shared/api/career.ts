@@ -93,3 +93,60 @@ export const confirmCareerAssessment = (body: {
 
 export const resetCareerAssessment = () =>
   apiRequest<CareerAssessment>('/career/assessment', { method: 'DELETE' })
+
+export interface CareerConstraints {
+  city: string
+  minSalaryK: number | null
+  avoidOvertime: boolean
+  research: boolean
+}
+export interface CareerOccupation {
+  occupationId: string
+  name: string
+  family: string
+  riasec: Record<RiasecLetter, number>
+  coreSkills: Array<{ name: string; level?: string; category?: string }>
+  salaryRange: { campus?: string; mid?: string; source?: string } | null
+  growthPath: string | null
+  source: string
+  match: number | null
+}
+export interface CareerRevision {
+  id: string
+  parentId: string | null
+  constraints: CareerConstraints
+  items: Array<{
+    occupation: CareerOccupation
+    baseScore: number
+    score: number
+    rank: number
+    rankDelta: number
+    changeReason: string
+  }>
+  elapsedMs: number
+  explanationFallback: boolean
+  createdAt: string
+}
+export interface CareerComparison {
+  axes: RiasecLetter[]
+  occupations: CareerOccupation[]
+}
+export const getCareerCatalog = (signal?: AbortSignal) =>
+  apiRequest<Array<{ occupationId: string; name: string }>>('/career/occupations', { signal })
+export const getCareerRevision = (id?: string, signal?: AbortSignal) =>
+  apiRequest<CareerRevision | null>(
+    `/career/recommendations${id ? '/' + encodeURIComponent(id) : ''}`,
+    { signal },
+  )
+export const createCareerRecommendations = (signal?: AbortSignal) =>
+  apiRequest<CareerRevision>('/career/recommendations', { method: 'POST', signal })
+export const rerankCareers = (id: string, constraints: CareerConstraints, signal?: AbortSignal) =>
+  apiRequest<CareerRevision>(`/career/recommendations/${encodeURIComponent(id)}/rerank`, {
+    method: 'POST',
+    body: JSON.stringify(constraints),
+    signal,
+  })
+export const compareCareers = (ids: string[], signal?: AbortSignal) =>
+  apiRequest<CareerComparison>(`/career/compare?ids=${ids.map(encodeURIComponent).join(',')}`, {
+    signal,
+  })
