@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onUnmounted } from 'vue'
+import ApprovalFields from './ApprovalFields.vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import {
   boardApprovalActions,
@@ -23,6 +24,13 @@ const isBoard = (item: PendingAgentApproval) =>
 const items = computed(() =>
   (query.data.value ?? []).filter((item) => props.scope === 'all' || isBoard(item)),
 )
+const now = ref(Date.now())
+const timer = setInterval(() => {
+  now.value = Date.now()
+}, 1000)
+onUnmounted(() => clearInterval(timer))
+const edits = ref<Record<string, Record<string, unknown>>>({})
+const editErrors = ref<Record<string, string>>({})
 const busy = ref('')
 const error = ref('')
 const done = ref('')
@@ -46,17 +54,25 @@ function describe(item: PendingAgentApproval) {
   if (item.args.nextActionAt) changes.push(`日期：${text(item.args.nextActionAt)}`)
   return `${target(item)}：${changes.join('；')}`
 }
-const minutesLeft = (item: PendingAgentApproval) =>
-  Math.max(0, Math.ceil((Date.parse(item.expiresAt) - Date.now()) / 60_000))
+const secondsLeft = (item: PendingAgentApproval) =>
+  Math.max(0, Math.ceil((Date.parse(item.expiresAt) - now.value) / 1000))
 
 async function decide(item: PendingAgentApproval, decision: 'APPROVE' | 'REJECT') {
+  if (secondsLeft(item) === 0 || busy.value) return
+  if (decision === 'APPROVE' && editErrors.value[item.id]) {
+    error.value = editErrors.value[item.id]!
+    return
+  }
   busy.value = item.id
   error.value = ''
   done.value = ''
   try {
-    const result = await decidePendingAgentApproval(item.id, decision)
+    const args = decision === 'APPROVE' ? edits.value[item.id] : undefined
+    const result = await (args && Object.keys(args).length
+      ? decidePendingAgentApproval(item.id, decision, args)
+      : decidePendingAgentApproval(item.id, decision))
+    done.value = result.summary ?? ''
     if (decision === 'APPROVE') {
-      done.value = result.summary ?? ''
       // A board write refreshes the board; other tools touch resumes, interviews, career or memory.
       await client.invalidateQueries(isBoard(item) ? { queryKey: ['applications'] } : undefined)
     }
@@ -83,17 +99,41 @@ async function decide(item: PendingAgentApproval, decision: 'APPROVE' | 'REJECT'
     <ul>
       <li v-for="item in items" :key="item.id">
         <span>{{ describe(item) }}</span>
-        <small class="subtle">{{ minutesLeft(item) }} 分钟内有效</small>
+        <small class="subtle">{{
+          secondsLeft(item)
+            ? `剩余 ${secondsLeft(item)} 秒 · ${Math.ceil(secondsLeft(item) / 60)} 分钟内有效`
+            : '已超时自动拒绝。可先核对提议内容，需要保存时重新发起。'
+        }}</small>
+        <details v-if="item.editableFields?.length && secondsLeft(item) > 0" class="w-full min-w-0">
+          <summary>编辑参数后批准</summary>
+          <ApprovalFields
+            :fields="item.editableFields"
+            :args="item.args"
+            :disabled="busy !== '' || secondsLeft(item) === 0"
+            @change="
+              (args, failure) => {
+                edits[item.id] = args
+                editErrors[item.id] = failure
+              }
+            "
+          />
+          <p v-if="editErrors[item.id]" role="alert">{{ editErrors[item.id] }}</p>
+        </details>
         <span class="actions">
           <button
             class="btn primary"
             type="button"
-            :disabled="busy !== ''"
+            :disabled="busy !== '' || secondsLeft(item) === 0"
             @click="decide(item, 'APPROVE')"
           >
             批准
           </button>
-          <button class="btn" type="button" :disabled="busy !== ''" @click="decide(item, 'REJECT')">
+          <button
+            class="btn"
+            type="button"
+            :disabled="busy !== '' || secondsLeft(item) === 0"
+            @click="decide(item, 'REJECT')"
+          >
             拒绝
           </button>
         </span>

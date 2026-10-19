@@ -28,6 +28,9 @@ class BoardApprovalRecoveryIntegrationTest extends SharedHttpIntegrationTest {
     @Autowired GuestIdentityService guests;
     @Autowired ConversationService conversations;
     @Autowired ApprovalService approvals;
+    @Autowired com.offerpilot.agent.application.ApprovalStore approvalStore;
+    @Autowired com.offerpilot.agent.application.RunRelay relay;
+    @Autowired com.offerpilot.agent.application.WorkbenchEvents workbench;
 
     HttpResponse<String> call(String token, String path, Object body) throws Exception {
         var b = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/approvals" + path))
@@ -79,7 +82,9 @@ class BoardApprovalRecoveryIntegrationTest extends SharedHttpIntegrationTest {
 
         // Rejecting writes nothing; an explicit stop withdraws the run's pending write.
         String rejected = detachedApproval(owner, owner + "app", "OFFER");
-        assertThat(data(call(token, "/" + rejected, Map.of("decision", "REJECT"))).path("applied").asBoolean()).isFalse();
+        var rejection = data(call(token, "/" + rejected, Map.of("decision", "REJECT")));
+        assertThat(rejection.path("applied").asBoolean()).isFalse();
+        assertThat(rejection.path("summary").asText()).contains("未执行", "跟进草稿");
         var turn = conversations.begin(owner, null, "改成已结束", AgentMode.AUTO, "fixture");
         var ticket = approvals.request(owner, turn.runId(), "updateApplicationStatus", Map.of("applicationId", owner + "app", "status", "CLOSED"));
         conversations.cancel(owner, turn.runId(), null, List.of());
@@ -117,4 +122,73 @@ class BoardApprovalRecoveryIntegrationTest extends SharedHttpIntegrationTest {
         assertThat(call(token, "/" + interview.id(), Map.of("decision", "APPROVE")).statusCode()).isEqualTo(409);
         assertThat(data(call(token, "/pending", null))).isEmpty();
     }
+    @Test void editedDetachedArgsAuditExpiryAndPersistedWorkbenchRoundTrip() throws Exception {
+        String token = guests.create().accessToken(), owner = guests.require("Bearer " + token);
+        var turn = conversations.begin(owner,null,"开始面试",AgentMode.INTERVIEWER,"fixture");
+        var original = Map.<String,Object>of("role","前端工程师", "kind","项目与经历");
+        var ticket = approvals.request(owner,turn.runId(),"startInterview",original);
+        ticket.await().subscribe().dispose();
+        conversations.finish(turn,"", "CANCELLED",null,null);
+        var pending = data(call(token,"/pending",null)).get(0);
+        assertThat(pending.path("editableFields").toString()).contains("role","kind");
+        assertThat(call(token,"/"+ticket.id(),Map.of("decision","APPROVE","args",Map.of("kind","invalid"))).statusCode()).isEqualTo(400);
+        assertThat(jdbc.queryForObject("SELECT status FROM approvals WHERE id=?",String.class,ticket.id())).isEqualTo("PENDING");
+        data(call(token,"/"+ticket.id(),Map.of("decision","APPROVE","args",Map.of("role","后端工程师"))));
+        var audit = jdbc.queryForMap("SELECT args::text,edited_args::text,status FROM approvals WHERE id=?",ticket.id());
+        assertThat(JSON.readTree((String)audit.get("args")).path("role").asText()).isEqualTo("前端工程师");
+        assertThat(JSON.readTree((String)audit.get("edited_args")).path("role").asText()).isEqualTo("后端工程师");
+        assertThat(jdbc.queryForObject("SELECT role FROM interview_sessions WHERE user_id=?",String.class,owner)).isEqualTo("后端工程师");
+
+        var expiredTurn = conversations.begin(owner,null,"记住：我的目标岗位是后端工程师",AgentMode.AUTO,"fixture");
+        var candidate = com.offerpilot.memory.application.MemoryCandidate.extract("记住：我的目标岗位是后端工程师");
+        var memory = approvals.request(owner,expiredTurn.runId(),"saveUserFact",Map.of("kind",candidate.kind().name(),"fact",candidate.fact(),"source",candidate.source().name()));
+        memory.await().subscribe().dispose();
+        conversations.finish(expiredTurn,"", "CANCELLED",null,null);
+        jdbc.update("UPDATE approvals SET expires_at=now()-interval '1 second' WHERE id=?",memory.id());
+        approvalStore.expirePending();
+        assertThat(data(call(token,"/pending",null))).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT status FROM approvals WHERE id=?",String.class,memory.id())).isEqualTo("TIMEOUT");
+        assertThat(call(token,"/"+memory.id(),Map.of("decision","APPROVE")).statusCode()).isEqualTo(409);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_memories WHERE user_id=?",Integer.class,owner)).isZero();
+
+        var excerptTurn = conversations.begin(owner,null,"记住：我的目标岗位是后端工程师",AgentMode.AUTO,"fixture");
+        var excerptTicket = approvals.request(owner,excerptTurn.runId(),"saveUserFact",Map.of("kind",candidate.kind().name(),"fact",candidate.fact(),"source",candidate.source().name()));
+        excerptTicket.await().subscribe().dispose();
+        conversations.finish(excerptTurn,"", "CANCELLED",null,null);
+        data(call(token,"/"+excerptTicket.id(),Map.of("decision","APPROVE","args",Map.of("fact","目标岗位是后端工程师"))));
+        assertThat(jdbc.queryForObject("SELECT fact FROM user_memories WHERE user_id=?",String.class,owner)).isEqualTo("目标岗位是后端工程师");
+
+        var now = java.time.Instant.now();
+        var events = List.<com.offerpilot.agent.event.AgentEvent>of(
+            new com.offerpilot.agent.event.AgentEvent.RunStarted("",1,turn.runId(),now,turn.conversationId(),turn.messageId(),"fixture",AgentMode.INTERVIEWER),
+            new com.offerpilot.agent.event.AgentEvent.PlanCreated("",2,turn.runId(),now,"练习",List.of(new com.offerpilot.agent.event.AgentEvent.PlanStepView("s","准备",com.offerpilot.agent.domain.ExpertType.INTERVIEWER,com.offerpilot.agent.event.AgentEvent.StepStatus.PENDING,List.of()))),
+            new com.offerpilot.agent.event.AgentEvent.StepUpdated("",3,turn.runId(),now,"s",com.offerpilot.agent.event.AgentEvent.StepStatus.RUNNING,null,null),
+            new com.offerpilot.agent.event.AgentEvent.ToolCall("",4,turn.runId(),now,"s","c","startInterview",original,"local",com.offerpilot.agent.event.AgentEvent.ToolAccess.WRITE),
+            new com.offerpilot.agent.event.AgentEvent.ToolResult("",5,turn.runId(),now,"s","c","startInterview",false,"未执行",12,false),
+            new com.offerpilot.agent.event.AgentEvent.StepUpdated("",6,turn.runId(),now,"s",com.offerpilot.agent.event.AgentEvent.StepStatus.FAILED,"未执行",12),
+            new com.offerpilot.agent.event.AgentEvent.RunCompleted("",7,turn.runId(),now,turn.messageId(),"COMPLETED",12));
+        relay.start(owner,reactor.core.publisher.Flux.fromIterable(events)).collectList().block();
+        var response = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1/agent/runs/"+turn.runId()+"/workbench"))
+                .header("Authorization","Bearer "+token).GET().build(),HttpResponse.BodyHandlers.ofString());
+        var snapshot = data(response);
+        assertThat(snapshot).hasSize(7);
+        assertThat(snapshot.get(3).path("source").asText()).isEqualTo("LOCAL");
+        assertThat(snapshot.get(4).path("durationMs").asInt()).isEqualTo(12);
+        assertThat(snapshot.get(4).path("result").path("summary").asText()).isEqualTo("未执行");
+        // A fresh relay has no in-memory run; the existing events table still reconstructs the plan/tool states.
+        var restarted = new com.offerpilot.agent.application.RunRelay(java.time.Duration.ZERO,java.time.Duration.ZERO,workbench);
+        assertThat(restarted.history(owner,turn.runId())).isEqualTo(events);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> restarted.resume(owner,turn.runId(),5))
+                .isInstanceOf(com.offerpilot.common.error.BusinessException.class);
+        var required = new com.offerpilot.agent.event.AgentEvent.ApprovalRequired("",8,turn.runId(),now,"s",ticket.id(),"c",
+                "startInterview",original,"确认",ticket.expiresAt(),List.of("role","kind"));
+        relay.start(owner,reactor.core.publisher.Flux.just(required)).collectList().block();
+        assertThat(restarted.history(owner,turn.runId())).last().satisfies(event -> {
+            assertThat(event).isInstanceOf(com.offerpilot.agent.event.AgentEvent.ApprovalResolved.class);
+            assertThat(((com.offerpilot.agent.event.AgentEvent.ApprovalResolved)event).decision()).isEqualTo("APPROVE");
+        });
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> restarted.history(guests.require("Bearer "+guests.create().accessToken()),turn.runId()))
+                .isInstanceOf(com.offerpilot.common.error.BusinessException.class);
+    }
+
 }

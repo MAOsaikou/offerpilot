@@ -16,12 +16,17 @@ export interface PendingAgentApproval {
   company: string | null
   title: string | null
   currentStatus: string | null
+  editableFields?: string[]
   summary: string | null
 }
 export const listPendingAgentApprovals = (signal?: AbortSignal) =>
   apiRequest<PendingAgentApproval[]>('/agent/approvals/pending', { signal })
-export const decidePendingAgentApproval = (id: string, decision: 'APPROVE' | 'REJECT') =>
+export const decidePendingAgentApproval = (
+  id: string,
+  decision: 'APPROVE' | 'REJECT',
+  args?: Record<string, unknown>,
+) =>
   apiRequest<{ decision: string; applied: boolean; summary: string | null }>(
     `/agent/approvals/${encodeURIComponent(id)}`,
-    { method: 'POST', body: JSON.stringify({ decision }) },
+    { method: 'POST', body: JSON.stringify({ decision, ...(args ? { args } : {}) }) },
   )

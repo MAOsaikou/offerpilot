@@ -24,14 +24,18 @@ public class ApprovalService {
     public static final Duration WINDOW = Duration.ofMinutes(10);
     private final ConversationService conversations;
     private final ApprovalStore store;
+    private final com.offerpilot.career.application.CareerRecommendForChat careers;
     private final Map<String, Ticket> tickets = new ConcurrentHashMap<>();
 
     public ApprovalService(ConversationService conversations) { this(conversations, null); }
 
+    public ApprovalService(ConversationService conversations, ApprovalStore store) { this(conversations, store, null); }
+
     @org.springframework.beans.factory.annotation.Autowired
-    public ApprovalService(ConversationService conversations, ApprovalStore store) {
+    public ApprovalService(ConversationService conversations, ApprovalStore store, com.offerpilot.career.application.CareerRecommendForChat careers) {
         this.conversations = conversations;
         this.store = store;
+        this.careers = careers;
     }
 
     static boolean durable(String action) { return DetachedApprovals.durable(action); }
@@ -52,7 +56,7 @@ public class ApprovalService {
             this.durable = store != null && durable(action);
             this.owner = owner;
             this.action = action;
-            this.args = Map.copyOf(args);
+            this.args = freeze(args);
             this.expiresAt = Instant.now().plus(window);
         }
         public String id() { return id; }
@@ -86,14 +90,7 @@ public class ApprovalService {
             if (body == null || !java.util.Set.of("APPROVE", "REJECT").contains(body.decision() == null ? "" : body.decision())
                     || (body.reason() != null && body.reason().length() > 2000))
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "审批决策无效");
-            var finalArgs = new java.util.LinkedHashMap<>(args);
-            if (body.args() != null) {
-                var editable = (CareerWriteTools.action(action) || InterviewWriteTools.action(action) || CoachWriteTools.action(action) || ResumePatchWriteTools.action(action) || MemoryChat.action(action) || StarStoryWriteTools.action(action)) ? java.util.Set.<String>of() : java.util.Set.of("status", "note", "nextAction", "nextActionAt");
-                if (!editable.containsAll(body.args().keySet()))
-                    throw new BusinessException(ErrorCode.VALIDATION_FAILED, "审批包含不允许编辑的参数");
-                finalArgs.putAll(body.args());
-            }
-            validate(action, finalArgs);
+            var finalArgs = mergeForDecision(action, args, body);
             if (durable && !store.claim(id, owner, "APPROVE".equals(body.decision()) ? "APPROVED" : "REJECTED", finalArgs, body.reason()))
                 throw new BusinessException(ErrorCode.APPROVAL_EXPIRED, "审批已处理或已超时");
             resolved = new Decision(body.decision(), Map.copyOf(finalArgs), body.reason());
@@ -144,13 +141,64 @@ public class ApprovalService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "审批决策无效");
         var finalArgs = new java.util.LinkedHashMap<>(args);
         if (body.args() != null && !body.args().isEmpty()) {
-            var editable = BoardWriteTools.ACTIONS.contains(action) ? java.util.Set.of("status", "note", "nextAction", "nextActionAt") : java.util.Set.<String>of();
+            var editable = editableFields(action);
             if (!editable.containsAll(body.args().keySet()))
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "审批包含不允许编辑的参数");
             finalArgs.putAll(body.args());
         }
         validate(action, finalArgs);
+        if (MemoryChat.action(action) && !((String) args.get("fact")).contains((String) finalArgs.get("fact")))
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "记忆编辑只能截取本轮用户原话");
         return finalArgs;
+    }
+
+    public static String alternative(String action, Map<String, Object> args) {
+        return switch (action) {
+            case "createApplication", "updateApplicationStatus" -> "可以先整理跟进草稿" + (args.containsKey("note") ? "（待核对备注：" + args.get("note") + "）" : "，核对投递阶段和下一步行动") + "，确认后再保存。";
+            case "setCareerTarget", "adoptTargetCareer" -> "可以先比较「" + args.get("name") + "」的工作内容与个人偏好，再决定目标。";
+            case "adoptGrowthPlan" -> "可以先核对所选成长任务的完成证据，再选择需要同步的项目。";
+            case "applyPatches" -> "可以先预览所选简历修改，核对事实后逐条采纳。";
+            case "saveStarStory" -> "可以先检查这道回答的背景、任务、行动和结果，再决定入库。";
+            case "saveUserFact" -> "可以先在当前对话中保留这条信息，需要长期记忆时重新发起。";
+            default -> "可以先在对话中练习面试答案、整理提纲，再决定是否保存到面试。";
+        };
+    }
+
+    public static java.util.List<String> editableFields(String action) {
+        return switch (action) {
+            case "createApplication", "updateApplicationStatus" -> java.util.List.of("status", "note", "nextAction", "nextActionAt");
+            case "setCareerTarget", "adoptTargetCareer" -> java.util.List.of("name");
+            case "adoptGrowthPlan" -> java.util.List.of("taskTitles");
+            case "applyPatches" -> java.util.List.of("accepted", "edited", "confirmed");
+            case "saveStarStory" -> java.util.List.of("questionIndex");
+            case "startInterview" -> java.util.List.of("role", "kind");
+            case "continueInterview", "answerInterview" -> java.util.List.of("answer", "nextQuestion");
+            case "saveUserFact" -> java.util.List.of("fact");
+            default -> java.util.List.of();
+        };
+    }
+
+    Map<String, Object> mergeForDecision(String action, Map<String, Object> original, Decision body) {
+        var merged = merge(action, original, body);
+        if (CareerWriteTools.action(action) && !java.util.Objects.equals(original.get("name"), merged.get("name"))) {
+            if (careers == null) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "无法校验职业目录");
+            var occupation = careers.occupation(null, (String) merged.get("name"));
+            merged.put("occupationId", occupation.id());
+            merged.put("name", occupation.name());
+        }
+        // Deep copy nested selections: caller mutation must not alter an approved/audited decision.
+        return freeze(merged);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T freeze(T value) {
+        if (value instanceof Map<?, ?> map) {
+            var copy = new java.util.LinkedHashMap<Object, Object>();
+            map.forEach((key, item) -> copy.put(key, freeze(item)));
+            return (T) java.util.Collections.unmodifiableMap(copy);
+        }
+        if (value instanceof java.util.List<?> list) return (T) list.stream().map(ApprovalService::freeze).toList();
+        return value;
     }
 
     private static void validate(String action, Map<String, Object> args) {

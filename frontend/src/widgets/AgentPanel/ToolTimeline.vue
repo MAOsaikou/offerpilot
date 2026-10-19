@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { toolArguments } from '@/shared/utils/toolPresentation'
 import { cn } from '@/shared/utils/cn'
 import type { ToolCallView } from '@/shared/stores/agentRun'
@@ -6,9 +7,37 @@ import type { ToolCallView } from '@/shared/stores/agentRun'
 defineProps<{
   toolCalls: ToolCallView[]
 }>()
-// AG-04 source column: local tools vs. an MCP server (raw args and ids stay hidden by design).
-const sourceLabel = (source: string) =>
-  source === 'local' ? '本地工具' : source ? `MCP · ${source}` : ''
+const sourceLabel = (call: ToolCallView) =>
+  ['local', 'LOCAL'].includes(call.source)
+    ? '本地工具'
+    : `MCP · ${call.serverName ?? call.source.replace(/^mcp:/, '')}`
+const jsonOpen = ref(new Set<string>())
+function toggleJson(id: string, event: Event) {
+  if ((event.target as HTMLDetailsElement).open) jsonOpen.value.add(id)
+  else jsonOpen.value.delete(id)
+}
+function resultSummary(call: ToolCallView) {
+  try {
+    return toolArguments(JSON.parse(call.resultPreview ?? ''))
+      .map((row) => `${row.label}：${row.value}`)
+      .join('；')
+  } catch {
+    const preview = call.resultPreview ?? ''
+    const jsonStart = preview.indexOf('{')
+    return jsonStart > 0 ? preview.slice(0, jsonStart).replace(/[：:\s]+$/, '') : preview
+  }
+}
+const argumentSummary = (args: unknown) =>
+  toolArguments(args).map((row) => ({
+    ...row,
+    value: row.value.length > 240 ? row.value.slice(0, 240) + '…' : row.value,
+  }))
+const fullJson = (call: ToolCallView) =>
+  JSON.stringify(
+    { args: call.args, result: call.result ?? { summary: call.resultPreview } },
+    null,
+    2,
+  )
 </script>
 
 <template>
@@ -36,6 +65,7 @@ const sourceLabel = (source: string) =>
             <span v-if="call.name.startsWith('placeholder.')" class="shrink-0 text-muted-foreground"
               >占位</span
             >
+            <span class="text-muted-foreground">{{ sourceLabel(call) }}</span>
             <span class="sr-only">{{ call.status }}</span>
             <span class="ml-auto shrink-0 num text-muted-foreground">
               {{
@@ -48,10 +78,13 @@ const sourceLabel = (source: string) =>
             </span>
           </summary>
 
+          <p v-if="call.resultPreview" class="mt-1 break-words text-xs">
+            {{ resultSummary(call) }}
+          </p>
           <div class="mt-2 space-y-1.5 border-t border-border/60 pt-2">
             <p class="text-xs text-muted-foreground">
               {{ call.access === 'READ' ? '只读分析' : '需批准的写入操作' }}
-              <template v-if="sourceLabel(call.source)"> · {{ sourceLabel(call.source) }}</template>
+              <template v-if="sourceLabel(call)"> · {{ sourceLabel(call) }}</template>
             </p>
             <p v-if="call.status !== 'RUNNING'" class="text-xs leading-relaxed">
               {{
@@ -63,11 +96,21 @@ const sourceLabel = (source: string) =>
               }}
             </p>
             <dl class="space-y-1 text-xs">
-              <div v-for="(row, index) in toolArguments(call.args)" :key="index">
+              <div v-for="(row, index) in argumentSummary(call.args)" :key="index">
                 <dt class="text-muted-foreground">{{ row.label }}</dt>
                 <dd class="whitespace-pre-wrap break-words">{{ row.value }}</dd>
               </div>
             </dl>
+            <details @toggle="toggleJson(call.id, $event)">
+              <summary class="cursor-pointer text-xs">查看完整 JSON（已脱敏）</summary>
+              <pre
+                v-if="jsonOpen.has(call.id)"
+                class="max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs"
+                >{{ fullJson(call) }}</pre>
+              <p v-if="call.truncated" class="text-xs text-muted-foreground">
+                摘要或 JSON 达到大小限制，已截断。
+              </p>
+            </details>
           </div>
         </details>
       </li>

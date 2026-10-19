@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Durable copy of board-write approvals in the V3 {@code approvals} table, so a pending
+ * Durable copy of agent write approvals in the V3 {@code approvals} table, so a pending
  * approval survives a closed chat stream, page reload or backend restart. Claims are
  * conditional updates on {@code status='PENDING'}, so each approval is decided exactly once.
  */
@@ -48,14 +48,22 @@ public class ApprovalStore {
     }
 
     Optional<Row> find(String owner, String id) {
+        expirePending();
         return jdbc.query("SELECT * FROM approvals WHERE id=? AND user_id=?", (rs, i) -> row(rs), id, owner).stream().findFirst();
     }
 
     List<Row> pending(String owner, List<String> actions) {
+        expirePending();
         return jdbc.query("""
                 SELECT * FROM approvals WHERE user_id=? AND status='PENDING' AND expires_at>now() AND tool_name = ANY(?)
                 ORDER BY created_at DESC LIMIT 20
                 """, (rs, i) -> row(rs), owner, actions.toArray(String[]::new));
+    }
+
+    /** Also runs on reads, so restart/detachment cannot leave expired PENDING rows behind. */
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 30_000)
+    public void expirePending() {
+        jdbc.update("UPDATE approvals SET status='TIMEOUT', decision_note='审批已超时自动拒绝', decided_at=now() WHERE status='PENDING' AND expires_at<=now()");
     }
 
     private Row row(java.sql.ResultSet rs) throws java.sql.SQLException {

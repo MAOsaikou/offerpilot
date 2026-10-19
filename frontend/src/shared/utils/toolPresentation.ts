@@ -3,7 +3,11 @@ import { applicationStages, type ApplicationStatus } from '@/shared/types/board'
 // Resource identifiers remain in transport arguments, never in visible review text.
 export function toolArguments(args: unknown): Array<{ label: string; value: string }> {
   if (!args || typeof args !== 'object') return []
-  const data = args as Record<string, unknown>
+  const outer = args as Record<string, unknown>
+  const data =
+    outer.inputs && typeof outer.inputs === 'object'
+      ? (outer.inputs as Record<string, unknown>)
+      : outer
   const fields: Record<string, string> = {
     name: '目标职业',
     city: '意向城市',
@@ -17,6 +21,14 @@ export function toolArguments(args: unknown): Array<{ label: string; value: stri
     nextAction: '下一步行动',
     nextActionAt: '行动日期',
     answer: '回答',
+    request: '请求',
+    keyword: '关键词',
+    query: '关键词',
+    location: '工作地点',
+    nature: '岗位类型',
+    site: '官网站点',
+    questionIndex: '面试题号（从 0 开始）',
+    nextQuestion: '进入下一题',
     taskTitles: '确认已完成的任务',
   }
   const rows = Object.entries(fields).flatMap(([key, label]) => {

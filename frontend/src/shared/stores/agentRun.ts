@@ -31,10 +31,12 @@ export interface ToolCallView {
   id: string
   stepId?: string
   name: string
+  serverName?: string
   source: string
   access: ToolAccess
   args: unknown
   status: 'RUNNING' | 'OK' | 'FAILED' | 'CANCELLED'
+  result?: unknown
   resultPreview?: string
   durationMs?: number
   truncated?: boolean
@@ -203,6 +205,7 @@ export const useAgentRunStore = defineStore('agentRun', () => {
       args: event.args,
       status: 'RUNNING',
     }
+    if (event.serverName) call.serverName = event.serverName
     if (event.stepId) call.stepId = event.stepId
     ensure(event.runId).toolCalls.push(call)
   }
@@ -211,6 +214,10 @@ export const useAgentRunStore = defineStore('agentRun', () => {
     const call = ensure(event.runId).toolCalls.find((c) => c.id === event.toolCallId)
     if (!call) return
     call.status = event.ok ? 'OK' : 'FAILED'
+    if (event.source) call.source = event.source
+    if (event.serverName) call.serverName = event.serverName
+    else if (event.source === 'LOCAL') delete call.serverName
+    call.result = event.result
     call.resultPreview = event.resultPreview
     call.durationMs = event.durationMs
     call.truncated = event.truncated
@@ -300,6 +307,7 @@ export const useAgentRunStore = defineStore('agentRun', () => {
 
   /** 事件归约入口：新增事件类型时 default 分支会编译期报错 */
   function apply(event: AgentEvent): void {
+    if (event.id <= (runs.value.get(event.runId)?.lastEventId ?? 0)) return
     switch (event.type) {
       case 'run.started':
         begin(event)

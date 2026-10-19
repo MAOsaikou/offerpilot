@@ -63,6 +63,19 @@ class MemoryChatTest {
         assertThat(((AgentEvent.ToolResult)saved.get(3)).resultPreview()).isEqualTo("记忆已保存，可在设置中管理。");
     }
 
+    @Test void rejectedSuggestionContinuesWithVisibleReadOnlyAlternative() {
+        var suggestion = new MemoryCandidate.Candidate(candidate.kind(), candidate.fact(), Source.SUGGESTED_ACCEPTED);
+        var events = chat.write("alice","suggestion",new AtomicInteger(),suggestion).doOnNext(event -> {
+            if (event instanceof AgentEvent.ApprovalRequired required) approvals.resolve("alice","suggestion",required.approvalId(),new ApprovalService.Decision("REJECT",null,null));
+        }).collectList().block(Duration.ofSeconds(3));
+        assertThat(events).last().satisfies(event -> {
+            assertThat(event).isInstanceOf(AgentEvent.TextDelta.class);
+            assertThat(((AgentEvent.TextDelta)event).text()).contains("未保存记忆", "本轮对话", "重新发起");
+        });
+        verify(memories,never()).saveApproved(anyString(),anyString(),any());
+        verify(memories,never()).saveApprovedExcerpt(anyString(),anyString(),any(),anyBoolean());
+    }
+
     @Test void invalidSourcesAndExtraKeysAreRejected() {
         for(Map<String,Object> args:List.of(Map.<String,Object>of("kind","GOAL","fact","fact","source","MANUAL"),
                 Map.<String,Object>of("kind","OTHER","fact","x","source","EXPLICIT","owner","bob"),

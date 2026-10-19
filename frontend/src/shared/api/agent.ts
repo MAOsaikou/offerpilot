@@ -1,4 +1,5 @@
 import {
+  apiRequest,
   apiUrl,
   authenticatedHeaders,
   assertResponseIdentity,
@@ -6,7 +7,6 @@ import {
   toApiError,
 } from './client'
 import { parseSse } from './sse'
-import type { ApplicationStatus } from '@/shared/types/board'
 import type { AgentEvent, ChatRequest } from '@/shared/types/agent-events'
 
 export interface AgentStreamOptions {
@@ -105,7 +105,7 @@ export async function cancelAgentRun(runId: string): Promise<void> {
 
 export interface ApprovalDecision {
   decision: 'APPROVE' | 'REJECT'
-  args?: { status?: ApplicationStatus; note?: string }
+  args?: Record<string, unknown>
   reason?: string
 }
 
@@ -125,3 +125,6 @@ export async function submitApproval(
   if (!response.ok) throw await toApiError(response)
   assertResponseIdentity(response)
 }
+
+export const getAgentWorkbench = (runId: string) =>
+  apiRequest<AgentEvent[]>(`/agent/runs/${encodeURIComponent(runId)}/workbench`)

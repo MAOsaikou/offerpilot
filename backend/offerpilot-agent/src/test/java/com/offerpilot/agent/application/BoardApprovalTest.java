@@ -140,6 +140,46 @@ class BoardApprovalTest {
         verifyNoInteractions(applications);
     }
 
+    @Test void fakeModelContinuesAfterRejectOrTimeoutWithGroundedReadOnlyAlternative() throws Exception {
+        for (boolean timeout : List.of(false, true)) {
+            ApprovalService approval = timeout ? new ApprovalService(conversations) {
+                @Override public Ticket request(String owner, String run, String action, Map<String,Object> args) {
+                    return request(owner, run, action, args, Duration.ofMillis(20));
+                }
+            } : new ApprovalService(conversations);
+            var planner = mock(IntentPlanner.class);
+            when(planner.prepare(any(), anyString(), anyList(), any(), any(), anyMap())).thenReturn(Mono.just(
+                    new IntentPlanner.Decision("single", ExpertType.JOB, 1.0, false, null, new Plan("更新", List.of(step(
+                            Map.of("action","updateApplicationStatus", "applicationId","app1", "note","周五一面")))))));
+            var gateway = mock(com.offerpilot.llm.ModelGateway.class);
+            when(gateway.defaultTier()).thenReturn(ModelTier.FLASH);
+            when(gateway.modelName(any())).thenReturn("fake");
+            when(conversations.begin(anyString(), any(), anyString(), any(), anyString())).thenReturn(
+                    new ConversationService.Turn("alice","conv","run_alternative","msg",AgentMode.JOB,java.time.Instant.now(),List.of()));
+            when(conversations.checkpoint(any(), anyString())).thenReturn(true);
+            when(conversations.finish(any(), anyString(), anyString(), any(), any(), any())).thenReturn("COMPLETED");
+            when(gateway.stream(any(), anyList())).thenAnswer(invocation -> {
+                List<org.springframework.ai.chat.messages.Message> prompt = invocation.getArgument(1);
+                String data = prompt.stream().map(org.springframework.ai.chat.messages.Message::getText).collect(java.util.stream.Collectors.joining());
+                assertThat(data).contains("只读替代建议", "跟进草稿", "周五一面", "不执行任何替代写操作");
+                assertThat(data).contains(timeout ? "确认已超时" : "你已拒绝");
+                return reactor.core.publisher.Flux.just(new org.springframework.ai.chat.model.ChatResponse(List.of(
+                        new org.springframework.ai.chat.model.Generation(new org.springframework.ai.chat.messages.AssistantMessage("本次未保存。可以先整理周五一面的跟进草稿，核对后再保存。")))));
+            });
+            var chat = new ChatService(gateway, conversations, new org.springframework.core.io.ByteArrayResource("reply".getBytes()),
+                    new Orchestrator(planner, registry(new BoardWriteTools(applications, approval))), new ObjectMapper());
+            var events = chat.chat("alice", new com.offerpilot.agent.web.ChatRequest(null,"更新备注",null,AgentMode.JOB,null))
+                    .doOnNext(e -> { if (!timeout && e instanceof AgentEvent.ApprovalRequired a)
+                        approval.resolve("alice","run_alternative",a.approvalId(),new ApprovalService.Decision("REJECT",null,null)); })
+                    .collectList().block(Duration.ofSeconds(3));
+            assertThat(events).anySatisfy(e -> { assertThat(e).isInstanceOf(AgentEvent.TextDelta.class);
+                assertThat(((AgentEvent.TextDelta)e).text()).contains("跟进草稿", "周五一面"); });
+            assertThat(events.get(events.size()-1)).isInstanceOf(AgentEvent.RunCompleted.class);
+            verify(gateway).stream(any(), anyList());
+            verifyNoInteractions(applications);
+        }
+    }
+
     PlanStep step(Map<String, ?> args) { return new PlanStep("s1", "看板", ExpertType.JOB, new HashMap<>(args), List.of()); }
     ApplicationService.Application saved(String status) {
         return new ApplicationService.Application("app1", "job1", status, "周五面试", "", "", new ObjectMapper().createObjectNode().put("company", "示例公司").put("title", "Java"));

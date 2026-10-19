@@ -47,6 +47,21 @@ class JobSearchExecutionTest {
                 "run", new AtomicInteger(), reply, ignored -> {}, "owner", selected).collectList().block(Duration.ofSeconds(5));
     }
 
+    @Test void localSnapshotResultReportsLocalSourceAndStructuredJson() throws Exception {
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(response("{\"action\":\"search\",\"query\":\"Java\",\"site\":\"\",\"nature\":\"campus\",\"location\":\"北京\"}"));
+        var card = json.createObjectNode().put("schemaVersion",2).put("returnedCount",0);
+        card.putObject("meta").put("source","LOCAL_SNAPSHOT");
+        when(searches.search("Java", "", "campus", "北京")).thenReturn(card);
+        var events = run(AgentMode.JOB, context);
+        assertThat(events).filteredOn(AgentEvent.ToolResult.class::isInstance).singleElement().satisfies(event -> {
+            var result = (AgentEvent.ToolResult)event;
+            assertThat(result.source()).isEqualTo("LOCAL");
+            assertThat(result.serverName()).isNull();
+            assertThat(result.durationMs()).isGreaterThanOrEqualTo(0);
+            assertThat(json.valueToTree(result.result()).path("cards").get(0).path("payload").path("meta").path("source").asText()).isEqualTo("LOCAL_SNAPSHOT");
+        });
+    }
+
     @Test void autoAndExplicitSearchIgnoreStaleMatchIdsAndEmitOneMcpCard() throws Exception {
         String extract = "{\"action\":\"search\",\"query\":\"Java\",\"site\":\"\",\"nature\":\"campus\",\"location\":\"北京\"}";
         when(searches.search("Java", "", "campus", "北京")).thenReturn(json.createObjectNode().put("schemaVersion", 2).put("returnedCount", 0));
@@ -59,7 +74,8 @@ class JobSearchExecutionTest {
             assertThat(events).filteredOn(AgentEvent.ToolCall.class::isInstance).singleElement().satisfies(event -> {
                 var call = (AgentEvent.ToolCall)event;
                 assertThat(call.name()).isEqualTo("search_jobs");
-                assertThat(call.source()).isEqualTo("mcp:jobs-mcp");
+                assertThat(call.source()).isEqualTo("MCP");
+                assertThat(call.serverName()).isEqualTo("jobs-mcp");
                 assertThat(call.args().toString()).contains("北京", "Java");
             });
         }

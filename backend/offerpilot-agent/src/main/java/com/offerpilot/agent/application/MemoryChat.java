@@ -79,14 +79,16 @@ public class MemoryChat {
             Flux<AgentEvent> start = Flux.defer(() -> Flux.just(
                     new AgentEvent.ToolCall("tool.call", seq.incrementAndGet(), runId, Instant.now(), null, callId, ACTION, ticket.args(), "local", AgentEvent.ToolAccess.WRITE),
                     new AgentEvent.ApprovalRequired("approval.required", seq.incrementAndGet(), runId, Instant.now(), null,
-                            ticket.id(), callId, ACTION, ticket.args(), reason, ticket.expiresAt(), List.of())));
+                            ticket.id(), callId, ACTION, ticket.args(), reason, ticket.expiresAt(), ApprovalService.editableFields(ACTION))));
             return start.concatWith(ticket.await().flatMapMany(decision -> {
                 Flux<AgentEvent> resolved = Flux.defer(() -> Flux.just(new AgentEvent.ApprovalResolved("approval.resolved",
                         seq.incrementAndGet(), runId, Instant.now(), ticket.id(), decision.decision())));
                 Mono<String> save = !"APPROVE".equals(decision.decision())
-                        ? Mono.just("TIMEOUT".equals(decision.decision()) ? "审批已超时，未保存记忆" : "你已拒绝，未保存记忆。可以重新发起。")
+                        ? Mono.just("TIMEOUT".equals(decision.decision()) ? "审批已超时，未保存记忆。可以先在本轮对话中使用这条偏好，需要保存时可重新发起。" : "你已拒绝，未保存记忆。可以先在本轮对话中使用这条偏好，需要保存时可重新发起。")
                         : Mono.fromCallable(() -> {
-                            java.util.Objects.requireNonNull(memories.saveApproved(owner, runId, candidate));
+                            var edited = new MemoryCandidate.Candidate(candidate.kind(), (String) decision.args().get("fact"), candidate.source());
+                            java.util.Objects.requireNonNull(edited.equals(candidate) ? memories.saveApproved(owner, runId, candidate)
+                                    : memories.saveApprovedExcerpt(owner, runId, edited, true));
                             return "记忆已保存，可在设置中管理。";
                         }).subscribeOn(Schedulers.boundedElastic());
                 return resolved.concatWith(save.map(summary -> (AgentEvent) new AgentEvent.ToolResult("tool.result",
@@ -94,7 +96,11 @@ public class MemoryChat {
                                 "APPROVE".equals(decision.decision()), summary, 0, false))
                         .onErrorResume(ex -> Mono.fromSupplier(() -> new AgentEvent.ToolResult("tool.result",
                                 seq.incrementAndGet(), runId, Instant.now(), null, callId, ACTION, false,
-                                ex instanceof com.offerpilot.common.error.BusinessException ? ex.getMessage() : "记忆保存失败，请在设置中重试", 0, false))));
+                                ex instanceof com.offerpilot.common.error.BusinessException ? ex.getMessage() : "记忆保存失败，请在设置中重试", 0, false))))
+                        .concatMap(event -> event instanceof AgentEvent.ToolResult result && !result.ok()
+                                && candidate.source() == UserMemoryService.Source.SUGGESTED_ACCEPTED
+                                ? Flux.just(event, new AgentEvent.TextDelta("text.delta", seq.incrementAndGet(), runId,
+                                    Instant.now(), null, "\n\n" + result.resultPreview())) : Flux.just(event));
             }));
         });
     }
