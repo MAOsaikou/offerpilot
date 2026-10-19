@@ -59,7 +59,8 @@ class ChatParallelEffectsTest {
                 assertThat(events).extracting(AgentEvent::type).contains("tool.call", "text.delta", "run.completed");
                 verify(experts).execute(eq("owner"), anyMap(), eq("run"), any(), anyMap());
             }
-            assertThat(org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations")).isEqualTo(Map.of());
+            @SuppressWarnings("unchecked") Map<String, ?> leftover = (Map<String, ?>) org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations");
+            assertThat(leftover).isEmpty();
         }
     }
 
@@ -79,7 +80,8 @@ class ChatParallelEffectsTest {
         gateway.verdict.tryEmitValue("{\"injection\":false,\"categories\":[]}");
         verify(memory, never()).write(anyString(), anyString(), any(), any());
         assertThat(events).extracting(AgentEvent::type).containsExactly("run.started", "run.completed");
-        assertThat(org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations")).isEqualTo(Map.of());
+        @SuppressWarnings("unchecked") Map<String, ?> leftover = (Map<String, ?>) org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations");
+            assertThat(leftover).isEmpty();
     }
 
     private ChatService service(Gateway gateway, ExpertRegistry experts, ConversationService conversations, MemoryChat memory) throws Exception {
