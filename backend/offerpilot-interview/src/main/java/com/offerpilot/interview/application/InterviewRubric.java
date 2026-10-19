@@ -18,16 +18,21 @@ public final class InterviewRubric {
             return List.copyOf(parts);
         }
     }
-    public record Dimensions(int professional, int expression, int logic, int jobFit) {}
-    public record Turn(String question, String answerSummary, int score, Star star, String feedback,
-                       List<String> betterAnswerOutline) {}
+    public record Dimensions(Integer professional, Integer expression, Integer logic, Integer jobFit) {}
+    public record Turn(String question, String answerSummary, Integer score, Star star, String feedback,
+                       List<String> betterAnswerOutline, Dimensions dimensions, String improvedAnswer, String source, com.fasterxml.jackson.databind.JsonNode evaluation) {
+        public Turn(String question,String answerSummary,Integer score,Star star,String feedback,List<String> outline) {
+            this(question,answerSummary,score,star,feedback,outline,null,null,"rule",null);
+        }
+    }
     public record Learning(String topic, String reason, int estimatedHours) {}
-    public record Report(String id, int overall, Dimensions dimensions, List<Turn> turns, List<String> strengths,
+    public record Report(String id, Integer overall, Dimensions dimensions, List<Turn> turns, List<String> strengths,
                          List<String> weaknesses, List<String> advice, List<Learning> recommendedLearning,
                          String note) {}
     /** Deliberate compact tool narration; never concatenate a Java record into a prompt. */
     public static String summary(Report report) {
         var d = report.dimensions();
+        if (report.overall()==null) return "尚未评分。"+report.note();
         return "综合线索分 " + report.overall() + "/100；专业 " + d.professional()
                 + "，表达 " + d.expression() + "，逻辑 " + d.logic() + "，岗位关联 " + d.jobFit()
                 + "。" + report.note();

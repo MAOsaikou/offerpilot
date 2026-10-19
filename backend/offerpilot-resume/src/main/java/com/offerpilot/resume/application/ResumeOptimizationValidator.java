@@ -4,14 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.offerpilot.common.error.BusinessException;
 import com.offerpilot.common.error.ErrorCode;
 import java.util.*;
-import java.util.regex.Pattern;
 
 /** Structural/evidence checks, including a conservative per-line numeric preservation rule. */
 public final class ResumeOptimizationValidator {
     private ResumeOptimizationValidator() {}
-    private static final String HAN_NUMBER="[零〇一二两三四五六七八九十百千万亿]+";
-    private static final Pattern NUMBERS = Pattern.compile("[0-9０-９]+(?:[.,．][0-9０-９]+)*(?:[%％])?|百分之"+HAN_NUMBER
-        +"|"+HAN_NUMBER+"(?:个|项|人|名|次|倍|套|年|月|日|天|周|秒|毫秒)");
     public static void validate(JsonNode output, JsonNode original, String jd) {
         require(output != null && output.isObject() && output.size() == 2 && output.has("summary") && output.has("patches"));
         require(output.path("summary").isTextual() && !output.path("summary").asText().isBlank() && output.path("summary").asText().length() <= 1000);
@@ -27,9 +23,7 @@ public final class ResumeOptimizationValidator {
         }
     }
     private static Set<String> numbers(String text) {
-        Set<String> values = new HashSet<>(); var matcher = NUMBERS.matcher(text);
-        while (matcher.find()) values.add(matcher.group());
-        return values;
+        return com.offerpilot.common.text.NumericProvenance.numbers(text);
     }
     private static void require(boolean valid) { if (!valid) throw invalid(); }
     public static BusinessException invalid() {

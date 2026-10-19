@@ -35,7 +35,7 @@ async function createPlan() {
 </script>
 <template>
   <section class="panel form-stack" aria-label="面试报告与学习计划">
-    <p v-if="report.isPending.value" role="status">正在读取文字规则报告…</p>
+    <p v-if="report.isPending.value" role="status">正在读取面试报告…</p>
     <p v-else-if="report.isError.value" role="alert">
       {{ report.error.value?.message }}
       <button class="btn" @click="report.refetch()">重试报告</button>

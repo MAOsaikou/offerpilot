@@ -31,7 +31,14 @@ export const useGenerationTasks = defineStore('generation-tasks', () => {
       // A slow restore response cannot resurrect an immutable terminal task.
       if (old && !isActiveTask(old) && isActiveTask(task)) continue
       if (notify && old && isActiveTask(old) && !isActiveTask(task)) {
-        for (const key of ['job-matches', 'diagnoses', 'optimizations', 'applications'])
+        for (const key of [
+          'job-matches',
+          'diagnoses',
+          'optimizations',
+          'applications',
+          'interviews',
+          'interview-report',
+        ])
           void queryClient.invalidateQueries({ queryKey: [key] })
         notice.value = `${task.title}：${task.status === 'SUCCEEDED' ? '已完成' : task.error || task.stage}`
       }

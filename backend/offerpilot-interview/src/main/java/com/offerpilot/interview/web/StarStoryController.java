@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/star-stories")
 public class StarStoryController {
-    public record SaveRequest(@NotBlank String sessionId, @NotNull @Min(0) @Max(4) Integer questionIndex) {}
+    public record SaveRequest(@NotBlank String sessionId, @NotNull @Min(0) @Max(14) Integer questionIndex) {}
 
     private final StarStoryService stories;
     private final CurrentUser users;

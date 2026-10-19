@@ -86,3 +86,16 @@ export const getInterviewReport = (id: string, signal?: AbortSignal) =>
   apiRequest<import('@/shared/types/cards').InterviewReportPayload>(`${sessionPath(id)}/report`, {
     signal,
   })
+
+export const generateInterviewQuestions = (id: string, signal?: AbortSignal) =>
+  runGeneration<InterviewSession>('INTERVIEW_QUESTIONS', id, {}, undefined, signal)
+export const scoreInterviewAnswer = (id: string, index: number, signal?: AbortSignal) =>
+  runGeneration<InterviewSession>('INTERVIEW_SCORE', id, { index }, undefined, signal)
+export const generateInterviewReport = (id: string, signal?: AbortSignal) =>
+  runGeneration<import('@/shared/types/cards').InterviewReportPayload>(
+    'INTERVIEW_REPORT',
+    id,
+    {},
+    undefined,
+    signal,
+  )

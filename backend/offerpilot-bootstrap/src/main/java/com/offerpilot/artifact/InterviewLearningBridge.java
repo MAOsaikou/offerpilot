@@ -13,7 +13,7 @@ public class InterviewLearningBridge implements InterviewLearningSource {
     public Report read(String owner, String reportId) {
         var session = interviews.getForUpdate(owner, reportId);
         if (!session.completed()) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请先完成面试再生成学习计划。");
-        var report = InterviewRubric.score(session);
+        var report = interviews.report(owner, reportId);
         return new Report(session.id(), session.role(), report.recommendedLearning().stream()
                 .map(item -> new Topic(item.topic(), item.reason(), item.estimatedHours())).toList());
     }

@@ -10,6 +10,9 @@ import InterviewListView from './InterviewListView.vue'
 import InterviewRoomView from './InterviewRoomView.vue'
 import {
   createInterview,
+  generateInterviewQuestions,
+  scoreInterviewAnswer,
+  generateInterviewReport,
   getInterview,
   getInterviewReport,
   listInterviews,
@@ -34,6 +37,9 @@ vi.mock('@/shared/api/jobs', () => ({ getJob: vi.fn() }))
 vi.mock('@/shared/api/applications', () => ({ listApplications: vi.fn() }))
 vi.mock('@/shared/api/interviews', () => ({
   createInterview: vi.fn(),
+  generateInterviewQuestions: vi.fn(),
+  scoreInterviewAnswer: vi.fn(),
+  generateInterviewReport: vi.fn(),
   getInterview: vi.fn(),
   getInterviewReport: vi.fn(),
   listInterviews: vi.fn(),
@@ -391,7 +397,17 @@ it('creates only server sessions and exports unchanged legacy records', async ()
   submit()
   await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/interviews/iv_1'))
   expect(createInterview).toHaveBeenCalledWith(
-    { role: '新岗位', kind: '综合', difficulty: 'STANDARD', mode: 'TEXT', durationMinutes: 30 },
+    {
+      role: '新岗位',
+      kind: '综合',
+      difficulty: 'STANDARD',
+      mode: 'TEXT',
+      durationMinutes: 30,
+      questionCount: 5,
+      typeMix: {},
+      industry: '',
+      feedbackMode: 'IMMEDIATE',
+    },
     expect.any(AbortSignal),
   )
   await vi.waitFor(() => expect(root.textContent).toContain('针对：Java 后端实习生'))
@@ -474,7 +490,7 @@ it('completes after saving the final answer and restores the review', async () =
   }
   vi.mocked(listStarStoryCandidates).mockRejectedValueOnce(new Error('候选加载失败'))
   submit()
-  await vi.waitFor(() => expect(root.textContent).toContain('已完成全部 5 题'))
+  await vi.waitFor(() => expect(root.textContent).toContain('已结束本场 5 题'))
   expect(server.completed).toBe(true)
   expect(server.answers[4]!.answerText).toBe('学习计划')
   expect(root.querySelector('textarea')).toBeNull()
@@ -607,6 +623,10 @@ it('submits saved resume version, type, difficulty, voice mode and duration with
         difficulty: 'HARD',
         mode: 'VOICE',
         durationMinutes: 60,
+        questionCount: 5,
+        typeMix: {},
+        industry: '',
+        feedbackMode: 'IMMEDIATE',
         resumeId: 'r1',
         versionId: 'v1',
       },
@@ -648,4 +668,189 @@ it('restores duration timer from persisted creation time and ends without droppi
   button('保存并结束面试').click()
   await vi.waitFor(() => expect(server.completed).toBe(true))
   expect(server.answers[0]!.answerText).toBe('需要保留的回答')
+})
+
+it('creates non-tech practice with count, difficulty, explicit type counts and deferred feedback', async () => {
+  await mount('/interviews')
+  await vi.waitFor(() => expect(button('开始练习')).toBeDefined())
+  async function set(label: string, value: string) {
+    const field = [...root.querySelectorAll('label')].find((el) =>
+      el.textContent?.startsWith(label),
+    )!
+    const input = field.querySelector('input,select') as HTMLInputElement | HTMLSelectElement
+    input.value = value
+    input.dispatchEvent(
+      new Event(input.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }),
+    )
+    await nextTick()
+  }
+  await set('目标岗位', '新媒体运营')
+  await set('题数', '3')
+  await set('难度', 'HARD')
+  await set('行业', '消费品')
+  await set('反馈时机', 'END')
+  const checkbox = [...root.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')][0]!
+  checkbox.click()
+  await nextTick()
+  expect(button('开始练习').disabled).toBe(true)
+  await set('行为', '1')
+  await set('案例分析', '0')
+  expect(button('开始练习').disabled).toBe(false)
+  submit()
+  await vi.waitFor(() =>
+    expect(createInterview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: '新媒体运营',
+        questionCount: 3,
+        difficulty: 'HARD',
+        industry: '消费品',
+        feedbackMode: 'END',
+        typeMix: { BEHAVIORAL: 1, SITUATIONAL: 1, KNOWLEDGE: 1, CASE: 0 },
+      }),
+      expect.any(AbortSignal),
+    ),
+  )
+})
+function modern() {
+  server.generationSource = 'model'
+  server.options = {
+    difficulty: 'HARD',
+    mode: 'TEXT',
+    durationMinutes: 30,
+    questionCount: 5,
+    feedbackMode: 'IMMEDIATE',
+  }
+  for (const answer of server.answers) {
+    answer.followUpQuestion = null
+    answer.questionType = 'CASE'
+    answer.difficulty = 'HARD'
+    answer.questionSource = 'model'
+  }
+}
+it('generates a pending question set then reveals evidence feedback, supports retry, skip and final report', async () => {
+  modern()
+  server.generationSource = 'pending'
+  vi.mocked(generateInterviewQuestions).mockImplementation(async () => {
+    server.generationSource = 'model'
+    return structuredClone(server)
+  })
+  vi.mocked(scoreInterviewAnswer).mockImplementation(async (_id, index) => {
+    server.answers[index]!.evaluation = {
+      source: 'model',
+      score: 72,
+      rationale: '行动具体，补充验证方式',
+      improvedAnswer: '行动：我负责活动复盘\n结果：【补充你的具体数据】',
+      dimensions: {
+        professional: { score: 72, rationale: '职责明确', evidence: '我负责活动复盘' },
+        expression: { score: 72, rationale: '表达清楚', evidence: '我负责活动复盘' },
+        logic: { score: 72, rationale: '行动明确', evidence: '我负责活动复盘' },
+        jobFit: { score: 72, rationale: '岗位相关', evidence: '我负责活动复盘' },
+      },
+    }
+    return structuredClone(server)
+  })
+  vi.mocked(generateInterviewReport).mockResolvedValue(await getInterviewReport('iv_1'))
+  await mount()
+  await vi.waitFor(() => expect(root.textContent).toContain('准备你的面试题目'))
+  button('生成面试题目').click()
+  await vi.waitFor(() => expect(root.textContent).toContain('第 1 / 5 题'))
+  expect(root.textContent).toContain('案例分析')
+  expect(root.textContent).toContain('高级')
+  expect(root.textContent).toContain('本题 0 分')
+  await typeAnswer('我负责活动复盘')
+  button('提交并查看反馈').click()
+  await vi.waitFor(() => expect(root.textContent).toContain('本题反馈 · 72 / 100'))
+  expect(root.textContent).toContain('【补充你的具体数据】')
+  await typeAnswer('我负责活动复盘并收集反馈')
+  button('重新评价').click()
+  await vi.waitFor(() => expect(scoreInterviewAnswer).toHaveBeenCalledTimes(2))
+  await vi.waitFor(() => expect(button('下一题').disabled).toBe(false))
+  button('下一题').click()
+  await vi.waitFor(() => expect(root.textContent).toContain('第 2 / 5 题'))
+  button('跳过本题').click()
+  await vi.waitFor(() => expect(root.textContent).toContain('第 3 / 5 题'))
+  button('结束并生成报告').click()
+  await vi.waitFor(() =>
+    expect(generateInterviewReport).toHaveBeenCalledWith('iv_1', expect.any(AbortSignal)),
+  )
+  expect(server.completed).toBe(true)
+})
+it('defers feedback until finish and renders unscored report honestly', async () => {
+  modern()
+  server.options!.feedbackMode = 'END'
+  server.answers[0]!.evaluation = {
+    source: 'model',
+    score: 70,
+    rationale: '隐藏的反馈',
+    improvedAnswer: '隐藏的答案',
+  }
+  await mount()
+  await loaded()
+  expect(root.textContent).not.toContain('隐藏的反馈')
+  await typeAnswer('我负责复盘')
+  submit()
+  await vi.waitFor(() => expect(server.questionIndex).toBe(1))
+  expect(scoreInterviewAnswer).not.toHaveBeenCalled()
+  unmount()
+  server.completed = true
+  vi.mocked(getInterviewReport).mockResolvedValue({
+    id: 'iv_1',
+    overall: null,
+    dimensions: { professional: null, expression: null, logic: null, jobFit: null },
+    turns: [],
+    strengths: [],
+    weaknesses: [],
+    advice: [],
+    recommendedLearning: [],
+    note: '模型不可用，未评分',
+  })
+  await mount()
+  await vi.waitFor(() => expect(root.textContent).toContain('模型不可用，未评分'))
+  expect(root.textContent).toContain('未评分')
+  expect(root.textContent).not.toContain('0 / 100')
+})
+
+it('renders saved per-question dimensions, quoted evidence and improved answers in the final report', async () => {
+  modern()
+  server.completed = true
+  const dimension = { score: 68, rationale: '行动清楚，验证待补充', evidence: '我负责活动复盘' }
+  vi.mocked(getInterviewReport).mockResolvedValue({
+    id: 'iv_1',
+    overall: 68,
+    dimensions: { professional: 68, expression: 68, logic: 68, jobFit: 68 },
+    turns: [
+      {
+        question: '如何安排活动复盘？',
+        answerSummary: '我负责活动复盘',
+        score: 68,
+        star: { situation: false, task: true, action: true, result: false },
+        feedback: '请补充验证',
+        betterAnswerOutline: [],
+        source: 'model',
+        evaluation: {
+          source: 'model',
+          score: 68,
+          rationale: '请补充验证',
+          improvedAnswer: '行动：我负责活动复盘\n结果：【补充真实结果】',
+          dimensions: {
+            professional: dimension,
+            expression: dimension,
+            logic: dimension,
+            jobFit: dimension,
+          },
+        },
+      },
+    ],
+    strengths: ['行动明确'],
+    weaknesses: ['效果验证不足'],
+    advice: ['重答并说明真实结果'],
+    recommendedLearning: [{ topic: '效果验证', reason: '第1题缺少验证', estimatedHours: 1 }],
+    note: '已评分1/5题',
+  })
+  await mount()
+  await vi.waitFor(() => expect(root.textContent).toContain('本题反馈 · 68 / 100'))
+  expect(root.textContent).toContain('「我负责活动复盘」')
+  expect(root.textContent).toContain('结果：【补充真实结果】')
+  expect(root.textContent).toContain('重答并说明真实结果')
+  expect(root.textContent).toContain('已评分1/5题')
 })

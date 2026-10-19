@@ -65,9 +65,9 @@ class BranchMigrationIntegrationTest {
         assertThat(jdbc(url).queryForObject("SELECT to_regclass('public.knowledge_notes') IS NOT NULL AND to_regclass('public.knowledge_note_imports') IS NOT NULL", Boolean.class)).isTrue();
         assertThat(jdbc(url).queryForObject("SELECT to_regclass('public.star_stories') IS NOT NULL", Boolean.class)).isTrue();
         assertThat(migrations(url, "latest", false).validateWithResult().validationSuccessful).isTrue();
-        assertThat(jdbc(url).queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(36);
+        assertThat(jdbc(url).queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(37);
         assertThat(jdbc(url).queryForList("SELECT version FROM flyway_schema_history WHERE success", String.class))
-                .contains("15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "40", "41");
+                .contains("15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "40", "41", "42");
         assertThat(jdbc(url).queryForObject("SELECT status FROM users WHERE id='usr_test_staff001'", String.class)).isEqualTo("DISABLED");
         String fresh = newDatabase();
         migrations(fresh, "latest", false).migrate();
@@ -124,9 +124,9 @@ class BranchMigrationIntegrationTest {
         align(url); // 可重复运行，不覆盖原历史备份。
         migrations(url, "latest", true).migrate();
         assertThat(migrations(url, "latest", false).validateWithResult().validationSuccessful).isTrue();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(36);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(37);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success", String.class))
-                .contains("15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "40", "41");
+                .contains("15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "40", "41", "42");
         assertThat(jdbc.queryForObject("SELECT nickname FROM users WHERE id='legacy-owner'", String.class)).isEqualTo("Preserve me");
         assertThat(jdbc.queryForObject("SELECT source FROM resume_versions WHERE id='legacy-v'", String.class)).isEqualTo("OPTIMIZED");
         assertThat(jdbc.queryForObject("SELECT current_version_id FROM resumes WHERE id='legacy-resume'", String.class)).isEqualTo("legacy-v");
@@ -138,6 +138,17 @@ class BranchMigrationIntegrationTest {
             assertThat(jdbc.queryForObject("SELECT note FROM applications WHERE id='legacy-app'", String.class)).isEqualTo("Keep my note");
             assertThat(jdbc.queryForObject("SELECT status FROM applications WHERE id='legacy-app'", String.class)).isEqualTo("INTERVIEW");
         }
+    }
+
+    @Test
+    void v41InterviewSnapshotsKeepAnswersOptionsAndLegacyReportSemantics() {
+        String url=newDatabase(); migrations(url,"41",false).migrate(); var jdbc=jdbc(url);
+        jdbc.update("INSERT INTO users(id,email,password_hash,nickname) VALUES ('iv-migration-owner','iv-migration@example.test','fixture','Migration')");
+        jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,question_index,completed,options) VALUES ('iv-before42','iv-migration-owner','护士','综合',4,true,'{\"resumeId\":null,\"versionId\":null,\"difficulty\":\"STANDARD\",\"mode\":\"TEXT\",\"durationMinutes\":30}')");
+        for(int i=0;i<5;i++) jdbc.update("INSERT INTO interview_answers(session_id,question_index,question_text,answer_text,follow_up_question,follow_up_answer,follow_up_source) VALUES ('iv-before42',?,'旧问题','真实旧回答','旧追问','真实补充','rule')",i);
+        migrations(url,"latest",false).migrate();
+        assertThat(jdbc.queryForObject("SELECT generation_source IS NULL AND report IS NULL AND revision=0 AND completed AND options->>'difficulty'='STANDARD' FROM interview_sessions WHERE id='iv-before42'",Boolean.class)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM interview_answers WHERE session_id='iv-before42' AND answer_text='真实旧回答' AND follow_up_answer='真实补充' AND evaluation IS NULL",Integer.class)).isEqualTo(5);
     }
 
     @Test
