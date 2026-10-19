@@ -37,6 +37,22 @@ class CareerAssessmentHttpIntegrationTest extends SharedHttpIntegrationTest {
         return JSON.readTree(response.body()).path("data");
     }
 
+    @Test void threePanelsRoundTripAndLegacyWritesPreserveNewFields() throws Exception {
+        String token = guests.create().accessToken();
+        var empty = data(call("GET", "/profile", token, null));
+        assertThat(empty.path("major").asText()).isEmpty();
+        assertThat(empty.path("assessment").isNull()).isTrue();
+        var fields = Map.of("target", "工程师", "city", "成都", "skills", "SQL", "interests", List.of("技术研发"),
+                "major", "软件工程", "courses", "数据库\n算法", "valuesText", "成长\n平衡");
+        var saved = data(call("PUT", "/profile", token, fields));
+        assertThat(saved.path("courses").asText()).isEqualTo("数据库\n算法");
+        var legacy = data(call("PUT", "/profile", token, Map.of("target", "新目标", "city", "成都", "skills", "SQL", "interests", List.of())));
+        assertThat(legacy.path("major").asText()).isEqualTo("软件工程");
+        assertThat(legacy.path("valuesText").asText()).isEqualTo("成长\n平衡");
+        assertThat(call("PUT", "/profile", token, Map.of("target", "", "city", "", "skills", "", "interests", List.of(), "major", 42)).statusCode()).isEqualTo(400);
+        assertThat(data(call("GET", "/profile", guests.create().accessToken(), null)).path("major").asText()).isEmpty();
+    }
+
     @Test void answerInferCorrectAndConfirmDrivesRecommendations() throws Exception {
         String token = guests.create().accessToken();
         var empty = data(call("GET", "/assessment", token, null));
@@ -68,7 +84,14 @@ class CareerAssessmentHttpIntegrationTest extends SharedHttpIntegrationTest {
         var traits = confirmed.path("confirmed").path("traits");
         assertThat(traits.get(0).path("evidence").asText()).contains("弄懂原理");
         assertThat(traits.get(1).path("evidence").asText()).isEmpty();
-        assertThat(data(call("GET", "/profile", token, null)).path("city").asText()).isEqualTo("杭州");
+        var profile = data(call("GET", "/profile", token, null));
+        assertThat(profile.path("city").asText()).isEqualTo("杭州");
+        assertThat(profile.path("assessment")).isEqualTo(confirmed.path("confirmed"));
+        data(call("PUT", "/assessment/answers/0", token, Map.of("answer", "修订后的专业")));
+        var edited = data(call("PUT", "/assessment/confirm", token, Map.of(
+                "riasec", Map.of("R", 40, "I", 90, "A", 10, "S", 20, "E", 75, "C", 30),
+                "traits", List.of("好奇钻研", "自己补充的特质"), "city", "杭州")));
+        assertThat(edited.path("confirmed").path("traits").get(0).path("evidence").asText()).contains("弄懂原理");
 
         var result = careers.recommend(users.require("Bearer " + token));
         assertThat(result.payload().hollandCode()).isEqualTo("IER");

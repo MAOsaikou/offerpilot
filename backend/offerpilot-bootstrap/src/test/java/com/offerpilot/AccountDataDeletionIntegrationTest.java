@@ -96,7 +96,7 @@ class AccountDataDeletionIntegrationTest {
         jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,job_id) VALUES (?,?,'开发','项目与经历',?)",o+"interview",o,o+"job");
         jdbc.update("INSERT INTO interview_answers(session_id,question_index,question_text,answer_text) VALUES (?,0,'fictional','private')",o+"interview");
         jdbc.update("INSERT INTO star_stories(id,user_id,title,body,role,source_session_id,source_question_index,star_count,situation,task,action,result,normalized_body,tsv) VALUES (?,?,'fixture','private STAR body','开发',?,0,4,true,true,true,true,'private star body','')",o+"star",o,o+"interview");
-        jdbc.update("INSERT INTO career_profiles(user_id,skills) VALUES (?,'private')",o);
+        jdbc.update("INSERT INTO career_profiles(user_id,skills,major,courses,values_text) VALUES (?,'private','private major','private courses','private values')",o);
         jdbc.update("INSERT INTO growth_task_completions(user_id,task_title) VALUES (?,'fixture')",o);
         jdbc.update("INSERT INTO career_assessments(user_id,answers) VALUES (?,'[\"private\"]'::jsonb)",o);
         jdbc.update("INSERT INTO knowledge_notes(id,user_id,title,content,category,tsv,embedding) VALUES (?,?,'fixture','private','技术积累','',?::vector)",o+"note",o,"["+String.join(",",Collections.nCopies(1024,"0.1"))+"]");

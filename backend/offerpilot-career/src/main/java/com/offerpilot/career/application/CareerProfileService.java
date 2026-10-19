@@ -22,32 +22,53 @@ public class CareerProfileService {
     }
 
     public record Profile(String target, String city, String skills, List<String> interests,
-                          List<String> completedTasks, String updatedAt) {}
+                          List<String> completedTasks, String updatedAt, String major, String courses,
+                          String valuesText, CareerAssessmentService.Confirmed assessment) {
+        public Profile(String target, String city, String skills, List<String> interests,
+                       List<String> completedTasks, String updatedAt) {
+            this(target, city, skills, interests, completedTasks, updatedAt, "", "", "", null);
+        }
+    }
 
     @Transactional(readOnly = true)
     public Profile get(String owner) {
         // One statement reads the profile and checklist from the same database snapshot.
         var rows = jdbc.query("""
-                SELECT p.*, COALESCE((SELECT jsonb_agg(task_title) FROM growth_task_completions
+                SELECT p.*, a.confirmed, COALESCE((SELECT jsonb_agg(task_title) FROM growth_task_completions
                     WHERE user_id=p.user_id), '[]'::jsonb) AS completed
-                FROM career_profiles p WHERE p.user_id=?
+                FROM career_profiles p LEFT JOIN career_assessments a ON a.user_id=p.user_id WHERE p.user_id=?
                 """, (rs, row) -> {
             var completed = strings(rs.getString("completed"));
             return new Profile(rs.getString("target"), rs.getString("city"), rs.getString("skills"),
                     strings(rs.getString("interests")),
                     GrowthTaskCatalog.TITLES.stream().filter(completed::contains).toList(),
-                    rs.getTimestamp("updated_at").toInstant().toString());
+                    rs.getTimestamp("updated_at").toInstant().toString(), rs.getString("major"), rs.getString("courses"),
+                    rs.getString("values_text"), assessment(rs.getString("confirmed")));
         }, owner);
-        return rows.isEmpty() ? new Profile("", "", "", List.of(), List.of(), null) : rows.get(0);
+        if (!rows.isEmpty()) return rows.get(0);
+        var confirmed = jdbc.query("SELECT confirmed FROM career_assessments WHERE user_id=?",
+                (rs, row) -> assessment(rs.getString("confirmed")), owner);
+        return new Profile("", "", "", List.of(), List.of(), null, "", "", "",
+                confirmed.isEmpty() ? null : confirmed.get(0));
     }
 
     @Transactional
     public Profile save(String owner, String target, String city, String skills, List<String> interests) {
+        return save(owner, target, city, skills, interests, null, null, null);
+    }
+
+    @Transactional
+    public Profile save(String owner, String target, String city, String skills, List<String> interests,
+                        String major, String courses, String valuesText) {
+        // Optional new fields preserve values when an older client writes only the original fields.
         jdbc.update("""
-                INSERT INTO career_profiles(user_id,target,city,skills,interests) VALUES (?,?,?,?,?::jsonb)
+                INSERT INTO career_profiles(user_id,target,city,skills,interests,major,courses,values_text)
+                VALUES (?,?,?,?,?::jsonb,coalesce(?,''),coalesce(?,''),coalesce(?,''))
                 ON CONFLICT(user_id) DO UPDATE SET target=EXCLUDED.target, city=EXCLUDED.city,
-                    skills=EXCLUDED.skills, interests=EXCLUDED.interests
-                """, owner, target, city, skills, encode(interests));
+                    skills=EXCLUDED.skills, interests=EXCLUDED.interests,
+                    major=coalesce(?,career_profiles.major), courses=coalesce(?,career_profiles.courses),
+                    values_text=coalesce(?,career_profiles.values_text)
+                """, owner, target, city, skills, encode(interests), major, courses, valuesText, major, courses, valuesText);
         return get(owner);
     }
 
@@ -94,6 +115,14 @@ public class CareerProfileService {
         var merged = new java.util.LinkedHashSet<>(get(owner).completedTasks());
         merged.addAll(titles);
         return replaceTasks(owner, List.copyOf(merged));
+    }
+
+    private CareerAssessmentService.Confirmed assessment(String raw) {
+        try {
+            return raw == null ? null : json.readValue(raw, CareerAssessmentService.Confirmed.class);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("Invalid stored career assessment JSON", ex);
+        }
     }
 
     private List<String> strings(String value) {

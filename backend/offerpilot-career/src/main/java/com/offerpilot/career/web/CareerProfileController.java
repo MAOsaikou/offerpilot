@@ -39,7 +39,13 @@ public class CareerProfileController {
             @JsonDeserialize(using = StringOnlyDeserializer.class)
             @NotNull @Pattern(regexp = "(?s).{0,3000}") String skills,
             @JsonDeserialize(contentUsing = StringOnlyDeserializer.class)
-            @NotNull @Size(max = 20) List<@NotNull @Pattern(regexp = "(?s).{0,50}") String> interests) {}
+            @NotNull @Size(max = 20) List<@NotNull @Pattern(regexp = "(?s).{0,50}") String> interests,
+            @JsonDeserialize(using = StringOnlyDeserializer.class)
+            @Pattern(regexp = "(?s).{0,100}") String major,
+            @JsonDeserialize(using = StringOnlyDeserializer.class)
+            @Pattern(regexp = "(?s).{0,3000}") String courses,
+            @JsonDeserialize(using = StringOnlyDeserializer.class)
+            @Pattern(regexp = "(?s).{0,1000}") String valuesText) {}
 
     public record TasksRequest(@JsonDeserialize(contentUsing = StringOnlyDeserializer.class)
                                @NotNull @Size(max = 6) List<@NotNull String> completed) {}
@@ -64,7 +70,8 @@ public class CareerProfileController {
     public ApiResponse<CareerProfileService.Profile> save(@Valid @RequestBody ProfileRequest body,
                                                          HttpServletRequest request) {
         String owner = users.require(request.getHeader("Authorization"));
-        return ApiResponse.ok(profiles.save(owner, body.target(), body.city(), body.skills(), body.interests()),
+        return ApiResponse.ok(profiles.save(owner, body.target(), body.city(), body.skills(), body.interests(),
+                        body.major(), body.courses(), body.valuesText()),
                 TraceIdFilter.current(request));
     }
 

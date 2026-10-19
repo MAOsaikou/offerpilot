@@ -102,9 +102,11 @@ public class CareerAssessmentService {
         if (scores.values().stream().distinct().count() == 1)
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "六个维度分数完全相同，无法区分兴趣倾向，请调整后再确认。");
         lockRow(owner);
-        var inferred = get(owner).inference();
+        var previous = get(owner);
+        var inferred = previous.inference();
         var byName = new LinkedHashMap<String, CareerAssessmentInference.Trait>();
         if (inferred != null) inferred.traits().forEach(t -> byName.put(t.name(), t));
+        if (previous.confirmed() != null) previous.confirmed().traits().forEach(t -> byName.put(t.name(), t));
         // Kept traits keep their evidence; user-added ones are marked as self-reported (no quote).
         var traits = traitNames.stream().map(String::strip).filter(n -> !n.isEmpty()).distinct()
                 .map(n -> byName.getOrDefault(n, new CareerAssessmentInference.Trait(n, 1.0, ""))).toList();
