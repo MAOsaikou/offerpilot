@@ -78,7 +78,7 @@ class UserMemoryChatIntegrationTest {
                     assertThat(memories.list(owner(token)).items()).isEmpty();
                     String path="/agent/runs/"+event.path("runId").asText()+"/approvals/"+event.path("approvalId").asText();
                     assertThat(event.path("name").asText()).isEqualTo("saveUserFact");
-                    assertThat(event.path("editableFields")).isEmpty();
+                    assertThat(event.path("editableFields")).isEqualTo(json.valueToTree(List.of("fact")));
                     String foreign=identities.create().accessToken();
                     assertThat(request("POST",path,foreign,"{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
                     assertThat(request("POST",path,token,"{\"decision\":\"APPROVE\",\"args\":{\"fact\":\"tampered\"}}").statusCode()).isEqualTo(400);

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ApprovalFields from '@/shared/components/ApprovalFields.vue'
 import { toolArguments } from '@/shared/utils/toolPresentation'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { submitApproval } from '@/shared/api/agent'
@@ -27,6 +28,11 @@ const edits = ref<
   >
 >({})
 const busy = ref<Record<string, boolean>>({})
+const extraEdits = ref<Record<string, Record<string, unknown>>>({})
+const editErrors = ref<Record<string, string>>({})
+const boardFields = ['status', 'note', 'nextAction', 'nextActionAt']
+const extraFields = (approval: ApprovalView) =>
+  (approval.editableFields ?? []).filter((field) => !boardFields.includes(field))
 const errors = ref<Record<string, string>>({})
 const submitted = ref<Record<string, ApprovalStatus>>({})
 watch(
@@ -51,7 +57,7 @@ const labelOf: Record<ApprovalStatus, string> = {
   PENDING: '等待你确认',
   APPROVED: '已批准',
   REJECTED: '已拒绝',
-  TIMEOUT: '已超时',
+  TIMEOUT: '已超时自动拒绝',
 }
 function memoryArgs(approval: ApprovalView) {
   if (approval.name !== 'saveUserFact' || !approval.args || typeof approval.args !== 'object')
@@ -100,9 +106,10 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
           args[field] = edit[field]
       }
     }
+    if (decision === 'APPROVE' && editErrors.value[key]) throw new Error(editErrors.value[key])
     await submitApproval(runId, approval.approvalId, {
       decision,
-      ...(decision === 'APPROVE' ? { args } : {}),
+      ...(decision === 'APPROVE' ? { args: { ...args, ...extraEdits.value[key] } } : {}),
     })
     submitted.value[key] = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED'
     if (decision === 'APPROVE') void queryClient.invalidateQueries({ queryKey: ['applications'] })
@@ -197,6 +204,18 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
               class="mt-1 block w-full rounded border bg-background p-2"
             />
           </label>
+          <ApprovalFields
+            v-if="extraFields(approval).length"
+            :fields="extraFields(approval)"
+            :args="approval.args"
+            @change="
+              (args, error) => {
+                extraEdits[keyOf(approval)] = args
+                editErrors[keyOf(approval)] = error
+              }
+            "
+          />
+          <p v-if="editErrors[keyOf(approval)]" role="alert">{{ editErrors[keyOf(approval)] }}</p>
           <div class="flex flex-wrap gap-2">
             <button
               type="button"

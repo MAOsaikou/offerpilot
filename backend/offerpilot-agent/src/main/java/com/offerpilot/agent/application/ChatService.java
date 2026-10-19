@@ -212,7 +212,8 @@ public class ChatService {
                     }));
         } else if (memoryCandidate != null) {
             work = work.concatWith(Flux.defer(() -> answer.toString().isBlank() ? Flux.empty()
-                    : ModelGateway.beforeEffects().thenMany(Flux.defer(() -> memory.write(owner, turn.runId(), seq, memoryCandidate)))));
+                    : ModelGateway.beforeEffects().thenMany(Flux.defer(() -> memory.write(owner, turn.runId(), seq, memoryCandidate)
+                            .doOnNext(event -> { if (event instanceof AgentEvent.TextDelta delta) answer.append(delta.text()); })))));
         }
         if (parallelSafetyScreen && !refuse && !crisis)
             work = gateway.withSafetyScreen(List.copyOf(prompt), work);

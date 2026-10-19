@@ -1,7 +1,7 @@
 import { normalizeModelTier, type ModelTier } from '@/shared/types/model-tier'
 import { computed, onScopeDispose, ref } from 'vue'
 import { conversationsApi } from '@/shared/api/conversations'
-import { cancelAgentRun } from '@/shared/api/agent'
+import { cancelAgentRun, getAgentWorkbench } from '@/shared/api/agent'
 import { ApiError } from '@/shared/api/client'
 import { useAgentStream } from '@/shared/composables/useAgentStream'
 import { useAgentRunStore, type CardView } from '@/shared/stores/agentRun'
@@ -177,7 +177,38 @@ export function useConversationChat() {
       if (running) {
         loading.value = false
         void follow(id, running, version)
-      } else schedulePoll(id, version)
+      } else {
+        const latest = [...data.items]
+          .reverse()
+          .find((message) => message.role === 'ASSISTANT' && message.runId)
+        if (latest?.runId) {
+          try {
+            const events = await getAgentWorkbench(latest.runId)
+            if (version !== epoch) return
+            for (const event of events) store.apply(event)
+            const restored = store.getRun(latest.runId)
+            if (restored?.status === 'RUNNING' && latest.status !== 'RUNNING')
+              store.apply({
+                type: 'run.completed',
+                id: restored.lastEventId + 1,
+                runId: latest.runId,
+                ts: latest.createdAt,
+                messageId: latest.id,
+                status:
+                  latest.status === 'FAILED'
+                    ? 'FAILED'
+                    : latest.status === 'CANCELLED'
+                      ? 'CANCELLED'
+                      : 'COMPLETED',
+                durationMs: 0,
+              })
+          } catch {
+            if (version === epoch) error.value = '执行过程暂时无法读取，可重新打开会话重试。'
+          }
+        }
+        if (version !== epoch) return
+        schedulePoll(id, version)
+      }
     } catch (e) {
       if (version === epoch) error.value = errorText(e)
     } finally {

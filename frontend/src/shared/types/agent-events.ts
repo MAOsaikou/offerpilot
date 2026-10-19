@@ -10,7 +10,7 @@ export type ExpertType = Exclude<AgentMode, 'AUTO'>
 
 export type StepStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'SKIPPED'
 
-export type ToolSource = 'local' | `mcp:${string}`
+export type ToolSource = 'LOCAL' | 'MCP' | 'local' | `mcp:${string}`
 
 export type ToolAccess = 'READ' | 'WRITE' | 'EXTERNAL_SIDE_EFFECT'
 
@@ -64,6 +64,7 @@ export type AgentEvent =
       toolCallId: string
       name: string
       args: unknown
+      serverName?: string
       source: ToolSource
       access: ToolAccess
     })
@@ -72,6 +73,9 @@ export type AgentEvent =
       toolCallId: string
       name: string
       ok: boolean
+      source?: ToolSource
+      serverName?: string
+      result?: unknown
       resultPreview: string
       durationMs: number
       truncated: boolean

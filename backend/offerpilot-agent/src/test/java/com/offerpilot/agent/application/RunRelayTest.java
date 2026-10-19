@@ -16,6 +16,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 class RunRelayTest {
+    @org.junit.jupiter.api.Test void durableHistoryRunsOffCallerThreadAndPreservesEventOrder() {
+        var history = org.mockito.Mockito.mock(WorkbenchEvents.class);
+        Thread caller = Thread.currentThread();
+        org.mockito.Mockito.doAnswer(call -> {
+            org.assertj.core.api.Assertions.assertThat(Thread.currentThread()).isNotSameAs(caller);
+            return null;
+        }).when(history).append(org.mockito.ArgumentMatchers.any());
+        var relay = new RunRelay(java.time.Duration.ofSeconds(1), java.time.Duration.ofSeconds(1), history);
+        var now = java.time.Instant.now();
+        var start = new com.offerpilot.agent.event.AgentEvent.RunStarted("",1,"durable",now,"c","m","fake",com.offerpilot.agent.domain.AgentMode.AUTO);
+        var end = new com.offerpilot.agent.event.AgentEvent.RunCompleted("",2,"durable",now,"m","COMPLETED",0);
+        org.assertj.core.api.Assertions.assertThat(relay.start("owner",reactor.core.publisher.Flux.just(start,end)).collectList().block(java.time.Duration.ofSeconds(3)))
+                .containsExactly(start,end);
+        var order = org.mockito.Mockito.inOrder(history);
+        order.verify(history).append(start);
+        order.verify(history).append(end);
+    }
     static AgentEvent started() {
         return new AgentEvent.RunStarted("run.started", 1, "run_1", Instant.now(), "conv", "msg", "m", AgentMode.AUTO);
     }

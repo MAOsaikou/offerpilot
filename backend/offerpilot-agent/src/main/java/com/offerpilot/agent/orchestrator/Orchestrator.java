@@ -78,6 +78,7 @@ public class Orchestrator {
             Set<String> cardTypes = new LinkedHashSet<>();
             Set<String> failed = new HashSet<>();
             Map<String, String> declined = new LinkedHashMap<>();
+            Map<String, String> alternatives = new LinkedHashMap<>();
             var created = new AgentEvent.PlanCreated("plan.created", seq.incrementAndGet(), runId, Instant.now(), plan.goal(),
                     plan.steps().stream().map(s -> new AgentEvent.PlanStepView(s.id(), s.title(), s.agent(),
                             AgentEvent.StepStatus.PENDING, s.dependsOn())).toList());
@@ -127,7 +128,7 @@ public class Orchestrator {
                             String preview = result.summary() == null ? "" : result.summary();
                             boolean truncated = preview.length() > 500;
                             if (truncated) preview = com.offerpilot.common.text.TextBounds.truncate(preview, 500);
-                            return outcome(runId, seq, step.id(), callId, name, true, preview, truncated, result.cards(), started);
+                            return outcome(runId, seq, step.id(), callId, name, true, preview, truncated, result.cards(), started, result.summary());
                         });
                 return Flux.<AgentEvent>just(new AgentEvent.StepUpdated("step.updated", seq.incrementAndGet(), runId, started,
                                 step.id(), AgentEvent.StepStatus.RUNNING, running, null),
@@ -139,9 +140,12 @@ public class Orchestrator {
                             return Mono.fromCallable(() -> patchWrite ? experts.requestPatch(owner, runId, step) : coachWrite ? experts.requestCoach(owner, runId, step) : starWrite ? experts.requestStarStory(owner, runId, step) : interviewWrite ? experts.requestInterview(owner, runId, step) : careerWrite ? experts.requestCareer(owner, runId, step) : experts.requestBoard(owner, runId, step))
                                     .subscribeOn(careerWrite || interviewWrite || starWrite || coachWrite || patchWrite ? reactor.core.scheduler.Schedulers.boundedElastic() : reactor.core.scheduler.Schedulers.immediate()).flatMapMany(ticket -> Flux.<AgentEvent>just(new AgentEvent.ApprovalRequired("approval.required", seq.incrementAndGet(), runId,
                                     Instant.now(), step.id(), ticket.id(), callId, name, ticket.args(),
-                                    (patchWrite ? "此操作将按所选补丁写入新的简历版本，原版本保留可查看；请核对后批准。" : coachWrite ? "此操作将把所选任务标记完成，并保留原有完成项；请确认这些任务已完成后批准。" : starWrite ? "此操作将把该题已验证的 STAR 回答保存到故事库，供后续面试练习引用；拒绝或超时均不保存。" : interviewWrite ? "此操作将创建面试、保存答案或更新会话状态，请核对后批准。" : careerWrite && "rerankCareers".equals(name) ? "此操作将按所选约束保存新的推荐修订，保留上一修订；不会修改职业档案，请核对后批准。" : careerWrite ? "此操作将把职业档案目标设为「" + ticket.args().get("name") + "」，请确认后批准。" : "此操作将修改求职看板，请确认状态、备注和下一步行动后批准。"), ticket.expiresAt(), careerWrite || interviewWrite || starWrite || coachWrite || patchWrite ? List.of() : List.of("status", "note", "nextAction", "nextActionAt")))
+                                    (patchWrite ? "此操作将按所选补丁写入新的简历版本，原版本保留可查看；请核对后批准。" : coachWrite ? "此操作将把所选任务标记完成，并保留原有完成项；请确认这些任务已完成后批准。" : starWrite ? "此操作将把该题已验证的 STAR 回答保存到故事库，供后续面试练习引用；拒绝或超时均不保存。" : interviewWrite ? "此操作将创建面试、保存答案或更新会话状态，请核对后批准。" : careerWrite && "rerankCareers".equals(name) ? "此操作将按所选约束保存新的推荐修订，保留上一修订；不会修改职业档案，请核对后批准。" : careerWrite ? "此操作将把职业档案目标设为「" + ticket.args().get("name") + "」，请确认后批准。" : "此操作将修改求职看板，请确认状态、备注和下一步行动后批准。"), ticket.expiresAt(), com.offerpilot.agent.application.ApprovalService.editableFields(name)))
                                     .concatWith(ticket.await().doOnNext(result -> {
-                                        if (!"APPROVE".equals(result.decision())) declined.put(step.id(), approvalSummary(name, result.decision()));
+                                        if (!"APPROVE".equals(result.decision())) {
+                                            declined.put(step.id(), approvalSummary(name, result.decision()));
+                                            alternatives.put(step.id(), com.offerpilot.agent.application.ApprovalService.alternative(name, ticket.args()));
+                                        }
                                     }).flatMapMany(decisionResult -> Flux.<AgentEvent>just(
                                             new AgentEvent.ApprovalResolved("approval.resolved", seq.incrementAndGet(), runId,
                                                     Instant.now(), ticket.id(), decisionResult.decision()))
@@ -158,7 +162,7 @@ public class Orchestrator {
                                 summary = declined.computeIfAbsent(step.id(), ignored -> approvalSummary(name, "REJECT"));
                             }
                             outputs.put(step.id(), summary);
-                            return outcome(runId, seq, step.id(), callId, name, false, summary, false, List.of(), started);
+                            return outcome(runId, seq, step.id(), callId, name, false, summary, false, List.of(), started, summary);
                         }));
             })), 1)).concatWith(Flux.defer(() -> {
                 if (interviewFailed.get())
@@ -169,8 +173,8 @@ public class Orchestrator {
                             "本轮匹配未完成：" + matchFailure.get().getMessage(), matchFailure.get().recoverable()) : new BusinessException(ErrorCode.MODEL_UNAVAILABLE,
                             "本轮匹配未完成：" + String.join("；", outputs.values())));
                 if (!declined.isEmpty()) addReplyData(replyPrompt,
-                        "用户拒绝或确认超时是正常的确认结果。明确说明该操作未执行、对应数据未改动，可重新发起。不要要求用户重新识别已选择的记录，不把拒绝描述为系统故障。其它操作按各自实际结果说明。",
-                        renderOutputs(declined));
+                        "用户拒绝或确认超时是正常的确认结果。明确说明该操作未执行、对应数据未改动，可重新发起。另给一句针对被拒绝操作的只读替代建议（例如先整理看板跟进草稿、比较职业目标、核对成长证据、预览简历修改、练习面试答案或检查 STAR 要素），不执行任何替代写操作。不要要求用户重新识别已选择的记录，不把拒绝描述为系统故障。其它操作按各自实际结果说明。",
+                        renderOutputs(declined) + "；只读替代建议：" + renderOutputs(alternatives));
                 if (!declined.isEmpty() && declined.keySet().containsAll(outputs.keySet())) return Flux.empty();
                 if (producedCard.get()) {
                     addReplyData(replyPrompt, CardNarrationDigest.rules(cardTypes),
@@ -237,11 +241,20 @@ public class Orchestrator {
                 .collect(java.util.stream.Collectors.joining("\n"));
     }
 
+    private static String toolSource(String name, List<ExpertResult.Card> cards) {
+        if (!"search_jobs".equals(name)) return "LOCAL";
+        boolean local = cards.stream().anyMatch(card -> card.payload() instanceof com.fasterxml.jackson.databind.JsonNode node
+                && "LOCAL_SNAPSHOT".equals(node.path("meta").path("source").asText()));
+        return local ? "LOCAL" : "MCP";
+    }
+
     private Flux<AgentEvent> outcome(String runId, AtomicInteger seq, String stepId, String callId, String name,
-                                     boolean ok, String summary, boolean truncated, List<ExpertResult.Card> cards, Instant started) {
+                                     boolean ok, String summary, boolean truncated, List<ExpertResult.Card> cards, Instant started, String fullSummary) {
         int elapsed = (int) Duration.between(started, Instant.now()).toMillis();
         Flux<AgentEvent> events = Flux.just(new AgentEvent.ToolResult("tool.result", seq.incrementAndGet(), runId, Instant.now(), stepId,
-                callId, name, ok, summary, elapsed, truncated));
+                callId, name, ok, summary, elapsed, truncated, Map.of("summary", fullSummary == null ? "" : fullSummary, "cards",
+                        cards.stream().map(card -> Map.of("cardType", card.cardType(), "payload", card.payload())).toList()),
+                toolSource(name, cards), "MCP".equals(toolSource(name, cards)) ? "jobs-mcp" : null));
         for (var card : cards) {
             events = events.concatWith(Flux.just(new AgentEvent.UiCard("ui.card", seq.incrementAndGet(), runId, Instant.now(),
                     stepId, card.cardId(), card.cardType(), card.payload())));

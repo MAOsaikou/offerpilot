@@ -128,6 +128,16 @@ public class UserMemoryService {
     /** requireRunning=false is for an approval decided after its chat stream ended; grounding is unchanged. */
     @Transactional
     public Memory saveApproved(String owner, String runId, MemoryCandidate.Candidate candidate, boolean requireRunning) {
+        return saveApproved(owner, runId, candidate, requireRunning, false);
+    }
+
+    /** Approval may shorten a fact, but may not introduce any text or change its provenance. */
+    @Transactional
+    public Memory saveApprovedExcerpt(String owner, String runId, MemoryCandidate.Candidate candidate, boolean requireRunning) {
+        return saveApproved(owner, runId, candidate, requireRunning, true);
+    }
+
+    private Memory saveApproved(String owner, String runId, MemoryCandidate.Candidate candidate, boolean requireRunning, boolean excerpt) {
         lock(owner);
         if (!enabled(owner)) throw conflict("长期记忆已关闭，未保存");
         var sources = jdbc.queryForList("""
@@ -138,7 +148,9 @@ public class UserMemoryService {
         if (sources.isEmpty()) throw conflict("运行已结束，未保存记忆");
         var row = sources.get(0);
         var grounded = MemoryCandidate.extract((String) row.get("plain_text"));
-        if (!candidate.equals(grounded)) throw invalid("记忆必须来自本轮用户原话");
+        if (!candidate.equals(grounded) && !(excerpt && grounded != null
+                && grounded.kind() == candidate.kind() && grounded.source() == candidate.source()
+                && grounded.fact().contains(candidate.fact()))) throw invalid("记忆必须来自本轮用户原话");
         return insert(owner, new Draft(candidate.kind(), candidate.fact()), candidate.source(),
                 (String) row.get("conversation_id"), (String) row.get("user_message_id"));
     }

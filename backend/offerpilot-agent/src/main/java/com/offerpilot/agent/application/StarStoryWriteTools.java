@@ -36,7 +36,7 @@ public class StarStoryWriteTools {
                 || session.codePointCount(0, session.length()) > 80) throw invalid();
         if (!(args.get("questionIndex") instanceof Number n)) throw invalid();
         int index = n.intValue();
-        if (index < 0 || index > 4 || (args.get("questionIndex") instanceof Double d && d != Math.rint(d))) throw invalid();
+        if (index < 0 || index > 4 || (!Double.isFinite(n.doubleValue()) || n.doubleValue() != index)) throw invalid();
     }
 
     private static BusinessException invalid() {

@@ -118,10 +118,20 @@ public sealed interface AgentEvent permits
             String name,
             Object args,
             String source,
-            ToolAccess access
+            ToolAccess access,
+            String serverName
     ) implements AgentEvent {
+        public ToolCall(String type, int id, String runId, Instant ts, String stepId, String toolCallId,
+                        String name, Object args, String source, ToolAccess access) {
+            this(type, id, runId, ts, stepId, toolCallId, name, args, source, access, null);
+        }
         public ToolCall {
             type = "tool.call";
+            args = ToolEventData.safe(args);
+            if (source != null && source.startsWith("mcp:")) {
+                serverName = source.substring(4);
+                source = "MCP";
+            } else if ("local".equalsIgnoreCase(source)) source = "LOCAL";
         }
     }
 
@@ -136,10 +146,27 @@ public sealed interface AgentEvent permits
             boolean ok,
             String resultPreview,
             int durationMs,
-            boolean truncated
+            boolean truncated,
+            Object result,
+            String source,
+            String serverName
     ) implements AgentEvent {
+        public ToolResult(String type, int id, String runId, Instant ts, String stepId, String toolCallId,
+                          String name, boolean ok, String resultPreview, int durationMs, boolean truncated, Object result) {
+            this(type, id, runId, ts, stepId, toolCallId, name, ok, resultPreview, durationMs, truncated, result,
+                    "search_jobs".equals(name) ? "MCP" : "LOCAL", "search_jobs".equals(name) ? "jobs-mcp" : null);
+        }
+        public ToolResult(String type, int id, String runId, Instant ts, String stepId, String toolCallId,
+                          String name, boolean ok, String resultPreview, int durationMs, boolean truncated) {
+            this(type, id, runId, ts, stepId, toolCallId, name, ok, resultPreview, durationMs, truncated,
+                    java.util.Map.of("summary", resultPreview == null ? "" : resultPreview));
+        }
         public ToolResult {
             type = "tool.result";
+            resultPreview = ToolEventData.text(resultPreview);
+            result = ToolEventData.safe(result);
+            if (result instanceof com.fasterxml.jackson.databind.JsonNode node && node.path("truncated").asBoolean()) truncated = true;
+            if (result instanceof java.util.Map<?, ?> map && Boolean.TRUE.equals(map.get("truncated"))) truncated = true;
         }
     }
 

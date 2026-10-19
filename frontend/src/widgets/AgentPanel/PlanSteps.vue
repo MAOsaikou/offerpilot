@@ -36,7 +36,13 @@ const dotOf: Record<StepStatus, string> = {
     </p>
 
     <ol class="space-y-2">
-      <li v-for="step in steps" :key="step.id" class="flex gap-2.5">
+      <li
+        v-for="step in steps"
+        :key="step.id"
+        class="flex gap-2.5 rounded p-2"
+        :aria-current="step.status === 'RUNNING' ? 'step' : undefined"
+        :class="step.status === 'RUNNING' ? 'bg-primary/10 ring-1 ring-primary/40' : ''"
+      >
         <span class="mt-1.5 flex size-2 shrink-0">
           <span class="size-2 rounded-full" :class="dotOf[step.status]" />
         </span>

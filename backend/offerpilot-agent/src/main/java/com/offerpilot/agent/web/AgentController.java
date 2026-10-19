@@ -58,6 +58,13 @@ public class AgentController {
         return stream(relay.resume(users.require(http.getHeader("Authorization")), id, from), response);
     }
 
+    /** Finite persisted workbench snapshot, also available after relay retention/restart. */
+    @GetMapping("/runs/{id}/workbench")
+    public ApiResponse<java.util.List<AgentEvent>> workbench(@PathVariable String id, HttpServletRequest http) {
+        return ApiResponse.ok(relay.history(users.require(http.getHeader("Authorization")), id),
+                com.offerpilot.common.web.TraceIdFilter.current(http));
+    }
+
     private static int parse(String lastEventId) {
         try { return lastEventId == null ? 0 : Integer.parseInt(lastEventId.trim()); }
         catch (NumberFormatException ex) { return 0; }

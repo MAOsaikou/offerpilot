@@ -344,7 +344,7 @@ class JobsHttpIntegrationTest {
             assertThat(card.path("cardType").asText()).isEqualTo("job_card");
             assertThat(card.path("payload").path("meta").path("skipped")).hasSize(1);
             assertThat(card.path("payload").path("criteria").path("site").asText()).isEqualTo("fixture");
-            assertThat(response.body()).contains("mcp:jobs-mcp").doesNotContain("placeholder.JOB");
+            assertThat(response.body()).contains("\"source\":\"MCP\"", "\"serverName\":\"jobs-mcp\"").doesNotContain("placeholder.JOB");
             String conv=events.get(0).path("conversationId").asText();
             var messages=data(request("GET","/conversations/"+conv+"/messages",token,null)).path("items");
             assertThat(messages.toString()).contains(card.path("cardId").asText(),"job_card");

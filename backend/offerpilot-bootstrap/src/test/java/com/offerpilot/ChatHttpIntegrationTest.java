@@ -544,7 +544,7 @@ class ChatHttpIntegrationTest {
                     }
                     assertThat(approval).isNotNull();
                     assertThat(approval.path("name").asText()).isEqualTo(action);
-                    assertThat(approval.path("editableFields")).isEmpty();
+                    assertThat(approval.path("editableFields")).isEqualTo(json.valueToTree(action.equals("startInterview") ? java.util.List.of("role", "kind") : action.equals("continueInterview") ? java.util.List.of("answer", "nextQuestion") : java.util.List.of()));
                     assertThat(json.readTree(request("GET", "/interviews", token, null).body()).path("data")).isEqualTo(beforeData);
                     String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
                     assertThat(request("POST", path, stranger, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
@@ -686,7 +686,7 @@ class ChatHttpIntegrationTest {
                 assertThat(approval).isNotNull();
                 assertThat(approval.path("name").asText()).isEqualTo("setCareerTarget");
                 assertThat(approval.path("args").path("name").asText()).isEqualTo(occupationName);
-                assertThat(approval.path("editableFields")).isEmpty();
+                assertThat(approval.path("editableFields")).isEqualTo(json.valueToTree(java.util.List.of("name")));
                 var before = json.readTree(request("GET", "/career/profile", token, null).body()).path("data");
                 assertThat(before.path("target").asText()).isEqualTo("原目标");
                 String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
@@ -881,12 +881,12 @@ class ChatHttpIntegrationTest {
                 }
                 assertThat(approval).isNotNull();
                 assertThat(approval.path("name").asText()).isEqualTo("adoptGrowthPlan");
-                assertThat(approval.path("editableFields")).isEmpty();
+                assertThat(approval.path("editableFields")).isEqualTo(json.valueToTree(java.util.List.of("taskTitles")));
                 assertThat(approval.path("args").path("taskTitles")).isEqualTo(json.valueToTree(java.util.List.of(titles.get(1))));
                 assertThat(jdbc.queryForObject("SELECT count(*) FROM growth_task_completions WHERE user_id=?", Integer.class, user)).isEqualTo(1);
                 String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
                 assertThat(request("POST", path, stranger, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
-                assertThat(request("POST", path, token, json.writeValueAsString(java.util.Map.of("decision", "APPROVE", "args", java.util.Map.of("taskTitles", java.util.List.of(titles.get(2)))))).statusCode()).isEqualTo(400);
+                assertThat(request("POST", path, token, json.writeValueAsString(java.util.Map.of("decision", "APPROVE", "args", java.util.Map.of("taskTitles", java.util.List.of("不在目录内的任务"))))).statusCode()).isEqualTo(400);
                 if (decision.equals("APPROVE")) {
                     // A checklist change made while waiting must be preserved by the eventual merge.
                     assertThat(request("PUT", "/career/tasks", token, json.writeValueAsString(java.util.Map.of("completed", java.util.List.of(titles.get(0), titles.get(2))))).statusCode()).isEqualTo(200);
@@ -959,13 +959,13 @@ class ChatHttpIntegrationTest {
                 }
                 assertThat(writeCalled).isTrue();
                 assertThat(approval).isNotNull();
-                assertThat(approval.path("editableFields")).isEmpty();
+                assertThat(approval.path("editableFields")).isEqualTo(json.valueToTree(java.util.List.of("accepted", "edited", "confirmed")));
                 assertThat(approval.path("args").path("owner").isMissingNode()).isTrue();
                 assertThat(patchService.get(user, resumeId, versionId, batch.batchId()).appliedVersionId()).isNull();
                 assertThat(jdbc.queryForObject("SELECT count(*) FROM resume_versions WHERE resume_id=?", Integer.class, resumeId)).isEqualTo(1);
                 String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
                 assertThat(request("POST", path, stranger, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
-                assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\",\"args\":{\"accepted\":[]}}").statusCode()).isEqualTo(400);
+                assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\",\"args\":{\"accepted\":[\"p2\"]}}").statusCode()).isEqualTo(400);
                 assertThat(request("POST", path, token, json.writeValueAsString(java.util.Map.of("decision", decision))).statusCode()).isEqualTo(200);
                 var rest = sseEvents(reader.lines().collect(java.util.stream.Collectors.joining("\n")));
                 assertThat(rest).anySatisfy(event -> {

@@ -30,14 +30,24 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @Component
 public class RunRelay {
+    private final WorkbenchEvents history;
     private final Duration grace;
     private final Duration retention;
     private final Map<String, Run> runs = new ConcurrentHashMap<>();
 
+    public RunRelay(Duration grace, Duration retention) { this(grace, retention, (WorkbenchEvents) null); }
+
+    @org.springframework.beans.factory.annotation.Autowired
     public RunRelay(@Value("${offerpilot.agent.reconnect-grace:PT30S}") Duration grace,
-                    @Value("${offerpilot.agent.replay-retention:PT2M}") Duration retention) {
+                    @Value("${offerpilot.agent.replay-retention:PT2M}") Duration retention,
+                    org.springframework.beans.factory.ObjectProvider<WorkbenchEvents> history) {
+        this(grace, retention, history.getIfAvailable());
+    }
+
+    public RunRelay(Duration grace, Duration retention, WorkbenchEvents history) {
         this.grace = grace;
         this.retention = retention;
+        this.history = history;
     }
 
     private final class Run {
@@ -88,7 +98,9 @@ public class RunRelay {
         // Attach the first viewer before the source runs so the grace timer only starts after a real disconnect.
         Flux<AgentEvent> first = run.view(0);
         run.viewers.incrementAndGet();
-        run.upstream.update(source
+        Flux<AgentEvent> recorded = history == null ? source : source
+                .publishOn(reactor.core.scheduler.Schedulers.boundedElastic(), 1).doOnNext(history::append);
+        run.upstream.update(recorded
                 .doOnNext(event -> {
                     if (run.runId == null) {
                         run.runId = event.runId();
@@ -108,6 +120,11 @@ public class RunRelay {
         Run run = runs.get(runId);
         if (run == null || !Objects.equals(run.owner, owner)) throw new BusinessException(ErrorCode.RUN_NOT_FOUND);
         return run.view(Math.max(after, 0));
+    }
+
+    public java.util.List<AgentEvent> history(String owner, String runId) {
+        if (history == null) throw new BusinessException(ErrorCode.RUN_NOT_FOUND);
+        return history.read(owner, runId);
     }
 
     int tracked() { return runs.size(); }

@@ -37,7 +37,7 @@ public class DetachedApprovals {
     static boolean durable(String action) { return BoardWriteTools.ACTIONS.contains(action) || AGENT_ACTIONS.contains(action); }
 
     public record Pending(String id, String runId, String action, Map<String, Object> args, Instant expiresAt, Instant createdAt,
-                          String company, String title, String currentStatus, String summary) {}
+                          String company, String title, String currentStatus, String summary, List<String> editableFields) {}
     public record Result(String decision, boolean applied, Object application, String summary) {}
 
     /** Write services for the non-board tools, grouped to keep the constructor readable. */
@@ -84,7 +84,7 @@ public class DetachedApprovals {
             applications.list(owner).forEach(app -> board.put(app.id(), app));
         return rows.stream().map(row -> {
             if (!BoardWriteTools.ACTIONS.contains(row.action()))
-                return new Pending(row.id(), row.runId(), row.action(), row.args(), row.expiresAt(), row.createdAt(), null, null, null, summary(row.action(), row.args()));
+                return new Pending(row.id(), row.runId(), row.action(), row.args(), row.expiresAt(), row.createdAt(), null, null, null, summary(row.action(), row.args()), ApprovalService.editableFields(row.action()));
             String company = null, title = null, status = null;
             if ("createApplication".equals(row.action())) {
                 try {
@@ -100,7 +100,7 @@ public class DetachedApprovals {
                     status = app.status();
                 }
             }
-            return new Pending(row.id(), row.runId(), row.action(), row.args(), row.expiresAt(), row.createdAt(), company, title, status, null);
+            return new Pending(row.id(), row.runId(), row.action(), row.args(), row.expiresAt(), row.createdAt(), company, title, status, null, ApprovalService.editableFields(row.action()));
         }).toList();
     }
 
@@ -130,12 +130,12 @@ public class DetachedApprovals {
         // Still waiting in an open chat stream: decide there so the conversation continues normally.
         var live = approvals.resolveLive(owner, row.runId(), approvalId, body);
         if (live != null) return new Result(live.decision(), false, null, null);
-        var finalArgs = ApprovalService.merge(row.action(), row.args(), body);
+        var finalArgs = approvals.mergeForDecision(row.action(), row.args(), body);
         boolean approve = "APPROVE".equals(body.decision());
         return tx.execute(status -> {
             if (!store.claim(approvalId, owner, approve ? "APPROVED" : "REJECTED", finalArgs, body.reason()))
                 throw new BusinessException(ErrorCode.APPROVAL_EXPIRED, "审批已处理或已超时");
-            if (!approve) return new Result("REJECT", false, null, null);
+            if (!approve) return new Result("REJECT", false, null, "已拒绝，本次操作未执行。" + ApprovalService.alternative(row.action(), finalArgs));
             if (BoardWriteTools.ACTIONS.contains(row.action())) {
                 var card = BoardWriteTools.apply(applications, owner, row.runId(), row.action(), finalArgs, row.runId() + "_" + approvalId).cards().get(0);
                 return new Result("APPROVE", true, ((Map<?, ?>) card.payload()).get("application"), null);
@@ -183,7 +183,7 @@ public class DetachedApprovals {
                 // Still grounded on the run's own user message; only the "run still streaming" requirement is lifted.
                 var candidate = new MemoryCandidate.Candidate(UserMemoryService.Kind.valueOf((String) args.get("kind")),
                         (String) args.get("fact"), UserMemoryService.Source.valueOf((String) args.get("source")));
-                writers.memories.saveApproved(owner, runId, candidate, false);
+                writers.memories.saveApprovedExcerpt(owner, runId, candidate, false);
                 return "记忆已保存，可在设置中管理。";
             }
             default -> throw new BusinessException(ErrorCode.VALIDATION_FAILED, "不支持的审批操作");
