@@ -18,6 +18,14 @@ QUESTIONS = [
     "Redis 缓存击穿是什么？一句话解释。",
 ]
 
+# Whole-request advice questions that previously waited for planner + resume action + reply.
+RESUME_QUESTIONS = [
+    "简历里的项目经历怎么写更有说服力？给两条要点。",
+    "简历里的项目经历怎么写？给两条建议。",
+    "简历中的实习经历如何写？给两条要点。",
+    "简历的工作经历应该怎么写更好？给两条建议。",
+]
+
 
 def post(url, body=None, token=None, accept="application/json"):
     headers = {"Content-Type": "application/json", "Accept": accept}
@@ -63,10 +71,12 @@ def main():
     parser.add_argument("--runs", type=int, default=20)
     parser.add_argument("--mode", default="AUTO")
     parser.add_argument("--pause", type=float, default=1.0)
+    parser.add_argument("--question-set", choices=("mixed", "resume"), default="mixed")
     args = parser.parse_args()
+    questions = RESUME_QUESTIONS if args.question_set == "resume" else QUESTIONS
     rows = []
     for i in range(args.runs):
-        marks = one(args.base, args.mode, QUESTIONS[i % len(QUESTIONS)])
+        marks = one(args.base, args.mode, questions[i % len(questions)])
         rows.append(marks)
         print(json.dumps({"run": i + 1, **{k: (round(v, 3) if isinstance(v, float) else v) for k, v in marks.items()}}, ensure_ascii=False))
         time.sleep(args.pause)
@@ -75,7 +85,9 @@ def main():
         values = [r[key] for r in rows if key in r]
         summary[key] = {"n": len(values), "p50": round(statistics.median(values), 3) if values else None,
                         "p95": round(pct(values, 95), 3) if values else None, "max": round(max(values), 3) if values else None}
-    print(json.dumps({"mode": args.mode, "summary": summary}, ensure_ascii=False))
+    print(json.dumps({"mode": args.mode, "question_set": args.question_set,
+                      "completed": sum(r.get("status") == "run.completed" for r in rows),
+                      "errors": sum(r.get("status") == "error" for r in rows), "summary": summary}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

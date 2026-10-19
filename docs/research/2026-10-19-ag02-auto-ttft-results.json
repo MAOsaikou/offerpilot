@@ -1,0 +1,213 @@
+{
+  "date": "2026-10-19",
+  "code_commit": "fce547f",
+  "base_commit": "f931d7d",
+  "method": "HTTP POST /api/v1/agent/chat to first real text.delta; fresh guest each turn; no warmup or retries",
+  "model_tier": "FLASH",
+  "model": "deepseek-flash",
+  "provider": "deepseek",
+  "thinking": "disabled",
+  "provider_host": "api.deepseek.com",
+  "environment": {
+    "profile": "test",
+    "injection_classifier_enabled": true,
+    "speculative_reply": true,
+    "database": "isolated local PostgreSQL 17 / pgvector",
+    "embedding": "none used; local bge-m3 config retained",
+    "auth_guest_per_minute": 60,
+    "history": false,
+    "selected_context": false,
+    "images": false
+  },
+  "questions": [
+    "简历里的项目经历怎么写更有说服力？给两条要点。",
+    "简历里的项目经历怎么写？给两条建议。",
+    "简历中的实习经历如何写？给两条要点。",
+    "简历的工作经历应该怎么写更好？给两条建议。"
+  ],
+  "order": [
+    "fast",
+    "control"
+  ],
+  "limitations": [
+    "12 fast vs 4 control; non-interleaved; one machine and time window; P95 is sample maximum",
+    "includes default SC-01 classifier; historical night-1016 figures are not a same-configuration control",
+    "no mixed AUTO, history, resources, images, business actions or concurrent load; classifier overhead not separately measured"
+  ],
+  "samples": {
+    "fast": {
+      "resume_advice_fast_path": true,
+      "rows": [
+        {
+          "run": 1,
+          "started": 0.179,
+          "first": 3.064,
+          "total": 4.687,
+          "status": "run.completed"
+        },
+        {
+          "run": 2,
+          "started": 0.013,
+          "first": 2.434,
+          "total": 3.971,
+          "status": "run.completed"
+        },
+        {
+          "run": 3,
+          "started": 0.013,
+          "first": 2.472,
+          "total": 3.926,
+          "status": "run.completed"
+        },
+        {
+          "run": 4,
+          "started": 0.014,
+          "first": 2.329,
+          "total": 3.562,
+          "status": "run.completed"
+        },
+        {
+          "run": 5,
+          "started": 0.014,
+          "first": 3.386,
+          "total": 4.036,
+          "status": "run.completed"
+        },
+        {
+          "run": 6,
+          "started": 0.01,
+          "first": 2.56,
+          "total": 3.885,
+          "status": "run.completed"
+        },
+        {
+          "run": 7,
+          "started": 0.011,
+          "first": 2.581,
+          "total": 3.899,
+          "status": "run.completed"
+        },
+        {
+          "run": 8,
+          "started": 0.013,
+          "first": 2.797,
+          "total": 5.164,
+          "status": "run.completed"
+        },
+        {
+          "run": 9,
+          "started": 0.012,
+          "first": 2.782,
+          "total": 4.752,
+          "status": "run.completed"
+        },
+        {
+          "run": 10,
+          "started": 0.013,
+          "first": 2.182,
+          "total": 3.439,
+          "status": "run.completed"
+        },
+        {
+          "run": 11,
+          "started": 0.009,
+          "first": 2.404,
+          "total": 3.519,
+          "status": "run.completed"
+        },
+        {
+          "run": 12,
+          "started": 0.009,
+          "first": 2.381,
+          "total": 3.969,
+          "status": "run.completed"
+        }
+      ],
+      "report": {
+        "mode": "AUTO",
+        "question_set": "resume",
+        "completed": 12,
+        "errors": 0,
+        "summary": {
+          "started": {
+            "n": 12,
+            "p50": 0.013,
+            "p95": 0.179,
+            "max": 0.179
+          },
+          "first": {
+            "n": 12,
+            "p50": 2.516,
+            "p95": 3.386,
+            "max": 3.386
+          },
+          "total": {
+            "n": 12,
+            "p50": 3.948,
+            "p95": 5.164,
+            "max": 5.164
+          }
+        }
+      }
+    },
+    "control": {
+      "resume_advice_fast_path": false,
+      "rows": [
+        {
+          "run": 1,
+          "started": 0.192,
+          "first": 6.703,
+          "total": 8.051,
+          "status": "run.completed"
+        },
+        {
+          "run": 2,
+          "started": 0.015,
+          "first": 6.709,
+          "total": 8.418,
+          "status": "run.completed"
+        },
+        {
+          "run": 3,
+          "started": 0.015,
+          "first": 5.987,
+          "total": 7.152,
+          "status": "run.completed"
+        },
+        {
+          "run": 4,
+          "started": 0.012,
+          "first": 6.559,
+          "total": 8.217,
+          "status": "run.completed"
+        }
+      ],
+      "report": {
+        "mode": "AUTO",
+        "question_set": "resume",
+        "completed": 4,
+        "errors": 0,
+        "summary": {
+          "started": {
+            "n": 4,
+            "p50": 0.015,
+            "p95": 0.192,
+            "max": 0.192
+          },
+          "first": {
+            "n": 4,
+            "p50": 6.631,
+            "p95": 6.709,
+            "max": 6.709
+          },
+          "total": {
+            "n": 4,
+            "p50": 8.134,
+            "p95": 8.418,
+            "max": 8.418
+          }
+        }
+      }
+    }
+  }
+}
