@@ -24,6 +24,7 @@ class LlmQuotaGatewayTest {
     HttpServer provider;
     AtomicInteger calls = new AtomicInteger();
     AtomicBoolean reportUsage = new AtomicBoolean(true);
+    MockEnvironment environment;
     ModelGateway gateway;
     LlmQuotaLimiter limiter;
     @BeforeEach void setup() throws Exception {
@@ -57,7 +58,7 @@ class LlmQuotaGatewayTest {
         Clock clock = Clock.fixed(Instant.parse("2026-10-09T12:00:30Z"), ZoneOffset.UTC);
         limiter = new LlmQuotaLimiter(owner -> new LlmQuotaIdentity.Policy(owner.startsWith("guest"), owner.startsWith("guest") ? 12 : 100),
                 new MemoryLlmUsageStore(clock), limits, clock);
-        var environment = new MockEnvironment().withProperty("offerpilot.llm.providers.custom.api-key", "isolated-stub-key")
+        environment = new MockEnvironment().withProperty("offerpilot.llm.injection-classifier-enabled", "false").withProperty("offerpilot.llm.providers.custom.api-key", "isolated-stub-key")
                 .withProperty("offerpilot.llm.providers.custom.base-url", "http://127.0.0.1:" + provider.getAddress().getPort());
         gateway = new ModelGateway(properties, environment, limiter);
     }
@@ -103,6 +104,14 @@ class LlmQuotaGatewayTest {
         for (int i = 0; i < 3; i++) gateway.stream(ModelTier.PRO, List.of(new UserMessage("eval"))).collectList().block();
         gateway.chatModel(ModelTier.PRO).call(new Prompt("eval"));
         assertThat(calls.get()).isEqualTo(6);
+    }
+    @Test void classifierUsesVerifiedReactiveOwnerAndRecordsUsageEvenWhenJsonIsInvalid() {
+        environment.withProperty("offerpilot.llm.injection-classifier-enabled", "true");
+        stream("guest");
+        assertThat(calls.get()).isEqualTo(2); // classifier + normal chat, never recursive
+        assertThat(catchThrowableOfType(() -> limiter.check("guest", ModelTier.FLASH, false), BusinessException.class)
+                .errorCode()).isEqualTo(ErrorCode.DAILY_QUOTA_EXCEEDED);
+        limiter.check("another-user", ModelTier.FLASH, false);
     }
     @RestController static class Probe {
         final ModelGateway gateway;

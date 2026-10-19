@@ -58,10 +58,65 @@ public class ModelGateway {
         return piiMaskingEnabled(owner) ? com.offerpilot.llm.privacy.PiiMasker.forPrompt(prompt) : null;
     }
     private Flux<ChatResponse> protectedStream(String owner, Prompt prompt, java.util.function.Function<Prompt, Flux<ChatResponse>> provider) {
-        prompt = com.offerpilot.llm.privacy.ModelInputBoundary.apply(prompt);
+        prompt = inputBoundary(owner, prompt);
         var session = masking(owner, prompt);
         return moderation().guard(session == null ? provider.apply(prompt) : session.restore(provider.apply(session.mask(prompt))));
     }
+    private final com.offerpilot.llm.safety.PromptInjectionClassifier injectionClassifier =
+            new com.offerpilot.llm.safety.PromptInjectionClassifier(this::classifyInjection);
+    private volatile ChatModel injectionModel;
+
+    /** Same SC-01 screen for gateway inputs and import notices; owner comes from verified application context. */
+    public List<String> detectInjection(String text) {
+        return detectInjection(text, com.offerpilot.llm.safety.PromptInjectionClassifier.TIMEOUT);
+    }
+
+    private List<String> detectInjection(String text, java.time.Duration budget) {
+        if (!environment.getProperty("offerpilot.llm.injection-classifier-enabled", Boolean.class, true))
+            return com.offerpilot.llm.safety.PromptInjectionDetector.detect(text);
+        return injectionClassifier.detect(text, budget);
+    }
+
+    private Prompt inputBoundary(String owner, Prompt prompt) {
+        long deadline = System.nanoTime() + com.offerpilot.llm.safety.PromptInjectionClassifier.TIMEOUT.toNanos();
+        return com.offerpilot.llm.privacy.ModelInputBoundary.apply(prompt, text -> LlmUserContext.asUser(owner,
+                () -> detectInjection(text, java.time.Duration.ofNanos(deadline - System.nanoTime()))));
+    }
+
+    /** Dedicated provider entry: no input screening recursion, no tools, no retry, fixed FLASH budget. */
+    protected reactor.core.publisher.Mono<String> classifyInjection(Prompt prompt) {
+        requireAvailable(ModelTier.FLASH, false);
+        var admission = admit(LlmUserContext.current(), ModelTier.FLASH);
+        var session = masking(LlmUserContext.current(), prompt);
+        var outbound = session == null ? prompt : session.mask(prompt);
+        AtomicLong usage = new AtomicLong();
+        return injectionModel().stream(outbound)
+                .doOnNext(response -> usage.accumulateAndGet(tokens(response), Math::max))
+                .map(response -> response.getResult() == null || response.getResult().getOutput().getText() == null
+                        ? "" : response.getResult().getOutput().getText())
+                .reduce(new StringBuilder(), (body, part) -> {
+                    if (body.length() + part.length() > 2048) throw new IllegalArgumentException("Classifier output limit");
+                    return body.append(part);
+                }).map(StringBuilder::toString)
+                .doFinally(signal -> record(admission, usage.get()));
+    }
+
+    private synchronized ChatModel injectionModel() {
+        if (injectionModel == null) {
+            var retry = new RetryTemplate();
+            retry.setRetryPolicy(new org.springframework.retry.policy.NeverRetryPolicy());
+            var support = new DeepSeekRequestSupport("disabled", com.offerpilot.llm.safety.PromptInjectionClassifier.TIMEOUT);
+            var api = org.springframework.ai.openai.api.OpenAiApi.builder().baseUrl(baseUrl(ModelTier.FLASH))
+                    .apiKey(apiKey(ModelTier.FLASH)).completionsPath(completionsPath(ModelTier.FLASH));
+            if ("deepseek".equalsIgnoreCase(configuration(ModelTier.FLASH).provider()))
+                api.restClientBuilder(support.restClient()).webClientBuilder(support.webClient());
+            injectionModel = OpenAiChatModel.builder().openAiApi(api.build()).retryTemplate(retry)
+                    .observationRegistry(observations).defaultOptions(OpenAiChatOptions.builder()
+                            .model(modelName(ModelTier.FLASH)).temperature(0.0).maxTokens(160).streamUsage(true).build()).build();
+        }
+        return injectionModel;
+    }
+
     private volatile com.offerpilot.llm.safety.OutputModeration moderation;
     /** Built lazily from the configured provider keys and JWT secret; their values are never logged. */
     com.offerpilot.llm.safety.OutputModeration moderation() {
@@ -125,7 +180,7 @@ public class ModelGateway {
             @Override public ChatResponse call(Prompt prompt) {
                 String owner = LlmUserContext.current() == null ? capturedOwner : LlmUserContext.current();
                 var admission = admit(owner, tier);
-                prompt = com.offerpilot.llm.privacy.ModelInputBoundary.apply(prompt);
+                prompt = inputBoundary(owner, prompt);
                 var session = masking(owner, prompt);
                 ChatResponse response = delegate.call(session == null ? prompt : session.mask(prompt));
                 if (session != null) response = session.restore(response);
@@ -159,7 +214,7 @@ public class ModelGateway {
 
     public Flux<ChatResponse> stream(ModelTier tier, List<Message> messages, double temperature) {
         return guardedStream(tier, LlmUserContext.current(), owner -> {
-            var rawPrompt = com.offerpilot.llm.privacy.ModelInputBoundary.apply(new Prompt(messages));
+            var rawPrompt = inputBoundary(owner, new Prompt(messages));
             var session = masking(owner, rawPrompt);
             List<Message> outbound = session == null ? rawPrompt.getInstructions() : session.mask(rawPrompt).getInstructions();
             // Spring AI 1.0 的 DeepSeek 适配器不处理图片；图文请求使用同一供应商的兼容接口。

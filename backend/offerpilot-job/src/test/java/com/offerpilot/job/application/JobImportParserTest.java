@@ -75,6 +75,17 @@ class JobImportParserTest {
         assertThat(parser.ground("not json", SOURCE, rules)).isNull();
     }
 
+    @Test void importNoticesUseTheSameClassifierAndVerifiedOwner() {
+        var gateway = mock(ModelGateway.class);
+        org.mockito.Mockito.when(gateway.detectInjection(SOURCE)).thenAnswer(call -> {
+            assertThat(com.offerpilot.llm.quota.LlmUserContext.current()).isEqualTo("owner");
+            return java.util.List.of("INDIRECT_INSTRUCTION");
+        });
+        var service = new JobImportService(parser, mock(JobPageFetcher.class), mock(org.springframework.jdbc.core.JdbcTemplate.class),
+                new ObjectMapper(), mock(JobService.class), gateway);
+        assertThat(service.parse("owner", SOURCE, null).securityNotices()).containsExactly("写给 AI 的隐藏指令");
+    }
+
     @Test void pageFetcherRejectsNonPublicTargets() throws Exception {
         for (String ip : new String[]{"127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "::ffff:127.0.0.1"})
             assertThat(JobPageFetcher.isPublic(InetAddress.getByName(ip))).as(ip).isFalse();
