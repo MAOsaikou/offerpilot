@@ -160,6 +160,19 @@ async function onSend(content: string, images: ChatImage[] = []) {
       }
     }
     const submittedMode = mode.value
+    const rerankContext =
+      submittedMode === 'CAREER_DISCOVERY' && route.query.careerAction === 'rerankCareers'
+        ? {
+            careerAction: 'rerankCareers',
+            revisionId: route.query.revisionId,
+            city: typeof route.query.city === 'string' ? route.query.city : '',
+            ...(typeof route.query.minSalaryK === 'string' && route.query.minSalaryK
+              ? { minSalaryK: Number(route.query.minSalaryK) }
+              : {}),
+            avoidOvertime: route.query.avoidOvertime === 'true',
+            research: route.query.research === 'true',
+          }
+        : undefined
     const matchAction = matchingSelection.value
     const interviewAction =
       submittedMode === 'INTERVIEWER' && route.query.interviewAction === 'recallStarStories'
@@ -184,6 +197,19 @@ async function onSend(content: string, images: ChatImage[] = []) {
     context = optimizationContext(viewMessages.value, context)
     // Consume the selected action once; keep resource IDs for ordinary follow-up questions.
     if (route.query.jobAction === 'match') await clearMatchAction()
+    if (rerankContext) {
+      const query = { ...route.query }
+      for (const key of [
+        'careerAction',
+        'revisionId',
+        'city',
+        'minSalaryK',
+        'avoidOvertime',
+        'research',
+      ])
+        delete query[key]
+      await router.replace({ path: route.path, query })
+    }
     if (interviewAction) {
       const query = { ...route.query }
       delete query.interviewAction
@@ -202,13 +228,15 @@ async function onSend(content: string, images: ChatImage[] = []) {
         const query = Object.keys(context).length ? { ...context, mode: submittedMode } : {}
         void router.replace({ path: `/chat/${encodeURIComponent(id)}`, query })
       },
-      matchAction
-        ? { ...context, jobAction: 'match' }
-        : interviewAction
-          ? { ...context, interviewAction }
-          : Object.keys(context).length
-            ? context
-            : undefined,
+      rerankContext
+        ? rerankContext
+        : matchAction
+          ? { ...context, jobAction: 'match' }
+          : interviewAction
+            ? { ...context, interviewAction }
+            : Object.keys(context).length
+              ? context
+              : undefined,
       images,
     )
     await nextTick()

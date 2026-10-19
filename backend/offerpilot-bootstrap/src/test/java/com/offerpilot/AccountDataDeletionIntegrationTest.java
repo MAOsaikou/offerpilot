@@ -56,7 +56,7 @@ class AccountDataDeletionIntegrationTest {
     @SpyBean ResumeObjectStore storage;
     @LocalServerPort int port;
     static final ObjectMapper JSON = new ObjectMapper();
-    static final Set<String> DIRECT = Set.of("user_memories","user_preferences","refresh_tokens","user_integrations","guest_sessions","conversations","messages","agent_runs","approvals","files","resumes","resume_versions","resume_model_preferences","resume_diagnoses","resume_patch_batches","resume_optimizations","job_matches","applications","interview_sessions","star_stories","career_profiles","career_assessments","growth_task_completions","knowledge_notes","knowledge_note_imports","jobs");
+    static final Set<String> DIRECT = Set.of("user_memories","user_preferences","refresh_tokens","user_integrations","guest_sessions","conversations","messages","agent_runs","approvals","files","resumes","resume_versions","resume_model_preferences","resume_diagnoses","resume_patch_batches","resume_optimizations","job_matches","applications","interview_sessions","star_stories","career_profiles","career_recommendation_revisions","career_assessments","growth_task_completions","knowledge_notes","knowledge_note_imports","jobs");
     static final Map<String,String> INDIRECT = Map.of("application_events","application_id IN (SELECT id FROM applications WHERE user_id=?)", "agent_steps","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "tool_calls","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "agent_events","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "interview_answers","session_id IN (SELECT id FROM interview_sessions WHERE user_id=?)");
     HttpResponse<String> request(String path, String token, String body) throws Exception {
         var b = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1"+path)).timeout(Duration.ofSeconds(30));
@@ -97,6 +97,8 @@ class AccountDataDeletionIntegrationTest {
         jdbc.update("INSERT INTO interview_answers(session_id,question_index,question_text,answer_text) VALUES (?,0,'fictional','private')",o+"interview");
         jdbc.update("INSERT INTO star_stories(id,user_id,title,body,role,source_session_id,source_question_index,star_count,situation,task,action,result,normalized_body,tsv) VALUES (?,?,'fixture','private STAR body','开发',?,0,4,true,true,true,true,'private star body','')",o+"star",o,o+"interview");
         jdbc.update("INSERT INTO career_profiles(user_id,skills,major,courses,values_text) VALUES (?,'private','private major','private courses','private values')",o);
+        jdbc.update("INSERT INTO career_recommendation_revisions(id,user_id,snapshot) VALUES (?,?,'{}')",o+"revision",o);
+        jdbc.update("INSERT INTO career_recommendation_revisions(id,user_id,parent_id,snapshot) VALUES (?,?,?,'{}')",o+"revision-child",o,o+"revision");
         jdbc.update("INSERT INTO growth_task_completions(user_id,task_title) VALUES (?,'fixture')",o);
         jdbc.update("INSERT INTO career_assessments(user_id,answers) VALUES (?,'[\"private\"]'::jsonb)",o);
         jdbc.update("INSERT INTO knowledge_notes(id,user_id,title,content,category,tsv,embedding) VALUES (?,?,'fixture','private','技术积累','',?::vector)",o+"note",o,"["+String.join(",",Collections.nCopies(1024,"0.1"))+"]");

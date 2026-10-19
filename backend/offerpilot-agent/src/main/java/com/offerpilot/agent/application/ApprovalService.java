@@ -154,7 +154,7 @@ public class ApprovalService {
     }
 
     private static void validate(String action, Map<String, Object> args) {
-        if (CareerWriteTools.action(action)) CareerWriteTools.validate(args);
+        if (CareerWriteTools.action(action)) CareerWriteTools.validate(action, args);
         else if (InterviewWriteTools.action(action)) InterviewWriteTools.validate(action, args);
         else if (CoachWriteTools.action(action)) CoachWriteTools.validate(args);
         else if (ResumePatchWriteTools.action(action)) ResumePatchWriteTools.validate(args);
