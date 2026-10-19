@@ -30,6 +30,11 @@ public class Orchestrator {
         this.experts = experts;
     }
 
+    public boolean usesResumeAdviceFastPath(AgentMode mode, String content, List<Message> history,
+                                           Map<String, Object> context) {
+        return planner.usesResumeAdviceFastPath(mode, content, history, context);
+    }
+
     public Flux<AgentEvent> run(AgentMode mode, String content, List<Message> history, ModelTier tier,
                                String runId, AtomicInteger seq, List<Message> replyPrompt, Consumer<Usage> onUsage,
                                String owner, Map<String, Object> context) {

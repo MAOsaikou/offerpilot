@@ -102,6 +102,12 @@ springdoc:
     path: /v3/api-docs
 
 offerpilot:
+  agent:
+    # AUTO standalone resume-writing questions: skip planner/action models; keep expert + reply gateway.
+    # History, selected resources and any extra instructions use the normal planning path.
+    resume-advice-fast-path: ${AGENT_RESUME_ADVICE_FAST_PATH:true}
+    # Plain AUTO replies may overlap planning; disabled for images and the resume advice fast path.
+    speculative-reply: ${AGENT_SPECULATIVE_REPLY:true}
   knowledge:
     notes-embed:
       enabled: ${NOTES_EMBED_ENABLED:true}
