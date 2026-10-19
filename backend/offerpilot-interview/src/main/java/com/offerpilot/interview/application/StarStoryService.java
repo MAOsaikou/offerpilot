@@ -70,7 +70,7 @@ public class StarStoryService {
     /** Persist only after explicit UI/approval; re-read answer from DB and re-verify STAR. */
     @Transactional
     public Story saveFromSession(String owner, String sessionId, int questionIndex) {
-        if (questionIndex < 0 || questionIndex >= InterviewService.QUESTIONS.size()) throw invalid("题目序号无效");
+        if (questionIndex < 0 || questionIndex >= 15) throw invalid("题目序号无效");
         lockOwner(owner);
         var session = interviews.get(owner, sessionId);
         var answer = session.answers().stream().filter(a -> a.questionIndex() == questionIndex).findFirst()

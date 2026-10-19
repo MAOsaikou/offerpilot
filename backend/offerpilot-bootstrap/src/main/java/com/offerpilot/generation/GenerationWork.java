@@ -21,7 +21,7 @@ import java.util.function.Consumer;
 @Component
 public class GenerationWork {
     public static final Set<String> KINDS = Set.of("RESUME_DIAGNOSIS", "RESUME_OPTIMIZE", "JOB_MATCH",
-            "CAREER_ASSESSMENT", "CAREER_RECOMMENDATION", "INTERVIEW_FOLLOW_UP", "JOB_IMPORT");
+            "CAREER_ASSESSMENT", "CAREER_RECOMMENDATION", "INTERVIEW_FOLLOW_UP", "INTERVIEW_QUESTIONS", "INTERVIEW_SCORE", "INTERVIEW_REPORT", "JOB_IMPORT");
     private final ResumeDiagnosisService diagnoses;
     private final ResumeOptimizationService optimizations;
     private final JobMatchService matches;
@@ -31,6 +31,8 @@ public class GenerationWork {
     private final JobImportService imports;
     private final ResumeService resumes;
     private final JobService jobs;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.offerpilot.interview.application.InterviewGenerationService interviewGeneration;
     private final ObjectMapper json;
 
     public GenerationWork(ResumeDiagnosisService diagnoses, ResumeOptimizationService optimizations,
@@ -49,10 +51,11 @@ public class GenerationWork {
         switch (body.kind()) {
             case "RESUME_DIAGNOSIS", "RESUME_OPTIMIZE" -> resumes.version(owner, body.entityId(), required(input,"versionId"));
             case "JOB_MATCH" -> { jobs.get(owner,body.entityId()); resumes.version(owner,required(input,"resumeId"),required(input,"versionId")); }
-            case "INTERVIEW_FOLLOW_UP" -> {
+            case "INTERVIEW_QUESTIONS", "INTERVIEW_REPORT" -> interviews.get(owner, body.entityId());
+            case "INTERVIEW_SCORE", "INTERVIEW_FOLLOW_UP" -> {
                 interviews.get(owner, body.entityId());
                 if (!input.path("index").isIntegralNumber() || !input.path("index").canConvertToInt()
-                        || input.path("index").asInt()<0 || input.path("index").asInt()>9)
+                        || input.path("index").asInt()<0 || input.path("index").asInt()>=interviews.get(owner,body.entityId()).answers().size())
                     throw new BusinessException(ErrorCode.VALIDATION_FAILED);
             }
             case "CAREER_ASSESSMENT", "CAREER_RECOMMENDATION", "JOB_IMPORT" -> {
@@ -92,6 +95,9 @@ public class GenerationWork {
                 yield json.valueToTree(saved);
             }
             case "CAREER_RECOMMENDATION" -> json.valueToTree(careers.create(owner));
+            case "INTERVIEW_QUESTIONS" -> json.valueToTree(interviewGeneration.questions(owner,b.entityId()));
+            case "INTERVIEW_SCORE" -> json.valueToTree(interviewGeneration.score(owner,b.entityId(),i.path("index").asInt()));
+            case "INTERVIEW_REPORT" -> json.valueToTree(interviewGeneration.report(owner,b.entityId()));
             case "INTERVIEW_FOLLOW_UP" -> {
                 var saved=interviews.followUp(owner,b.entityId(),i.path("index").asInt());
                 if(saved.answers().get(i.path("index").asInt()).followUpQuestion()==null)
@@ -107,6 +113,7 @@ public class GenerationWork {
             case "RESUME_DIAGNOSIS" -> "简历诊断"; case "RESUME_OPTIMIZE" -> "简历定向改写";
             case "JOB_MATCH" -> "岗位匹配分析"; case "CAREER_ASSESSMENT" -> "职业画像推断";
             case "CAREER_RECOMMENDATION" -> "职业推荐"; case "INTERVIEW_FOLLOW_UP" -> "面试追问";
+            case "INTERVIEW_QUESTIONS" -> "面试题目生成"; case "INTERVIEW_SCORE" -> "面试逐题评价"; case "INTERVIEW_REPORT" -> "面试整体报告";
             case "JOB_IMPORT" -> "岗位导入解析"; default -> throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         };
     }
@@ -114,7 +121,7 @@ public class GenerationWork {
         return switch(b.kind()) {
             case "RESUME_DIAGNOSIS", "RESUME_OPTIMIZE" -> "/resumes/"+b.entityId()+"?tab="+(b.kind().equals("RESUME_DIAGNOSIS")?"diagnosis":"optimize");
             case "JOB_MATCH" -> "/jobs/"+b.entityId();
-            case "INTERVIEW_FOLLOW_UP" -> "/interviews/"+b.entityId();
+            case "INTERVIEW_FOLLOW_UP", "INTERVIEW_QUESTIONS", "INTERVIEW_SCORE", "INTERVIEW_REPORT" -> "/interviews/"+b.entityId();
             case "CAREER_ASSESSMENT" -> "/discover";
             case "CAREER_RECOMMENDATION" -> "/career";
             case "JOB_IMPORT" -> "/jobs";

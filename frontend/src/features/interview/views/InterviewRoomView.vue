@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
 
+import InterviewFeedback from '../components/InterviewFeedback.vue'
+import { questionTypeLabels, difficultyLabels } from '@/shared/types/interview'
 import InterviewReportPanel from '../components/InterviewReportPanel.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRoute } from 'vue-router'
@@ -10,6 +12,9 @@ import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import {
   getInterview,
+  generateInterviewQuestions,
+  scoreInterviewAnswer,
+  generateInterviewReport,
   requestInterviewFollowUp,
   saveInterviewAnswer,
   saveInterviewFollowUpAnswer,
@@ -36,6 +41,80 @@ const loadError = ref('')
 const notFound = ref(false)
 const error = ref('')
 const busy = ref(false)
+const generating = ref(false)
+const scoring = ref(false)
+const reporting = ref(false)
+const revealed = ref(false)
+const reportVersion = ref(0)
+const redesigned = computed(() => Boolean(session.value?.generationSource))
+const questionStarted = ref(Date.now())
+const questionSeconds = computed(() =>
+  Math.max(0, Math.floor((now.value - questionStarted.value) / 1000)),
+)
+watch(
+  () => session.value?.questionIndex,
+  () => {
+    questionStarted.value = Date.now()
+    revealed.value = false
+  },
+)
+async function generateQuestions() {
+  if (!session.value || generating.value) return
+  generating.value = true
+  error.value = ''
+  const version = revision
+  try {
+    await generateInterviewQuestions(session.value.id, controller.signal)
+    const saved = await getInterview(String(route.params.id), controller.signal)
+    if (version === revision) {
+      session.value = saved
+      syncDrafts()
+    }
+  } catch (cause) {
+    if (version === revision) error.value = (cause as Error).message
+  } finally {
+    if (version === revision) generating.value = false
+  }
+}
+async function scoreCurrent() {
+  if (!session.value || scoring.value || !(await persist())) return
+  scoring.value = true
+  error.value = ''
+  const version = revision
+  try {
+    await scoreInterviewAnswer(session.value.id, session.value.questionIndex, controller.signal)
+    const saved = await getInterview(String(route.params.id), controller.signal)
+    if (version === revision) {
+      session.value = saved
+      syncDrafts()
+      revealed.value = true
+    }
+  } catch (cause) {
+    if (version === revision) error.value = (cause as Error).message
+  } finally {
+    if (version === revision) scoring.value = false
+  }
+}
+async function finish() {
+  if (!(await persist(undefined, true)) || !session.value || !redesigned.value) return
+  await buildReport()
+}
+async function buildReport() {
+  if (!session.value || reporting.value) return
+  reporting.value = true
+  const version = revision
+  try {
+    await generateInterviewReport(session.value.id, controller.signal)
+    if (version === revision) {
+      reportVersion.value++
+      await cache.invalidateQueries({ queryKey: ['interview-report', session.value.id] })
+    }
+  } catch (cause) {
+    if (version === revision) error.value = (cause as Error).message
+  } finally {
+    if (version === revision) reporting.value = false
+  }
+}
 const starCandidates = ref<StarStoryCandidate[]>([])
 const starBusy = ref(false)
 const starMessage = ref('')
@@ -45,6 +124,12 @@ const exportBusy = ref(false)
 const exportError = ref('')
 const current = computed(() =>
   session.value?.answers.find((a) => a.questionIndex === session.value?.questionIndex),
+)
+watch(
+  () => current.value?.evaluation,
+  (evaluation) => {
+    if (evaluation) revealed.value = true
+  },
 )
 const hasFollowUp = computed(() => Boolean(current.value?.followUpQuestion))
 const followUpDirty = computed(
@@ -150,6 +235,10 @@ async function load() {
   controller = new AbortController()
   const requestRevision = ++revision
   loading.value = true
+  generating.value = false
+  scoring.value = false
+  reporting.value = false
+  revealed.value = false
   starCandidates.value = []
   starMessage.value = ''
   starError.value = ''
@@ -279,14 +368,18 @@ async function persist(questionIndex?: number, completed?: boolean): Promise<boo
 
 async function advance() {
   if (!session.value) return
-  if (session.value.questionIndex === session.value.answers.length - 1)
-    await persist(undefined, true)
+  if (session.value.questionIndex === session.value.answers.length - 1) await finish()
   else await persist(session.value.questionIndex + 1)
 }
 
 /** IV-02: first submit saves the answer and lets the interviewer follow up; the second moves on. */
 async function submit() {
   if (!session.value || !answer.value.trim()) return
+  if (redesigned.value) {
+    if (session.value.options?.feedbackMode === 'END') return advance()
+    if (!revealed.value || dirty.value) return scoreCurrent()
+    return advance()
+  }
   if (hasFollowUp.value) return advance()
   if (!(await persist())) return
   const requestRevision = revision
@@ -309,6 +402,26 @@ async function submit() {
   }
 }
 
+async function askFollowUp() {
+  if (!session.value || !(await persist())) return
+  const version = revision
+  askingFollowUp.value = true
+  try {
+    const saved = await requestInterviewFollowUp(
+      session.value.id,
+      session.value.questionIndex,
+      controller.signal,
+    )
+    if (version === revision) {
+      session.value = saved
+      syncDrafts()
+    }
+  } catch (cause) {
+    if (version === revision) error.value = (cause as Error).message
+  } finally {
+    if (version === revision) askingFollowUp.value = false
+  }
+}
 async function saveCandidate(candidate: StarStoryCandidate) {
   if (!session.value || starBusy.value || candidate.alreadySaved) return
   starBusy.value = true
@@ -351,8 +464,14 @@ async function restoreTask() {
   try {
     const saved = await getInterview(String(route.params.id))
     if (version === revision) {
+      const keepAnswer = dirty.value ? answer.value : undefined
+      const keepFollowUp = followUpDirty.value ? followUpDraft.value : undefined
       session.value = saved
       syncDrafts()
+      if (keepAnswer !== undefined) answer.value = keepAnswer
+      if (keepFollowUp !== undefined) followUpDraft.value = keepFollowUp
+      reportVersion.value++
+      void cache.invalidateQueries({ queryKey: ['interview-report', saved.id] })
     }
   } catch (cause) {
     if (version === revision) error.value = cause instanceof Error ? cause.message : '面试恢复失败'
@@ -373,11 +492,16 @@ async function restoreTask() {
       :entity-id="String(route.params.id)"
       @completed="restoreTask"
     />
+    <BackgroundTaskStatus
+      v-for="taskKind in ['INTERVIEW_QUESTIONS', 'INTERVIEW_SCORE', 'INTERVIEW_REPORT'] as const"
+      :key="taskKind"
+      :kind="taskKind"
+      :entity-id="String(route.params.id)"
+      @completed="restoreTask"
+    />
     <PageHeading
       :title="session.completed ? '一次练习，一份积累' : session.role + ' · 面试练习'"
-      :description="
-        session.kind + ' · ' + session.answers.length + ' 道主问题，每题面试官根据你的回答追问一次'
-      "
+      :description="session.kind + ' · ' + session.answers.length + ' 道问题，可按需追加追问'"
     >
       <RouterLink to="/interviews" class="btn">返回练习列表</RouterLink>
       <button
@@ -392,17 +516,46 @@ async function restoreTask() {
     <InterviewJobContext :job-id="session.jobId" :fallback-title="session.role" />
     <p v-if="exportError" role="alert">{{ exportError }}</p>
     <p v-if="error" role="alert">{{ error }} · 回答已保留，请重试保存。</p>
-    <template v-if="!session.completed">
+    <section v-if="session.generationSource === 'pending'" class="panel form-stack">
+      <h2>准备你的面试题目</h2>
+      <p>
+        根据岗位要求、行业与简历生成
+        {{ session.answers.length }} 道问题。生成任务离页后继续，回来即可恢复。
+      </p>
+      <button class="btn primary" :disabled="generating" @click="generateQuestions">
+        {{ generating ? '正在生成题目…' : '生成面试题目' }}
+      </button>
+    </section>
+    <template v-else-if="!session.completed">
       <p v-if="timerLabel" role="timer" aria-live="off">{{ timerLabel }}</p>
       <button
         v-if="remainingSeconds === 0"
         class="btn"
-        :disabled="busy"
-        @click="persist(undefined, true)"
+        :disabled="busy || scoring || askingFollowUp"
+        @click="finish"
       >
         保存并结束面试
       </button>
       <section class="panel interview-stage">
+        <progress
+          :value="session.questionIndex + 1"
+          :max="session.answers.length"
+          aria-label="面试进度"
+        />
+        <div v-if="redesigned" class="question-meta">
+          <span v-if="current?.questionType" class="tag">{{
+            questionTypeLabels[current.questionType]
+          }}</span>
+          <span v-if="current?.difficulty" class="tag">{{
+            difficultyLabels[current.difficulty]
+          }}</span>
+          <span class="tag">{{
+            current?.questionSource === 'model' ? '模型生成' : '规则题库 · 模型不可用'
+          }}</span>
+          <span role="timer"
+            >本题 {{ Math.floor(questionSeconds / 60) }} 分 {{ questionSeconds % 60 }} 秒</span
+          >
+        </div>
         <span class="tag"
           >第 {{ session.questionIndex + 1 }} / {{ session.answers.length }} 题</span
         >
@@ -418,7 +571,7 @@ async function restoreTask() {
             v-if="synthesisSupported"
             type="button"
             class="btn text"
-            :disabled="busy"
+            :disabled="busy || scoring || askingFollowUp"
             @click="speech.speak(current?.followUpQuestion ?? '')"
           >
             朗读追问
@@ -431,19 +584,27 @@ async function restoreTask() {
           <button
             type="button"
             class="btn"
-            :disabled="busy"
+            :disabled="busy || scoring || askingFollowUp"
             @click="speaking ? speech.stopSpeaking() : speech.speak(current?.questionText ?? '')"
           >
             {{ speaking ? '停止朗读' : '朗读题目' }}
           </button>
           <label class="voice-preference"
-            ><input v-model="voiceAutoPlay" type="checkbox" :disabled="busy" />自动朗读</label
+            ><input
+              v-model="voiceAutoPlay"
+              type="checkbox"
+              :disabled="busy || scoring || askingFollowUp"
+            />自动朗读</label
           >
           <span class="tag" role="status">{{
             askingFollowUp ? '思考追问' : busy ? '正在保存' : speaking ? '提问中' : '等待回答'
           }}</span>
         </div>
       </section>
+      <InterviewFeedback
+        v-if="redesigned && session.options?.feedbackMode !== 'END' && current?.evaluation"
+        :evaluation="current.evaluation"
+      />
       <form class="panel form-stack" @submit.prevent="submit">
         <div v-if="recognitionSupported" class="voice-controls">
           <button
@@ -473,7 +634,7 @@ async function restoreTask() {
             rows="6"
             required
             maxlength="12000"
-            :disabled="busy"
+            :disabled="busy || scoring || askingFollowUp"
             placeholder="可以从背景、任务、行动、结果四个角度展开…"
           />
         </label>
@@ -482,7 +643,7 @@ async function restoreTask() {
             v-model="followUpDraft"
             rows="4"
             maxlength="12000"
-            :disabled="busy"
+            :disabled="busy || scoring || askingFollowUp"
             placeholder="针对追问补充细节；也可以留空，直接进入下一题。"
           />
         </label>
@@ -507,13 +668,13 @@ async function restoreTask() {
           <button
             type="button"
             class="btn"
-            :disabled="busy || session.questionIndex === 0"
+            :disabled="busy || scoring || session.questionIndex === 0"
             @click="persist(session.questionIndex - 1)"
           >
             上一题
           </button>
           <button
-            v-if="!hasFollowUp"
+            v-if="!hasFollowUp && !redesigned"
             type="button"
             class="btn"
             :disabled="busy || !answer.trim()"
@@ -522,18 +683,55 @@ async function restoreTask() {
             跳过追问
           </button>
           <button
+            v-if="redesigned"
+            type="button"
+            class="btn"
+            :disabled="busy || scoring"
+            @click="advance"
+          >
+            跳过本题
+          </button>
+          <button
+            v-if="redesigned"
+            type="button"
+            class="btn"
+            :disabled="busy || scoring"
+            @click="finish"
+          >
+            结束并生成报告
+          </button>
+          <button
+            v-if="redesigned && !hasFollowUp"
+            type="button"
+            class="btn"
+            :disabled="busy || scoring || !answer.trim()"
+            @click="askFollowUp"
+          >
+            请面试官追问
+          </button>
+          <button
             class="btn primary"
-            :disabled="busy || !answer.trim()"
+            :disabled="busy || scoring || !answer.trim()"
             :aria-busy="askingFollowUp"
           >
             {{
-              !hasFollowUp
-                ? askingFollowUp
-                  ? '面试官思考中…'
-                  : '提交回答'
-                : session.questionIndex === session.answers.length - 1
-                  ? '完成并复盘'
-                  : '保存，下一题'
+              redesigned
+                ? scoring
+                  ? '正在评价…'
+                  : session.options?.feedbackMode === 'END'
+                    ? '保存，下一题'
+                    : revealed && !dirty
+                      ? '下一题'
+                      : current?.evaluation
+                        ? '重新评价'
+                        : '提交并查看反馈'
+                : !hasFollowUp
+                  ? askingFollowUp
+                    ? '面试官思考中…'
+                    : '提交回答'
+                  : session.questionIndex === session.answers.length - 1
+                    ? '完成并复盘'
+                    : '保存，下一题'
             }}
           </button>
         </div>
@@ -541,10 +739,22 @@ async function restoreTask() {
       </form>
     </template>
     <template v-else>
-      <InterviewReportPanel :key="session.id" :session-id="session.id" />
+      <button
+        v-if="redesigned"
+        class="btn"
+        :disabled="busy || reporting"
+        @click="persist(0, false)"
+      >
+        重新练习这些题目
+      </button>
+      <button v-if="redesigned" class="btn primary" :disabled="reporting" @click="buildReport">
+        {{ reporting ? '正在生成整体报告…' : '生成或刷新整体报告' }}
+      </button>
+      <InterviewReportPanel :key="session.id + ':' + reportVersion" :session-id="session.id" />
       <div class="success-banner">
-        已完成全部 {{ session.answers.length }} 题。下面是原始回答；点「导出复盘」可下载含 STAR
-        线索分的复盘包。
+        已结束本场
+        {{ session.answers.length }}
+        题练习。原始回答与反馈已保存，可导出复盘；未作答题不会伪造模型评分。
       </div>
       <div class="split-content">
         <section class="panel">
@@ -611,6 +821,20 @@ async function restoreTask() {
 </template>
 
 <style scoped>
+.question-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 16px;
+}
+.interview-stage progress {
+  width: 100%;
+  accent-color: var(--primary);
+}
+.interview-stage h2 {
+  overflow-wrap: anywhere;
+}
 .voice-controls {
   display: flex;
   flex-wrap: wrap;

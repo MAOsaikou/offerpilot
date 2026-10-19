@@ -9,6 +9,7 @@ import { useWorkspace } from '@/shared/stores/workspace'
 import { listResumes, listResumeVersions } from '@/shared/api/resumes'
 import { listApplications } from '@/shared/api/applications'
 import { useSpeech } from '@/shared/composables/useSpeech'
+import { questionTypeLabels, type QuestionType } from '@/shared/types/interview'
 import type { InterviewOptions } from '@/shared/types/interview'
 import { createInterview, listInterviews } from '@/shared/api/interviews'
 import { deleteStarStory, listStarStories } from '@/shared/api/starStories'
@@ -51,6 +52,18 @@ const role = ref(typeof route.query.role === 'string' ? route.query.role : '')
 const kind = ref<InterviewKind>('综合')
 const difficulty = ref<InterviewOptions['difficulty']>('STANDARD')
 const mode = ref<InterviewOptions['mode']>('TEXT')
+const questionCount = ref(5)
+const industry = ref('')
+const feedbackMode = ref<'IMMEDIATE' | 'END'>('IMMEDIATE')
+const customMix = ref(false)
+const typeMix = ref<Record<QuestionType, number>>({
+  BEHAVIORAL: 2,
+  SITUATIONAL: 1,
+  KNOWLEDGE: 1,
+  CASE: 1,
+})
+const mixTotal = computed(() => Object.values(typeMix.value).reduce((sum, n) => sum + Number(n), 0))
+const mixInvalid = computed(() => customMix.value && mixTotal.value !== questionCount.value)
 const durationMinutes = ref(30)
 const resumeId = ref('')
 const versionId = ref('')
@@ -92,7 +105,7 @@ const controller = new AbortController()
 onBeforeUnmount(() => controller.abort())
 
 async function start() {
-  if (!role.value.trim() || busy.value || invalidSelection.value) return
+  if (!role.value.trim() || busy.value || invalidSelection.value || mixInvalid.value) return
   busy.value = true
   error.value = ''
   try {
@@ -106,6 +119,10 @@ async function start() {
         difficulty: difficulty.value,
         mode: mode.value,
         durationMinutes: durationMinutes.value,
+        questionCount: questionCount.value,
+        industry: industry.value,
+        feedbackMode: feedbackMode.value,
+        typeMix: customMix.value ? typeMix.value : {},
       },
       controller.signal,
     )
@@ -220,9 +237,9 @@ function exportLegacy(session: Interview) {
         <div class="form-grid">
           <label class="field"
             >难度<select v-model="difficulty" :disabled="busy">
-              <option value="EASY">基础</option>
-              <option value="STANDARD">标准</option>
-              <option value="HARD">进阶</option>
+              <option value="EASY">初级</option>
+              <option value="STANDARD">中级</option>
+              <option value="HARD">高级</option>
             </select></label
           >
           <label class="field"
@@ -234,22 +251,62 @@ function exportLegacy(session: Interview) {
             </select></label
           >
           <label class="field"
+            >题数<input
+              v-model.number="questionCount"
+              type="number"
+              min="3"
+              max="15"
+              required
+              :disabled="busy"
+          /></label>
+          <label class="field"
+            >行业（可选）<input
+              v-model="industry"
+              maxlength="100"
+              placeholder="如医疗、教育、消费品"
+              :disabled="busy"
+          /></label>
+          <label class="field"
+            >反馈时机<select v-model="feedbackMode" :disabled="busy">
+              <option value="IMMEDIATE">每题提交后</option>
+              <option value="END">结束后统一查看</option>
+            </select></label
+          >
+          <label class="field"
             >时长<select v-model="durationMinutes" :disabled="busy">
-              <option :value="15">15 分钟 · 3 题</option>
-              <option :value="30">30 分钟 · 5 题</option>
-              <option :value="45">45 分钟 · 8 题</option>
-              <option :value="60">60 分钟 · 10 题</option>
+              <option :value="15">15 分钟</option>
+              <option :value="30">30 分钟</option>
+              <option :value="45">45 分钟</option>
+              <option :value="60">60 分钟</option>
             </select></label
           >
         </div>
+        <fieldset class="form-stack" :disabled="busy">
+          <legend>题型配比</legend>
+          <label
+            ><input
+              v-model="customMix"
+              type="checkbox"
+            />自定义各题型数量（默认按岗位自动选择）</label
+          >
+          <div v-if="customMix" class="form-grid">
+            <label v-for="(label, type) in questionTypeLabels" :key="type" class="field"
+              >{{ label
+              }}<input v-model.number="typeMix[type]" type="number" min="0" max="15" required
+            /></label>
+          </div>
+          <p v-if="mixInvalid" role="alert">
+            题型数量合计 {{ mixTotal }}，应为 {{ questionCount }}。
+          </p>
+        </fieldset>
         <p class="helper-note">
-          按类型、难度和简历内容组合规则题库。时长从创建起计时，到时提醒并保留回答。语音由浏览器识别与朗读，可能使用浏览器厂商在线服务；仅保存文字。复盘为文字规则评分。
+          支持任意岗位。先进入面试室生成题目；模型不可用时明确标记规则题库，评分不可用时保留未评分状态。改进答案只引用真实回答和简历事实。
         </p>
         <p v-if="error" role="alert">{{ error }}</p>
         <button
           class="btn primary"
           type="submit"
-          :disabled="busy || !role.trim() || invalidSelection"
+          :disabled="busy || !role.trim() || invalidSelection || mixInvalid"
         >
           {{ busy ? '正在创建…' : '开始练习' }}
         </button>
@@ -261,7 +318,7 @@ function exportLegacy(session: Interview) {
           用 STAR
           组织项目故事：背景是什么、任务是什么、你采取了哪些行动、结果如何。尽量说出具体细节。
         </p>
-        <span class="tag">按类型与难度练习 · 可保存草稿</span>
+        <span class="tag">逐题练习 · 可调整题数与反馈时机</span>
       </aside>
     </div>
     <section class="panel">

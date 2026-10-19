@@ -51,7 +51,11 @@ public class InterviewService {
         }
     }
     public record Answer(int questionIndex, String questionText, String answerText,
-                         String followUpQuestion, String followUpAnswer, String followUpSource) {
+                         String followUpQuestion, String followUpAnswer, String followUpSource,
+                         String questionType, String difficulty, String questionSource, com.fasterxml.jackson.databind.JsonNode evaluation) {
+        public Answer(int index, String question, String answer, String followUp, String more, String source) {
+            this(index,question,answer,followUp,more,source,null,null,null,null);
+        }
         public Answer(int questionIndex, String questionText, String answerText) {
             this(questionIndex, questionText, answerText, null, null, null);
         }
@@ -63,7 +67,11 @@ public class InterviewService {
         }
     }
     public record Session(String id, String role, String kind, int questionIndex, boolean completed,
-                          String createdAt, String updatedAt, List<Answer> answers, String jobId, InterviewOptions options) {
+                          String createdAt, String updatedAt, List<Answer> answers, String jobId, InterviewOptions options, String generationSource) {
+        public Session(String id, String role, String kind, int questionIndex, boolean completed, String createdAt, String updatedAt,
+                       List<Answer> answers, String jobId, InterviewOptions options) {
+            this(id,role,kind,questionIndex,completed,createdAt,updatedAt,answers,jobId,options,null);
+        }
         public Session(String id, String role, String kind, int questionIndex, boolean completed, String createdAt, String updatedAt, List<Answer> answers, String jobId) {
             this(id, role, kind, questionIndex, completed, createdAt, updatedAt, answers, jobId, null);
         }
@@ -108,6 +116,11 @@ public class InterviewService {
 
     @Transactional
     public Session create(String owner, String role, String kind, String jobId, InterviewOptions options) {
+        return create(owner,role,kind,jobId,options,false);
+    }
+
+    @Transactional
+    public Session create(String owner, String role, String kind, String jobId, InterviewOptions options, boolean redesigned) {
         if (role == null || role.isBlank() || role.codePointCount(0, role.length()) > 100
                 || kind == null || !KINDS.contains(kind)) invalid();
         if (options == null && Set.of("技术", "行为", "HR", "综合").contains(kind)) options = InterviewOptions.defaults();
@@ -116,15 +129,20 @@ public class InterviewService {
                 : resumes.context(owner, options.resumeId(), options.versionId());
         artifacts.lockJob(owner,jobId);
         String jobContext = options == null ? null : artifacts.interviewContext(owner, jobId);
-        var questions = options == null ? QUESTIONS : options.questions(role.strip(), kind, context).stream()
+        var questions = redesigned ? options.fallbackQuestions(role.strip()) : options == null ? QUESTIONS : options.questions(role.strip(), kind, context).stream()
                 .map(question -> jobContext == null || jobContext.isBlank() ? question : question + "参考所选岗位要求：「" + jobContext + "」。").toList();
         String id = IdGenerator.next("iv");
         jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,job_id,options) VALUES (?,?,?,?,?,?::jsonb)",
                 id, owner, role.strip(), kind, jobId, writeOptions(options));
+        if (redesigned) jdbc.update("UPDATE interview_sessions SET generation_source='pending',resume_context=?,job_context=? WHERE id=? AND user_id=?",
+                options.resumeId()==null ? "" : resumes.evidence(owner,options.resumeId(),options.versionId()), jobContext, id, owner);
         for (int index = 0; index < questions.size(); index++) {
             jdbc.update("INSERT INTO interview_answers(session_id,question_index,question_text) VALUES (?,?,?)",
                     id, index, questions.get(index));
         }
+        if (redesigned) for (int index=0; index<questions.size(); index++) jdbc.update(
+                "UPDATE interview_answers SET question_type=?,difficulty=?,question_source='rule' WHERE session_id=? AND question_index=?",
+                options.questionTypes().get(index),options.difficulty(),id,index);
         artifacts.linkJob(owner,jobId);
         return get(owner, id);
     }
@@ -137,14 +155,15 @@ public class InterviewService {
         if (rows.isEmpty()) throw new BusinessException(ErrorCode.INTERVIEW_NOT_FOUND);
         var session = rows.get(0);
         var answers = jdbc.query("""
-                SELECT a.question_index,a.question_text,a.answer_text,a.follow_up_question,a.follow_up_answer,a.follow_up_source
+                SELECT a.*
                 FROM interview_answers a JOIN interview_sessions s ON s.id=a.session_id
                 WHERE s.id=? AND s.user_id=? ORDER BY a.question_index
                 """, (rs, row) -> new Answer(rs.getInt("question_index"), rs.getString("question_text"),
                 rs.getString("answer_text"), rs.getString("follow_up_question"), rs.getString("follow_up_answer"),
-                rs.getString("follow_up_source")), id, owner);
+                rs.getString("follow_up_source"),rs.getString("question_type"),rs.getString("difficulty"),rs.getString("question_source"),
+                readJson(rs.getString("evaluation"))), id, owner);
         return new Session(session.id(), session.role(), session.kind(), session.questionIndex(), session.completed(),
-                session.createdAt(), session.updatedAt(), answers, session.jobId(), session.options());
+                session.createdAt(), session.updatedAt(), answers, session.jobId(), session.options(), jdbc.queryForObject("SELECT generation_source FROM interview_sessions WHERE id=? AND user_id=?",String.class,id,owner));
     }
 
     @Transactional
@@ -154,7 +173,7 @@ public class InterviewService {
         lock(owner, id);
         jdbc.update("""
                 UPDATE interview_sessions SET question_index=COALESCE(?,question_index),
-                completed=COALESCE(?,completed),updated_at=now() WHERE id=? AND user_id=?
+                completed=COALESCE(?,completed),revision=revision+1,report=NULL,updated_at=now() WHERE id=? AND user_id=?
                 """, questionIndex, completed, id, owner);
         return get(owner, id);
     }
@@ -167,13 +186,13 @@ public class InterviewService {
         lock(owner, id);
         // An unanswered follow-up was asked about the old text; drop it so the next one fits the new answer.
         jdbc.update("""
-                UPDATE interview_answers SET answer_text=?,
+                UPDATE interview_answers SET evaluation=CASE WHEN answer_text IS DISTINCT FROM ? THEN NULL ELSE evaluation END,answer_text=?,
                 follow_up_question=CASE WHEN answer_text IS DISTINCT FROM ? AND COALESCE(follow_up_answer,'')='' THEN NULL ELSE follow_up_question END,
                 follow_up_source=CASE WHEN answer_text IS DISTINCT FROM ? AND COALESCE(follow_up_answer,'')='' THEN NULL ELSE follow_up_source END
                 WHERE session_id=? AND question_index=?
                 AND EXISTS (SELECT 1 FROM interview_sessions WHERE id=? AND user_id=?)
-                """, answerText.strip(), answerText.strip(), answerText.strip(), id, index, id, owner);
-        jdbc.update("UPDATE interview_sessions SET updated_at=now() WHERE id=? AND user_id=?", id, owner);
+                """, answerText.strip(), answerText.strip(), answerText.strip(), answerText.strip(), id, index, id, owner);
+        jdbc.update("UPDATE interview_sessions SET updated_at=now(),revision=revision+1,report=NULL WHERE id=? AND user_id=?", id, owner);
         return get(owner, id);
     }
 
@@ -206,11 +225,11 @@ public class InterviewService {
         validateIndex(owner, id, index);
         lock(owner, id);
         int updated = jdbc.update("""
-                UPDATE interview_answers SET follow_up_answer=? WHERE session_id=? AND question_index=?
+                UPDATE interview_answers SET evaluation=CASE WHEN follow_up_answer IS DISTINCT FROM ? THEN NULL ELSE evaluation END,follow_up_answer=? WHERE session_id=? AND question_index=?
                 AND follow_up_question IS NOT NULL
-                """, answerText.strip(), id, index);
+                """, answerText.strip(), answerText.strip(), id, index);
         if (updated == 0) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "这道题还没有追问。");
-        jdbc.update("UPDATE interview_sessions SET updated_at=now() WHERE id=? AND user_id=?", id, owner);
+        jdbc.update("UPDATE interview_sessions SET updated_at=now(),revision=revision+1,report=NULL WHERE id=? AND user_id=?", id, owner);
         return get(owner, id);
     }
 
@@ -228,9 +247,22 @@ public class InterviewService {
     }
 
     private void validateIndex(String owner, String id, int index) {
-        if (index < 0 || index >= 10 || index >= get(owner, id).answers().size())
+        if (index < 0 || index >= 15 || index >= get(owner, id).answers().size())
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题目序号超出本次面试范围。");
     }
 
+    public com.fasterxml.jackson.databind.JsonNode readJson(String value) {
+        try { return value==null ? null : json.readTree(value); }
+        catch (java.io.IOException ex) { throw new IllegalStateException(ex); }
+    }
+    public InterviewRubric.Report report(String owner,String id) {
+        var session=get(owner,id);
+        String stored=jdbc.queryForObject("SELECT report::text FROM interview_sessions WHERE id=? AND user_id=?",String.class,id,owner);
+        if (stored!=null) try { return json.readValue(stored,InterviewRubric.Report.class); }
+            catch (java.io.IOException ex) { throw new IllegalStateException(ex); }
+        if (session.generationSource()==null) return InterviewRubric.score(session);
+        return new InterviewRubric.Report(id,null,new InterviewRubric.Dimensions(null,null,null,null),List.of(),List.of(),List.of(),List.of(),List.of(),
+                "尚未生成报告；请从后台任务生成。未评分题不产生分数。");
+    }
     private void invalid() { throw new BusinessException(ErrorCode.VALIDATION_FAILED); }
 }

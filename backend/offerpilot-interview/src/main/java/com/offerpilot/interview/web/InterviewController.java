@@ -40,8 +40,8 @@ public class InterviewController {
     public record CreateRequest(
             @NotBlank @Pattern(regexp = "(?s).{1,100}") String role,
             @NotNull @Pattern(regexp = "项目与经历|表达与结构|职业动机|技术|行为|HR|综合", message = "请选择有效的面试类型") String kind, @Pattern(regexp = "\\S{1,80}") String jobId,
-            String resumeId, String versionId, String difficulty, String mode, Integer durationMinutes) {}
-    public record ProgressRequest(@Min(0) @Max(9) Integer questionIndex, Boolean completed) {}
+            String resumeId, String versionId, String difficulty, String mode, Integer durationMinutes, @Min(3) @Max(15) Integer questionCount, java.util.Map<String,Integer> typeMix, String industry, String feedbackMode) {}
+    public record ProgressRequest(@Min(0) @Max(14) Integer questionIndex, Boolean completed) {}
     public record AnswerRequest(@NotNull(message = "请提供 answerText，可为空字符串") @Pattern(regexp = "(?s).{0,12000}", message = "回答不能超过12000个字符") String answerText) {}
 
     @GetMapping
@@ -52,17 +52,17 @@ public class InterviewController {
     @PostMapping
     public ApiResponse<?> create(@Valid @RequestBody CreateRequest body, HttpServletRequest request) {
         String owner = owner(request);
-        if (body.difficulty() == null && body.mode() == null && body.durationMinutes() == null && body.resumeId() == null && body.versionId() == null)
+        if (body.difficulty() == null && body.mode() == null && body.durationMinutes() == null && body.resumeId() == null && body.versionId() == null && body.questionCount()==null && body.typeMix()==null && body.industry()==null && body.feedbackMode()==null)
             return ok(interviews.create(owner, body.role(), body.kind(), body.jobId()), request);
         var options = new com.offerpilot.interview.application.InterviewOptions(body.resumeId(), body.versionId(),
                 body.difficulty() == null ? "STANDARD" : body.difficulty(), body.mode() == null ? "TEXT" : body.mode(),
-                body.durationMinutes() == null ? 30 : body.durationMinutes());
-        return ok(interviews.create(owner, body.role(), body.kind(), body.jobId(), options), request);
+                body.durationMinutes() == null ? 30 : body.durationMinutes(), body.questionCount()==null ? 0 : body.questionCount(), body.typeMix(), body.industry(), body.feedbackMode());
+        return ok(interviews.create(owner, body.role(), body.kind(), body.jobId(), options, body.questionCount()!=null || body.typeMix()!=null || body.industry()!=null || body.feedbackMode()!=null), request);
     }
 
     @GetMapping("/{id}/report")
     public ApiResponse<?> report(@PathVariable String id, HttpServletRequest request) {
-        return ok(com.offerpilot.interview.application.InterviewRubric.score(interviews.get(owner(request), id)), request);
+        return ok(interviews.report(owner(request), id), request);
     }
 
     @GetMapping("/{id}")
@@ -107,7 +107,7 @@ public class InterviewController {
     private int parseIndex(String index) {
         try {
             int value = Integer.parseInt(index);
-            if (value < 0 || value > 9) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+            if (value < 0 || value > 14) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
             return value;
         } catch (NumberFormatException e) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);

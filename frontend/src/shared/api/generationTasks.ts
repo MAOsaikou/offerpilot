@@ -29,6 +29,9 @@ export type GenerationKind =
   | 'CAREER_ASSESSMENT'
   | 'CAREER_RECOMMENDATION'
   | 'INTERVIEW_FOLLOW_UP'
+  | 'INTERVIEW_QUESTIONS'
+  | 'INTERVIEW_SCORE'
+  | 'INTERVIEW_REPORT'
   | 'JOB_IMPORT'
 export interface BackgroundTask extends GenerationTask {
   entityId: string

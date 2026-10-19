@@ -208,20 +208,23 @@ export interface InterviewTurnScorePayload {
 export interface InterviewReportPayload {
   id: string
   note?: string
-  overall: number
+  overall: number | null
   dimensions: {
-    professional: number
-    expression: number
-    logic: number
-    jobFit: number
+    professional: number | null
+    expression: number | null
+    logic: number | null
+    jobFit: number | null
     presence?: number
   }
   turns: Array<{
     question: string
     answerSummary: string
-    score: number
+    score: number | null
     star: { situation: boolean; task: boolean; action: boolean; result: boolean }
     feedback: string
+    evaluation?: import('./interview').InterviewEvaluation | null
+    improvedAnswer?: string | null
+    source?: string
     betterAnswerOutline: string[]
   }>
   strengths: string[]

@@ -123,7 +123,7 @@ public class GenerationTaskService {
             String resume=body.kind().startsWith("RESUME_")?body.entityId():body.kind().equals("JOB_MATCH")?body.input().path("resumeId").asText():null;
             String version=resume==null?null:body.input().path("versionId").asText();
             jdbc.update("INSERT INTO generation_tasks(id,user_id,kind,entity_id,resume_id,version_id,interview_id,request_id,request_hash,status,stage,title,href) VALUES (?,?,?,?,?,?,?,?,?,'QUEUED','等待后台执行',?,?)",
-                    next,owner,body.kind(),body.entityId(),resume,version,body.kind().equals("INTERVIEW_FOLLOW_UP")?body.entityId():null,
+                    next,owner,body.kind(),body.entityId(),resume,version,body.kind().startsWith("INTERVIEW_")?body.entityId():null,
                     body.requestId(),hash,work.title(body.kind()),work.href(body)+(work.href(body).contains("?")?"&":"?")+"taskId="+next);
             return next;
         });

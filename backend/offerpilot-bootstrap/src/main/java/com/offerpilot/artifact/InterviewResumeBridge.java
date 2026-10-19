@@ -8,6 +8,12 @@ import org.springframework.stereotype.Service;
 public class InterviewResumeBridge implements InterviewResumeSource {
     private final ResumeMatchSource resumes;
     public InterviewResumeBridge(ResumeMatchSource resumes) { this.resumes = resumes; }
+    public String evidence(String owner,String resumeId,String versionId) {
+        var data=resumes.snapshot(owner,resumeId,versionId).structured().deepCopy();
+        if (data instanceof com.fasterxml.jackson.databind.node.ObjectNode object) object.remove(java.util.List.of("basics","confidence"));
+        String text=data.toString();
+        return com.offerpilot.common.text.TextBounds.truncate(text,18000);
+    }
     public String context(String owner, String resumeId, String versionId) {
         var data = resumes.snapshot(owner, resumeId, versionId).structured();
         var names = new java.util.ArrayList<String>();

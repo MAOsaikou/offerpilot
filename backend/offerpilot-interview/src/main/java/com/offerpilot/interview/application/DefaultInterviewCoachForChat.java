@@ -44,11 +44,12 @@ public class DefaultInterviewCoachForChat implements InterviewCoachForChat {
             return new Turn(id, "CLOSING", index, session.answers().size(), "本次面试问题已结束，请生成评分卡。", "未自动标记完成；可请求「结束面试」并批准。");
         return turn(sessions.update(owner, id, index + 1, null), "已进入下一题。");
     }
-    public InterviewRubric.Report scoreSession(String owner, String id) { return InterviewRubric.score(sessions.get(owner, id)); }
+    public InterviewRubric.Report scoreSession(String owner, String id) { var session=sessions.get(owner,id); return session.generationSource()==null ? InterviewRubric.score(session) : sessions.report(owner,id); }
     @Transactional
     public InterviewRubric.Report completeSession(String owner, String id, String expectedUpdatedAt) {
         checkSnapshot(sessions.getForUpdate(owner, id), expectedUpdatedAt);
-        return InterviewRubric.score(sessions.update(owner, id, null, true));
+        var session=sessions.update(owner,id,null,true);
+        return session.generationSource()==null ? InterviewRubric.score(session) : sessions.report(owner,id);
     }
     private void checkSnapshot(InterviewService.Session session, String expectedUpdatedAt) {
         if (!session.updatedAt().equals(expectedUpdatedAt)) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "面试已被更新，请重新提交并确认，避免覆盖新答案。");

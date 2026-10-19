@@ -49,16 +49,20 @@ public class CoachEvidenceAdapter implements CoachEvidence {
                             bounded(d.path("score").asInt() + "/100；" + d.path("reason").asText()), selectedJob))));
         }
         if (session != null) {
-            var rubric = InterviewRubric.score(session);
+            var rubric = session.generationSource()==null ? InterviewRubric.score(session) : interviews.report(owner,session.id());
             var d = rubric.dimensions();
             String label = "面试复盘 · " + session.role();
-            var dimensions = Map.of("专业内容", d.professional(), "表达清晰度", d.expression(), "逻辑结构", d.logic(), "岗位关联", d.jobFit());
+            var dimensions = new HashMap<String,Integer>();
+            if (d.professional()!=null) dimensions.put("专业内容",d.professional());
+            if (d.expression()!=null) dimensions.put("表达清晰度",d.expression());
+            if (d.logic()!=null) dimensions.put("逻辑结构",d.logic());
+            if (d.jobFit()!=null) dimensions.put("岗位关联",d.jobFit());
             dimensions.entrySet().stream().filter(e -> e.getValue() < 60)
                     .sorted(Map.Entry.<String,Integer>comparingByValue().thenComparing(Map.Entry.comparingByKey()))
                     .limit(2).forEach(e -> gaps.add(new Gap("面试表现：" + e.getKey(), 10, e.getValue(),
-                            new Evidence("INTERVIEW", session.id(), label, e.getKey() + "：" + e.getValue() + "/100（文字规则线索）", session.jobId()))));
+                            new Evidence("INTERVIEW", session.id(), label, e.getKey() + "：" + e.getValue() + (session.generationSource()==null ? "/100（文字规则线索）" : "/100（模型评价）"), session.jobId()))));
             // Retain at most two lowest-STAR answers; never copy full private answers into prompts/cards.
-            rubric.turns().stream().filter(t -> t.star().count() < 3)
+            rubric.turns().stream().filter(t -> session.generationSource()==null && t.star().count() < 3)
                     .sorted(Comparator.comparingInt(t -> t.star().count())).limit(2)
                     .forEach(t -> gaps.add(new Gap("STAR 回答结构", 11, t.star().count() * 25,
                             new Evidence("INTERVIEW", session.id(), label, bounded("STAR " + t.star().count()
