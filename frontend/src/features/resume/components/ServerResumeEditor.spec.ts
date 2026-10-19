@@ -12,6 +12,7 @@ import {
   saveResume,
 } from '@/shared/api/resumes'
 import type { ResumeVersion, ServerResume } from '@/shared/types/resume'
+import { ApiError } from '@/shared/api/client'
 
 vi.mock('@/shared/api/resumes', () => ({
   deleteResume: vi.fn(),
@@ -92,6 +93,142 @@ async function edit(value: string) {
 function button(text: string) {
   return [...root.querySelectorAll('button')].find((b) => b.textContent?.trim() === text)!
 }
+
+async function loadLists() {
+  const loaded = fixture('v2')
+  const structured = loaded.currentVersion!.structured
+  structured.education = ['A', 'B'].map((name) => ({
+    school: `学校${name}`,
+    degree: '',
+    major: '',
+    start: '',
+    end: '',
+    gpa: '',
+  }))
+  structured.experience = ['A', 'B'].map((name) => ({
+    org: `公司${name}`,
+    title: '',
+    start: '',
+    end: '',
+    bullets: [`成果${name}`],
+  }))
+  structured.projects = ['A', 'B'].map((name) => ({
+    name: `项目${name}`,
+    role: '',
+    start: '',
+    end: '',
+    tech: ['Vue'],
+    bullets: [`成果${name}`],
+  }))
+  structured.skills = ['A', 'B'].map((name) => ({ category: `技能${name}`, items: ['Java'] }))
+  structured.certificates = ['证书A', '证书B']
+  cache.setQueryData(['resume', 'rs1'], loaded)
+  await nextTick()
+  return loaded
+}
+
+it('所有列表的排序进入保存 JSON，新版本成为后续基准且版本记录读取最新树', async () => {
+  const loaded = await loadLists()
+  const original = loaded.currentVersion!.structured
+  const reordered = {
+    ...original,
+    education: [...original.education].reverse(),
+    experience: [...original.experience].reverse(),
+    projects: [...original.projects].reverse(),
+    skills: [...original.skills].reverse(),
+    certificates: [...original.certificates].reverse(),
+  }
+  for (const section of root.querySelectorAll('.resume-section, .certificate-section')) {
+    section.querySelector<HTMLButtonElement>('[data-action="down"]')!.click()
+  }
+  await nextTick()
+  expect(button('保存新版本').disabled).toBe(false)
+  expect(saveResume).not.toHaveBeenCalled()
+  const updated: ServerResume = {
+    ...loaded,
+    currentVersionId: 'v3',
+    currentVersion: {
+      ...loaded.currentVersion!,
+      id: 'v3',
+      versionNo: 3,
+      parentVersionId: 'v2',
+      source: 'MANUAL_EDIT',
+      structured: reordered,
+    },
+  }
+  vi.mocked(saveResume).mockResolvedValue(updated)
+  button('保存新版本').click()
+  await vi.waitFor(() => expect(button('保存新版本').disabled).toBe(true))
+  expect(saveResume).toHaveBeenCalledWith('rs1', 'v2', reordered)
+  expect(cache.getQueryData<ServerResume>(['resume', 'rs1'])?.currentVersionId).toBe('v3')
+  expect(root.querySelector<HTMLInputElement>('.resume-section input')?.value).toBe('学校B')
+  expect(root.querySelector<HTMLInputElement>('.certificate-section input')?.value).toBe('证书B')
+  expect(root.querySelector('.resume-save')?.textContent).toContain('已保存为新版本')
+  vi.mocked(listResumeVersions).mockResolvedValue([loaded.currentVersion!, updated.currentVersion!])
+  button('版本记录').click()
+  await vi.waitFor(() => expect(root.querySelectorAll('.version-tree li')).toHaveLength(2))
+  const current = root.querySelectorAll('.version-tree li')[1]!
+  expect(current.textContent).toContain('当前')
+  expect(current.textContent).toContain('手动编辑')
+  expect(current.textContent).toContain('基于版本 2')
+  button('内容编辑').click()
+  await nextTick()
+  await edit('再次编辑')
+  vi.mocked(saveResume).mockResolvedValue({
+    ...updated,
+    currentVersionId: 'v4',
+    currentVersion: {
+      ...updated.currentVersion!,
+      id: 'v4',
+      versionNo: 4,
+      parentVersionId: 'v3',
+      structured: { ...reordered, basics: { ...reordered.basics, name: '再次编辑' } },
+    },
+  })
+  button('保存新版本').click()
+  await vi.waitFor(() =>
+    expect(cache.getQueryData<ServerResume>(['resume', 'rs1'])?.currentVersionId).toBe('v4'),
+  )
+  expect(saveResume).toHaveBeenCalledTimes(2)
+  expect(vi.mocked(saveResume).mock.calls[1]?.[1]).toBe('v3')
+})
+
+it('排序遇到409保留原基准和草稿，重新加载需要确认并采用服务端顺序', async () => {
+  const loaded = await loadLists()
+  root.querySelector<HTMLButtonElement>('.resume-section [data-action="down"]')!.click()
+  await nextTick()
+  const server = {
+    ...loaded,
+    currentVersionId: 'v3',
+    currentVersion: { ...loaded.currentVersion!, id: 'v3' },
+  }
+  cache.setQueryData(['resume', 'rs1'], server)
+  vi.mocked(saveResume).mockRejectedValue(
+    new ApiError('简历已更新，请重新加载后保存', { code: 30403, status: 409 }),
+  )
+  button('保存新版本').click()
+  await vi.waitFor(() => expect(root.querySelector('.resume-save [role="alert"]')).not.toBeNull())
+  expect(vi.mocked(saveResume).mock.calls[0]?.[1]).toBe('v2')
+  expect(vi.mocked(saveResume).mock.calls[0]?.[2].education.map((e) => e.school)).toEqual([
+    '学校B',
+    '学校A',
+  ])
+  expect(root.querySelector<HTMLInputElement>('.resume-section input')?.value).toBe('学校B')
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+  const reads = vi.mocked(getResume).mock.calls.length
+  button('重新加载').click()
+  await nextTick()
+  expect(getResume).toHaveBeenCalledTimes(reads)
+  expect(root.querySelector<HTMLInputElement>('.resume-section input')?.value).toBe('学校B')
+  vi.mocked(getResume).mockResolvedValue(server)
+  button('重新加载').click()
+  await vi.waitFor(() =>
+    expect(root.querySelector<HTMLInputElement>('.resume-section input')?.value).toBe('学校A'),
+  )
+  expect(button('保存新版本').disabled).toBe(true)
+  expect(root.querySelector('.resume-save [role="alert"]')).toBeNull()
+  confirm.mockRestore()
+})
 it('保留未保存草稿及其基准版本，后台更新和409不会覆盖用户编辑', async () => {
   await edit('My unsaved changes')
   cache.setQueryData(['resume', 'rs1'], fixture('v2', 'Other tab'))

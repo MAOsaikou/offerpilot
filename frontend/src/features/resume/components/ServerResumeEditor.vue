@@ -22,6 +22,7 @@ import {
 import { resumeStatus, type ResumeStructure, type ResumeVersion } from '@/shared/types/resume'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import ResumeSectionEditor from './ResumeSectionEditor.vue'
+import ResumeCertificateEditor from './ResumeCertificateEditor.vue'
 import ResumeDiagnosisPanel from './ResumeDiagnosisPanel.vue'
 import ResumeOptimizationPanel from './ResumeOptimizationPanel.vue'
 import { downloadText } from '@/shared/utils/download'
@@ -400,14 +401,7 @@ const basics = [
               :fields="section.fields"
               :disabled="busy"
             />
-            <label class="field"
-              >证书与奖项（每行一项）<textarea
-                :value="draft.certificates.join('\n')"
-                rows="3"
-                maxlength="5000"
-                @input="draft.certificates = lines(($event.target as HTMLTextAreaElement).value)"
-              />
-            </label>
+            <ResumeCertificateEditor v-model="draft.certificates" :disabled="busy" />
           </fieldset>
           <div class="card-footer resume-save">
             <div class="form-stack">
