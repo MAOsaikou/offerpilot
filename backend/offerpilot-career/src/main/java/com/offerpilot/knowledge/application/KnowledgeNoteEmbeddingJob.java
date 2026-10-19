@@ -34,12 +34,9 @@ public class KnowledgeNoteEmbeddingJob {
     }
 
     public int indexPending() {
-        if (!enabled) return 0;
-        // Embedding turned off: FTS already works; stop advertising a pending vector job.
-        if (!embeddings.configured()) {
-            jdbc.update("UPDATE knowledge_notes SET index_status='READY',index_error=NULL WHERE index_status IN ('QUEUED','INDEXING')");
-            return 0;
-        }
+        // Disabled or no embedding provider: leave rows alone. Create/update already set READY when
+        // vectors are unavailable; never rewrite a concurrent INDEXING lease.
+        if (!enabled || !embeddings.configured()) return 0;
         // An abandoned final lease must also reach a terminal status.
         jdbc.update("""
                 UPDATE knowledge_notes SET index_status='FAILED',index_error='向量索引暂时失败，全文检索仍可用；保存笔记可重试'
