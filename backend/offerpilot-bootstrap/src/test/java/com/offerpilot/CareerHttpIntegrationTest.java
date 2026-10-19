@@ -163,7 +163,7 @@ class CareerHttpIntegrationTest extends SharedHttpIntegrationTest {
             assertThatThrownBy(() -> jdbc.update("UPDATE career_profiles SET interests=?::jsonb WHERE user_id=?", invalidJson, owner))
                     .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         }
-        for (var entry : Map.of("target", 101, "city", 101, "skills", 3001).entrySet()) {
+        for (var entry : Map.of("target", 101, "city", 101, "skills", 3001, "major", 101, "courses", 3001, "values_text", 1001).entrySet()) {
             assertThatThrownBy(() -> jdbc.update("UPDATE career_profiles SET " + entry.getKey() + "=? WHERE user_id=?",
                     "长".repeat(entry.getValue()), owner)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         }

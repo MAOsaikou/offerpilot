@@ -310,3 +310,40 @@ it('edits the confirmed projection through assessment confirm and refreshes both
   expect(root.querySelector('input[name="riasec-S"]')).toBeNull()
   expect(profileWrites).toHaveLength(0)
 })
+
+it('merges a confirmed city with course edits made while confirmation is in flight', async () => {
+  profiles['career-owner']!.assessment = {
+    riasec: { R: 20, I: 90, A: 10, S: 30, E: 60, C: 40 },
+    code: 'IEC',
+    traits: [],
+    constraints: { city: '杭州', salary: '', overtime: '' },
+  }
+  let release!: () => void
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started = false
+  server.use(
+    http.put('*/api/v1/career/assessment/confirm', async () => {
+      started = true
+      await held
+      const confirmed = profiles['career-owner']!.assessment!
+      profiles['career-owner']!.city = confirmed.constraints.city
+      return HttpResponse.json({
+        data: { questions: [], answers: [], inference: null, confirmed, confirmedAt: 'now' },
+      })
+    }),
+  )
+  await mount('/discover')
+  clickButton('编辑性格与约束')
+  await nextTick()
+  root
+    .querySelector<HTMLFormElement>('.personality-panel form')!
+    .dispatchEvent(new Event('submit', { cancelable: true }))
+  await vi.waitFor(() => expect(started).toBe(true))
+  await edit('textarea[name="courses"]', '确认期间补充的课程')
+  release()
+  await vi.waitFor(() => expect(profiles['career-owner']!.courses).toBe('确认期间补充的课程'))
+  expect(profiles['career-owner']!.city).toBe('杭州')
+  expect(profileWrites.at(-1)?.city).toBe('杭州')
+})

@@ -63,7 +63,7 @@ public class CareerProfileController {
     @GetMapping("/profile")
     public ApiResponse<CareerProfileService.Profile> get(HttpServletRequest request) {
         String owner = users.require(request.getHeader("Authorization"));
-        return ApiResponse.ok(profiles.get(owner), TraceIdFilter.current(request));
+        return ApiResponse.ok(profiles.load(owner), TraceIdFilter.current(request));
     }
 
     @PutMapping("/profile")

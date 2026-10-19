@@ -76,6 +76,29 @@ public class UserMemoryService {
     @Transactional
     public void clear(String owner) { lock(owner); jdbc.update("DELETE FROM user_memories WHERE user_id=?", owner); }
 
+    /** Stable user-authored facts from an explicit profile save; shares cap, validation, FTS and owner lock. */
+    @Transactional
+    public void upsertPrefixed(String owner, Kind kind, String prefix, String value) {
+        lock(owner);
+        if (!enabled(owner)) return;
+        if (prefix == null || prefix.isBlank()) throw invalid("记忆前缀不能为空");
+        String text = value == null ? "" : value.replaceAll("(?U)\\s+", " ").strip();
+        var existing = list(owner).items().stream().filter(m -> m.fact().startsWith(prefix)).toList();
+        // Blank means remove the corresponding durable fact, so a cleared field cannot reappear on load.
+        if (text.isEmpty()) {
+            for (var fact : existing) delete(owner, fact.id());
+            return;
+        }
+        var draft = new Draft(kind, prefix + text);
+        validate(draft);
+        if (existing.isEmpty()) add(owner, draft);
+        else {
+            for (int i = 1; i < existing.size(); i++) delete(owner, existing.get(i).id());
+            if (!existing.get(0).fact().equals(draft.fact()) || existing.get(0).kind() != kind)
+                edit(owner, existing.get(0).id(), draft);
+        }
+    }
+
     public boolean contains(String owner, String fact) {
         return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM user_memories WHERE user_id=? AND normalized_fact=?)",
                 Boolean.class, owner, normalize(fact)));

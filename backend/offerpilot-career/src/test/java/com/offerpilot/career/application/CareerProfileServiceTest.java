@@ -17,6 +17,7 @@ import static org.mockito.Mockito.*;
 class CareerProfileServiceTest {
     @Test void composesConfirmedAssessmentAndPersistsAllPanelsInOneWrite() throws Exception {
         var jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(contains("FROM users"), eq(String.class), eq("alice"))).thenReturn(List.of("alice"));
         var rs = mock(ResultSet.class);
         when(rs.getString("target")).thenReturn("工程师");
         when(rs.getString("city")).thenReturn("杭州");
@@ -46,6 +47,17 @@ class CareerProfileServiceTest {
                 eq("Java"), eq("[\"技术研发\"]"), eq("计算机"), eq("算法\n数据库"), eq("成长\n平衡"),
                 eq("计算机"), eq("算法\n数据库"), eq("成长\n平衡"));
     }
+    @Test void importsOnlyIntoEmptyFieldsAndNeverWritesMemoryDuringPageLoad() {
+        var jdbc = mock(JdbcTemplate.class);
+        when(jdbc.queryForList(contains("FROM users"), eq(String.class), eq("alice"))).thenReturn(List.of("alice"));
+        var memory = mock(CareerProfileMemory.class);
+        when(memory.read("alice")).thenReturn(new CareerProfileMemory.Seed("分析师", "成都", "统计学"));
+        var service = new CareerProfileService(jdbc, new ObjectMapper(), java.util.Optional.of(memory));
+        service.load("alice");
+        verify(jdbc).update(contains("WHERE (career_profiles.target=''"), eq("alice"), eq("分析师"), eq("成都"), eq("统计学"));
+        verify(memory, never()).sync(anyString(), anyString(), anyString(), anyString(), anyString());
+    }
+
     @Test void newFieldsAreOptionalForLegacyClientsButBounded() {
         try (var factory = Validation.buildDefaultValidatorFactory()) {
             var validator = factory.getValidator();

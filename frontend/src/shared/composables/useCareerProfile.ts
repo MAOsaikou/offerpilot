@@ -38,6 +38,7 @@ export function useCareerProfile() {
   let generation = 0
   let disposed = false
   let reader: AbortController | undefined
+  let cityBeforeAssessment = ''
 
   async function load() {
     const current = ++generation
@@ -116,13 +117,17 @@ export function useCareerProfile() {
     if (dirty.profile.value) enqueue('profile')
     await writes
     if (dirty.profile.value) throw new Error(error.value || '请先重试保存职业画像')
+    cityBeforeAssessment = profile.value.city
   }
 
   function applyAssessment(assessment: AssessmentConfirmed | null) {
     profile.value.assessment = assessment
     // Preserve any edits made while assessment confirmation was in flight.
-    if (!dirty.profile.value && assessment?.constraints.city)
+    if (assessment?.constraints.city && profile.value.city === cityBeforeAssessment) {
       profile.value.city = assessment.constraints.city
+      // Requeue other edits made during confirmation with the confirmed city.
+      if (dirty.profile.value) saveProfile(0)
+    }
   }
 
   function retry() {

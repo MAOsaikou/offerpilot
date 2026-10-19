@@ -101,27 +101,27 @@ public class CareerAssessmentService {
         }
         if (scores.values().stream().distinct().count() == 1)
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "六个维度分数完全相同，无法区分兴趣倾向，请调整后再确认。");
+        lockOwner(owner);
         lockRow(owner);
         var previous = get(owner);
         var inferred = previous.inference();
         var byName = new LinkedHashMap<String, CareerAssessmentInference.Trait>();
-        if (inferred != null) inferred.traits().forEach(t -> byName.put(t.name(), t));
         if (previous.confirmed() != null) previous.confirmed().traits().forEach(t -> byName.put(t.name(), t));
+        if (inferred != null) inferred.traits().forEach(t -> byName.put(t.name(), t));
         // Kept traits keep their evidence; user-added ones are marked as self-reported (no quote).
         var traits = traitNames.stream().map(String::strip).filter(n -> !n.isEmpty()).distinct()
                 .map(n -> byName.getOrDefault(n, new CareerAssessmentInference.Trait(n, 1.0, ""))).toList();
         var confirmed = new Confirmed(scores, code(scores), traits, constraints);
         jdbc.update("UPDATE career_assessments SET confirmed=?::jsonb, confirmed_at=now() WHERE user_id=?", write(confirmed), owner);
-        if (!constraints.city().isBlank()) {
-            var profile = profiles.get(owner);
-            profiles.save(owner, profile.target(), constraints.city(), profile.skills(), profile.interests());
-        }
+        profiles.saveAssessmentCity(owner, constraints.city());
         return get(owner);
     }
 
     @Transactional
     public void reset(String owner) {
+        lockOwner(owner);
         jdbc.update("DELETE FROM career_assessments WHERE user_id=?", owner);
+        profiles.syncAssessmentMemory(owner, "");
     }
 
     public static String code(Map<String, Integer> scores) {
@@ -134,7 +134,13 @@ public class CareerAssessmentService {
         return new RiasecProfile(s.get("R"), s.get("I"), s.get("A"), s.get("S"), s.get("E"), s.get("C"));
     }
 
+    private void lockOwner(String owner) {
+        if (jdbc.queryForList("SELECT id FROM users WHERE id=? AND status='ACTIVE' FOR UPDATE", String.class, owner).isEmpty())
+            throw new BusinessException(ErrorCode.UNAUTHENTICATED);
+    }
+
     private void lockRow(String owner) {
+        lockOwner(owner);
         jdbc.update("INSERT INTO career_assessments(user_id,answers) VALUES (?,?::jsonb) ON CONFLICT(user_id) DO NOTHING",
                 owner, write(Collections.nCopies(QUESTIONS.size(), "")));
         jdbc.queryForObject("SELECT user_id FROM career_assessments WHERE user_id=? FOR UPDATE", String.class, owner);
