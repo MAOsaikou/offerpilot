@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
+
 import InterviewReportPanel from '../components/InterviewReportPanel.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRoute } from 'vue-router'
@@ -292,7 +294,7 @@ async function submit() {
   askingFollowUp.value = true
   busy.value = true
   try {
-    const saved = await requestInterviewFollowUp(id, session.value.questionIndex, controller.signal)
+    const saved = await requestInterviewFollowUp(id, session.value.questionIndex)
     if (requestRevision !== revision) return
     session.value = saved
     syncDrafts()
@@ -343,6 +345,19 @@ async function saveBeforeLeave() {
 }
 onBeforeRouteLeave(saveBeforeLeave)
 onBeforeRouteUpdate(saveBeforeLeave)
+async function restoreTask() {
+  if (busy.value || loading.value) return
+  const version = revision
+  try {
+    const saved = await getInterview(String(route.params.id))
+    if (version === revision) {
+      session.value = saved
+      syncDrafts()
+    }
+  } catch (cause) {
+    if (version === revision) error.value = cause instanceof Error ? cause.message : '面试恢复失败'
+  }
+}
 </script>
 <template>
   <div v-if="loading" class="panel empty-state" role="status">正在加载练习…</div>
@@ -353,6 +368,11 @@ onBeforeRouteUpdate(saveBeforeLeave)
     <RouterLink to="/interviews" class="btn">返回练习列表</RouterLink>
   </div>
   <section v-else-if="session" class="page-stack">
+    <BackgroundTaskStatus
+      kind="INTERVIEW_FOLLOW_UP"
+      :entity-id="String(route.params.id)"
+      @completed="restoreTask"
+    />
     <PageHeading
       :title="session.completed ? '一次练习，一份积累' : session.role + ' · 面试练习'"
       :description="

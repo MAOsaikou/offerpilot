@@ -1,3 +1,4 @@
+import { runGeneration } from './generationTasks'
 import {
   apiRequest,
   apiUrl,
@@ -57,10 +58,7 @@ export const saveInterviewAnswer = (
 
 /** Ask the interviewer's follow-up for a saved answer (idempotent per question). */
 export const requestInterviewFollowUp = (id: string, index: number, signal?: AbortSignal) =>
-  apiRequest<InterviewSession>(`${sessionPath(id)}/answers/${index}/follow-up`, {
-    method: 'POST',
-    signal,
-  })
+  runGeneration<InterviewSession>('INTERVIEW_FOLLOW_UP', id, { index }, undefined, signal)
 
 export const saveInterviewFollowUpAnswer = (
   id: string,

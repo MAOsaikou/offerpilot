@@ -9,7 +9,7 @@ import { streamAgentChat } from '@/shared/api/agent'
 import { createApp, defineComponent, nextTick, onUnmounted, ref } from 'vue'
 import App from '@/app/App.vue'
 import { identitySignal } from '@/shared/utils/authSession'
-import { optimizeResume } from '@/shared/api/optimizations'
+import { optimizeResumeStream as optimizeResume } from '@/shared/api/optimizations'
 import { listStaffUsers, setUserStatus } from '@/shared/api/auth'
 import { authenticatedHeaders, fetchWithIdentity } from '@/shared/api/client'
 

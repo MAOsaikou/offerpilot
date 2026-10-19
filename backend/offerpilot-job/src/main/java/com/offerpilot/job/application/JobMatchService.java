@@ -63,6 +63,7 @@ public class JobMatchService {
             report.put("id",id).put("jobId",jobId).put("resumeId",resumeId).put("resumeTitle",resume.title())
                 .put("resumeVersionId",versionId).put("resumeVersionNo",resume.versionNo()).put("createdAt",Instant.now().toString());
             report.set("jobSnapshot",job); report.set("resumeSnapshot",resume.structured());
+            com.offerpilot.common.artifact.BackgroundWork.check();
             int saved=tx.execute(transaction -> {
                 if (jdbc.queryForList("SELECT id FROM users WHERE id=? FOR UPDATE",String.class,owner).isEmpty()) return 0;
                 int count=jdbc.update("UPDATE job_matches SET status='COMPLETED',report=?::jsonb,updated_at=now() WHERE id=? AND status='RUNNING'",report.toString(),id);

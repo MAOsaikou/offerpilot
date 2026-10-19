@@ -85,6 +85,7 @@ public class CareerAssessmentService {
         if (qa.size() < MIN_ANSWERS)
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请至少回答 " + MIN_ANSWERS + " 个问题，再生成画像。");
         var result = inference.infer(owner, qa);
+        com.offerpilot.common.artifact.BackgroundWork.check();
         jdbc.update("UPDATE career_assessments SET inference=?::jsonb WHERE user_id=? AND answers=?::jsonb",
                 write(result), owner, write(current.answers()));
         return get(owner);

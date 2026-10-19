@@ -190,6 +190,7 @@ public class InterviewService {
         String text = answer.answerText() == null ? "" : answer.answerText().strip();
         if (text.isEmpty()) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请先保存这道题的回答，再请面试官追问。");
         var generated = followUps.generate(owner, session.role(), answer.questionText(), text);
+        com.offerpilot.common.artifact.BackgroundWork.check();
         jdbc.update("""
                 UPDATE interview_answers SET follow_up_question=?,follow_up_source=?
                 WHERE session_id=? AND question_index=? AND follow_up_question IS NULL AND answer_text=?

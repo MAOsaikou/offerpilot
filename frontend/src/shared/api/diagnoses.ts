@@ -1,3 +1,4 @@
+import { runGeneration, cancelBackgroundTask } from './generationTasks'
 import {
   ApiError,
   apiRequest,
@@ -16,13 +17,15 @@ export const listDiagnoses = (id: string) =>
 export const getDiagnosis = (id: string) =>
   apiRequest<DiagnosisTask>(`/resumes/diagnoses/${encodeURIComponent(id)}`)
 export const cancelDiagnosis = (id: string) =>
-  apiRequest<void>(`/resumes/diagnoses/${encodeURIComponent(id)}/cancel`, { method: 'POST' })
+  id.startsWith('gen_')
+    ? cancelBackgroundTask(id)
+    : apiRequest<void>(`/resumes/diagnoses/${encodeURIComponent(id)}/cancel`, { method: 'POST' })
 export const getDiagnosisVersion = (id: string, version: string) =>
   apiRequest<ResumeVersion>(
     `/resumes/${encodeURIComponent(id)}/versions/${encodeURIComponent(version)}`,
   )
 
-export async function analyzeResume(
+export async function analyzeResumeStream(
   id: string,
   version: string,
   requestId: string,
@@ -67,3 +70,19 @@ export async function analyzeResume(
   if (!complete || !report) throw new Error('连接中断，请先刷新报告记录，确认本次结果后再重试。')
   return report
 }
+
+export const analyzeResume = (
+  id: string,
+  versionId: string,
+  requestId: string,
+  signal: AbortSignal,
+  started: (id: string) => void,
+) =>
+  runGeneration<ResumeDiagnosisReport>(
+    'RESUME_DIAGNOSIS',
+    id,
+    { versionId },
+    requestId,
+    signal,
+    started,
+  )

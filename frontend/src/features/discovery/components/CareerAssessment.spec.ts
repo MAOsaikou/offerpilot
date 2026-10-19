@@ -1,3 +1,6 @@
+vi.mock('@/shared/components/BackgroundTaskStatus.vue', () => ({
+  default: { template: '<div />' },
+}))
 import { createApp, h, nextTick, type App } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'

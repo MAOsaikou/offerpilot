@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { optimizeResume } from './optimizations'
+import { optimizeResumeStream as optimizeResume } from './optimizations'
 vi.mock('./client', () => ({
   ApiError: class extends Error {
     constructor(message: string, options: { code: number }) {

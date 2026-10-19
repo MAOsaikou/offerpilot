@@ -1,3 +1,4 @@
+import { runGeneration, cancelBackgroundTask } from './generationTasks'
 import {
   ApiError,
   apiRequest,
@@ -23,7 +24,11 @@ export const listOptimizations = (id: string) =>
 export const getOptimization = (id: string) =>
   apiRequest<OptimizationTask>(`/resumes/optimizations/${encodeURIComponent(id)}`)
 export const cancelOptimization = (id: string) =>
-  apiRequest<void>(`/resumes/optimizations/${encodeURIComponent(id)}/cancel`, { method: 'POST' })
+  id.startsWith('gen_')
+    ? cancelBackgroundTask(id)
+    : apiRequest<void>(`/resumes/optimizations/${encodeURIComponent(id)}/cancel`, {
+        method: 'POST',
+      })
 export const getPatchBatch = (id: string, version: string, batchId: string) =>
   apiRequest<PatchBatch>(`${versionPath(id, version)}/patches/${encodeURIComponent(batchId)}`)
 export const applyPatches = (id: string, version: string, decision: PatchDecision) =>
@@ -32,7 +37,7 @@ export const applyPatches = (id: string, version: string, decision: PatchDecisio
     body: JSON.stringify(decision),
   })
 
-export async function optimizeResume(
+export async function optimizeResumeStream(
   id: string,
   version: string,
   requestId: string,
@@ -76,3 +81,21 @@ export async function optimizeResume(
   if (!complete || !report) throw new Error('连接中断，请先刷新改写记录，确认本次结果后再重试。')
   return report
 }
+
+export const optimizeResume = (
+  id: string,
+  versionId: string,
+  requestId: string,
+  jobDescription: string,
+  signal: AbortSignal,
+  started: (id: string) => void,
+  jobId?: string,
+) =>
+  runGeneration<OptimizationReport>(
+    'RESUME_OPTIMIZE',
+    id,
+    { versionId, jobDescription, jobId },
+    requestId,
+    signal,
+    started,
+  )

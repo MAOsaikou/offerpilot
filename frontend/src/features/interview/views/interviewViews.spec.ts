@@ -1,3 +1,6 @@
+vi.mock('@/shared/components/BackgroundTaskStatus.vue', () => ({
+  default: { template: '<div />' },
+}))
 import { createApp, h, nextTick, type App } from 'vue'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter, RouterView, type Router } from 'vue-router'
@@ -185,7 +188,7 @@ it('asks one follow-up from the saved answer, saves its answer, then advances', 
   submit()
   await vi.waitFor(() => expect(root.textContent).toContain('你提到缓存，命中率是怎么验证的？'))
   expect(saveInterviewAnswer).toHaveBeenCalledWith('iv_1', 0, '我负责缓存设计', expect.anything())
-  expect(requestInterviewFollowUp).toHaveBeenCalledWith('iv_1', 0, expect.anything())
+  expect(requestInterviewFollowUp).toHaveBeenCalledWith('iv_1', 0)
   expect(server.questionIndex).toBe(0)
   const followUp = root.querySelectorAll('textarea')[1]!
   followUp.value = '用压测和监控验证'

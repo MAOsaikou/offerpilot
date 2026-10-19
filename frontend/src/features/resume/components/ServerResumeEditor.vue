@@ -52,11 +52,14 @@ const exporting = ref(false)
 const pdfTemplate = ref<'classic' | 'compact'>('classic')
 const error = ref('')
 const message = ref('')
-const tab = ref(route.query.tab === 'optimize' ? '改写' : '内容')
+const tab = ref(
+  route.query.tab === 'optimize' ? '改写' : route.query.tab === 'diagnosis' ? '诊断' : '内容',
+)
 watch(
   () => route.query.tab,
   (value) => {
-    if (value === 'optimize' && !busy.value) tab.value = '改写'
+    if (!busy.value && (value === 'optimize' || value === 'diagnosis'))
+      tab.value = value === 'optimize' ? '改写' : '诊断'
   },
 )
 const history = ref<ResumeVersion[]>([])

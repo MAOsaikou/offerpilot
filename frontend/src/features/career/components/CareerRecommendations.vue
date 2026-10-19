@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { generationResult } from '@/shared/api/generationTasks'
+import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
+
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { sessionRevision, identitySignal } from '@/shared/utils/authSession'
@@ -86,7 +89,7 @@ async function save(rerank: boolean) {
     const saved =
       rerank && revision.value
         ? await rerankCareers(revision.value.id, { ...constraints.value }, signal)
-        : await createCareerRecommendations(signal)
+        : await createCareerRecommendations()
     if (current !== generation) return
     revision.value = saved
     constraints.value = { ...saved.constraints }
@@ -177,9 +180,28 @@ const chatLink = computed(() => ({
     prompt: '请按我选择的约束重排推荐，并保存为新修订。',
   },
 }))
+async function restoreTask(id: string) {
+  if (busy.value || route.query.revision) return
+  const current = generation
+  try {
+    const saved = await generationResult<CareerRevision>(id)
+    if (current === generation) {
+      revision.value = saved
+      constraints.value = { ...saved.constraints }
+      await router.replace({ query: { ...route.query, revision: saved.id } })
+    }
+  } catch (cause) {
+    if (current === generation) error.value = message(cause)
+  }
+}
 </script>
 <template>
   <section class="panel form-stack" aria-labelledby="recommend-title">
+    <BackgroundTaskStatus
+      kind="CAREER_RECOMMENDATION"
+      :entity-id="'current'"
+      @completed="restoreTask"
+    />
     <h2 id="recommend-title">职业推荐与对比</h2>
     <p class="subtle">依据已有职业画像与目录。补充约束后保存新修订，可从链接恢复。</p>
     <p v-if="!online" role="status">当前离线，恢复连接后可重试；未提交的约束保留在本页。</p>
