@@ -25,3 +25,18 @@ RS-05 基线首次结构化校验为 7/10。三例失败均为 `/summary` 从其
 ## 离线验证
 
 定向 Java：`ResumeOptimizerTest` 4、`ResumeOptimizationBenchmarkTest` 3、`ResumeOptimizationSummaryProvenanceRegressionTest` 4 全部通过。Python `unittest discover -s backend/eval` 6 项通过。本机非 Docker 全量 Maven test：Docker 相关 9 类因本机无 Docker Desktop 未能启动；其余模块测试通过，摘要回归与基准默认执行。CI 负责跑通容器集成测试。
+
+
+## 日1019 复测（main `d05e66f`）
+
+提示词在 C2 之后又经价值过滤（#20）增补「禁止近义词凑数」等规则，当前 `optimize.st` SHA-256：`30cf6b2f7c27af265da174e773476b7efc89a7ba3c26b88412978c0901f91512`。数字来源与 `/summary` 约束（第 8–12 行）仍在，生产 `ResumeOptimizationValidator` 未放宽。
+
+| 指标 | C2（2026-10-09） | 日1019 复测 |
+| --- | --- | --- |
+| 首次结构化校验 | 10/10 | **10/10**（`firstAttemptRate=1.0`） |
+| 摘要借数字三例 | 首次通过 | `java-contributor` / `cross-project-numbers` / `bilingual-contributor` 均首次通过；后两者本轮无 `/summary` 补丁，前者亦无摘要补丁 |
+| 预声明空建议 | 仍为空 | `unrelated-career` / `already-clear` / `missing-experience` 均为 `patches=[]` |
+| 模型 | deepseek-flash | deepseek-flash，temperature=0.3 |
+| 运行 ID | `2026-10-09T09-48-59…` | `2026-10-19T09-50-…-r2`（首跑 `unrelated-career` 传输 EOF/`MODEL_UNAVAILABLE`，同日立即重跑全绿） |
+
+离线：`ResumeOptimizationSummaryProvenanceRegressionTest` 4、`ResumeOptimizerTest` 5、`ResumeOptimizationValueFilterTest` 11、Python `unittest discover -s backend/eval` 6 全部通过。原始 evidence 仅存本机 `/workspace/docs-eval-local/resume-optimize-provenance-2026-10-19-r2/`（未入库）。人工门禁仍为 `PENDING_TWO_HUMAN_REVIEWERS`。
