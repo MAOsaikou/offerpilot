@@ -101,6 +101,9 @@ public class DemoResetService {
                 return null;
             obsolete.addAll(jdbc.query("SELECT bucket,object_key FROM files WHERE user_id=?",
                     (rs, n) -> new StoredFile(rs.getString(1), rs.getString(2)), userId));
+            for (StoredFile file : obsolete) jdbc.update(
+                    "INSERT INTO account_data_cleanup(id,kind,bucket,object_key) VALUES (?,'OBJECT',?,?)",
+                    com.offerpilot.common.id.IdGenerator.next("cleanup"), file.bucket(), file.key());
             clear(userId);
             insertResumes(userId);
             insertJobs();
@@ -118,7 +121,10 @@ public class DemoResetService {
         for (StoredFile file : obsolete) {
             if (jdbc.queryForObject("SELECT count(*) FROM files WHERE bucket=? AND object_key=?",
                     Integer.class, file.bucket(), file.key()) > 0) continue;
-            try { storage.remove(file.bucket(), file.key()); }
+            try {
+                storage.remove(file.bucket(), file.key());
+                jdbc.update("DELETE FROM account_data_cleanup WHERE kind='OBJECT' AND bucket=? AND object_key=?", file.bucket(), file.key());
+            }
             catch (RuntimeException ex) { log.warn("Demo reset could not remove obsolete file object: {}", file.key()); }
         }
         return result;

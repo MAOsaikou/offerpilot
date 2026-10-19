@@ -20,12 +20,35 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+@org.springframework.context.annotation.Import(KnowledgeNotesIntegrationTest.Storage.class)
 class KnowledgeNotesIntegrationTest extends SharedHttpIntegrationTest {
+    @org.springframework.boot.test.context.TestConfiguration
+    static class Storage {
+        @org.springframework.context.annotation.Bean
+        @org.springframework.context.annotation.Primary
+        com.offerpilot.resume.application.ResumeObjectStore objects() {
+            var objects = new java.util.concurrent.ConcurrentHashMap<String,byte[]>();
+            return new com.offerpilot.resume.application.ResumeObjectStore() {
+                public String bucket() { return "kb-fixture"; }
+                public void put(String key, byte[] bytes, String mime) { objects.put(key, bytes.clone()); }
+                public byte[] get(String bucket, String key) {
+                    byte[] bytes = objects.get(key);
+                    if (bytes == null) throw new IllegalStateException("missing fixture object");
+                    return bytes.clone();
+                }
+                public void remove(String bucket, String key) { objects.remove(key); }
+            };
+        }
+    }
     @Autowired GuestIdentityService identities;
     @Autowired KnowledgeNoteService notes;
+    @Autowired KnowledgeDocuments documents;
+    @Autowired com.offerpilot.resume.application.ResumeObjectStore storage;
+    @Autowired com.offerpilot.privacy.AccountDataCleanup cleanup;
     @Autowired KnowledgeNoteSearch search;
     @Autowired OccupationEmbeddings embeddings;
     @Autowired JdbcTemplate jdbc;
+    @Autowired org.springframework.transaction.support.TransactionTemplate tx;
     @LocalServerPort int port;
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final KnowledgeNoteService.Draft DRAFT = new KnowledgeNoteService.Draft(
@@ -42,6 +65,78 @@ class KnowledgeNotesIntegrationTest extends SharedHttpIntegrationTest {
     private JsonNode data(HttpResponse<String> response) throws Exception {
         assertThat(response.statusCode()).withFailMessage(response.body()).isEqualTo(200);
         return JSON.readTree(response.body()).path("data");
+    }
+
+    private HttpResponse<String> upload(String token, String name, String mime, byte[] bytes) throws Exception {
+        String boundary = "kb-" + UUID.randomUUID();
+        var body = new java.io.ByteArrayOutputStream();
+        body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + name
+                + "\"\r\nContent-Type: " + mime + "\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        body.write(bytes); body.write(("\r\n--" + boundary + "--\r\n").getBytes());
+        var req = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/knowledge/notes/upload"))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary);
+        if (token != null) req.header("Authorization", "Bearer " + token);
+        return HttpClient.newHttpClient().send(req.POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(), HttpResponse.BodyHandlers.ofString());
+    }
+    @Test void uploadedDocumentsArePrivateSearchableAndOriginalsAreCleanedOnDeletion() throws Exception {
+        String token = identities.create().accessToken(), owner = identities.require("Bearer " + token);
+        String other = identities.create().accessToken();
+        byte[] bytes = "Redis 缓存失效的项目经验😀".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(upload(null, "project.md", "text/markdown", bytes).statusCode()).isEqualTo(401);
+        var created = data(upload(token, "project.md", "text/markdown", bytes));
+        String id = created.path("id").asText(), file = created.path("sourceFileId").asText();
+        assertThat(created.path("indexStatus").asText()).isEqualTo("READY");
+        assertThat(created.path("sourceFilename").asText()).isEqualTo("project.md");
+        assertThat(created.path("title").asText()).isEqualTo("project");
+        assertThat(created.path("category").asText()).isEqualTo("技术积累");
+        assertThat(data(request("GET", "", token, null)).path("items").get(0)).isEqualTo(created);
+        assertThat(search.search(owner, "缓存失效", 5).items()).extracting(KnowledgeNoteSearch.Hit::id).contains(id);
+        assertThat(new KnowledgeNotesForChat(search).retrieve(owner, "Redis")).extracting(item -> item.noteId()).contains(id);
+        assertThat(request("GET", "/"+id+"/file", other, null).statusCode()).isEqualTo(404);
+        assertThat(request("GET", "/"+id+"/file", null, null).statusCode()).isEqualTo(401);
+        assertThat(request("GET", "/"+id+"/file", token, null).body()).isEqualTo(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(documents.read(owner, id).bytes()).isEqualTo(bytes);
+        var object = jdbc.queryForMap("SELECT bucket,object_key FROM files WHERE id=?", file);
+        data(request("DELETE", "/"+id, token, null));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM files WHERE id=?", Integer.class, file)).isZero();
+        jdbc.queryForList("SELECT id FROM account_data_cleanup WHERE object_key=?", String.class, object.get("object_key")).forEach(cleanup::clean);
+        assertThatThrownBy(() -> storage.get((String)object.get("bucket"), (String)object.get("object_key"))).isInstanceOf(RuntimeException.class);
+        for (String name : List.of("wrong.pdf", "wrong.docx")) assertThat(upload(token,name,"application/octet-stream",bytes).statusCode()).isEqualTo(400);
+        assertThat(upload(token,"bad.txt","text/plain",new byte[]{(byte)0xff}).statusCode()).isEqualTo(400);
+        assertThat(notes.list(owner,1,20).total()).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM files WHERE user_id=?",Integer.class,owner)).isZero();
+        var longNote = documents.upload(owner, "😀".repeat(125)+".TXT", "text/plain", "😀".repeat(30001).getBytes(java.nio.charset.StandardCharsets.UTF_8), "项目经历");
+        assertThat(longNote.title().codePointCount(0,longNote.title().length())).isEqualTo(120);
+        assertThat(longNote.content().codePointCount(0,longNote.content().length())).isEqualTo(30000);
+        assertThat(longNote.sourceTruncated()).isTrue();
+        notes.delete(owner,longNote.id());
+        cleanup.retryPending();
+    }
+
+    @Test void databaseFailureRollsBackRowsAndRetainsFailedObjectCleanupForRetry() {
+        String owner = owner();
+        var rejectingNotes = new KnowledgeNoteService(jdbc, embeddings, false) {
+            @Override public Note create(String user, Draft draft) {
+                super.create(user, draft);
+                throw new IllegalStateException("fixture database-stage failure");
+            }
+        };
+        var retainedKey = new java.util.concurrent.atomic.AtomicReference<String>();
+        var failingCleanup = new com.offerpilot.resume.application.ResumeObjectStore() {
+            public String bucket() { return storage.bucket(); }
+            public void put(String key, byte[] bytes, String mime) { retainedKey.set(key); storage.put(key,bytes,mime); }
+            public byte[] get(String bucket, String key) { return storage.get(bucket,key); }
+            public void remove(String bucket, String key) { throw new IllegalStateException("fixture cleanup outage"); }
+        };
+        var upload = new KnowledgeDocuments(jdbc, tx, failingCleanup, new com.offerpilot.common.document.DocumentTextReader(), rejectingNotes);
+        assertThatThrownBy(() -> upload.upload(owner,"rollback.txt","text/plain","private fixture".getBytes(),null)).hasMessageContaining("fixture database-stage failure");
+        assertThat(notes.list(owner,1,20).total()).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM files WHERE user_id=?",Integer.class,owner)).isZero();
+        assertThat(storage.get(storage.bucket(),retainedKey.get())).isNotEmpty();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup WHERE object_key=?",Integer.class,retainedKey.get())).isEqualTo(1);
+        cleanup.retryPending();
+        assertThatThrownBy(() -> storage.get(storage.bucket(),retainedKey.get())).isInstanceOf(RuntimeException.class);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup WHERE object_key=?",Integer.class,retainedKey.get())).isZero();
     }
 
     @Test void crudPersistsAcrossRequestsAndEveryEndpointRequiresIdentity() throws Exception {
@@ -136,12 +231,23 @@ class KnowledgeNotesIntegrationTest extends SharedHttpIntegrationTest {
         var provider = mock(OccupationEmbeddings.class);
         when(provider.configured()).thenReturn(true);
         var worker = new KnowledgeNoteEmbeddingJob(jdbc, provider, true);
-        var note = notes.create(owner, DRAFT);
-        verifyNoInteractions(provider); // save only wrote an FTS + pending record
+        var configuredNotes = new KnowledgeNoteService(jdbc, provider, true);
+        var note = configuredNotes.create(owner, DRAFT);
+        assertThat(note.indexStatus()).isEqualTo("QUEUED");
+        verify(provider, never()).embed(anyList()); // save only wrote an FTS + pending record
         when(provider.embed(anyList())).thenReturn(List.of());
         assertThat(worker.indexPending()).isZero();
+        assertThat(jdbc.queryForObject("SELECT embedding_attempts FROM knowledge_notes WHERE id=?", Integer.class, note.id())).isEqualTo(1);
+        assertThat(notes.get(owner, note.id()).indexStatus()).isEqualTo("QUEUED");
+        for (int i = 0; i < 2; i++) {
+            jdbc.update("UPDATE knowledge_notes SET embedding_next_attempt_at=now() WHERE id=?", note.id());
+            assertThat(worker.indexPending()).isZero();
+        }
+        assertThat(notes.get(owner, note.id()).indexStatus()).isEqualTo("FAILED");
+        assertThat(notes.get(owner, note.id()).indexError()).contains("全文检索仍可用");
+        notes.update(owner, note.id(), DRAFT);
         assertThat(search.search(owner, "Redis", 5).items()).isNotEmpty();
-        assertThat(jdbc.queryForObject("SELECT embedding_next_attempt_at>now() FROM knowledge_notes WHERE id=?", Boolean.class, note.id())).isTrue();
+
         float[] vector = new float[1024]; vector[0] = 1;
         jdbc.update("UPDATE knowledge_notes SET embedding_next_attempt_at=now() WHERE id=?", note.id());
         when(provider.embed(anyList())).thenAnswer(call -> {
@@ -152,6 +258,7 @@ class KnowledgeNotesIntegrationTest extends SharedHttpIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT embedding IS NULL FROM knowledge_notes WHERE id=?", Boolean.class, note.id())).isTrue();
         when(provider.embed(anyList())).thenReturn(List.of(vector));
         assertThat(worker.indexPending()).isEqualTo(1);
+        assertThat(notes.get(owner, note.id()).indexStatus()).isEqualTo("READY");
         assertThat(worker.indexPending()).isZero();
         notes.update(owner, note.id(), DRAFT);
         when(provider.embed(anyList())).thenAnswer(call -> { notes.delete(owner, note.id()); return List.of(vector); });

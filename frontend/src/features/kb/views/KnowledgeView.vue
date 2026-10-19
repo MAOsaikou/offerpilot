@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { useWorkspace } from '@/shared/stores/workspace'
-import { downloadText } from '@/shared/utils/download'
+import { downloadBlob, downloadText } from '@/shared/utils/download'
 import { sessionRevision } from '@/shared/utils/authSession'
 import {
   createKnowledgeNote,
@@ -15,6 +15,11 @@ import {
   noteCategories,
   searchKnowledgeNotes,
   updateKnowledgeNote,
+  uploadKnowledgeDocument,
+  validateKnowledgeFile,
+  getKnowledgeOriginal,
+  indexStatusLabels,
+  type IndexStatus,
   type NoteCategory,
 } from '@/shared/api/knowledge'
 
@@ -32,6 +37,8 @@ const message = ref('')
 const error = ref('')
 const busy = ref(false)
 const confirmingImport = ref(false)
+const fileInput = ref<HTMLInputElement>()
+const uploading = ref(false)
 let debounce: ReturnType<typeof setTimeout> | undefined
 onScopeDispose(() => clearTimeout(debounce))
 watch(search, (text) => {
@@ -55,6 +62,12 @@ const notes = useQuery({
     const result = await listKnowledgeNotes(page.value, 20, signal)
     return { items: result.items, total: result.total, vectorAvailable: undefined }
   },
+  refetchInterval: (query) =>
+    query.state.data?.items.some(
+      (note) => note.indexStatus === 'QUEUED' || note.indexStatus === 'INDEXING',
+    )
+      ? 3000
+      : false,
 })
 const localNotes = computed(() => workspace.state.notes)
 const pageCount = computed(() => Math.max(1, Math.ceil((notes.data.value?.total ?? 0) / 20)))
@@ -72,6 +85,8 @@ watch(sessionRevision, () => {
   message.value = ''
   error.value = ''
   busy.value = false
+  uploading.value = false
+  if (fileInput.value) fileInput.value.value = ''
   deleting.value = null
   confirmingImport.value = false
 })
@@ -140,6 +155,41 @@ async function remove(id: string) {
     await refresh()
   })
 }
+async function upload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  const revision = sessionRevision.value
+  await perform(async () => {
+    validateKnowledgeFile(file)
+    uploading.value = true
+    try {
+      const note = await uploadKnowledgeDocument(file)
+      if (revision !== sessionRevision.value) return
+      search.value = ''
+      queryText.value = ''
+      clearTimeout(debounce)
+      page.value = 1
+      message.value = note.sourceTruncated
+        ? '资料已上传；正文超过 30000 字，仅前 30000 字入库，原文件完整保留。'
+        : '资料已上传，可在列表查看索引状态'
+      await refresh()
+    } finally {
+      if (revision === sessionRevision.value) uploading.value = false
+    }
+  })
+}
+async function downloadOriginal(id: string, filename: string) {
+  const revision = sessionRevision.value
+  await perform(async () => {
+    const blob = await getKnowledgeOriginal(id)
+    if (revision === sessionRevision.value) downloadBlob(filename, blob)
+  })
+}
+function statusLabel(status?: IndexStatus) {
+  return indexStatusLabels[status ?? 'READY']
+}
 async function importLocal() {
   const revision = sessionRevision.value
   // Freeze the original payload. Keep newly added/changed local notes, even during a retry.
@@ -194,6 +244,28 @@ function exportLocal() {
     <div class="helper-note">
       笔记保存在当前身份的知识库，可供面试与成长指导引用。跨设备请登录同一账号；访客笔记属于原访客身份。
     </div>
+    <section class="panel form-stack" aria-label="上传知识资料">
+      <div class="card-footer">
+        <button class="btn primary" :disabled="busy" @click="fileInput?.click()">
+          {{ uploading ? '正在上传并提取…' : '上传资料' }}
+        </button>
+        <input
+          ref="fileInput"
+          type="file"
+          accept=".pdf,.md,.txt"
+          aria-label="选择知识资料"
+          :disabled="busy"
+          hidden
+          @change="upload"
+        />
+        <span class="helper-note"
+          >PDF / MD / TXT，单个文件 ≤ 10MB；PDF 最多 10 页，需包含可复制文本。</span
+        >
+      </div>
+      <p class="helper-note">
+        默认归入技术积累，可在上传后编辑分类。超过 30000 字的正文仅前 30000 字入库，原文件完整保留。
+      </p>
+    </section>
     <section v-if="localNotes.length" class="panel form-stack" aria-label="导入本地笔记">
       <p>发现 {{ localNotes.length }} 条本地旧笔记，尚未导入当前身份的知识库。</p>
       <p v-if="confirmingImport">
@@ -254,10 +326,28 @@ function exportLocal() {
               <h3 class="break-words">{{ note.title }}</h3>
               <span class="tag">{{ note.category }}</span>
             </div>
+            <div class="card-footer">
+              <span class="tag" role="status">{{ statusLabel(note.indexStatus) }}</span>
+              <span v-if="note.sourceFilename" class="helper-note break-words">{{
+                note.sourceFilename
+              }}</span>
+            </div>
+            <p v-if="note.indexError" class="error-banner" role="alert">{{ note.indexError }}</p>
+            <p v-if="note.sourceTruncated" class="helper-note">
+              正文仅前 30000 字入库，原文件完整保留。
+            </p>
             <p class="prose-content break-words">{{ note.content }}</p>
             <div class="card-footer">
               <button class="btn text" :disabled="busy" @click="edit(note.id)">编辑笔记</button>
               <button class="btn" :disabled="busy" @click="exportNote(note.id)">导出</button>
+              <button
+                v-if="note.sourceFilename"
+                class="btn"
+                :disabled="busy"
+                @click="downloadOriginal(note.id, note.sourceFilename)"
+              >
+                下载原文件
+              </button>
               <button class="btn text" :disabled="busy" @click="deleting = note.id">
                 删除笔记
               </button>
@@ -268,7 +358,9 @@ function exportLocal() {
               role="group"
               aria-label="确认删除笔记"
             >
-              <p>确认删除「{{ note.title }}」？删除后无法恢复，可以先导出。</p>
+              <p>
+                确认删除「{{ note.title }}」？删除后无法恢复，上传的原文件也将删除，可以先导出。
+              </p>
               <div class="card-footer">
                 <button class="btn" :disabled="busy" @click="remove(note.id)">确认删除</button>
                 <button class="btn" :disabled="busy" @click="deleting = null">保留笔记</button>

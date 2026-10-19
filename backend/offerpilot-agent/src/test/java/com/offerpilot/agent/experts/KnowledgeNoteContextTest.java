@@ -42,7 +42,7 @@ class KnowledgeNoteContextTest {
         return registry;
     }
     KnowledgeNoteSearch.Hit hit(String title, String text) {
-        return new KnowledgeNoteSearch.Hit("note_1",title,"项目经历",text,"2026-10-10",0.03,true,false);
+        return new KnowledgeNoteSearch.Hit("note_1",title,"项目经历",text,"2026-10-10",0.03,true,false,"READY",null,null,false);
     }
     @Test void boundsEveryCitationAndQueryAndRecoversFromRetrievalFailure() {
         when(search.search(eq("alice"), anyString(), eq(3))).thenReturn(new KnowledgeNoteSearch.Result(

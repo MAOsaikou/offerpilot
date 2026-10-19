@@ -73,7 +73,7 @@ class AccountDataDeletionIntegrationTest {
         jdbc.update("INSERT INTO user_preferences(user_id) VALUES (?)",o);
         jdbc.update("INSERT INTO refresh_tokens(id,user_id,token_hash,expires_at) VALUES (?,?,?,now()+interval '1 day')",o+"rt",o,o+"hash");
         jdbc.update("INSERT INTO user_integrations(id,user_id,provider,secret_enc) VALUES (?,?,'GITHUB',decode('00','hex'))",o+"integration",o);
-        for (String purpose: List.of("RESUME","EXPORT")) {
+        for (String purpose: List.of("RESUME","EXPORT","KB_DOCUMENT")) {
             String key="resumes/"+o+"/"+purpose;
             storage.put(key,"fictional resume".getBytes(),"text/plain");
             jdbc.update("INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256) VALUES (?,?,?,?,?,'fixture.txt','text/plain',16,'fixture')",o+purpose,o,purpose,storage.bucket(),key);
@@ -100,6 +100,7 @@ class AccountDataDeletionIntegrationTest {
         jdbc.update("INSERT INTO growth_task_completions(user_id,task_title) VALUES (?,'fixture')",o);
         jdbc.update("INSERT INTO career_assessments(user_id,answers) VALUES (?,'[\"private\"]'::jsonb)",o);
         jdbc.update("INSERT INTO knowledge_notes(id,user_id,title,content,category,tsv,embedding) VALUES (?,?,'fixture','private','技术积累','',?::vector)",o+"note",o,"["+String.join(",",Collections.nCopies(1024,"0.1"))+"]");
+        jdbc.update("UPDATE knowledge_notes SET source_file_id=?,source_filename='资料.md',index_status='READY' WHERE id=?", o+"KB_DOCUMENT", o+"note");
         jdbc.update("INSERT INTO knowledge_note_imports(user_id,source_id,fingerprint,note_id) VALUES (?,'fixture',?,?)",o,"0".repeat(64),o+"note");
         jdbc.update("INSERT INTO user_memories(id,user_id,kind,fact,normalized_fact,source,tsv) VALUES (?, ?, 'GOAL', '虚构目标', '虚构目标', 'MANUAL', '')",o+"memory",o);
         var turn = conversations.begin(o,null,"private",AgentMode.AUTO,"fixture");
@@ -125,7 +126,7 @@ class AccountDataDeletionIntegrationTest {
             String column=table.equals("interview_answers")?"session_id":table.equals("agent_events")?"run_id":"id";
             for(String id:childIds.get(table)) assertThat(jdbc.queryForObject("SELECT count(*) FROM "+table+" WHERE "+column+"=?",Integer.class,id)).isZero();
         }
-        for(String purpose:List.of("RESUME","EXPORT")) {
+        for(String purpose:List.of("RESUME","EXPORT","KB_DOCUMENT")) {
             assertThatThrownBy(() -> storage.get(storage.bucket(),"resumes/"+a+"/"+purpose)).isInstanceOf(RuntimeException.class);
             assertThat(storage.get(storage.bucket(),"resumes/"+b+"/"+purpose)).isEqualTo("fictional resume".getBytes());
         }

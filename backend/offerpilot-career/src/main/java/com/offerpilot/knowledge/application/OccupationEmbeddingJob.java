@@ -45,7 +45,7 @@ public class OccupationEmbeddingJob implements ApplicationRunner {
         var stored = jdbc.queryForList("SELECT fingerprint FROM embedding_index_state WHERE id=1", String.class);
         if (!stored.isEmpty() && stored.get(0).equals(current)) return;
         int occupations = jdbc.update("UPDATE occupations SET embedding=NULL WHERE embedding IS NOT NULL");
-        int notes = jdbc.update("UPDATE knowledge_notes SET embedding=NULL,embedding_next_attempt_at=now() WHERE embedding IS NOT NULL");
+        int notes = jdbc.update("UPDATE knowledge_notes SET embedding=NULL,embedding_next_attempt_at=now(),index_status='QUEUED',index_error=NULL,embedding_attempts=0,revision=revision+1 WHERE embedding IS NOT NULL");
         jdbc.update("""
                 INSERT INTO embedding_index_state(id,fingerprint) VALUES (1,?)
                 ON CONFLICT (id) DO UPDATE SET fingerprint=EXCLUDED.fingerprint,updated_at=now()
