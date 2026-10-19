@@ -73,15 +73,18 @@ class ChatParallelEffectsTest {
         when(memory.candidate(eq("owner"), anyString())).thenReturn(candidate);
         var service = service(gateway, new ExpertRegistry(), conversations(), memory);
         var events = new java.util.concurrent.CopyOnWriteArrayList<AgentEvent>();
-        service.chat("owner", new ChatRequest(null, "记住：我想在上海找工作", null, null, null)).subscribe(events::add);
+        var completed = new CountDownLatch(1);
+        service.chat("owner", new ChatRequest(null, "记住：我想在上海找工作", null, null, null))
+                .subscribe(events::add, ignored -> completed.countDown(), completed::countDown);
         assertThat(gateway.started.await(2, TimeUnit.SECONDS)).isTrue();
         verify(memory, never()).write(anyString(), anyString(), any(), any());
         service.cancel("owner", "run");
         gateway.verdict.tryEmitValue("{\"injection\":false,\"categories\":[]}");
+        assertThat(completed.await(2, TimeUnit.SECONDS)).isTrue();
         verify(memory, never()).write(anyString(), anyString(), any(), any());
         assertThat(events).extracting(AgentEvent::type).containsExactly("run.started", "run.completed");
         @SuppressWarnings("unchecked") Map<String, ?> leftover = (Map<String, ?>) org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations");
-            assertThat(leftover).isEmpty();
+        assertThat(leftover).isEmpty();
     }
 
     private ChatService service(Gateway gateway, ExpertRegistry experts, ConversationService conversations, MemoryChat memory) throws Exception {
