@@ -25,20 +25,22 @@ public class JobImportService {
 
     /** securityNotices: SC-01 labels of suspected injected instructions found in the imported text (shown, never executed). */
     public record ParseResult(JobImportParser.Draft draft, String url, String sourceKind, List<String> securityNotices) {}
-    private static List<String> notices(String text) {
-        return com.offerpilot.llm.safety.PromptInjectionDetector.detect(text).stream()
+    private List<String> notices(String owner, String text) {
+        return com.offerpilot.llm.quota.LlmUserContext.asUser(owner, () -> gateway.detectInjection(text)).stream()
                 .map(com.offerpilot.llm.safety.PromptInjectionDetector::label).toList();
     }
     public record Fields(String title, String company, String locations, String department, String nature,
                          String description, String requirement, String url, List<String> skills) {}
 
+    private final com.offerpilot.llm.ModelGateway gateway;
     private final JobImportParser parser;
     private final JobPageFetcher fetcher;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final JobService jobs;
 
-    public JobImportService(JobImportParser parser, JobPageFetcher fetcher, JdbcTemplate jdbc, ObjectMapper json, JobService jobs) {
+    public JobImportService(JobImportParser parser, JobPageFetcher fetcher, JdbcTemplate jdbc, ObjectMapper json, JobService jobs, com.offerpilot.llm.ModelGateway gateway) {
+        this.gateway = gateway;
         this.parser = parser;
         this.fetcher = fetcher;
         this.jdbc = jdbc;
@@ -53,10 +55,10 @@ public class JobImportService {
         if (hasText) {
             if (text.strip().codePointCount(0, text.strip().length()) < 30)
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "岗位描述太短，请粘贴完整的职责与要求。");
-            return new ParseResult(parser.parse(owner, text, null), "", "text", notices(text));
+            return new ParseResult(parser.parse(owner, text, null), "", "text", notices(owner, text));
         }
         var page = fetcher.fetch(url);
-        return new ParseResult(parser.parse(owner, page.text(), page.title()), page.url(), "url", notices(page.text()));
+        return new ParseResult(parser.parse(owner, page.text(), page.title()), page.url(), "url", notices(owner, page.text()));
     }
 
     public JsonNode save(String owner, Fields f) {

@@ -28,7 +28,7 @@ class DeepSeekGatewayTest {
                         "FLASH", new OfferPilotProperties.Llm.Tier("deepseek", "deepseek-flash", Duration.ofSeconds(60), true, "disabled", 8192),
                         "PRO", new OfferPilotProperties.Llm.Tier("deepseek", "deepseek-v4-pro", Duration.ofSeconds(120), false, "enabled", 32768),
                         "VISION_ALT", new OfferPilotProperties.Llm.Tier("deepseek", "deepseek-flash", Duration.ofSeconds(90), true)), Map.of()), null, null),
-                new MockEnvironment().withProperty("spring.ai.deepseek.base-url", base).withProperty("spring.ai.deepseek.api-key", key));
+                new MockEnvironment().withProperty("offerpilot.llm.injection-classifier-enabled", "false").withProperty("spring.ai.deepseek.base-url", base).withProperty("spring.ai.deepseek.api-key", key));
     }
     @Test void productionSseDecoderReassemblesUtf8EvenWhenEveryByteIsASeparateBuffer() {
         String content = "有框架经验😀，熟悉中文流式传输";
