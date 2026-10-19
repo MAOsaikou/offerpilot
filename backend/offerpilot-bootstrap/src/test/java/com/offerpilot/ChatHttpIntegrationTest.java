@@ -60,6 +60,7 @@ class ChatHttpIntegrationTest {
     @Autowired com.offerpilot.llm.quota.LlmQuotaLimiter quotas;
     @Autowired org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     private static final AtomicReference<String> requestBody = new AtomicReference<>();
+    private static final java.util.concurrent.atomic.AtomicInteger providerCalls = new java.util.concurrent.atomic.AtomicInteger();
     private static final HttpServer provider = provider();
     @Autowired com.offerpilot.resume.application.ResumePatchService patchService;
     @LocalServerPort
@@ -69,6 +70,7 @@ class ChatHttpIntegrationTest {
         try {
             var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/chat/completions", exchange -> {
+                providerCalls.incrementAndGet();
                 String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 requestBody.set(body);
                 exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
@@ -126,6 +128,26 @@ class ChatHttpIntegrationTest {
     }
 
     private String owner(String token) { return identities.require("Bearer " + token); }
+
+    @Test
+    void autoResumeAdviceSkipsClassificationAndPersistsOnlyOneReplyUsage() throws Exception {
+        String token = identities.create().accessToken(), user = owner(token);
+        int before = providerCalls.get();
+        var response = request("POST", "/agent/chat", token,
+                "{\"content\":\"简历里的项目经历怎么写更有说服力？给两条要点。\",\"mode\":\"AUTO\"}");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("plan.created", "resumeGuidance", "text.delta", "run.completed")
+                .doesNotContain("approval.required", "event:error", "event: error");
+        assertThat(providerCalls.get() - before).isEqualTo(1);
+        assertThat(requestBody.get()).contains("本轮只提供简历文字指导", "<orchestrator-data>")
+                .doesNotContain("意图识别与规划 v1", "简历动作解析 v1");
+        var message = jdbc.queryForMap("SELECT m.plain_text,m.usage::text AS usage FROM messages m "
+                + "JOIN agent_runs r ON r.assistant_message_id=m.id WHERE r.user_id=?", user);
+        assertThat(message.get("plain_text")).isEqualTo("你好，同学。");
+        var usage = json.readTree((String) message.get("usage"));
+        assertThat(usage.path("promptTokens").asInt()).isEqualTo(12);
+        assertThat(usage.path("completionTokens").asInt()).isEqualTo(6);
+    }
 
     private HttpResponse<String> upload(String token, String filename, byte[] bytes) throws Exception {
         String boundary = "op" + java.util.UUID.randomUUID();

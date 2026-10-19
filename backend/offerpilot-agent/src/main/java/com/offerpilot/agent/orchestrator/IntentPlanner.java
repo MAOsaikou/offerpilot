@@ -33,6 +33,20 @@ public class IntentPlanner {
     private final String prompt;
     private final JobIntentParser jobs;
     private final ResumeIntentParser resumes;
+    private boolean resumeAdviceFastPath = true;
+
+    @Value("${offerpilot.agent.resume-advice-fast-path:true}")
+    void setResumeAdviceFastPath(boolean enabled) {
+        resumeAdviceFastPath = enabled;
+    }
+
+    /** Only standalone, context-free advice questions; never infer a business action from a keyword. */
+    public boolean usesResumeAdviceFastPath(AgentMode mode, String content, List<Message> history,
+                                           Map<String, Object> context) {
+        return resumeAdviceFastPath && (mode == null || mode == AgentMode.AUTO)
+                && history.isEmpty() && (context == null || context.isEmpty())
+                && ResumeAdviceIntent.matches(content);
+    }
 
     public IntentPlanner(ModelGateway gateway, ObjectMapper mapper, ExpertRegistry experts,
                          Resource prompt) throws IOException {
@@ -104,6 +118,15 @@ public class IntentPlanner {
             ExpertType expert = ExpertType.valueOf(mode.name());
             return resolveActions(new Decision("single", expert, 1.0, false, null, single(content, expert, safeContext)),
                     content, history, tier, onUsage, safeContext);
+        }
+        if (usesResumeAdviceFastPath(mode, content, history, safeContext)) {
+            // Both routing and action are certain. Keep normal expert execution (including note retrieval)
+            // and gateway safety/quota hooks, but omit the two serial classification calls.
+            var step = new PlanStep("s1", "简历文字指导", ExpertType.RESUME,
+                    Map.of("action", "advice", "noteQuery",
+                            com.offerpilot.knowledge.application.KnowledgeNoteSearch.bounded(content, 2000)), List.of());
+            return Mono.just(new Decision("single", ExpertType.RESUME, 1.0, false, null,
+                    PlanValidator.validate(new Plan(content, List.of(step)))));
         }
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(prompt.replace("{experts}", experts.capabilities())));

@@ -129,7 +129,8 @@ public class ChatService {
                 ? Map.of() : request.options().context();
         // Only plain AUTO turns: modes, selected resources, images, memory writes and safety paths change the reply.
         boolean speculate = speculativeReply && (turn.mode() == null || turn.mode() == AgentMode.AUTO) && images.isEmpty()
-                && context.isEmpty() && !refuse && !crisis && !explicitMemory;
+                && context.isEmpty() && !refuse && !crisis && !explicitMemory
+                && !orchestrator.usesResumeAdviceFastPath(turn.mode(), request.content(), turn.history(), context);
         int basePromptSize = prompt.size();
         AtomicReference<Flux<ChatResponse>> early = new AtomicReference<>();
         AtomicReference<reactor.core.Disposable> earlyConnection = new AtomicReference<>();

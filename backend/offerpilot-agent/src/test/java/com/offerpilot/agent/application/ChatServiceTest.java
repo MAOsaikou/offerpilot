@@ -229,6 +229,86 @@ class ChatServiceTest {
     }
 
     @Test
+    void autoResumeAdviceUsesOneReplyCallWithExpertPromptAndSelectedTier() {
+        service.setSpeculativeReply(true);
+        for (var tier : List.of(ModelTier.FLASH, ModelTier.PRO)) {
+            clearInvocations(gateway, conversations);
+            when(gateway.stream(eq(tier), anyList())).thenAnswer(call -> Flux.deferContextual(context -> {
+                assertThat(context.<String>get(com.offerpilot.llm.quota.LlmUserContext.KEY)).isEqualTo("owner");
+                return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage("写清真实职责和结果。"))),
+                        ChatResponseMetadata.builder().usage(new DefaultUsage(12, 6)).build()));
+            }));
+            var result = service.chat("owner", new ChatRequest(null, "简历里的项目经历怎么写更有说服力？给两条要点。",
+                    null, AgentMode.AUTO, new ChatRequest.Options(tier.name(), null, null)))
+                    .collectList().block(Duration.ofSeconds(5));
+            assertThat(result).extracting(AgentEvent::type).containsExactly("run.started", "plan.created",
+                    "step.updated", "tool.call", "tool.result", "step.updated", "text.delta", "usage", "run.completed");
+            var prompt = ArgumentCaptor.forClass(List.class);
+            verify(gateway).stream(eq(tier), prompt.capture());
+            assertThat(prompt.getValue().toString()).contains("只提供简历文字指导", "<orchestrator-data>", "未修改简历");
+            verify(gateway, never()).stream(any(), anyList(), anyDouble());
+            verify(gateway).checkQuota("owner", tier);
+            verify(conversations).finish(any(), eq("写清真实职责和结果。"), eq("COMPLETED"),
+                    eq(java.util.Map.of("promptTokens", 12, "completionTokens", 6)), isNull(), anyList());
+        }
+    }
+
+    @Test
+    void cancellingFastAdviceCancelsItsOnlyProviderAndReleasesTheRun() {
+        service.setSpeculativeReply(true);
+        var cancelled = new AtomicBoolean();
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.<ChatResponse>never().doOnCancel(() -> cancelled.set(true)));
+        var subscription = service.chat("owner", new ChatRequest(null, "简历里的项目经历怎么写", null, null, null)).subscribe();
+        service.cancel("owner", "run");
+        assertThat(cancelled).isTrue();
+        assertThat(subscription.isDisposed()).isTrue();
+        verify(gateway).stream(eq(ModelTier.FLASH), anyList());
+        verify(gateway, never()).stream(any(), anyList(), anyDouble());
+        assertThat(org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations"))
+                .isEqualTo(java.util.Map.of());
+    }
+
+    @Test
+    void fastAdviceProviderErrorFinishesWithoutOrphanRun() {
+        service.setSpeculativeReply(true);
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.error(new BusinessException(ErrorCode.MODEL_UNAVAILABLE)));
+        var result = service.chat("owner", new ChatRequest(null, "简历里的项目经历怎么写", null, null, null))
+                .collectList().block(Duration.ofSeconds(5));
+        assertThat(result).last().isInstanceOf(AgentEvent.ErrorEvent.class);
+        verify(conversations).finish(any(), eq(""), eq("FAILED"), isNull(), anyString(), anyList());
+        assertThat(org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations"))
+                .isEqualTo(java.util.Map.of());
+    }
+
+    @Test
+    void autoImageTurnNeverStartsPlainSpeculation() {
+        service.setSpeculativeReply(true);
+        var attachments = mock(com.offerpilot.conversation.application.ChatAttachments.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "attachments", attachments);
+        when(attachments.load(eq("owner"), anyList())).thenReturn(List.of(
+                new com.offerpilot.conversation.application.ChatAttachments.Image("file1", "jd.png", "image/png", new byte[]{1})));
+        when(conversations.begin(anyString(), any(), anyString(), any(), anyString(), anyList())).thenReturn(
+                new com.offerpilot.conversation.application.ConversationService.Turn("owner", "conv", "run", "msg",
+                        AgentMode.AUTO, java.time.Instant.now(), List.of()));
+        var planned = new AtomicBoolean();
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.just(reply("{\"kind\":\"chitchat\",\"confidence\":1}"))
+                .doOnComplete(() -> planned.set(true)));
+        when(gateway.stream(any(), anyList())).thenAnswer(call -> {
+            assertThat(planned).isTrue();
+            List<org.springframework.ai.chat.messages.Message> prompt = call.getArgument(1);
+            assertThat(prompt.toString()).contains("用户本轮附带了 1 张图片");
+            assertThat(prompt).filteredOn(org.springframework.ai.chat.messages.UserMessage.class::isInstance)
+                    .anySatisfy(message -> assertThat(((org.springframework.ai.chat.messages.UserMessage) message).getMedia()).hasSize(1));
+            return Flux.just(reply("截图建议"));
+        });
+        var result = service.chat("owner", new ChatRequest(null, "看看这张截图", List.of(new ChatRequest.Attachment("file1", "image")),
+                AgentMode.AUTO, null)).collectList().block(Duration.ofSeconds(5));
+        assertThat(result).last().isInstanceOf(AgentEvent.RunCompleted.class);
+        verify(gateway).stream(any(), anyList());
+        verify(gateway).requireAvailable(ModelTier.FLASH, true);
+    }
+
+    @Test
     void autoReplyIsRedoneWhenPlannerChangesThePrompt() {
         service.setSpeculativeReply(true);
         var discarded = new AtomicBoolean();
