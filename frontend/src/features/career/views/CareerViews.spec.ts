@@ -1,3 +1,6 @@
+vi.mock('@/shared/components/BackgroundTaskStatus.vue', () => ({
+  default: { template: '<div />' },
+}))
 /* eslint-disable vue/one-component-per-file -- isolated route fixtures */
 import { createApp, h, nextTick, type App } from 'vue'
 import { createPinia } from 'pinia'

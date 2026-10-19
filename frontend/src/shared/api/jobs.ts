@@ -1,11 +1,5 @@
-import {
-  ApiError,
-  apiRequest,
-  apiUrl,
-  authenticatedHeaders,
-  fetchWithIdentity,
-  toApiError,
-} from './client'
+import { runGeneration } from './generationTasks'
+import { apiRequest, apiUrl, authenticatedHeaders, fetchWithIdentity, toApiError } from './client'
 import { downloadText } from '@/shared/utils/download'
 import type { ModelTier } from '@/shared/types/model-tier'
 import type {
@@ -27,13 +21,9 @@ export const listJobSites = (signal?: AbortSignal) =>
   apiRequest<{ sites: JobSite[] }>('/jobs/sites', { signal })
 export const searchJobs = (search: JobSearch, signal?: AbortSignal) =>
   apiRequest<JobSearchResult>('/jobs?' + new URLSearchParams({ ...search }), { signal })
-/** JB-06: parse pasted JD text or a public page URL into a draft; the server stores nothing. */
+/** JB-06: parse JD text / a public URL in the background; only a review draft is stored until explicit save. */
 export const parseJobImport = (source: { text?: string; url?: string }) =>
-  apiRequest<JobImportParse>('/jobs/import/parse', {
-    method: 'POST',
-    body: JSON.stringify(source),
-    signal: AbortSignal.timeout(90_000),
-  })
+  runGeneration<JobImportParse>('JOB_IMPORT', 'current', source)
 /** Save the reviewed draft as a job only this user can see. */
 export const saveJobImport = (fields: JobImportFields) =>
   apiRequest<RealJob>('/jobs/import', { method: 'POST', body: JSON.stringify(fields) })
@@ -43,35 +33,13 @@ export const getJob = (id: string, signal?: AbortSignal) =>
   apiRequest<RealJob>(`/jobs/${encodeURIComponent(id)}`, { signal })
 export const refreshJob = (id: string, signal?: AbortSignal) =>
   apiRequest<RealJob>(`/jobs/${encodeURIComponent(id)}/refresh`, { method: 'POST', signal })
-/** No automatic POST retry: a disconnected request may still save its report. */
-export const matchJob = async (
+export const matchJob = (
   id: string,
   resumeId: string,
-  resumeVersionId: string,
+  versionId: string,
   requestId: string,
   modelTier?: ModelTier,
-) => {
-  try {
-    return await apiRequest<EvidenceMatch>(`/jobs/${encodeURIComponent(id)}/matches`, {
-      method: 'POST',
-      body: JSON.stringify({ resumeId, resumeVersionId, requestId, modelTier }),
-      signal: AbortSignal.timeout(modelTier === 'FLASH' ? 90_000 : 210_000),
-    })
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'TimeoutError')
-      throw new ApiError(
-        '等待匹配响应超时。分析可能仍在保存，请先刷新匹配记录，再决定是否重新分析。',
-        { code: 40001 },
-      )
-    if (error instanceof ApiError && error.status === 504 && error.code === 504)
-      throw new ApiError('网关等待匹配响应超时。请先刷新匹配记录，确认结果后再重新分析。', {
-        code: 40001,
-        status: 504,
-        traceId: error.traceId,
-      })
-    throw error
-  }
-}
+) => runGeneration<EvidenceMatch>('JOB_MATCH', id, { resumeId, versionId, modelTier }, requestId)
 export const listJobMatches = (id: string, signal?: AbortSignal) =>
   apiRequest<MatchHistory[]>(`/jobs/${encodeURIComponent(id)}/matches`, { signal })
 export const getJobMatch = (id: string, signal?: AbortSignal) =>

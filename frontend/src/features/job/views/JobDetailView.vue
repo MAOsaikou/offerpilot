@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
+import { generationResult } from '@/shared/api/generationTasks'
+
 import { isGenerationCancelled } from '@/shared/api/client'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import type { ModelTier } from '@/shared/types/model-tier'
@@ -191,10 +194,21 @@ watch(
   },
   { immediate: true },
 )
+async function restoreTask(taskId: string) {
+  if (busy.value || reportLoading.value || route.query.matchId) return
+  const epoch = generation
+  try {
+    const saved = await generationResult<EvidenceMatch>(taskId)
+    if (epoch === generation && saved.jobId === id.value) report.value = saved
+  } catch (cause) {
+    if (epoch === generation) error.value = cause instanceof Error ? cause.message : '报告恢复失败'
+  }
+}
 </script>
 <template>
   <LegacyJobDetail v-if="!real" />
   <section v-else class="page-stack">
+    <BackgroundTaskStatus kind="JOB_MATCH" :entity-id="id" @completed="restoreTask" />
     <p v-if="board.query.isPending.value" role="status">正在读取看板…</p>
     <div v-if="board.query.isError.value" class="error-banner" role="alert">
       收藏读取失败：{{ board.query.error.value?.message }}

@@ -1,3 +1,6 @@
+vi.mock('@/shared/components/BackgroundTaskStatus.vue', () => ({
+  default: { template: '<div />' },
+}))
 import { ApiError } from '@/shared/api/client'
 import { createApp, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'

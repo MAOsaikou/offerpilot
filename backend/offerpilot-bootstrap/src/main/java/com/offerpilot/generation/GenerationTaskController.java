@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 
 @RestController
 @RequestMapping("/api/v1/generation-tasks")
@@ -22,11 +24,31 @@ public class GenerationTaskController {
     }
 
     @GetMapping
-    public ApiResponse<?> list(HttpServletRequest request) {
+    public ApiResponse<?> list(@RequestParam(required=false) String kind, @RequestParam(required=false) String entityId, HttpServletRequest request) {
         String owner = users.require(request.getHeader("Authorization"));
-        return ApiResponse.ok(tasks.listRunning(owner), TraceIdFilter.current(request));
+        var all=new java.util.ArrayList<Object>(tasks.recent(owner,kind,entityId));
+        if (kind==null && entityId==null) all.addAll(tasks.listRunning(owner).stream()
+                .filter(legacy -> all.stream().noneMatch(t -> t instanceof GenerationTaskService.BackgroundTask b && legacy.id().equals(b.resultId()))).toList());
+        return ApiResponse.ok(all, TraceIdFilter.current(request));
     }
 
+    @PostMapping
+    public ApiResponse<?> start(@RequestBody GenerationTaskService.Start body, HttpServletRequest request) {
+        return ApiResponse.ok(tasks.start(users.require(request.getHeader("Authorization")),body),TraceIdFilter.current(request));
+    }
+    @GetMapping("/{id}")
+    public ApiResponse<?> get(@PathVariable String id, HttpServletRequest request) {
+        return ApiResponse.ok(tasks.get(users.require(request.getHeader("Authorization")),id),TraceIdFilter.current(request));
+    }
+    @GetMapping("/{id}/result")
+    public ApiResponse<?> result(@PathVariable String id, HttpServletRequest request) {
+        return ApiResponse.ok(tasks.result(users.require(request.getHeader("Authorization")),id),TraceIdFilter.current(request));
+    }
+    @PostMapping("/{id}/cancel")
+    public ApiResponse<?> cancelBackground(@PathVariable String id, HttpServletRequest request) {
+        tasks.cancelBackground(users.require(request.getHeader("Authorization")),id);
+        return ApiResponse.ok(null,TraceIdFilter.current(request));
+    }
     @PostMapping("/{kind}/{id}/cancel")
     public ApiResponse<?> cancel(@PathVariable String kind, @PathVariable String id, HttpServletRequest request) {
         String owner = users.require(request.getHeader("Authorization"));

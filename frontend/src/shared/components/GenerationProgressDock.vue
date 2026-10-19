@@ -1,88 +1,84 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink } from 'vue-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { cancelGenerationTask, listGenerationTasks } from '@/shared/api/generationTasks'
+import { useGenerationTasks } from '@/shared/stores/generationTasks'
 import { useAuthStore } from '@/shared/stores/auth'
-
+import { isActiveTask, cancelGenerationTask } from '@/shared/api/generationTasks'
 const auth = useAuthStore()
-const open = ref(true)
-const queryClient = useQueryClient()
-const query = useQuery({
-  queryKey: computed(() => ['generation-tasks', auth.identityKey]),
-  queryFn: ({ signal }) => listGenerationTasks(signal),
-  enabled: computed(() => Boolean(auth.identityKey)),
-  refetchInterval: (q) => (q.state.data?.length ? 3000 : 8000),
-  retry: false,
-})
-const tasks = computed(() => query.data.value ?? [])
-const kindLabel: Record<string, string> = {
-  JOB_MATCH: '匹配',
-  RESUME_OPTIMIZE: '改写',
-  RESUME_DIAGNOSIS: '诊断',
-}
-const cancellingId = ref<string | null>(null)
+const store = useGenerationTasks()
+const open = ref(false)
+const cancellingId = ref('')
 const cancelError = ref('')
-const cancelMutation = useMutation({
-  mutationFn: ({ kind, id }: { kind: string; id: string }) => cancelGenerationTask(kind, id),
-  onMutate: ({ id }) => {
-    cancellingId.value = id
-    cancelError.value = ''
+watch(
+  () => auth.identityKey,
+  () => {
+    store.reset()
+    if (auth.isAuthenticated) void store.refresh()
   },
-  onSuccess: async () => {
-    await Promise.all(
-      ['generation-tasks', 'job-matches', 'diagnoses', 'optimizations', 'applications'].map((key) =>
-        queryClient.invalidateQueries({ queryKey: [key] }),
-      ),
-    )
-  },
-  onError: (error: unknown) => {
-    cancelError.value = error instanceof Error ? error.message : '取消失败，请稍后重试'
-  },
-  onSettled: () => {
-    cancellingId.value = null
-  },
+  { immediate: true },
+)
+function refreshVisible() {
+  if (auth.isAuthenticated && !document.hidden) void store.refresh()
+}
+onMounted(() => {
+  window.addEventListener('focus', refreshVisible)
+  window.addEventListener('online', refreshVisible)
 })
-
-function cancelTask(kind: string, id: string) {
-  if (cancellingId.value) return
-  cancelMutation.mutate({ kind, id })
+onBeforeUnmount(() => {
+  window.removeEventListener('focus', refreshVisible)
+  window.removeEventListener('online', refreshVisible)
+})
+async function cancelTask(id: string, kind: string, entity?: string) {
+  cancellingId.value = id
+  cancelError.value = ''
+  try {
+    if (entity) await store.cancel(id)
+    else {
+      await cancelGenerationTask(kind, id)
+      await store.refresh()
+    }
+  } catch (cause) {
+    cancelError.value = cause instanceof Error ? cause.message : '取消失败，请重试'
+  } finally {
+    cancellingId.value = ''
+  }
 }
 </script>
 <template>
-  <aside
-    v-if="tasks.length"
-    class="generation-dock"
-    :class="{ 'is-collapsed': !open }"
-    aria-label="后台生成进度"
-  >
+  <aside class="generation-dock" aria-label="后台生成进度">
+    <p v-if="store.notice" role="status" aria-live="polite">
+      {{ store.notice }}
+      <button class="btn" aria-label="关闭任务通知" @click="store.notice = ''">关闭</button>
+    </p>
     <header class="generation-dock__head">
-      <strong>后台进行中 · {{ tasks.length }}</strong>
-      <button type="button" class="btn" @click="open = !open">
+      <strong>后台任务 · {{ store.active.length }} 进行中</strong>
+      <button type="button" class="btn" :aria-expanded="open" @click="open = !open">
         {{ open ? '收起' : '展开' }}
       </button>
     </header>
-    <p v-if="cancelError" class="generation-dock__error" role="alert">{{ cancelError }}</p>
-    <ul v-if="open" class="generation-dock__list">
-      <li v-for="task in tasks" :key="task.id">
-        <div class="generation-dock__row">
-          <RouterLink :to="task.href">
-            <span class="tag">{{ kindLabel[task.kind] || task.kind }}</span>
-            {{ task.title }}
-            <span v-if="task.modelTier" class="subtle"> · {{ task.modelTier }}</span>
-          </RouterLink>
-          <button
-            type="button"
-            class="btn generation-dock__cancel"
-            :disabled="cancellingId === task.id"
-            @click="cancelTask(task.kind, task.id)"
-          >
-            {{ cancellingId === task.id ? '取消中…' : '取消' }}
-          </button>
-        </div>
-        <p class="subtle">匹配离开页面后继续；诊断和改写离开分析页会停止。可取消后重新发起。</p>
-      </li>
-    </ul>
+    <template v-if="open">
+      <p v-if="store.error || cancelError" class="generation-dock__error" role="alert">
+        {{ cancelError || store.error }}
+      </p>
+      <button class="btn" @click="store.refresh">刷新任务</button>
+      <p v-if="!store.tasks.length">暂无后台任务</p>
+      <ul class="generation-dock__list">
+        <li v-for="task in store.tasks" :key="task.id">
+          <div class="generation-dock__row">
+            <RouterLink :to="task.href">{{ task.title }}</RouterLink>
+            <button
+              v-if="isActiveTask(task)"
+              class="btn"
+              :disabled="cancellingId === task.id"
+              @click="cancelTask(task.id, task.kind, task.entityId)"
+            >
+              取消
+            </button>
+          </div>
+          <p class="subtle">{{ task.error || task.stage || '正在执行' }}</p>
+        </li>
+      </ul>
+    </template>
   </aside>
 </template>
 <style scoped>
@@ -128,5 +124,13 @@ function cancelTask(kind: string, id: string) {
   margin: 8px 0 0;
   color: var(--danger, #b91c1c);
   font-size: 12px;
+}
+</style>
+
+<style scoped>
+.generation-dock__list {
+  max-height: min(55vh, 480px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
 }
 </style>

@@ -160,6 +160,35 @@ class ResumeHttpIntegrationTest {
         assertThatThrownBy(() -> diagnoses.report(owner(token),id,updated.currentVersionId(),reportId)).hasMessageContaining("不存在");
         assertThat(request("POST","/resumes/"+id+"/versions/"+updated.currentVersionId()+"/analyze",token,body).statusCode()).isEqualTo(400);
     }
+    @Test void backgroundDiagnosisPersistsAndRestoresTheSameVersionReport() throws Exception {
+        String token=identities.create().accessToken(), stranger=identities.create().accessToken();
+        var structure=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(ResumeStructure.SCHEMA);
+        structure.put("summary","负责缓存优化");output.set(structure.toString());
+        String id=data(upload(token,"background.txt","虚构简历".getBytes(StandardCharsets.UTF_8))).path("id").asText();
+        worker.processNext();String version=resumes.get(owner(token),id).currentVersionId();
+        output.set("""
+            {"summary":"补充真实行动", "strengths":[],"findings":[{"ruleId":"CONTRIBUTION","kind":"NEEDS_CLARIFICATION","priority":"MEDIUM","evidence":[{"path":"/summary","quote":"负责缓存优化"}],"reason":"缺少行动","suggestion":"补充策略","questions":["采用什么策略？"]}]}
+            """);
+        String body=JSON.writeValueAsString(Map.of("kind","RESUME_DIAGNOSIS","entityId",id,"requestId",UUID.randomUUID().toString(),"input",Map.of("versionId",version)));
+        assertThat(request("POST","/generation-tasks",stranger,body).statusCode()).isEqualTo(404);
+        String taskId=data(request("POST","/generation-tasks",token,body)).path("id").asText();
+        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                assertThat(data(request("GET","/generation-tasks/"+taskId,token,null)).path("status").asText()).isEqualTo("SUCCEEDED"));
+        var task=data(request("GET","/generation-tasks/"+taskId,token,null));
+        String reportId=task.path("resultId").asText();
+        var saved=data(request("GET","/generation-tasks/"+taskId+"/result",token,null));
+        assertThat(saved).isEqualTo(diagnoses.get(owner(token),reportId).path("report"));
+        assertThat(saved.path("versionId").asText()).isEqualTo(version);
+        assertThat(task.path("href").asText()).contains("tab=diagnosis","taskId="+taskId);
+        int calls=providerCalls.get();providerStatus.set(503);
+        assertThat(data(request("POST","/generation-tasks",token,body)).path("id").asText()).isEqualTo(taskId);
+        assertThat(data(request("GET","/generation-tasks/"+taskId+"/result",token,null))).isEqualTo(saved);
+        assertThat(providerCalls.get()).isEqualTo(calls);
+        assertThat(request("GET","/generation-tasks/"+taskId+"/result",stranger,null).statusCode()).isEqualTo(404);
+        assertThat(request("DELETE","/resumes/"+id,token,null).statusCode()).isEqualTo(200);
+        assertThat(request("GET","/generation-tasks/"+taskId,token,null).statusCode()).isEqualTo(404);
+    }
+
     private void cancelStream(String token, String path, String body, String listPath, String kind,
                               java.util.concurrent.CountDownLatch started, java.util.concurrent.CountDownLatch stopped) throws Exception {
         var req=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1"+path))

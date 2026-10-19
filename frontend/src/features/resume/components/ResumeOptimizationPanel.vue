@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
+import { generationResult } from '@/shared/api/generationTasks'
+
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { isGenerationCancelled } from '@/shared/api/client'
@@ -151,6 +154,7 @@ async function start(save: boolean) {
       controller.signal,
       (id) => {
         runningId.value = id
+        if (locallyCancelled) void cancelOptimization(id).catch(() => {})
         void refresh()
       },
       props.jobId,
@@ -256,13 +260,21 @@ async function apply(decision: PatchDecision) {
 onBeforeUnmount(() => {
   alive = false
   epoch++
-  controller?.abort()
-  if (runningId.value) void cancelOptimization(runningId.value).catch(() => {})
 })
+async function restoreTask(id: string) {
+  if (running.value || selecting.value || saving.value || props.optimizationReportId) return
+  try {
+    const saved = await generationResult<OptimizationReport>(id)
+    if (alive && report.value?.reportId !== saved.reportId) await show(saved.reportId)
+  } catch (cause) {
+    if (alive) error.value = cause instanceof Error ? cause.message : '建议恢复失败'
+  }
+}
 </script>
 
 <template>
   <section class="panel form-stack optimization-panel">
+    <BackgroundTaskStatus kind="RESUME_OPTIMIZE" :entity-id="resumeId" @completed="restoreTask" />
     <header>
       <h2>按岗位定向改写</h2>
       <p class="subtle">只整理已有经历的表达。先生成建议，再逐条选择、编辑和确认，保存为新版本。</p>
@@ -321,7 +333,7 @@ onBeforeUnmount(() => {
       <button v-if="running || existing" class="btn" @click="stop">取消生成</button>
     </div>
     <p v-if="running || existing" role="status">
-      正在核对简历与岗位内容，通常需要几十秒。离开面板会停止当前连接。
+      正在核对简历与岗位内容，通常需要几十秒。离开页面后后台会继续，回来可查看建议。
     </p>
     <p v-if="selecting" role="status">正在读取已保存建议…</p>
     <p v-if="saving" role="status">正在保存已选择的改写…</p>

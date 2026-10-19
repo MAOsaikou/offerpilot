@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
+import { generationResult } from '@/shared/api/generationTasks'
+
 import { computed, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
@@ -72,10 +75,23 @@ function restart() {
   form.value = null
   error.value = ''
 }
+async function restoreTask(id: string) {
+  if (parsing.value || saving.value || form.value) return
+  try {
+    const result = await generationResult<JobImportParse>(id)
+    parsed.value = result
+    const { parser: _parser, ...fields } = result.draft
+    form.value = { ...fields, skills: [...fields.skills], url: result.url }
+    open.value = true
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '草稿恢复失败'
+  }
+}
 </script>
 
 <template>
   <section class="panel form-stack job-import" aria-labelledby="job-import-title">
+    <BackgroundTaskStatus kind="JOB_IMPORT" :entity-id="'current'" @completed="restoreTask" />
     <div class="section-heading">
       <h2 id="job-import-title">导入岗位</h2>
       <button type="button" class="btn" :aria-expanded="open" @click="open = !open">

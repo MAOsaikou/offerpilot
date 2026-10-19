@@ -111,6 +111,7 @@ public class CareerRecommendationService implements CareerRerankForChat {
             items.add(new Item(occupation(item.occupationId(), item.similarity()), prior, prior,
                     items.size() + 1, 0, String.join("；", item.reasons())));
         }
+        com.offerpilot.common.artifact.BackgroundWork.check();
         return save(owner, new Revision(UUID.randomUUID().toString(), null, Constraints.empty(), items,
                 (System.nanoTime() - start) / 1_000_000, false, java.time.Instant.now().toString()));
     }

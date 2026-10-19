@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
+
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
@@ -178,10 +180,18 @@ function restart() {
   chatting.value = false
   void run(resetCareerAssessment, () => emit('changed', null))
 }
+async function restoreTask() {
+  if (!busy.value) await load()
+}
 </script>
 
 <template>
   <section class="panel form-stack assessment" aria-labelledby="assessment-title">
+    <BackgroundTaskStatus
+      kind="CAREER_ASSESSMENT"
+      :entity-id="'current'"
+      @completed="restoreTask"
+    />
     <div class="assessment-head">
       <h2 id="assessment-title">对话式职业测评</h2>
       <span v-if="state" class="tag">{{ answered }} / {{ questions.length }} 题</span>

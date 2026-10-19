@@ -1,3 +1,4 @@
+import { runGeneration } from './generationTasks'
 import { apiRequest } from './client'
 
 export interface CareerProfileFields {
@@ -77,7 +78,7 @@ export const saveAssessmentAnswer = (step: number, answer: string) =>
   })
 
 export const inferCareerAssessment = () =>
-  apiRequest<CareerAssessment>('/career/assessment/infer', { method: 'POST' })
+  runGeneration<CareerAssessment>('CAREER_ASSESSMENT', 'current', {})
 
 export const confirmCareerAssessment = (body: {
   riasec: Record<RiasecLetter, number>
@@ -139,7 +140,7 @@ export const getCareerRevision = (id?: string, signal?: AbortSignal) =>
     { signal },
   )
 export const createCareerRecommendations = (signal?: AbortSignal) =>
-  apiRequest<CareerRevision>('/career/recommendations', { method: 'POST', signal })
+  runGeneration<CareerRevision>('CAREER_RECOMMENDATION', 'current', {}, undefined, signal)
 export const rerankCareers = (id: string, constraints: CareerConstraints, signal?: AbortSignal) =>
   apiRequest<CareerRevision>(`/career/recommendations/${encodeURIComponent(id)}/rerank`, {
     method: 'POST',

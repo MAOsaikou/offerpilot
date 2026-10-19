@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
+import { generationResult } from '@/shared/api/generationTasks'
+
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { isGenerationCancelled } from '@/shared/api/client'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
@@ -80,6 +83,7 @@ async function start(save: boolean) {
       controller.signal,
       (id) => {
         runningId.value = id
+        if (locallyCancelled) void cancelDiagnosis(id).catch(() => {})
         void refresh()
       },
     )
@@ -143,12 +147,20 @@ async function stop(id = runningId.value || existing.value?.id) {
 onBeforeUnmount(() => {
   alive = false
   selection++
-  controller?.abort()
-  if (runningId.value) void cancelDiagnosis(runningId.value).catch(() => {})
 })
+async function restoreTask(id: string) {
+  if (running.value || selecting.value) return
+  try {
+    const saved = await generationResult<Report>(id)
+    if (alive && report.value?.reportId !== saved.reportId) await show(saved.reportId)
+  } catch (cause) {
+    if (alive) error.value = cause instanceof Error ? cause.message : '报告恢复失败'
+  }
+}
 </script>
 <template>
   <section class="panel form-stack diagnosis-panel">
+    <BackgroundTaskStatus kind="RESUME_DIAGNOSIS" :entity-id="resumeId" @completed="restoreTask" />
     <header class="diagnosis-intro">
       <span class="diagnosis-icon"><AppIcon name="spark" :size="24" /></span>
       <div>
@@ -180,7 +192,7 @@ onBeforeUnmount(() => {
       <button v-if="running || existing" class="btn" @click="stop()">取消诊断</button>
     </div>
     <p v-if="running || existing" role="status">
-      正在分析已保存版本，通常需要几十秒；离开当前分析页面会停止本次连接。
+      正在分析已保存版本，通常需要几十秒；离开页面后后台会继续，回来可查看报告。
     </p>
     <p v-if="message" role="status">{{ message }}</p>
     <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
