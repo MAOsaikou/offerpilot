@@ -20,7 +20,7 @@ public class InterviewService {
             "项目里遇到的最大技术或协作困难是什么？你如何处理？",
             "如果重新做这个项目，你会优先改进什么？为什么？",
             "你希望在未来一年掌握哪些能力？会如何安排学习？");
-    public static final Set<String> KINDS = Set.of("项目与经历", "表达与结构", "职业动机");
+    public static final Set<String> KINDS = Set.of("项目与经历", "表达与结构", "职业动机", "技术", "行为", "HR", "综合");
     private final JdbcTemplate jdbc;
 
     private final com.offerpilot.common.artifact.JobArtifacts artifacts;
@@ -29,8 +29,23 @@ public class InterviewService {
         this.jdbc = jdbc; this.artifacts=artifacts; this.followUps = followUps;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private InterviewResumeSource resumes;
+    private final com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
+    private InterviewOptions readOptions(String value) {
+        try { return value == null ? null : json.readValue(value, InterviewOptions.class); }
+        catch (Exception e) { throw new IllegalStateException("Invalid stored interview options", e); }
+    }
+    private String writeOptions(InterviewOptions options) {
+        try { return options == null ? null : json.writeValueAsString(options); }
+        catch (Exception e) { throw new IllegalStateException(e); }
+    }
+
     public record Summary(String id, String role, String kind, int questionIndex, boolean completed,
-                          String createdAt, String updatedAt, String jobId) {
+                          String createdAt, String updatedAt, String jobId, InterviewOptions options) {
+        public Summary(String id, String role, String kind, int questionIndex, boolean completed, String createdAt, String updatedAt, String jobId) {
+            this(id, role, kind, questionIndex, completed, createdAt, updatedAt, jobId, null);
+        }
         public Summary(String id, String role, String kind, int questionIndex, boolean completed, String createdAt, String updatedAt) {
             this(id, role, kind, questionIndex, completed, createdAt, updatedAt, null);
         }
@@ -48,7 +63,10 @@ public class InterviewService {
         }
     }
     public record Session(String id, String role, String kind, int questionIndex, boolean completed,
-                          String createdAt, String updatedAt, List<Answer> answers, String jobId) {
+                          String createdAt, String updatedAt, List<Answer> answers, String jobId, InterviewOptions options) {
+        public Session(String id, String role, String kind, int questionIndex, boolean completed, String createdAt, String updatedAt, List<Answer> answers, String jobId) {
+            this(id, role, kind, questionIndex, completed, createdAt, updatedAt, answers, jobId, null);
+        }
         public Session(String id, String role, String kind, int questionIndex, boolean completed,
                        String createdAt, String updatedAt, List<Answer> answers) {
             this(id, role, kind, questionIndex, completed, createdAt, updatedAt, answers, null);
@@ -59,7 +77,7 @@ public class InterviewService {
         return new Summary(rs.getString("id"), rs.getString("role"), rs.getString("kind"),
                 rs.getInt("question_index"), rs.getBoolean("completed"),
                 rs.getTimestamp("created_at").toInstant().toString(),
-                rs.getTimestamp("updated_at").toInstant().toString(), rs.getString("job_id"));
+                rs.getTimestamp("updated_at").toInstant().toString(), rs.getString("job_id"), readOptions(rs.getString("options")));
     }
 
     @Transactional(readOnly = true)
@@ -85,15 +103,27 @@ public class InterviewService {
 
     @Transactional
     public Session create(String owner, String role, String kind, String jobId) {
+        return create(owner, role, kind, jobId, null);
+    }
+
+    @Transactional
+    public Session create(String owner, String role, String kind, String jobId, InterviewOptions options) {
         if (role == null || role.isBlank() || role.codePointCount(0, role.length()) > 100
                 || kind == null || !KINDS.contains(kind)) invalid();
+        if (options == null && Set.of("技术", "行为", "HR", "综合").contains(kind)) options = InterviewOptions.defaults();
+        if (options != null) options.validate();
+        String context = options == null || options.resumeId() == null ? null
+                : resumes.context(owner, options.resumeId(), options.versionId());
         artifacts.lockJob(owner,jobId);
+        String jobContext = options == null ? null : artifacts.interviewContext(owner, jobId);
+        var questions = options == null ? QUESTIONS : options.questions(role.strip(), kind, context).stream()
+                .map(question -> jobContext == null || jobContext.isBlank() ? question : question + "参考所选岗位要求：「" + jobContext + "」。").toList();
         String id = IdGenerator.next("iv");
-        jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,job_id) VALUES (?,?,?,?,?)",
-                id, owner, role.strip(), kind, jobId);
-        for (int index = 0; index < QUESTIONS.size(); index++) {
+        jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,job_id,options) VALUES (?,?,?,?,?,?::jsonb)",
+                id, owner, role.strip(), kind, jobId, writeOptions(options));
+        for (int index = 0; index < questions.size(); index++) {
             jdbc.update("INSERT INTO interview_answers(session_id,question_index,question_text) VALUES (?,?,?)",
-                    id, index, QUESTIONS.get(index));
+                    id, index, questions.get(index));
         }
         artifacts.linkJob(owner,jobId);
         return get(owner, id);
@@ -114,13 +144,13 @@ public class InterviewService {
                 rs.getString("answer_text"), rs.getString("follow_up_question"), rs.getString("follow_up_answer"),
                 rs.getString("follow_up_source")), id, owner);
         return new Session(session.id(), session.role(), session.kind(), session.questionIndex(), session.completed(),
-                session.createdAt(), session.updatedAt(), answers, session.jobId());
+                session.createdAt(), session.updatedAt(), answers, session.jobId(), session.options());
     }
 
     @Transactional
     public Session update(String owner, String id, Integer questionIndex, Boolean completed) {
         if (questionIndex == null && completed == null) invalid();
-        if (questionIndex != null) validateIndex(questionIndex);
+        if (questionIndex != null) validateIndex(owner, id, questionIndex);
         lock(owner, id);
         jdbc.update("""
                 UPDATE interview_sessions SET question_index=COALESCE(?,question_index),
@@ -131,9 +161,9 @@ public class InterviewService {
 
     @Transactional
     public Session saveAnswer(String owner, String id, int index, String answerText) {
-        validateIndex(index);
         if (answerText == null || answerText.codePointCount(0, answerText.length()) > 12000)
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请提供 answerText，最多12000个字符，可为空字符串。");
+        validateIndex(owner, id, index);
         lock(owner, id);
         // An unanswered follow-up was asked about the old text; drop it so the next one fits the new answer.
         jdbc.update("""
@@ -152,7 +182,7 @@ public class InterviewService {
      * or row lock; the write only lands if the answer is unchanged and no follow-up exists yet.
      */
     public Session followUp(String owner, String id, int index) {
-        validateIndex(index);
+        validateIndex(owner, id, index);
         var session = get(owner, id);
         if (session.completed()) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "练习已完成，不能再生成追问。");
         var answer = session.answers().get(index);
@@ -170,9 +200,9 @@ public class InterviewService {
 
     @Transactional
     public Session saveFollowUpAnswer(String owner, String id, int index, String answerText) {
-        validateIndex(index);
         if (answerText == null || answerText.codePointCount(0, answerText.length()) > 12000)
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请提供 answerText，最多12000个字符，可为空字符串。");
+        validateIndex(owner, id, index);
         lock(owner, id);
         int updated = jdbc.update("""
                 UPDATE interview_answers SET follow_up_answer=? WHERE session_id=? AND question_index=?
@@ -196,9 +226,9 @@ public class InterviewService {
         if (rows.isEmpty()) throw new BusinessException(ErrorCode.INTERVIEW_NOT_FOUND);
     }
 
-    private void validateIndex(int index) {
-        if (index < 0 || index >= QUESTIONS.size())
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题目序号必须为0到4。");
+    private void validateIndex(String owner, String id, int index) {
+        if (index < 0 || index >= 10 || index >= get(owner, id).answers().size())
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题目序号超出本次面试范围。");
     }
 
     private void invalid() { throw new BusinessException(ErrorCode.VALIDATION_FAILED); }

@@ -84,7 +84,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'career',
         name: 'career',
-        component: () => import('@/features/career/views/CareerView.vue'),
+        component: () => import('@/app/views/CareerPage.vue'),
         meta: { title: '职业规划' },
       },
       {

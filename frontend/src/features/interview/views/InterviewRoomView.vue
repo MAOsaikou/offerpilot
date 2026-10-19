@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import InterviewReportPanel from '../components/InterviewReportPanel.vue'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, RouterLink, useRoute } from 'vue-router'
 import { useQueryClient } from '@tanstack/vue-query'
@@ -55,6 +56,30 @@ function syncDrafts() {
   answer.value = current.value?.answerText || ''
   followUpDraft.value = current.value?.followUpAnswer || ''
 }
+const now = ref(Date.now())
+const timer = setInterval(() => {
+  now.value = Date.now()
+}, 1000)
+onBeforeUnmount(() => clearInterval(timer))
+const remainingSeconds = computed(() => {
+  if (!session.value?.options) return null
+  return Math.max(
+    0,
+    Math.ceil(
+      (Date.parse(session.value.createdAt) +
+        session.value.options.durationMinutes * 60000 -
+        now.value) /
+        1000,
+    ),
+  )
+})
+const timerLabel = computed(() =>
+  remainingSeconds.value === null
+    ? ''
+    : remainingSeconds.value === 0
+      ? '本次面试时间已到，请保存回答并完成复盘。'
+      : `剩余 ${Math.floor(remainingSeconds.value / 60)} 分 ${remainingSeconds.value % 60} 秒`,
+)
 const voiceAutoPlay = ref(false)
 try {
   voiceAutoPlay.value = localStorage.getItem('offerpilot.voiceAutoPlay') === 'true'
@@ -138,6 +163,7 @@ async function load() {
     const loaded = await getInterview(String(route.params.id), controller.signal)
     if (requestRevision !== revision) return
     session.value = loaded
+    if (loaded.options?.mode === 'VOICE') voiceAutoPlay.value = true
     syncDrafts()
     if (loaded.completed) void loadCandidates()
   } catch (e) {
@@ -329,7 +355,9 @@ onBeforeRouteUpdate(saveBeforeLeave)
   <section v-else-if="session" class="page-stack">
     <PageHeading
       :title="session.completed ? '一次练习，一份积累' : session.role + ' · 面试练习'"
-      :description="session.kind + ' · 五道主问题，每题面试官根据你的回答追问一次'"
+      :description="
+        session.kind + ' · ' + session.answers.length + ' 道主问题，每题面试官根据你的回答追问一次'
+      "
     >
       <RouterLink to="/interviews" class="btn">返回练习列表</RouterLink>
       <button
@@ -345,6 +373,15 @@ onBeforeRouteUpdate(saveBeforeLeave)
     <p v-if="exportError" role="alert">{{ exportError }}</p>
     <p v-if="error" role="alert">{{ error }} · 回答已保留，请重试保存。</p>
     <template v-if="!session.completed">
+      <p v-if="timerLabel" role="timer" aria-live="off">{{ timerLabel }}</p>
+      <button
+        v-if="remainingSeconds === 0"
+        class="btn"
+        :disabled="busy"
+        @click="persist(undefined, true)"
+      >
+        保存并结束面试
+      </button>
       <section class="panel interview-stage">
         <span class="tag"
           >第 {{ session.questionIndex + 1 }} / {{ session.answers.length }} 题</span
@@ -484,6 +521,7 @@ onBeforeRouteUpdate(saveBeforeLeave)
       </form>
     </template>
     <template v-else>
+      <InterviewReportPanel :key="session.id" :session-id="session.id" />
       <div class="success-banner">
         已完成全部 {{ session.answers.length }} 题。下面是原始回答；点「导出复盘」可下载含 STAR
         线索分的复盘包。

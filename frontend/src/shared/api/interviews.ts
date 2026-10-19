@@ -7,7 +7,12 @@ import {
   assertResponseIdentity,
 } from './client'
 import { downloadText } from '@/shared/utils/download'
-import type { InterviewKind, InterviewSession, InterviewSummary } from '@/shared/types/interview'
+import type {
+  InterviewKind,
+  InterviewOptions,
+  InterviewSession,
+  InterviewSummary,
+} from '@/shared/types/interview'
 
 const sessionPath = (id: string) => `/interviews/${encodeURIComponent(id)}`
 
@@ -15,7 +20,7 @@ export const listInterviews = (signal?: AbortSignal) =>
   apiRequest<InterviewSummary[]>('/interviews', { signal })
 
 export const createInterview = (
-  body: { role: string; kind: InterviewKind; jobId?: string },
+  body: { role: string; kind: InterviewKind; jobId?: string } & Partial<InterviewOptions>,
   signal?: AbortSignal,
 ) =>
   apiRequest<InterviewSession>('/interviews', {
@@ -78,3 +83,8 @@ export async function exportInterviewRecap(id: string): Promise<void> {
   assertResponseIdentity(response)
   downloadText('面试复盘.md', text, 'text/markdown;charset=utf-8')
 }
+
+export const getInterviewReport = (id: string, signal?: AbortSignal) =>
+  apiRequest<import('@/shared/types/cards').InterviewReportPayload>(`${sessionPath(id)}/report`, {
+    signal,
+  })
