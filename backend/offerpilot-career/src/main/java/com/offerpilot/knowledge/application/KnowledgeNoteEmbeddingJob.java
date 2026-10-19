@@ -34,7 +34,9 @@ public class KnowledgeNoteEmbeddingJob {
     }
 
     public int indexPending() {
-        if (!enabled || !embeddings.configured()) {
+        if (!enabled) return 0;
+        // Embedding turned off: FTS already works; stop advertising a pending vector job.
+        if (!embeddings.configured()) {
             jdbc.update("UPDATE knowledge_notes SET index_status='READY',index_error=NULL WHERE index_status IN ('QUEUED','INDEXING')");
             return 0;
         }

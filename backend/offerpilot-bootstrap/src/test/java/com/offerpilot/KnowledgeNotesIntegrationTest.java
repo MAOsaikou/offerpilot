@@ -235,10 +235,11 @@ class KnowledgeNotesIntegrationTest extends SharedHttpIntegrationTest {
         var note = configuredNotes.create(owner, DRAFT);
         assertThat(note.indexStatus()).isEqualTo("QUEUED");
         verify(provider, never()).embed(anyList()); // save only wrote an FTS + pending record
-        when(provider.embed(anyList())).thenAnswer(call -> {
-            assertThat(notes.get(owner, note.id()).indexStatus()).isEqualTo("INDEXING");
+        doAnswer(call -> {
+            assertThat(jdbc.queryForObject("SELECT index_status FROM knowledge_notes WHERE id=?", String.class, note.id()))
+                    .isEqualTo("INDEXING");
             return List.of();
-        });
+        }).when(provider).embed(anyList());
         assertThat(worker.indexPending()).isZero();
         assertThat(notes.get(owner, note.id()).indexStatus()).isEqualTo("QUEUED");
         for (int i = 0; i < 2; i++) {
