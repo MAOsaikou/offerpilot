@@ -94,6 +94,9 @@ class InterviewGenerationServiceTest {
             assertThat(result.overall()).isEqualTo(InterviewGenerationService.aggregate(session()).overall());
             assertThat(result.turns().stream().map(InterviewRubric.Turn::score).toList())
                     .containsExactly(40,41,42,43,44,80,null,null);
+            var persisted=org.mockito.ArgumentCaptor.forClass(String.class);
+            verify(jdbc).update(startsWith("UPDATE interview_sessions SET report=?::jsonb"),persisted.capture(),eq("iv"),eq("owner"));
+            assertThat(json.readTree(persisted.getValue())).isEqualTo(json.valueToTree(result));
             assertThat(revision.get()).isEqualTo(5);
             assertThat(saved.keySet()).containsExactlyInAnyOrder(0,1,2,3,4,6);
             verify(model,times(5)).score(eq("owner"),any(),any(),anyString(),anyString());
