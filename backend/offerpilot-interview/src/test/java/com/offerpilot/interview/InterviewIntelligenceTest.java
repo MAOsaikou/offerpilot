@@ -7,6 +7,8 @@ import com.offerpilot.common.error.*;
 import com.offerpilot.common.text.NumericProvenance;
 import com.offerpilot.llm.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
+import org.junit.jupiter.api.DynamicTest;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.ai.chat.messages.*;
@@ -57,6 +59,12 @@ class InterviewIntelligenceTest {
         assertThatThrownBy(() -> model.validateScore(wrong,"我负责护理宣教","")).isInstanceOf(BusinessException.class);
         assertThat(NumericProvenance.stripUnsupported("提升２５％，三个人，一年，30%","30%")).isEqualTo("提升【补充你的具体数据】，\u3010补充你的具体数据】人，【补充你的具体数据】，30%");
     }
+    @Test void guidanceStylePlaceholderIsNormalizedInsteadOfFailingScore() throws Exception {
+        var output=scoreOutput();((ObjectNode)output.path("improvedAnswerParts").get(0)).put("placeholder","【从分离焦虑和陌生环境角度分析可能原因】");
+        assertThat(model().validateScore(output,"我负责护理宣教","").path("improvedAnswer").asText()).contains("【补充：从分离焦虑和陌生环境角度分析可能原因】");
+        var nested=scoreOutput();((ObjectNode)nested.path("improvedAnswerParts").get(0)).put("placeholder","【一】【二】");
+        assertThatThrownBy(() -> model().validateScore(nested,"我负责护理宣教","")).isInstanceOf(BusinessException.class);
+    }
     @Test void structuredQuestionsRejectWrongCountDifficultyMixAndDuplicateQuestions() throws Exception {
         var model=model(); var output=json.createObjectNode();var list=output.putArray("questions");
         for(int i=0;i<3;i++) list.addObject().put("text","护理场景的判断问题"+i).put("type","CASE").put("difficulty","HARD");
@@ -77,6 +85,83 @@ class InterviewIntelligenceTest {
         assertThat(captor.getAllValues().get(0).toString()).contains("护士","医疗","病区患者教育","我负责护理宣教","questionCount").doesNotContain("Java");
     }
     Flux<ChatResponse> response(String text) {return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(text)))));}
+    JsonNode liveFailures() throws Exception {
+        try(var input=getClass().getResourceAsStream("/fixtures/interview/cross-industry-failures.json")) {
+            return json.readTree(Objects.requireNonNull(input));
+        }
+    }
+    @TestFactory List<DynamicTest> replaysEveryRejectedLiveAttemptWithoutPromotingQuestionOrJdToExperience() throws Exception {
+        var tests=new ArrayList<DynamicTest>();
+        for(var fixture:liveFailures()) tests.add(DynamicTest.dynamicTest("attempt-"+fixture.path("call")+" "+fixture.path("role").asText(),() -> {
+            var model=model();var output=fixture.path("output");
+            if (fixture.path("kind").asText().equals("report")) {
+                var saved=model.validateNarrative(output);
+                for(String key:List.of("strengths","weaknesses","advice"))
+                    assertThat(saved.path(key).size()).isEqualTo(Math.min(8,output.path(key).size()));
+            } else if (fixture.path("expected").asText().equals("accept")) {
+                var saved=model.validateScore(output,fixture.path("answer").asText(),"");
+                assertThat(saved.path("source").asText()).isEqualTo("model");
+                assertThat(saved.path("improvedAnswer").asText()).contains("【");
+            } else {
+                assertThatThrownBy(() -> model.validateScore(output,fixture.path("answer").asText(),""))
+                        .isInstanceOf(BusinessException.class).hasMessageContaining("quote");
+            }
+        }));
+        return tests;
+    }
+    @Test void repairUsesSpecificFieldAndPreviousOutputAndStopsAfterOneRetry() throws Exception {
+        when(providers.getIfAvailable()).thenReturn(gateway);
+        var fixture=liveFailures().get(0);String answer=fixture.path("answer").asText();
+        var repaired=(ObjectNode)fixture.path("output").deepCopy();
+        for(var part:repaired.path("improvedAnswerParts")) {
+            if (!answer.contains(part.path("quote").asText()))
+                ((ObjectNode)part).put("quote","").put("placeholder","【补充真实背景与职责】");
+        }
+        var session=new InterviewService.Session("iv","护士","综合",0,false,"","",List.of(),null,options(3,Map.of()),"model");
+        var turn=new InterviewService.Answer(0,"题干假设场景",answer,null,null,null,"CASE","HARD","model",null);
+        when(gateway.stream(eq(ModelTier.FLASH),anyList(),eq(0.3)))
+                .thenReturn(response(fixture.path("output").toString()),response(repaired.toString()));
+        assertThat(model().score("owner",session,turn,"","").path("source").asText()).isEqualTo("model");
+        var captor=org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(gateway,times(2)).stream(eq(ModelTier.FLASH),captor.capture(),eq(0.3));
+        assertThat(captor.getAllValues().get(1).toString()).contains("validationError","previousOutput","improvedAnswerParts[0].quote","不得引用question/JD");
+        reset(gateway);
+        when(gateway.stream(eq(ModelTier.FLASH),anyList(),eq(0.3))).thenReturn(response(fixture.path("output").toString()));
+        assertThatThrownBy(() -> model().score("owner",session,turn,"","")).isInstanceOf(BusinessException.class);
+        verify(gateway,times(2)).stream(eq(ModelTier.FLASH),anyList(),eq(0.3));
+    }
+    @Test void rejectsMalformedNarrativeAndDoesNotHideInvalidEntriesBeyondDisplayLimit() throws Exception {
+        var model=model();var output=json.createObjectNode();output.putArray("strengths");output.putArray("weaknesses");output.putArray("advice").add("重新练习");
+        assertThat(model.validateNarrative(output).path("strengths").isEmpty()).isTrue();
+        var advice=(ArrayNode)output.path("advice");advice.removeAll();
+        assertThatThrownBy(() -> model.validateNarrative(output)).isInstanceOf(BusinessException.class);
+        for(int i=0;i<9;i++) advice.add("练习"+i);
+        advice.add(123);
+        assertThatThrownBy(() -> model.validateNarrative(output)).isInstanceOf(BusinessException.class);
+        advice.removeAll();for(int i=0;i<65;i++) advice.add("练习"+i);
+        assertThatThrownBy(() -> model.validateNarrative(output)).isInstanceOf(BusinessException.class);
+    }
+    @Test void truncatedJsonIsRetriedOnceAndStillRejectedWithoutFabricatingScore() throws Exception {
+        when(providers.getIfAvailable()).thenReturn(gateway);
+        when(gateway.stream(eq(ModelTier.FLASH),anyList(),eq(0.3))).thenReturn(response("{\"strengths\":["));
+        assertThatThrownBy(() -> model().narrative("owner",null,json.createObjectNode())).isInstanceOf(BusinessException.class);
+        verify(gateway,times(2)).stream(eq(ModelTier.FLASH),anyList(),eq(0.3));
+    }
+    @Test void placeholderNormalizationStillRejectsFabricatedEvidenceTypesAndUnboundedSuggestions() throws Exception {
+        var model=model();
+        for(String placeholder:List.of("【改为：核实２５人后再报告】","【改写为：核实三个人后再报告】")) {
+            var output=scoreOutput();((ObjectNode)output.path("improvedAnswerParts").get(0)).put("placeholder",placeholder);
+            assertThat(model.validateScore(output,"我负责护理宣教","").path("improvedAnswer").asText()).contains("【补充你的具体数据】");
+        }
+        for(String placeholder:List.of("直接声称我已完成核验","【补充【虚构】】","【改为"+"长".repeat(201)+"】")) {
+            var output=scoreOutput();((ObjectNode)output.path("improvedAnswerParts").get(0)).put("placeholder",placeholder);
+            assertThatThrownBy(() -> model.validateScore(output,"我负责护理宣教","")).isInstanceOf(BusinessException.class);
+        }
+        var output=scoreOutput();((ObjectNode)output.path("improvedAnswerParts").get(0)).put("quote",123);
+        assertThatThrownBy(() -> model.validateScore(output,"我负责护理宣教","")).isInstanceOf(BusinessException.class);
+        var decimal=scoreOutput();((ObjectNode)decimal.path("dimensions").path("logic")).put("score",50.5);
+        assertThatThrownBy(() -> model.validateScore(decimal,"我负责护理宣教","")).isInstanceOf(BusinessException.class);
+    }
     @Test void aggregationAveragesOnlyRealScoresAndLeavesUnavailableOrSkippedNull() throws Exception {
         var evaluation=model().validateScore(scoreOutput(),"我负责护理宣教","");
         var second=evaluation.deepCopy(); second.put("score",55);

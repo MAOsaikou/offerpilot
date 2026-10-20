@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import java.util.*;
+import java.util.concurrent.*;
 
 /** Persist model output only when its owned input snapshot is still current. */
 @Service
@@ -64,14 +65,7 @@ public class InterviewGenerationService {
         if (index<0 || index>=session.answers().size()) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         var answer=session.answers().get(index);
         if (answer.evaluation()!=null && "model".equals(answer.evaluation().path("source").asText())) return session;
-        ObjectNode evaluation;
-        if (answer.fullText().isBlank()) evaluation=model.unavailable("本题已跳过；没有回答证据，不评分。");
-        else try { evaluation=model.score(owner,session,answer,snapshot.resume(),snapshot.jd()); }
-        catch (RuntimeException ex) {
-            BackgroundWork.check();
-            evaluation=model.unavailable("模型不可用或输出未通过校验，本题未评分；可稍后重试。规则提示仅供练习，不代替语义评分。");
-        }
-        var saved=evaluation;
+        var saved=evaluate(owner,snapshot,answer);
         tx.executeWithoutResult(status -> {
             check(owner,snapshot);
             jdbc.update("UPDATE interview_answers SET evaluation=?::jsonb WHERE session_id=? AND question_index=?",saved.toString(),id,index);
@@ -82,10 +76,7 @@ public class InterviewGenerationService {
     public InterviewRubric.Report report(String owner,String id) {
         var initial=snapshot(owner,id);
         if (!initial.session().completed()) throw new BusinessException(ErrorCode.VALIDATION_FAILED,"请先结束面试。");
-        for (int i=0;i<initial.session().answers().size();i++) {
-            var current=interviews.get(owner,id).answers().get(i);
-            if (current.evaluation()==null) score(owner,id,i);
-        }
+        scoreMissing(owner,initial);
         var snapshot=snapshot(owner,id); var session=snapshot.session();
         if (!session.completed()) throw new BusinessException(ErrorCode.VALIDATION_FAILED,"会话已重新开始，请结束后再生成报告。");
         var report=aggregate(session);
@@ -104,6 +95,48 @@ public class InterviewGenerationService {
             catch (com.fasterxml.jackson.core.JsonProcessingException ex) { throw new IllegalStateException(ex); }
         });
         return saved;
+    }
+    private ObjectNode evaluate(String owner,Snapshot snapshot,InterviewService.Answer answer) {
+        BackgroundWork.check();
+        if (answer.fullText().isBlank()) return model.unavailable("本题已跳过；没有回答证据，不评分。");
+        try { return model.score(owner,snapshot.session(),answer,snapshot.resume(),snapshot.jd()); }
+        catch (RuntimeException ex) {
+            BackgroundWork.check();
+            return model.unavailable("模型不可用或输出未通过校验，本题未评分；可稍后重试。规则提示仅供练习，不代替语义评分。");
+        }
+    }
+    private void scoreMissing(String owner,Snapshot snapshot) {
+        var missing=snapshot.session().answers().stream().filter(a -> a.evaluation()==null).toList();
+        if (missing.isEmpty()) return;
+        var parent=Thread.currentThread();
+        var executor=Executors.newFixedThreadPool(Math.min(3,missing.size()));
+        var futures=new ArrayList<Future<ObjectNode>>(); var results=new ArrayList<ObjectNode>();
+        try {
+            for (var answer:missing) {
+                BackgroundWork.check();
+                futures.add(executor.submit(() -> BackgroundWork.run(() -> !parent.isInterrupted(),
+                        () -> evaluate(owner,snapshot,answer))));
+            }
+            for (var future:futures) { results.add(future.get()); BackgroundWork.check(); }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(ErrorCode.GENERATION_CANCELLED);
+        } catch (ExecutionException ex) {
+            if (ex.getCause() instanceof RuntimeException runtime) throw runtime;
+            throw new IllegalStateException(ex.getCause());
+        } finally {
+            for (var future:futures) if (!future.isDone()) future.cancel(true);
+            executor.shutdownNow();
+        }
+        // Concurrent calls only compute. One revision check guards all writes; siblings cannot invalidate each other.
+        tx.executeWithoutResult(status -> {
+            check(owner,snapshot);
+            for (int i=0;i<missing.size();i++)
+                jdbc.update("UPDATE interview_answers SET evaluation=?::jsonb WHERE session_id=? AND question_index=?",
+                        results.get(i).toString(),snapshot.session().id(),missing.get(i).questionIndex());
+            jdbc.update("UPDATE interview_sessions SET report=NULL,revision=revision+1,updated_at=now() WHERE id=? AND user_id=?",
+                    snapshot.session().id(),owner);
+        });
     }
     public static InterviewRubric.Report aggregate(InterviewService.Session session) {
         var turns=new ArrayList<InterviewRubric.Turn>(); var strengths=new LinkedHashSet<String>(); var weaknesses=new LinkedHashSet<String>();

@@ -42,6 +42,9 @@ public record InterviewOptions(String resumeId, String versionId, String difficu
     /** Role-neutral offline practice; never implies model personalization. */
     public List<String> fallbackQuestions(String role) {
         var result = new ArrayList<String>();
+        var scenarios = List.of("日常工作", "首次接手任务", "信息不完整", "时间紧迫", "资源不足",
+                "跨团队协作", "服务对象提出异议", "工作交接", "发现操作失误", "要求发生变化",
+                "多个任务冲突", "出现安全或合规风险", "效果不达预期", "需要向非专业人员解释", "复盘与持续改进");
         for (String type : questionTypes()) {
             String base = switch(type) {
                 case "BEHAVIORAL" -> "分享一次真实的协作或困难经历，说明你的职责、行动和结果。";
@@ -49,16 +52,16 @@ public record InterviewOptions(String resumeId, String versionId, String difficu
                 case "KNOWLEDGE" -> "选择本岗位的一项核心专业知识，解释适用条件、限制和验证方式。";
                 default -> "面对效果未达预期的工作案例，你会如何收集证据、分析原因并制定方案？";
             };
-            result.add("面向「"+role+"」："+base+(difficulty.equals("EASY") ? "从基础概念和一个具体例子展开。" : difficulty.equals("HARD") ? "分析复杂约束、替代方案与风险边界。" : "说明判断依据和具体步骤。")
-                +(result.size()>=4 ? "请选择与前题不同的例子或场景。" : ""));
+            result.add("面向「"+role+"」，围绕「"+scenarios.get(result.size())+"」："+base
+                +(difficulty.equals("EASY") ? "从基础概念和一个具体例子展开。" : difficulty.equals("HARD") ? "分析复杂约束、替代方案与风险边界。" : "说明判断依据和具体步骤。"));
         }
         return List.copyOf(result);
     }
     public List<String> questions(String role, String kind, String resumeContext) {
-        var technical = List.of("介绍一个关键技术的工作原理和适用场景。", "如何设计并验证系统的性能和可靠性？", "如何定位线上故障并避免再次发生？", "比较两种技术方案，说明取舍依据。", "如何测试关键边界条件？");
+        var professional = List.of("介绍本岗位一项核心专业知识及其适用场景。", "如何规划并验证本岗位工作的质量与可靠性？", "如何发现工作中的异常并按岗位规范处理，避免再次发生？", "比较本岗位两种专业处理方案，说明取舍依据。", "如何识别并核验本岗位工作的关键风险？");
         var behavioral = List.of("分享一次协作冲突，你如何达成共识？", "描述一次失败以及你采取的改进。", "在资源不足时如何确定优先级？", "分享你主动承担责任的经历。", "你如何处理不确定的需求？");
         var hr = List.of("为什么选择这个岗位和职业方向？", "你对团队和工作环境有哪些期待？", "如何安排未来一年的职业成长？", "如何看待工作压力与时间管理？", "你的优势与需要改进的地方是什么？");
-        List<String> bank = switch (kind) { case "技术" -> technical; case "行为" -> behavioral; case "HR" -> hr; default -> List.of(technical.get(0), behavioral.get(0), hr.get(0), technical.get(1), behavioral.get(1), hr.get(1)); };
+        List<String> bank = switch (kind) { case "技术" -> professional; case "行为" -> behavioral; case "HR" -> hr; default -> List.of(professional.get(0), behavioral.get(0), hr.get(0), professional.get(1), behavioral.get(1), hr.get(1)); };
         String level = switch (difficulty) { case "EASY" -> "从基础概念和一个具体例子展开。"; case "HARD" -> "深入分析约束、替代方案、失败边界及可量化的验证方法。"; default -> "说明你的具体行动、方案取舍和验证结果。"; };
         var result = new ArrayList<String>();
         for (int i=0; i<questionCount(); i++) {
