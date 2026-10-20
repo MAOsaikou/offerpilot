@@ -37,9 +37,9 @@ public class OccupationSeeder implements ApplicationRunner {
     private static final String UPSERT = """
             INSERT INTO occupations(id, name, aliases, family, description, holland_code, holland_scores,
                                     core_skills, typical_titles, growth_path, salary_range, outlook,
-                                    companies, related_majors, source, updated_at)
+                                    companies, related_majors, source, onet_code, source_url, license, attribution, content_notice, skills_source, growth_path_source, updated_at)
             VALUES (?,?,CAST(? AS text[]),?,?,?,CAST(? AS jsonb),CAST(? AS jsonb),CAST(? AS text[]),?,
-                    CAST(? AS jsonb),?,CAST(? AS text[]),CAST(? AS text[]),?,now())
+                    CAST(? AS jsonb),?,CAST(? AS text[]),CAST(? AS text[]),?,?,?,?,?,?,?,?,now())
             ON CONFLICT (id) DO UPDATE SET
                 embedding=CASE WHEN (occupations.name, occupations.description, occupations.core_skills,
                     occupations.growth_path, occupations.family, occupations.typical_titles)
@@ -57,7 +57,9 @@ public class OccupationSeeder implements ApplicationRunner {
                 typical_titles=EXCLUDED.typical_titles, growth_path=EXCLUDED.growth_path,
                 salary_range=EXCLUDED.salary_range, outlook=EXCLUDED.outlook,
                 companies=EXCLUDED.companies, related_majors=EXCLUDED.related_majors,
-                source=EXCLUDED.source, updated_at=now()
+                source=EXCLUDED.source, onet_code=EXCLUDED.onet_code, source_url=EXCLUDED.source_url,
+                license=EXCLUDED.license, attribution=EXCLUDED.attribution, content_notice=EXCLUDED.content_notice,
+                skills_source=EXCLUDED.skills_source, growth_path_source=EXCLUDED.growth_path_source, updated_at=now()
             """;
 
     private final JdbcTemplate jdbc;
@@ -101,7 +103,8 @@ public class OccupationSeeder implements ApplicationRunner {
                 text(entry, "outlook"),
                 arrayOf(entry, "companies"),
                 arrayOf(entry, "relatedMajors"),
-                required(entry, "source"));
+                required(entry, "source"), text(entry,"onetCode"), text(entry,"sourceUrl"), text(entry,"license"),
+                text(entry,"attribution"), text(entry,"contentNotice"), text(entry,"skillsSource"), text(entry,"growthPathSource"));
     }
 
     private List<JsonNode> readEntries(Resource seed) throws IOException {

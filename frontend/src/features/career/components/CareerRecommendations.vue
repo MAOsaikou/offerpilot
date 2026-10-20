@@ -245,7 +245,7 @@ async function restoreTask(id: string) {
           偏研究（按研究型兴趣强度加权）</label
         >
         <p class="helper-note">
-          目录没有城市覆盖和工时数据，这两项会记录为待核实。薪资为既有目录校招区间估算，缺失时不调分。
+          目录没有城市覆盖和工时数据，这两项会记录为待核实。薪资仅按有来源的目录区间比较；当前内置目录暂无可信薪资数据，缺失时不调分。
         </p>
         <button class="btn primary" :disabled="busy || !online">
           {{ busy ? '正在保存…' : '保存约束并重排' }}
@@ -361,7 +361,7 @@ async function restoreTask(id: string) {
               </td>
             </tr>
             <tr>
-              <th scope="row">校招薪资估算</th>
+              <th scope="row">校招薪资</th>
               <td v-for="occupation in comparison.occupations" :key="occupation.occupationId">
                 {{ occupation.salaryRange?.campus ?? '暂无数据' }}
                 {{ occupation.salaryRange?.source }}

@@ -29,10 +29,15 @@ const items = [
   { name: 'board', label: '求职看板', path: '/board' },
   { name: 'interviews', label: '模拟面试', path: '/interviews' },
   { name: 'career', label: '成长路线', path: '/career' },
-  { name: 'kb', label: '知识库', path: '/kb' },
+  { name: 'kb', label: '内置知识库', path: '/kb/builtin' },
+  { name: 'kb-notes', label: '我的资料', path: '/kb' },
 ]
 function active(path: string) {
-  return path === '/' ? route.path === '/' : route.path.startsWith(path)
+  return path === '/'
+    ? route.path === '/'
+    : path === '/kb'
+      ? route.path === '/kb'
+      : route.path.startsWith(path)
 }
 watch(
   () => route.fullPath,
@@ -65,7 +70,9 @@ watch(
             class="nav-link"
             :class="{ active: active(item.path) }"
             :aria-current="active(item.path) ? 'page' : undefined"
-            ><AppIcon :name="item.name" :size="18" />{{ item.label }}</RouterLink
+            ><AppIcon :name="item.name === 'kb-notes' ? 'kb' : item.name" :size="18" />{{
+              item.label
+            }}</RouterLink
           >
         </template>
       </nav>

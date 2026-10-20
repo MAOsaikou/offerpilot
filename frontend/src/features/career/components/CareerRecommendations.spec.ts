@@ -118,7 +118,8 @@ it('enforces 2–3 selection, renders real radar dimensions and accessible fallb
   await vi.waitFor(() => expect(chart.create).toHaveBeenCalled())
   expect(root.querySelector('canvas[role="img"]')).not.toBeNull()
   expect(root.querySelector('caption')?.textContent).toContain('目录原始数据')
-  expect(root.querySelector('table')?.textContent).toContain('15-30k')
+  expect(root.querySelector('table')?.textContent).toContain('暂无数据')
+  expect(root.querySelector('table')?.textContent).not.toContain('15-30k')
   const config = chart.create.mock.calls.at(-1)![1]
   expect(config.type).toBe('radar')
   expect(config.data.datasets[0].data).toEqual(

@@ -88,6 +88,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '职业规划' },
       },
       {
+        path: 'kb/builtin/:occupationId?',
+        name: 'builtin-kb',
+        component: () => import('@/features/kb/views/BuiltinKnowledgeView.vue'),
+        meta: { title: '内置知识库' },
+      },
+      {
         path: 'kb',
         name: 'kb',
         component: () => import('@/features/kb/views/KnowledgeView.vue'),

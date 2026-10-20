@@ -55,6 +55,14 @@ class CareerRerankTest {
                 .isEqualTo(parent.items().stream().map(i -> i.occupation().occupationId()).toList());
         assertThat(result.items()).allSatisfy(i -> assertThat(i.rankDelta()).isZero());
     }
+    @Test void realCatalogMissingSalaryCannotAffectRankingOrScores() throws Exception {
+        var parent=parent();
+        assertThat(parent.items()).allSatisfy(i -> assertThat(i.occupation().salaryRange().isNull()).isTrue());
+        var baseline=CareerRecommendationService.rescore(parent,Constraints.empty(),0,() -> 0);
+        var constrained=CareerRecommendationService.rescore(parent,new Constraints("",30,false,false),0,() -> 0);
+        assertThat(constrained.items()).extracting(Item::score).isEqualTo(baseline.items().stream().map(Item::score).toList());
+        assertThat(constrained.items()).extracting(i -> i.occupation().occupationId()).isEqualTo(baseline.items().stream().map(i -> i.occupation().occupationId()).toList());
+    }
     @Test void explanationTimeoutFallsBackWithoutLosingScoresAndMissingFactsNeverBecomeScores() throws Exception {
         var parent = parent();
         var constraints = new Constraints("杭州", 30, true, true);
@@ -62,7 +70,7 @@ class CareerRerankTest {
         var fallback = CareerRecommendationService.rescore(parent, constraints, 0, () -> 1_500_000_000L);
         assertThat(fallback.explanationFallback()).isTrue();
         assertThat(fallback.items()).extracting(Item::score).isEqualTo(normal.items().stream().map(Item::score).toList());
-        assertThat(fallback.items()).allSatisfy(i -> assertThat(i.changeReason()).contains("按区间重评"));
+        assertThat(fallback.items()).allSatisfy(i -> assertThat(i.changeReason()).contains("无可比薪资，保留基础分"));
         var unknownSalary = parent.items().get(0).occupation();
         var unknown = new Occupation(unknownSalary.occupationId(), unknownSalary.name(), unknownSalary.family(), unknownSalary.riasec(),
                 unknownSalary.coreSkills(), json.nullNode(), null, unknownSalary.source(), .8);

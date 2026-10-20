@@ -24,6 +24,8 @@ public class InterviewIntelligence {
     private final ObjectProvider<ModelGateway> gateways;
     private final ObjectMapper json;
     private final String questionsPrompt, scoringPrompt, reportPrompt;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private InterviewQuestionReference questionBank;
     public InterviewIntelligence(ObjectProvider<ModelGateway> gateways, ObjectMapper json,
             @Value("classpath:prompts/interview/questions.st") Resource questions,
             @Value("classpath:prompts/interview/score.st") Resource scoring,
@@ -74,6 +76,10 @@ public class InterviewIntelligence {
     public record Question(String text,String type,String difficulty,String source) {}
     public List<Question> questions(String owner, InterviewService.Session session, String resume, String jd) {
         var input=input(session,resume,jd);
+        if (questionBank!=null) {
+            var references=questionBank.find(session.role(),session.options().industry(),session.options().difficulty());
+            input.set("questionBankReferences",json.valueToTree(references));
+        }
         return generate(owner,questionsPrompt,input,output -> validateQuestions(output,session.options()));
     }
     public List<Question> validateQuestions(JsonNode output, InterviewOptions options) {
