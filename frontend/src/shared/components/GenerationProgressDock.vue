@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useGenerationTasks } from '@/shared/stores/generationTasks'
 import { useAuthStore } from '@/shared/stores/auth'
@@ -9,6 +9,18 @@ const store = useGenerationTasks()
 const open = ref(false)
 const cancellingId = ref('')
 const cancelError = ref('')
+// Completion notices auto-collapse so the dock never sits on top of fresh results.
+const NOTICE_TTL_MS = 6000
+let noticeTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => store.notice,
+  (text) => {
+    clearTimeout(noticeTimer)
+    if (text) noticeTimer = setTimeout(() => (store.notice = ''), NOTICE_TTL_MS)
+  },
+  { immediate: true },
+)
+const compact = computed(() => !open.value && !store.notice && store.active.length === 0)
 watch(
   () => auth.identityKey,
   () => {
@@ -27,6 +39,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('focus', refreshVisible)
   window.removeEventListener('online', refreshVisible)
+  clearTimeout(noticeTimer)
 })
 async function cancelTask(id: string, kind: string, entity?: string) {
   cancellingId.value = id
@@ -45,13 +58,17 @@ async function cancelTask(id: string, kind: string, entity?: string) {
 }
 </script>
 <template>
-  <aside class="generation-dock" aria-label="后台生成进度">
+  <aside
+    class="generation-dock"
+    :class="{ 'generation-dock--compact': compact }"
+    aria-label="后台生成进度"
+  >
     <p v-if="store.notice" role="status" aria-live="polite">
       {{ store.notice }}
       <button class="btn" aria-label="关闭任务通知" @click="store.notice = ''">关闭</button>
     </p>
     <header class="generation-dock__head">
-      <strong>后台任务 · {{ store.active.length }} 进行中</strong>
+      <strong>{{ compact ? '后台任务' : `后台任务 · ${store.active.length} 进行中` }}</strong>
       <button type="button" class="btn" :aria-expanded="open" @click="open = !open">
         {{ open ? '收起' : '展开' }}
       </button>
@@ -128,6 +145,23 @@ async function cancelTask(id: string, kind: string, entity?: string) {
 </style>
 
 <style scoped>
+.generation-dock--compact {
+  width: auto;
+  padding: 4px 6px 4px 12px;
+  border-radius: 999px;
+  opacity: 0.85;
+  font-size: 12px;
+}
+@media (max-width: 720px) {
+  .generation-dock {
+    right: 8px;
+    bottom: 8px;
+    width: min(320px, calc(100vw - 16px));
+  }
+  .generation-dock--compact {
+    width: auto;
+  }
+}
 .generation-dock__list {
   max-height: min(55vh, 480px);
   overflow-y: auto;
