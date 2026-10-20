@@ -56,7 +56,7 @@ class AccountDataDeletionIntegrationTest {
     @SpyBean ResumeObjectStore storage;
     @LocalServerPort int port;
     static final ObjectMapper JSON = new ObjectMapper();
-    static final Set<String> DIRECT = Set.of("github_evidence","job_daily_recommendations","generation_tasks","user_memories","user_preferences","refresh_tokens","user_integrations","user_mcp_servers","guest_sessions","conversations","messages","agent_runs","approvals","files","resumes","resume_versions","resume_model_preferences","resume_diagnoses","resume_patch_batches","resume_optimizations","job_matches","applications","interview_sessions","interview_learning_plans","star_stories","career_profiles","career_recommendation_revisions","career_assessments","growth_task_completions","knowledge_notes","knowledge_note_imports","jobs");
+    static final Set<String> DIRECT = Set.of("notifications","career_target_plans","career_profile_suggestions","github_evidence","job_daily_recommendations","generation_tasks","user_memories","user_preferences","refresh_tokens","user_integrations","user_mcp_servers","guest_sessions","conversations","messages","agent_runs","approvals","files","resumes","resume_versions","resume_model_preferences","resume_diagnoses","resume_patch_batches","resume_optimizations","job_matches","applications","interview_sessions","interview_learning_plans","star_stories","career_profiles","career_recommendation_revisions","career_assessments","growth_task_completions","knowledge_notes","knowledge_note_imports","jobs");
     static final Map<String,String> INDIRECT = Map.of("application_events","application_id IN (SELECT id FROM applications WHERE user_id=?)", "agent_steps","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "tool_calls","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "agent_events","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "interview_answers","session_id IN (SELECT id FROM interview_sessions WHERE user_id=?)");
     HttpResponse<String> request(String path, String token, String body) throws Exception {
         var b = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1"+path)).timeout(Duration.ofSeconds(30));
@@ -70,6 +70,8 @@ class AccountDataDeletionIntegrationTest {
         return jdbc.queryForList("SELECT row_to_json(t)::text FROM "+table+" t WHERE "+INDIRECT.getOrDefault(table,"user_id=?")+" ORDER BY row_to_json(t)::text",String.class,owner);
     }
     void seed(String o) throws Exception {
+        jdbc.update("INSERT INTO notifications(id,user_id,kind,dedupe_key,title,body,link) VALUES (?,?,'DDL','fixture','fixture','private','/board')",o+"notification",o);
+        jdbc.update("INSERT INTO career_profile_suggestions(id,user_id,source_type,source_id,fingerprint,skills,facts) VALUES (?,?,'RESUME','fixture','fixture','[]','[\"private fact\"]')",o+"suggestion",o);
         jdbc.update("INSERT INTO user_preferences(user_id) VALUES (?)",o);
         jdbc.update("INSERT INTO refresh_tokens(id,user_id,token_hash,expires_at) VALUES (?,?,?,now()+interval '1 day')",o+"rt",o,o+"hash");
         jdbc.update("INSERT INTO user_integrations(id,user_id,provider,secret_enc) VALUES (?,?,'GITHUB',decode('00','hex'))",o+"integration",o);
@@ -115,6 +117,7 @@ class AccountDataDeletionIntegrationTest {
         jdbc.update("INSERT INTO tool_calls(id,run_id,step_id,name,source,access,args) VALUES (?,?,?,'fixture','fixture','WRITE','{}')",o+"tool",turn.runId(),o+"step");
         jdbc.update("INSERT INTO approvals(id,run_id,user_id,tool_name,args,status,expires_at) VALUES (?,?,?,'fixture','{}','PENDING',now()+interval '1 hour')",o+"approval",turn.runId(),o);
         jdbc.update("INSERT INTO agent_events(run_id,seq,type,payload) VALUES (?,1,'fixture','{}')",turn.runId());
+        jdbc.update("INSERT INTO career_target_plans(user_id,revision,target,city) VALUES (?,'fixture','fixture','fixture')",o);
     }
     @Test void deletesEveryOwnedTableAndObjectsWithoutTouchingAnotherIdentity() throws Exception {
         String a=owner(),b=owner(); seed(a);seed(b);

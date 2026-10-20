@@ -22,6 +22,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/career")
 public class CareerProfileController {
+    @ModelAttribute
+    void preventCaching(jakarta.servlet.http.HttpServletResponse response) { response.setHeader("Cache-Control", "no-store"); }
     private final CareerProfileService profiles;
     private final CurrentUser users;
 

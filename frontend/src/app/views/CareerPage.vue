@@ -4,5 +4,9 @@ import LearningPlansView from '@/features/growth/views/LearningPlansView.vue'
 import SkillGapAnalysis from '@/features/growth/components/SkillGapAnalysis.vue'
 </script>
 <template>
-  <div class="page-stack"><CareerView /><SkillGapAnalysis /><LearningPlansView /></div>
+  <div class="page-stack">
+    <CareerView />
+    <div id="skill-gap"><SkillGapAnalysis /></div>
+    <LearningPlansView />
+  </div>
 </template>

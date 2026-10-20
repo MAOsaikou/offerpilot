@@ -18,7 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** 只操作一次性数据库，验证 V1–V46 和历史对齐，不接触开发数据。 */
+/** 只操作一次性数据库，验证 V1–V47 和历史对齐，不接触开发数据。 */
 @Testcontainers
 class BranchMigrationIntegrationTest {
     @Container
@@ -65,13 +65,33 @@ class BranchMigrationIntegrationTest {
         assertThat(jdbc(url).queryForObject("SELECT to_regclass('public.knowledge_notes') IS NOT NULL AND to_regclass('public.knowledge_note_imports') IS NOT NULL", Boolean.class)).isTrue();
         assertThat(jdbc(url).queryForObject("SELECT to_regclass('public.star_stories') IS NOT NULL", Boolean.class)).isTrue();
         assertThat(migrations(url, "latest", false).validateWithResult().validationSuccessful).isTrue();
-        assertThat(jdbc(url).queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(41);
+        assertThat(jdbc(url).queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(42);
         assertThat(jdbc(url).queryForList("SELECT version FROM flyway_schema_history WHERE success", String.class))
-                .contains("15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "40", "41", "42", "43", "44", "45", "46");
+                .contains("15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "40", "41", "42", "43", "44", "45", "46", "47");
         assertThat(jdbc(url).queryForObject("SELECT status FROM users WHERE id='usr_test_staff001'", String.class)).isEqualTo("DISABLED");
         String fresh = newDatabase();
         migrations(fresh, "latest", false).migrate();
         assertThat(migrations(fresh, "latest", false).validateWithResult().validationSuccessful).isTrue();
+    }
+
+    @Test void upgradesV46WithoutBackfillingFakeNotificationsAndQueuesOnlyChangedTargets() {
+        String url=newDatabase();migrations(url,"46",false).migrate();var db=jdbc(url);
+        db.update("INSERT INTO users(id,email,password_hash,nickname) VALUES ('v47','v47@example.test','fixture','Keep me')");
+        db.update("INSERT INTO career_profiles(user_id,target,skills) VALUES ('v47','Existing target','Java')");
+        migrations(url,"latest",false).migrate();
+        assertThat(db.queryForObject("SELECT count(*) FROM notifications",Integer.class)).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM career_target_plans",Integer.class)).isZero();
+        db.update("UPDATE career_profiles SET skills='SQL' WHERE user_id='v47'");
+        assertThat(db.queryForObject("SELECT count(*) FROM career_target_plans",Integer.class)).isZero();
+        db.update("UPDATE career_profiles SET target='New target' WHERE user_id='v47'");
+        String revision=db.queryForObject("SELECT revision FROM career_target_plans WHERE user_id='v47'",String.class);
+        db.update("UPDATE career_profiles SET target='New target' WHERE user_id='v47'");
+        assertThat(db.queryForObject("SELECT revision FROM career_target_plans WHERE user_id='v47'",String.class)).isEqualTo(revision);
+        db.update("UPDATE career_profiles SET city='上海' WHERE user_id='v47'");
+        assertThat(db.queryForObject("SELECT revision FROM career_target_plans WHERE user_id='v47'",String.class)).isNotEqualTo(revision);
+        db.update("UPDATE career_profiles SET target='' WHERE user_id='v47'");
+        assertThat(db.queryForObject("SELECT count(*) FROM career_target_plans",Integer.class)).isZero();
+        assertThat(db.queryForObject("SELECT skills FROM career_profiles WHERE user_id='v47'",String.class)).isEqualTo("SQL");
     }
 
     @Test void upgradesV45WithOwnerScopedGithubEvidenceAndCascade() {
@@ -164,9 +184,9 @@ class BranchMigrationIntegrationTest {
         align(url); // 可重复运行，不覆盖原历史备份。
         migrations(url, "latest", true).migrate();
         assertThat(migrations(url, "latest", false).validateWithResult().validationSuccessful).isTrue();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(41);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(42);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success", String.class))
-                .contains("15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "40", "41", "42", "43", "44", "45", "46");
+                .contains("15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "40", "41", "42", "43", "44", "45", "46", "47");
         assertThat(jdbc.queryForObject("SELECT nickname FROM users WHERE id='legacy-owner'", String.class)).isEqualTo("Preserve me");
         assertThat(jdbc.queryForObject("SELECT source FROM resume_versions WHERE id='legacy-v'", String.class)).isEqualTo("OPTIMIZED");
         assertThat(jdbc.queryForObject("SELECT current_version_id FROM resumes WHERE id='legacy-resume'", String.class)).isEqualTo("legacy-v");

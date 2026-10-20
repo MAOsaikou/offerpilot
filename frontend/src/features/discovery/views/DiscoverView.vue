@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import type { AssessmentConfirmed } from '@/shared/api/career'
+import type { AssessmentConfirmed, CareerProfile } from '@/shared/api/career'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { useCareerProfile } from '@/shared/composables/useCareerProfile'
 import CareerAssessment from '../components/CareerAssessment.vue'
 import ProfilePersonality from '../components/ProfilePersonality.vue'
+import ProfileUpdates from '../components/ProfileUpdates.vue'
+import TargetPlanPanel from '@/shared/components/TargetPlanPanel.vue'
 const {
   profile,
   loading,
@@ -19,6 +21,12 @@ const {
   applyAssessment,
 } = useCareerProfile()
 const assessmentRevision = ref(0)
+const evidenceBusy = ref(false)
+function evidenceConfirmed(saved: CareerProfile) {
+  profile.value.skills = saved.skills
+  profile.value.evidence = saved.evidence
+  profile.value.updatedAt = saved.updatedAt
+}
 function personalityConfirmed(assessment: AssessmentConfirmed) {
   applyAssessment(assessment)
   assessmentRevision.value++
@@ -73,6 +81,12 @@ function choose(role: string) {
     <p v-if="ready" role="status" class="subtle">
       {{ pending ? '职业档案尚未保存' : '职业档案已与服务器同步' }}
     </p>
+    <TargetPlanPanel :enabled="ready && !pending" :target="profile.target" :city="profile.city" />
+    <ProfileUpdates
+      :before-confirm="flushProfile"
+      @confirmed="evidenceConfirmed"
+      @busy="evidenceBusy = $event"
+    />
     <div class="split-content">
       <section class="panel form-stack">
         <h2>职业方向</h2>
@@ -80,14 +94,14 @@ function choose(role: string) {
           <label class="field"
             >目标方向<input
               v-model="profile.target"
-              :disabled="!ready"
+              :disabled="!ready || evidenceBusy"
               maxlength="100"
               placeholder="例如：前端开发工程师"
               @input="saveProfile()" /></label
           ><label class="field"
             >意向城市<input
               v-model="profile.city"
-              :disabled="!ready"
+              :disabled="!ready || evidenceBusy"
               maxlength="100"
               placeholder="例如：杭州、上海"
               @input="saveProfile()"
@@ -115,7 +129,7 @@ function choose(role: string) {
           >专业<input
             v-model="profile.major"
             name="major"
-            :disabled="!ready"
+            :disabled="!ready || evidenceBusy"
             maxlength="100"
             placeholder="例如：软件工程"
             @input="saveProfile()"
@@ -124,7 +138,7 @@ function choose(role: string) {
           >课程（每行一门）<textarea
             v-model="profile.courses"
             name="courses"
-            :disabled="!ready"
+            :disabled="!ready || evidenceBusy"
             rows="5"
             maxlength="3000"
             placeholder="数据结构与算法&#10;数据库原理"
@@ -143,7 +157,7 @@ function choose(role: string) {
           >已有技能<textarea
             v-model="profile.skills"
             name="skills"
-            :disabled="!ready"
+            :disabled="!ready || evidenceBusy"
             rows="4"
             maxlength="3000"
             placeholder="你会什么？有哪些实践经历？"
@@ -162,7 +176,7 @@ function choose(role: string) {
                 v-model="profile.interests"
                 type="checkbox"
                 :value="interest"
-                :disabled="!ready"
+                :disabled="!ready || evidenceBusy"
                 @change="saveProfile(0)"
               />{{ interest }}</label
             >
@@ -176,7 +190,7 @@ function choose(role: string) {
           >价值观（每行一项）<textarea
             v-model="profile.valuesText"
             name="valuesText"
-            :disabled="!ready"
+            :disabled="!ready || evidenceBusy"
             rows="3"
             maxlength="1000"
             placeholder="持续成长&#10;工作生活平衡"
@@ -209,7 +223,7 @@ function choose(role: string) {
         <h2>{{ direction.title }}</h2>
         <p class="subtle">{{ direction.desc }}</p>
         <p class="tag">{{ direction.skills }}</p>
-        <button class="btn" :disabled="!ready" @click="choose(direction.role)">
+        <button class="btn" :disabled="!ready || evidenceBusy" @click="choose(direction.role)">
           {{ profile.target === direction.role ? '当前目标' : '设为探索目标' }}
         </button>
       </article>

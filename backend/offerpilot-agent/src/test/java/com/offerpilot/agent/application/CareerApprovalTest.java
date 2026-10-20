@@ -119,4 +119,33 @@ class CareerApprovalTest {
         verifyNoInteractions(profiles, occupations);
     }
 
+    @Test void approvedTargetGeneratesFollowupCardsThroughOrchestratorAndAsksForConfirmation() throws Exception {
+        occupation();
+        var followups=mock(CareerTargetPlans.class);tools.setTargetPlans(followups);
+        var result=new ObjectMapper().readTree("{\"jobs\":{\"items\":[]},\"learning\":{\"skillGap\":{\"skills\":[]},\"roadmap\":{\"weeks\":[]}}}");
+        when(followups.get("alice")).thenReturn(new CareerTargetPlans.Plan("revision","工程师","上海","SUGGESTED",result,""));
+        var registry=registry();var runner=new Orchestrator(planner(registry),registry);
+        var events=new CopyOnWriteArrayList<AgentEvent>();var pending=new CompletableFuture<AgentEvent.ApprovalRequired>();
+        var finished=runner.run(AgentMode.AUTO,"设为目标",List.of(),ModelTier.FLASH,"target-run",new AtomicInteger(),
+            new ArrayList<>(),u->{},"alice",Map.of("careerAction","setCareerTarget","occupationId","occ1"))
+            .doOnNext(e->{events.add(e);if(e instanceof AgentEvent.ApprovalRequired approval) pending.complete(approval);}).collectList().toFuture();
+        var approval=pending.get(3,TimeUnit.SECONDS);verifyNoInteractions(followups);
+        approvals.resolve("alice","target-run",approval.approvalId(),new ApprovalService.Decision("APPROVE",null,null));
+        finished.get(3,TimeUnit.SECONDS);
+        verify(followups).generate("alice");
+        assertThat(events).anyMatch(e->e instanceof AgentEvent.UiCard card && card.cardType().equals("skill_gap"));
+        assertThat(events).anyMatch(e->e instanceof AgentEvent.UiCard card && card.cardType().equals("roadmap"));
+        var direct=tools.execute("alice",write(),new ApprovalService.Decision("APPROVE",Map.of("occupationId","occ1","name","工程师"),null)).block();
+        assertThat(direct.summary()).contains("是否按这些建议继续", "确认采用", "未修改投递记录");
+        clearInvocations(followups);
+        assertThatThrownBy(()->tools.execute("alice",write(),new ApprovalService.Decision("REJECT",Map.of(),null)).block()).hasMessageContaining("拒绝");
+        verifyNoInteractions(followups);
+    }
+    @Test void followupFailureDoesNotMisreportAnAlreadySavedTarget() {
+        occupation();var followups=mock(CareerTargetPlans.class);tools.setTargetPlans(followups);
+        doThrow(new IllegalStateException("fixture failure")).when(followups).generate("alice");
+        var result=tools.execute("alice",write(),new ApprovalService.Decision("APPROVE",Map.of("occupationId","occ1","name","工程师"),null)).block();
+        assertThat(result.summary()).contains("目标设为：工程师", "已排队");verify(profiles).saveTarget("alice","工程师");
+    }
+
 }

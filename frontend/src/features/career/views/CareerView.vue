@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import CareerRecommendations from '../components/CareerRecommendations.vue'
+import TargetPlanPanel from '@/shared/components/TargetPlanPanel.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import { learningTasks } from '@/shared/stores/workspace'
 import { useCareerProfile } from '@/shared/composables/useCareerProfile'
@@ -79,6 +80,7 @@ const progress = computed(() =>
         </section>
       </aside>
     </div>
+    <TargetPlanPanel :enabled="ready && !pending" :target="profile.target" :city="profile.city" />
     <CareerRecommendations />
   </section>
 </template>
