@@ -24,7 +24,11 @@ public class JobImportService {
     public static final String SOURCE = "USER_IMPORT";
 
     /** securityNotices: SC-01 labels of suspected injected instructions found in the imported text (shown, never executed). */
-    public record ParseResult(JobImportParser.Draft draft, String url, String sourceKind, List<String> securityNotices) {}
+    public record ParseResult(JobImportParser.Draft draft, String url, String sourceKind, List<String> securityNotices, List<String> fileIds) {
+        public ParseResult(JobImportParser.Draft draft, String url, String sourceKind, List<String> securityNotices) {
+            this(draft,url,sourceKind,securityNotices,List.of());
+        }
+    }
     private List<String> notices(String owner, String text) {
         return com.offerpilot.llm.quota.LlmUserContext.asUser(owner, () -> gateway.detectInjection(text)).stream()
                 .map(com.offerpilot.llm.safety.PromptInjectionDetector::label).toList();
@@ -59,6 +63,11 @@ public class JobImportService {
         }
         var page = fetcher.fetch(url);
         return new ParseResult(parser.parse(owner, page.text(), page.title()), page.url(), "url", notices(owner, page.text()));
+    }
+
+    /** OCR transcript remains untrusted input; use the same extraction, grounding and SC-01 notices. */
+    public ParseResult parseTranscript(String owner, String transcript) {
+        return new ParseResult(parser.parse(owner, transcript, null), "", "screenshot", notices(owner, transcript));
     }
 
     public JsonNode save(String owner, Fields f) {

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/jobs")
 public class JobController {
+    private final JobScreenshotService screenshots;
     private final JobService jobs;
     private final JobMatchService matches;
     private final JobEvalMarkdownExporter evalExports;
@@ -22,7 +23,8 @@ public class JobController {
     private final JobRecommendationService recommendations;
 
     public JobController(JobService jobs, JobMatchService matches, JobEvalMarkdownExporter evalExports, CurrentUser users,
-                         JobImportService imports, JobRecommendationService recommendations) {
+                         JobImportService imports, JobRecommendationService recommendations, JobScreenshotService screenshots) {
+        this.screenshots=screenshots;
         this.recommendations=recommendations;
         this.imports = imports;
         this.jobs = jobs;
@@ -54,6 +56,23 @@ public class JobController {
             HttpServletRequest r) {
         String user=owner(r);
         return ok(com.offerpilot.llm.quota.LlmUserContext.asUser(user, () -> jobs.search(query, site, nature, location)), r);
+    }
+
+    @PostMapping(value = "/import/screenshots", consumes = "multipart/form-data")
+    public ApiResponse<?> uploadScreenshot(@RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+                                          HttpServletRequest r) throws java.io.IOException {
+        String user=owner(r);
+        if(file.getSize()>5*1024*1024) throw new com.offerpilot.common.error.BusinessException(
+                com.offerpilot.common.error.ErrorCode.FILE_TOO_LARGE,"单张截图不能超过 5MB");
+        return ok(screenshots.upload(user,file.getOriginalFilename(),file.getBytes()),r);
+    }
+
+    @GetMapping("/import/screenshots/{id}")
+    public ResponseEntity<byte[]> screenshot(@PathVariable String id,HttpServletRequest r) {
+        var image=screenshots.read(owner(r),id);
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_TYPE,image.mime())
+                .header(HttpHeaders.CACHE_CONTROL,"private, no-store")
+                .header("X-Content-Type-Options","nosniff").body(image.bytes());
     }
 
     public record ImportParseRequest(@Size(max = 20000) String text, @Size(max = 2000) String url) {}
