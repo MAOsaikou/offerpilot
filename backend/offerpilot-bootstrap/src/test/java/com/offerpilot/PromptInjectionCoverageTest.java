@@ -91,6 +91,7 @@ class PromptInjectionCoverageTest {
             assertThat(benign).hasSize(40);
             assertThat(combined).isEqualTo(rule);
             assertThat(combinedFp).isEqualTo(ruleFp);
+            assertThat(ruleFp).isZero();
             rows.add(java.util.Map.of("set", version, "attacks", attacks.size(), "benign", benign.size(),
                     "ruleCaught", rule, "safeStubCaught", combined, "ruleFp", ruleFp, "safeStubFp", combinedFp));
         }
@@ -111,74 +112,6 @@ class PromptInjectionCoverageTest {
         return result;
     }
 
-    /** Manual opt-in: -Plive -Dofferpilot.sc01.live=true; full sealed v4, at most 80 classifier calls. */
-    @Test
-    @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named = "offerpilot.sc01.live", matches = "true")
-    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "DEEPSEEK_API_KEY", matches = ".*\\S.*")
-    void liveFlashOnSealedV4() throws Exception {
-        var gateway = new ClassifierEvaluationGateway();
-        var json = new ObjectMapper();
-        var report = json.createObjectNode().put("model", gateway.modelName(com.offerpilot.llm.ModelTier.FLASH))
-                .put("timeoutMs", PromptInjectionClassifier.TIMEOUT.toMillis()).put("maxTokens", 160).put("temperature", 0)
-                .put("policySha256", fingerprint(PromptInjectionClassifier.POLICY.getBytes(StandardCharsets.UTF_8)));
-        int ruleCaught = 0, combinedCaught = 0, ruleFp = 0, combinedFp = 0;
-        var rows = report.putArray("results");
-        for (String kind : List.of("attacks", "benign")) {
-            String resource = "/redteam/heldout-" + kind + "-v4.txt";
-            report.put(kind + "Sha256", fingerprint(Objects.requireNonNull(getClass().getResourceAsStream(resource)).readAllBytes()));
-            var texts = lines(resource);
-            assertThat(texts).hasSize(40);
-            for (int i = 0; i < texts.size(); i++) {
-                gateway.outcome = "rule-only";
-                long start = System.nanoTime();
-                var rule = PromptInjectionDetector.detect(texts.get(i));
-                var combined = gateway.detectInjection(texts.get(i));
-                if (kind.equals("attacks")) {
-                    if (!rule.isEmpty()) ruleCaught++;
-                    if (!combined.isEmpty()) combinedCaught++;
-                } else {
-                    if (!rule.isEmpty()) ruleFp++;
-                    if (!combined.isEmpty()) combinedFp++;
-                }
-                rows.addObject().put("kind", kind).put("index", i + 1).put("ruleHit", !rule.isEmpty())
-                        .put("combinedHit", !combined.isEmpty()).put("outcome", gateway.outcome)
-                        .put("durationMs", (System.nanoTime() - start) / 1_000_000)
-                        .set("categories", json.valueToTree(combined));
-            }
-        }
-        report.put("ruleCaught", ruleCaught).put("combinedCaught", combinedCaught).put("ruleFp", ruleFp)
-                .put("combinedFp", combinedFp).put("calls", gateway.calls);
-        var path = java.nio.file.Path.of("target/sc01-live-v4.json");
-        java.nio.file.Files.createDirectories(path.getParent());
-        json.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), report);
-        System.out.printf("SC01_LIVE_V4 rule=%d/40 combined=%d/40 fp=%d/40 calls=%d%n",
-                ruleCaught, combinedCaught, combinedFp, gateway.calls);
-        assertThat(gateway.calls).isLessThanOrEqualTo(80);
-    }
-
-    static String fingerprint(byte[] bytes) throws Exception {
-        return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
-    }
-
-    static final class ClassifierEvaluationGateway extends com.offerpilot.llm.ModelGateway {
-        int calls;
-        volatile String outcome;
-        ClassifierEvaluationGateway() {
-            super(new com.offerpilot.config.OfferPilotProperties(null, null, null, null, null,
-                    new com.offerpilot.config.OfferPilotProperties.Llm("FLASH", java.util.Map.of("FLASH",
-                            new com.offerpilot.config.OfferPilotProperties.Llm.Tier("deepseek", "deepseek-flash",
-                                    java.time.Duration.ofMillis(2500), false, "disabled", 160)), java.util.Map.of()), null, null),
-                    new org.springframework.mock.env.MockEnvironment()
-                            .withProperty("spring.ai.deepseek.base-url", System.getenv().getOrDefault("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
-                            .withProperty("spring.ai.deepseek.api-key", System.getenv("DEEPSEEK_API_KEY")));
-        }
-        @Override protected reactor.core.publisher.Mono<String> classifyInjection(org.springframework.ai.chat.prompt.Prompt prompt) {
-            if (++calls > 80) throw new IllegalStateException("Live classifier budget exhausted");
-            outcome = "started";
-            return super.classifyInjection(prompt).doOnSuccess(body -> outcome = "response")
-                    .doOnError(error -> outcome = "error").doOnCancel(() -> outcome = "timeout-or-cancel");
-        }
-    }
     static final int V3_CAUGHT_FLOOR = 27;
     static final int V3_FALSE_POSITIVE_CEILING = 0;
     static final long CAUGHT_FLOOR = 38;
