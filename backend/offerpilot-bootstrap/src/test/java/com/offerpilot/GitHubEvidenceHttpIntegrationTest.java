@@ -56,7 +56,7 @@ class GitHubEvidenceHttpIntegrationTest extends SharedHttpIntegrationTest {
         assertThat(failed.path("stale").asBoolean()).isTrue(); assertThat(failed.path("status").asText()).isEqualTo("RATE_LIMITED");
         assertThat(failed.path("fetchedAt")).isEqualTo(fetched.path("fetchedAt"));
         jdbc.update("UPDATE github_evidence SET last_attempt_at=now()-interval '2 minutes' WHERE user_id=?",owner);
-        when(client.fetch("fixture","fictional_only")).thenAnswer(invocation -> { evidence.save(owner,"changed",null,false); return fixture(); });
+        doAnswer(invocation -> { evidence.save(owner,"changed",null,false); return fixture(); }).when(client).fetch("fixture","fictional_only");
         var late = data(request("POST","/resumes/github/refresh?force=true",token,null));
         assertThat(late.path("username").asText()).isEqualTo("changed"); assertThat(late.path("tokenConfigured").asBoolean()).isFalse();
         assertThat(late.path("snapshot").isNull()).isTrue();
