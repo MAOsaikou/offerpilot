@@ -159,7 +159,8 @@ class CareerAssessmentHttpIntegrationTest extends SharedHttpIntegrationTest {
         // Fewer than four answers: not enough evidence for a profile.
         assertThat(call("POST", "/assessment/infer", token, null).statusCode()).isEqualTo(400);
         data(call("PUT", "/assessment/answers/3", token, Map.of("answer", answers[3])));
-        assertThat(call("PUT", "/assessment/answers/7", token, Map.of("answer", "x")).statusCode()).isEqualTo(400);
+        // Index 7 may now hold a dynamic follow-up; 12 is past the 12-question cap.
+        assertThat(call("PUT", "/assessment/answers/12", token, Map.of("answer", "x")).statusCode()).isEqualTo(400);
         var inferred = data(call("POST", "/assessment/infer", token, null)).path("inference");
         // Offline test context: keyword rules, every quote taken from the answers.
         assertThat(inferred.path("source").asText()).isEqualTo("rule");
