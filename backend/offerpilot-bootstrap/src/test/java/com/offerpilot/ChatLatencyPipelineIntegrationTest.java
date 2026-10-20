@@ -170,6 +170,8 @@ class ChatLatencyPipelineIntegrationTest {
                 }
                 subscription.dispose();
                 verify(fixture.conversations, timeout(2000)).finish(any(), eq(""), eq("CANCELLED"), any(), any(), any());
+                long cancelDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+                while (!fixture.candidateCancelled.get() && System.nanoTime() < cancelDeadline) Thread.sleep(10);
                 assertThat(fixture.candidateCancelled).isTrue();
                 if (early) assertThat(fixture.gateway.inputCancelled.await(2, TimeUnit.SECONDS)).isTrue();
                 assertThat(events).noneMatch(AgentEvent.TextDelta.class::isInstance);
