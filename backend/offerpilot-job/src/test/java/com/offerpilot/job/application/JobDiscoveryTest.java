@@ -18,6 +18,13 @@ class JobDiscoveryTest {
     final JobSearchWork work=new JobSearchWork();
     @AfterEach void close() { work.close(); }
     void model(String text) { when(gateway.stream(eq(ModelTier.FLASH),anyList(),eq(0.0))).thenReturn(Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(text)))))); }
+    @Test void structuredKeywordsWithOrWithoutFiltersNeverCallModel() {
+        assertThat(parser.parse("owner"," Java ","","campus","")).isEqualTo(
+                new JobSearchParser.Criteria("Java","","","campus","","rule"));
+        assertThat(parser.parse("owner","Java  Spring Boot","tencent","intern","上海")).isEqualTo(
+                new JobSearchParser.Criteria("Java Spring Boot","","tencent","intern","上海","rule"));
+        verifyNoInteractions(gateway);
+    }
     @Test void flashExtractsGroundedFieldsAndExplicitFiltersWin() {
         model("{\"company\":\"腾讯\",\"location\":\"上海\",\"nature\":\"intern\",\"query\":\"Java\"}");
         var parsed=parser.parse("owner","找上海的腾讯 Java 实习岗位","","all","");
@@ -30,7 +37,7 @@ class JobDiscoveryTest {
         model("{\"company\":\"不存在的企业\",\"location\":\"火星\",\"nature\":\"social\",\"query\":\"Python\"}");
         var parsed=parser.parse("owner","找上海的腾讯 Java 实习岗位","","all","");
         assertThat(parsed.company()).isEqualTo("腾讯"); assertThat(parsed.location()).isEqualTo("上海"); assertThat(parsed.query()).isEqualTo("Java"); assertThat(parsed.nature()).isEqualTo("intern");
-        model("broken"); assertThat(parser.parse("owner","Java","","all","").parser()).isEqualTo("rule");
+        model("broken"); assertThat(parser.parse("owner","找Java岗位","","all","").parser()).isEqualTo("rule");
     }
     JsonNode job(String id,String url,String retrieval) {
         return json.createObjectNode().put("id",id).put("externalId","external").put("title","Java").put("site","fixture").put("nature","intern").put("url",url).put("retrievalSource",retrieval);

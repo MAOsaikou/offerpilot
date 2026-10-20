@@ -10,6 +10,20 @@ class JobSearchForChatTest {
     final JobService jobs = mock(JobService.class);
     final JobSearchForChat search = new JobSearchForChat(jobs, json);
 
+    @Test void emptyPartialResultFailsVisiblyButNormalZeroMatchesStillReturnsCard() {
+        var result = json.createObjectNode();
+        result.putArray("items");
+        result.putObject("meta").put("partial", true);
+        when(jobs.search("Java", "", "all", "")).thenReturn(result);
+        assertThatThrownBy(() -> search.search("Java", "", "all", ""))
+                .isInstanceOfSatisfying(com.offerpilot.common.error.BusinessException.class, ex -> {
+                    assertThat(ex.errorCode()).isEqualTo(com.offerpilot.common.error.ErrorCode.TOOL_FAILED);
+                    assertThat(ex.getMessage()).contains("均不可用");
+                });
+        result.withObject("/meta").put("partial", false);
+        assertThat(search.search("Java", "", "all", "").path("items")).isEmpty();
+    }
+
     @Test void resolvesKnownCompanyBoundsSnapshotAndPreservesPartialResultMetadata() throws Exception {
         when(jobs.sites()).thenReturn(json.readTree("{\"sites\":[{\"id\":\"didi\",\"name\":\"Didi\",\"supportedNatures\":[\"campus\"]}]}"));
         var result = json.createObjectNode().put("fetchedAt", "2026-09-28T00:00:00Z");

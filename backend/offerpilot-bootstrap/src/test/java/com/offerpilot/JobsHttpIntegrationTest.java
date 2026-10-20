@@ -54,7 +54,7 @@ class JobsHttpIntegrationTest {
                 else {
                     String tool=body.path("params").path("name").asText(); methods.add(tool);
                     Object payload=switch(tool) {
-                        case "list_sites" -> Map.of("sites",List.of(Map.of("id","fixture","name","测试企业","supportedNatures",List.of("campus"))));
+                        case "list_sites" -> Map.of("sites",List.of(Map.of("id",allSitesFailed?"offline":"fixture","name","测试企业","supportedNatures",List.of("campus"))));
                         case "search_jobs" -> allSitesFailed
                             ? Map.of("jobs",List.of(),"_meta",Map.of("sites",List.of("offline"),"skipped",List.of(Map.of("site","offline","reason","timeout"))))
                             : Map.of("jobs",List.of(job(),job()),"_meta",Map.of("sites",List.of("fixture","offline"),"skipped",List.of(Map.of("site","offline","reason","timeout")),"cached",false,"degradedSites",List.of(),"truncated",false));
@@ -360,6 +360,7 @@ class JobsHttpIntegrationTest {
     }
 
     @Test void chatAllSitesFailureIsVisibleWithoutJobCard() throws Exception {
+        // This unavailable site has no stored jobs; other tests may populate the public cache.
         allSitesFailed=true;
         var response=request("POST","/agent/chat",identities.create().accessToken(),Map.of("content","找Java","mode","JOB"));
         assertThat(response.body()).contains("search_jobs","均不可用").doesNotContain("ui.card");

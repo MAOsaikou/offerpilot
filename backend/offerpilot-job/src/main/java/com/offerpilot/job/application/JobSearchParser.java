@@ -21,6 +21,8 @@ public class JobSearchParser {
     public JobSearchParser(ModelGateway gateway, ObjectMapper json) { this.gateway=gateway; this.json=json; }
     public Criteria parse(String owner, String text, String site, String nature, String location) {
         Criteria fallback = rules(text,site,nature,location);
+        // Already structured keywords (including chat action output) need no model extraction.
+        if (text.strip().replaceAll("\\s+", " ").equals(fallback.query())) return fallback;
         try {
             gateway.requireAvailable(ModelTier.FLASH,false);
             String output = LlmUserContext.asUser(owner, () -> gateway.stream(ModelTier.FLASH,List.of(

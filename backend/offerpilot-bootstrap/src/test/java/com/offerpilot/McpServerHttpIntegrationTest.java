@@ -149,7 +149,8 @@ class McpServerHttpIntegrationTest {
             JsonNode match = call(client, "jobs.match", Map.of("resumeText", "Java项目经验", "jobDescription", "Java开发"));
             assertThat(match.path("score").asInt()).isEqualTo(100);
             assertThat(match.path("requirements").get(0).path("resumePath").asText()).isEqualTo("/rawText");
-            JsonNode search = call(client, "jobs.search", Map.of("query", " Java ", "nature", "CAMPUS", "limit", 2));
+            // Scope the fixture so AUTO snapshot rows from another test cannot precede it.
+            JsonNode search = call(client, "jobs.search", Map.of("query", " Java ", "site", "fixture", "nature", "CAMPUS", "limit", 2));
             assertThat(search.path("items").size()).isEqualTo(2);
             assertThat(search.path("items").get(0).path("excerpt").asText()).isEqualTo("中文".repeat(119) + "…");
             assertThat(search.path("items").get(0).has("description")).isFalse();
@@ -157,7 +158,7 @@ class McpServerHttpIntegrationTest {
             assertThat(search.toString().length()).isLessThan(1600);
             assertThat(search.path("meta").path("sites").get(0).asText()).isEqualTo("fixture");
             assertThat(search.path("truncated").asBoolean()).isTrue();
-            JsonNode defaultSearch = call(client, "jobs.search", Map.of("query", "Java"));
+            JsonNode defaultSearch = call(client, "jobs.search", Map.of("query", "Java", "site", "fixture"));
             assertThat(defaultSearch.path("limit").asInt()).isEqualTo(10);
             var invalid = client.callTool(new McpSchema.CallToolRequest("jobs.search", Map.of("query", " ")));
             assertThat(invalid.isError()).isTrue();
@@ -165,8 +166,8 @@ class McpServerHttpIntegrationTest {
             assertThat(wrongArg.isError()).isTrue();
             assertThat(((McpSchema.TextContent)wrongArg.content().get(0)).text()).contains("query is required");
         }
-        verify(upstream).call("search_jobs", Map.of("query", "Java", "nature", "campus", "limit", 30));
-        verify(upstream).call("search_jobs", Map.of("query", "Java", "nature", "all", "limit", 30));
+        verify(upstream).call("search_jobs", Map.of("query", "Java", "site", "fixture", "nature", "campus", "limit", 30));
+        verify(upstream).call("search_jobs", Map.of("query", "Java", "site", "fixture", "nature", "all", "limit", 30));
         assertThat(businessCounts()).isEqualTo(before);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM jobs WHERE site='fixture'", Integer.class)).isEqualTo(3);
     }

@@ -67,8 +67,13 @@ class JobsSnapshotHttpIntegrationTest {
         assertThat(item.path("source").asText()).isEqualTo("LOCAL_SNAPSHOT");
         assertThat(item.path("snapshotDate").asText()).isEqualTo("2026-10-10");
         assertThat(JobService.evidenceText(item)).contains("Java", "Spring Boot", "MySQL");
+        assertThat(item.path("retrievalSource").asText()).isEqualTo("LOCAL_SNAPSHOT");
+        assertThat(item.has("detailFetchedAt")).isTrue();
+        assertThat(item.path("detailFetchedAt").isNull()).isTrue();
         clearInvocations(live);
-        assertThat(jobs.detail("anyone", item.path("id").asText(), true)).isEqualTo(item);
+        var stored = ((com.fasterxml.jackson.databind.node.ObjectNode) item).deepCopy();
+        stored.remove(java.util.List.of("retrievalSource", "retrievalSources", "storedAt"));
+        assertThat(jobs.detail("anyone", item.path("id").asText(), true)).isEqualTo(stored);
         verifyNoInteractions(live);
     }
 
