@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class ModelGateway {
 
     private static final String SCREEN_SESSION = ModelGateway.class.getName() + ".screen";
+    private static final String INPUT_SAFE = ModelGateway.class.getName() + ".inputSafe";
     private static final String EFFECTS_GATE = ModelGateway.class.getName() + ".effects";
 
     /** Gate all tool/memory effects, while model planning/generation can run concurrently. */
@@ -46,16 +47,27 @@ public class ModelGateway {
                 reactor.core.publisher.Mono.<Void>empty()));
     }
 
+    /** Whether this subscription has the original turn's shared safety gate. */
+    public static boolean hasInputSafetyGate(reactor.util.context.ContextView context) { return context.hasKey(INPUT_SAFE); }
+
+    /** Additional admission for speculative search snapshots; existing tool gate semantics stay unchanged. */
+    public static reactor.core.publisher.Mono<Boolean> inputSafetyPassed() {
+        return reactor.core.publisher.Mono.deferContextual(context -> context.getOrDefault(INPUT_SAFE,
+                reactor.core.publisher.Mono.just(false)));
+    }
+
     public <T> Flux<T> withSafetyScreen(List<Message> messages, Flux<T> work) {
         return Flux.deferContextual(context -> {
             if (!environment.getProperty("offerpilot.agent.parallel-safety-screen", Boolean.class, true)) return work;
             String owner = context.getOrDefault(LlmUserContext.KEY, LlmUserContext.current());
             var session = new com.offerpilot.llm.safety.InputScreeningSession();
-            var ready = reactor.core.publisher.Sinks.<Void>empty();
+            var ready = reactor.core.publisher.Sinks.<Boolean>one();
+            var policyOnly = com.offerpilot.llm.privacy.ModelInputBoundary.apply(new Prompt(messages),
+                    ignored -> List.of()).getInstructions();
             var connection = ChatLatency.mono("input-safety", UsageJournal.callable(() -> inputBoundary(owner, new Prompt(messages), session))
                     .subscribeOn(Schedulers.boundedElastic())).contextWrite(context)
-                    .subscribe(ignored -> ready.tryEmitEmpty(), ready::tryEmitError);
-            return work.contextWrite(c -> c.put(SCREEN_SESSION, session).put(EFFECTS_GATE, ready.asMono()))
+                    .subscribe(screened -> ready.tryEmitValue(screened.getInstructions().equals(policyOnly)), ready::tryEmitError);
+            return work.contextWrite(c -> c.put(SCREEN_SESSION, session).put(EFFECTS_GATE, ready.asMono().then()).put(INPUT_SAFE, ready.asMono()))
                     .doFinally(signal -> { connection.dispose(); session.close(); });
         });
     }

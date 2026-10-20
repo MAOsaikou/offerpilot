@@ -24,9 +24,64 @@ public class JobService implements JobDescriptionForChat {
     public JobService(JobSource source, JdbcTemplate jdbc, ObjectMapper json) { this.source=source; this.jdbc=jdbc; this.json=json; }
     public JsonNode sites() { return source.sites(); }
     public JsonNode search(String query, String site, String nature, String location) {
+        return search(query,site,nature,location,this::save,false);
+    }
+    /** Request-local snapshots only. No parser model and no JDBC writes until persist() is called. */
+    public PreparedSearch prepareRuleSearch(String query,String site,String nature,String location) {
+        var pending=new java.util.concurrent.ConcurrentHashMap<String,PendingSnapshot>();
+        JsonNode result=search(query,site,nature,location,(raw,kind)-> {
+            String key=raw.path("site").asText()+":"+raw.path("id").asText()+":"+kind;
+            var snapshot=pending.computeIfAbsent(key,ignored->new PendingSnapshot(IdGenerator.next("job"),raw.deepCopy(),kind));
+            var preview=normalize(snapshot.raw(),snapshot.nature());
+            // Mirror the upsert's preservation of previously fetched detail using a public read.
+            var existing=jdbc.query("SELECT id,payload,detail_fetched_at FROM jobs WHERE site=? AND external_id=? AND nature=? AND user_id IS NULL",
+                    (rs,n)->view(rs.getString("id"),rs.getString("payload"),rs.getTimestamp("detail_fetched_at")),
+                    raw.path("site").asText(),raw.path("id").asText(),kind);
+            if(!existing.isEmpty() && !existing.get(0).path("detailFetchedAt").isNull())
+                preview=(ObjectNode)existing.get(0).deepCopy();
+            preview.put("id",snapshot.id());
+            if(!preview.has("detailFetchedAt")) preview.putNull("detailFetchedAt");
+            return preview;
+        },true);
+        // Only returned snapshots survive a timeout/truncation; late workers cannot add effects.
+        var selected=new LinkedHashMap<String,PendingSnapshot>();
+        for(var item:result.path("items")) for(var snapshot:pending.values())
+            if(snapshot.id().equals(item.path("id").asText())) selected.putIfAbsent(snapshot.id(),snapshot);
+        return new PreparedSearch(result.deepCopy(),List.copyOf(selected.values()));
+    }
+    private record PendingSnapshot(String id,JsonNode raw,String nature) {}
+    public final class PreparedSearch {
+        private final JsonNode preview;
+        private final List<PendingSnapshot> pending;
+        private JsonNode saved;
+        private PreparedSearch(JsonNode preview,List<PendingSnapshot> pending) { this.preview=preview; this.pending=pending; }
+        public JsonNode preview() { return preview.deepCopy(); }
+        public synchronized JsonNode persist() {
+            if(saved==null) {
+                var resolved=new HashMap<String,JsonNode>();
+                for(var snapshot:pending) resolved.put(snapshot.id(),save(snapshot.raw(),snapshot.nature()));
+                var result=(ObjectNode)preview.deepCopy();
+                var items=result.putArray("items");
+                for(var item:preview.path("items")) {
+                    JsonNode stored=resolved.get(item.path("id").asText());
+                    if(stored==null) items.add(item);
+                    else {
+                        var merged=(ObjectNode)stored.deepCopy();
+                        for(String field:List.of("retrievalSource","retrievalSources"))
+                            if(item.has(field)) merged.set(field,item.get(field));
+                        items.add(merged);
+                    }
+                }
+                saved=result;
+            }
+            return saved.deepCopy();
+        }
+    }
+    private JsonNode search(String query,String site,String nature,String location,
+            java.util.function.BiFunction<JsonNode,String,JsonNode> sink,boolean structured) {
         if (query == null || query.isBlank() || query.length()>100 || site.length()>60 || location.length()>60
                 || !Set.of("campus","intern","social","all").contains(nature)) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
-        if (pipeline != null) return pipeline.search(com.offerpilot.llm.quota.LlmUserContext.current(),query,site,nature,location,this::save);
+        if (pipeline != null) return pipeline.search(com.offerpilot.llm.quota.LlmUserContext.current(),query,site,nature,location,sink,structured);
         Map<String,Object> args = new LinkedHashMap<>();
         args.put("query",query.strip()); args.put("nature",nature); args.put("limit",30);
         if (!site.isBlank()) args.put("site",site);
@@ -37,7 +92,7 @@ public class JobService implements JobDescriptionForChat {
             if (raw.path("id").asText().isBlank() || raw.path("site").asText().isBlank() || raw.path("title").asText().isBlank()) continue;
             String actualNature=Set.of("campus","intern","social").contains(raw.path("nature").asText()) ? raw.path("nature").asText() : nature;
             String key=raw.path("site").asText()+":"+raw.path("id").asText()+":"+actualNature;
-            if (seen.add(key)) items.add(save(raw,actualNature));
+            if (seen.add(key)) items.add(sink.apply(raw,actualNature));
         }
         output.set("meta",result.path("_meta")); output.put("fetchedAt",Instant.now().toString());
         return output;

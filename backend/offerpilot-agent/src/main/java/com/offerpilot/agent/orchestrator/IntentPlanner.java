@@ -36,7 +36,11 @@ public class IntentPlanner {
     void setEarlyExpertHandoff(boolean enabled) { this.earlyExpertHandoff = enabled; }
 
     public record Decision(String kind, ExpertType expert, Double confidence, boolean needsClarification,
-                           String clarifyingQuestion, Plan plan, JsonNode jobSearch) {
+                           String clarifyingQuestion, Plan plan, JsonNode jobSearch, @com.fasterxml.jackson.annotation.JsonIgnore boolean ruleRoute) {
+        public Decision(String kind, ExpertType expert, Double confidence, boolean needsClarification,
+                        String clarifyingQuestion, Plan plan, JsonNode jobSearch) {
+            this(kind,expert,confidence,needsClarification,clarifyingQuestion,plan,jobSearch,false);
+        }
         public Decision(String kind, ExpertType expert, Double confidence, boolean needsClarification,
                         String clarifyingQuestion, Plan plan) {
             this(kind, expert, confidence, needsClarification, clarifyingQuestion, plan, null);
@@ -188,7 +192,7 @@ public class IntentPlanner {
             PlanStep step = rule.get();
             return com.offerpilot.llm.ChatLatency.mono("rule-route", Mono.fromSupplier(() ->
                     new Decision("single", step.agent(), 1.0, false, null,
-                            PlanValidator.validate(new Plan(content, List.of(step))))));
+                            PlanValidator.validate(new Plan(content, List.of(step))), null, true)));
         }
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(prompt.replace("{experts}", experts.capabilities())

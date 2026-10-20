@@ -146,6 +146,7 @@ public class ChatService {
                 && !orchestrator.usesRuleFirstRoute(turn.mode(), request.content(), turn.history(), context);
         int basePromptSize = prompt.size();
         AtomicReference<Flux<ChatResponse>> early = new AtomicReference<>();
+        var ruleSearchReply = new java.util.concurrent.atomic.AtomicBoolean();
         AtomicReference<reactor.core.Disposable> earlyConnection = new AtomicReference<>();
         Runnable dropEarly = () -> {
             early.set(null);
@@ -154,7 +155,7 @@ public class ChatService {
         };
         Flux<AgentEvent> response = Flux.defer(() -> {
                     Flux<ChatResponse> speculative = early.getAndSet(null);
-                    if (speculative != null && prompt.size() == basePromptSize) return speculative;
+                    if (speculative != null && (ruleSearchReply.get() || prompt.size() == basePromptSize)) return speculative;
                     dropEarly.run();
                     // Expert rules appended by the orchestrator can crowd out the image; restate it for the final reply.
                     if (!images.isEmpty()) prompt.add(new SystemMessage("用户本轮附带了 " + images.size()
@@ -188,6 +189,8 @@ public class ChatService {
                     return Flux.empty();
                 })), 0);
         Flux<AgentEvent> work = Flux.deferContextual(reactorContext -> {
+                    // Orchestrator supplies the complete compact search prompt before waiting to persist.
+                    // Replay stays inside the gateway's SC-01/SC-03 gate and is disposed with this turn.
                     if (speculate) {
                         try {
                             var replay = timedReply(gateway.stream(tier, List.copyOf(prompt)), "speculative-reply", turn.runId())
@@ -205,7 +208,14 @@ public class ChatService {
                             planningCompletionTokens.addAndGet(u.getCompletionTokens());
                         }, owner, context)))
                 .concatWith(response)
-                .contextWrite(c -> c.put(com.offerpilot.agent.orchestrator.IntentPlanner.ON_EXPERT_ROUTE, dropEarly)
+                .contextWrite(c -> c.put(Orchestrator.START_RULE_SEARCH_REPLY, (java.util.function.Consumer<List<Message>>) narration -> {
+                    dropEarly.run();
+                    var replay=timedReply(gateway.stream(tier,narration),"expert-reply",turn.runId())
+                            .contextWrite(c).replay();
+                    ruleSearchReply.set(true);
+                    early.set(replay);
+                    earlyConnection.set(replay.connect());
+                }).put(com.offerpilot.agent.orchestrator.IntentPlanner.ON_EXPERT_ROUTE, dropEarly)
                         .put(com.offerpilot.agent.orchestrator.IntentPlanner.RULE_ROUTING_ALLOWED, images.isEmpty()));
         if (refuse || crisis) {
             String fixed = com.offerpilot.llm.safety.InputSafety.refusal(concern);

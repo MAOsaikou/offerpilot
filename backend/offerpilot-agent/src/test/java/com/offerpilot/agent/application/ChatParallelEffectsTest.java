@@ -37,7 +37,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ChatParallelEffectsTest {
-    @Test void ruleJobSearchWaitsForGateAndOnlyFinalModelContentBecomesText() throws Exception {
+    @Test void disabledRuleJobSearchWaitsForGateAndOnlyFinalModelContentBecomesText() throws Exception {
         for (boolean cancel : List.of(false, true)) {
             var gateway = new Gateway();
             gateway.replyResult = Sinks.one();
@@ -50,8 +50,10 @@ class ChatParallelEffectsTest {
             var jobs = new JobIntentParser(gateway, json, new ByteArrayResource("actions".getBytes()));
             var planner = new IntentPlanner(gateway, json, experts, new ByteArrayResource("planner".getBytes()), jobs);
             var conversations = conversations();
+            var orchestrator = new Orchestrator(planner, experts);
+            org.springframework.test.util.ReflectionTestUtils.setField(orchestrator,"earlyReadonlyExpert",false);
             var service = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()),
-                    new Orchestrator(planner, experts), json);
+                    orchestrator, json);
             service.setParallelSafetyScreen(true);
             var events = new java.util.concurrent.CopyOnWriteArrayList<AgentEvent>();
             var completed = new CountDownLatch(1);

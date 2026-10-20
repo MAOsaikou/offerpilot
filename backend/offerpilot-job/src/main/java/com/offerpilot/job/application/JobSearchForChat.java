@@ -61,7 +61,20 @@ public class JobSearchForChat {
             }
             resolvedSite = selected.path("id").asText();
         }
-        JsonNode result = jobs.search(query.strip(), resolvedSite, nature, location.strip());
+        return card(jobs.search(query.strip(), resolvedSite, nature, location.strip()),query.strip(),resolvedSite,nature,location.strip());
+    }
+
+    public record Prepared(ObjectNode preview, java.util.function.Supplier<ObjectNode> persist) {}
+
+    /** Only the orchestrator may choose this for a deterministic, validated rule route. */
+    public Prepared prepareRuleSearch(String query,String site,String nature,String location) {
+        if (!site.isEmpty()) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        var prepared=jobs.prepareRuleSearch(query,site,nature,location);
+        return new Prepared(card(prepared.preview(),query,site,nature,location),
+                () -> card(prepared.persist(),query,site,nature,location));
+    }
+
+    private ObjectNode card(JsonNode result,String query,String resolvedSite,String nature,String location) {
         if (result.path("items").isEmpty() && result.path("meta").path("partial").asBoolean())
             throw new BusinessException(ErrorCode.TOOL_FAILED, "本次查询的岗位来源均不可用，请稍后重试或选择其他企业");
         ObjectNode card = json.createObjectNode().put("schemaVersion", 2).put("returnedCount", result.path("items").size());
