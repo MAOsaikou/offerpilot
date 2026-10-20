@@ -106,7 +106,7 @@ public class CareerWriteTools {
                         "occupationId", item.occupation().occupationId(), "name", item.occupation().name(),
                         "family", item.occupation().family(), "hollandCode", "", "similarity", item.occupation().match(),
                         "reasons", java.util.List.of(item.changeReason()), "rankDelta", item.rankDelta(),
-                        "changeReason", item.changeReason())).toList();
+                        "changeReason", item.changeReason(), "details", item.details()==null ? java.util.Map.of() : item.details())).toList();
                 return ExpertResult.card("已按批准的约束保存新推荐修订；未修改职业档案。",
                         saved.id(), "career_recommendation", Map.of("hollandCode", "", "interestsUsed", java.util.List.of("已保存推荐"),
                                 "recommendations", items, "revisionId", saved.id(), "elapsedMs", saved.elapsedMs()));

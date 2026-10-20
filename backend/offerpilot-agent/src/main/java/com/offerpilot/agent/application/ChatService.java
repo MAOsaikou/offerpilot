@@ -247,7 +247,8 @@ public class ChatService {
             if (event instanceof AgentEvent.UiCard card && !cards.accept(card.cardId(), card.cardType(), card.payload())) return;
             sink.next(event);
         });
-        return streamed.concatWith(end)
+        return streamed.concatWith(memory == null || explicitMemory || concern != null ? Flux.empty() : memory.collect(owner, turn.runId(), () -> !answer.toString().isBlank() && !cancel.scan(reactor.core.Scannable.Attr.TERMINATED)).takeUntilOther(cancel.asMono()))
+                .concatWith(end)
                 .takeUntilOther(reactor.core.publisher.Mono.delay(Duration.ofMinutes(100)).flatMap(ignored ->
                         reactor.core.publisher.Mono.error(new TimeoutException())))
                 .onErrorResume(ex -> {

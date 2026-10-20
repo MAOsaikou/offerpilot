@@ -33,6 +33,11 @@ let failSave = false
 let holdTasks: Promise<void> | undefined
 const ownerOf = (request: Request) => request.headers.get('Authorization')!.slice(7)
 const server = setupServer(
+  http.get('*/api/v1/career/questionnaire', () =>
+    HttpResponse.json({
+      data: { questions: [], answers: {}, revision: 0, completed: false, scores: {}, code: '' },
+    }),
+  ),
   http.get('*/api/v1/career/target-plan', () => HttpResponse.json({ data: null })),
   http.get('*/api/v1/career/profile-suggestions', () => HttpResponse.json({ data: [] })),
   http.get('*/api/v1/career/recommendations', () => HttpResponse.json({ data: null })),

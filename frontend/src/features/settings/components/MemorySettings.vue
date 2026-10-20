@@ -2,6 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import {
   addMemory,
+  listMemoryCandidates,
+  confirmMemoryCandidate,
+  deleteMemoryCandidate,
+  type MemoryCandidate,
   clearMemories,
   deleteMemory,
   editMemory,
@@ -14,6 +18,7 @@ import {
 } from '@/shared/api/memories'
 
 const inventory = ref<MemoryInventory>({ items: [], memoryEnabled: true, limit: 50 })
+const candidates = ref<MemoryCandidate[]>([])
 const loaded = ref(false)
 const busy = ref(false)
 const error = ref('')
@@ -30,7 +35,9 @@ async function load() {
   busy.value = true
   error.value = ''
   try {
-    inventory.value = await listMemories()
+    const [saved, pending] = await Promise.all([listMemories(), listMemoryCandidates()])
+    inventory.value = saved
+    candidates.value = pending
     loaded.value = true
   } catch {
     error.value = '记忆加载失败，请重试。'
@@ -89,6 +96,7 @@ async function remove() {
       if (id === 'all') {
         await clearMemories()
         inventory.value.items = []
+        candidates.value = []
       } else {
         await deleteMemory(id)
         inventory.value.items = inventory.value.items.filter((item) => item.id !== id)
@@ -98,6 +106,21 @@ async function remove() {
     id === 'all' ? '全部记忆已清空。' : '记忆已删除。',
   )
 }
+async function decideCandidate(candidate: MemoryCandidate, accept: boolean) {
+  await perform(
+    async () => {
+      if (accept) {
+        const saved = await confirmMemoryCandidate(candidate.id)
+        inventory.value.items = [
+          saved,
+          ...inventory.value.items.filter((item) => item.id !== saved.id),
+        ]
+      } else await deleteMemoryCandidate(candidate.id)
+      candidates.value = candidates.value.filter((item) => item.id !== candidate.id)
+    },
+    accept ? '候选已确认，后续新会话可参考。' : '候选已删除，不再建议相同事实。',
+  )
+}
 onMounted(load)
 </script>
 
@@ -105,7 +128,7 @@ onMounted(load)
   <section class="form-stack" aria-labelledby="memory-heading">
     <h3 id="memory-heading">长期记忆</h3>
     <p class="subtle">
-      保存你确认的目标城市、岗位、技能和约束，供新对话参考。聊天只提出建议，确认后才保存；不会从简历、岗位描述或知识笔记自动提取。最多50条，每条200字。
+      保存你确认的目标城市、岗位、技能和约束，供新对话参考。每轮成功对话后从你的原话自动提取候选，确认后才用于新对话；不会从简历、岗位描述或知识笔记自动提取。最多50条，每条200字。
     </p>
     <label>
       <input
@@ -128,6 +151,32 @@ onMounted(load)
       {{ error }} <button class="btn" :disabled="busy" @click="load">重新加载</button>
     </p>
     <template v-if="loaded">
+      <div v-if="candidates.length" class="form-stack" aria-label="待确认记忆">
+        <h4>从对话提取的候选 · 请核对</h4>
+        <article v-for="candidate in candidates" :key="candidate.id" class="rounded-lg border p-3">
+          <p class="break-words">{{ candidate.fact }}</p>
+          <p class="subtle">
+            置信度 {{ Math.round(candidate.confidence * 100) }}% ·
+            {{ candidate.extractor === 'rule' ? '规则提取' : 'FLASH 提取' }}
+          </p>
+          <a
+            :href="`/chat/${encodeURIComponent(candidate.sourceConversationId)}?messageId=${encodeURIComponent(candidate.sourceMessageId)}`"
+            >查看来源对话</a
+          >
+          <div class="flex flex-wrap gap-2">
+            <button
+              class="btn"
+              :disabled="busy || !inventory.memoryEnabled"
+              @click="decideCandidate(candidate, true)"
+            >
+              确认候选
+            </button>
+            <button class="btn" :disabled="busy" @click="decideCandidate(candidate, false)">
+              删除候选
+            </button>
+          </div>
+        </article>
+      </div>
       <div class="flex flex-wrap gap-2">
         <button
           class="btn"

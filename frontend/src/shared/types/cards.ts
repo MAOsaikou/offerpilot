@@ -1,3 +1,4 @@
+import type { CareerCardDetails } from '@/shared/api/career'
 /**
  * 生成式 UI 卡片 payload 契约。
  * 与 docs/05-接口文档.md §18 对应；payload 是公共输入，卡片可选交互属性由宿主提供。
@@ -65,6 +66,7 @@ export interface CareerRecommendationPayload {
     similarity: number
     rankDelta?: number
     changeReason?: string
+    details?: CareerCardDetails
     reasons: string[]
     citations?: Array<{ occupationId: string; title: string; excerpt: string }>
   }>

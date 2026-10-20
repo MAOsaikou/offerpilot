@@ -128,15 +128,52 @@ class UserMemoryChatIntegrationTest {
             assertThat(events.stream().filter(e -> e.path("type").asText().equals("tool.result")).findFirst().orElseThrow().path("ok").asBoolean()).isFalse();
         }
     }
-    @Test void suggestionIsOneUserSentenceAfterSuccessfulReplyAndRequiresApproval() throws Exception {
+    @Test void automaticCandidatesRequireConfirmationThenNewSessionRecallsOldPreference() throws Exception {
         String token=identities.create().accessToken();
-        var events=approveChat(token,"我的技术栈是Java。我的目标城市是杭州。给我一些建议","APPROVE",false);
-        assertThat(events.stream().filter(e -> e.path("type").asText().equals("approval.required"))).hasSize(1);
-        int approvalIndex=java.util.stream.IntStream.range(0,events.size()).filter(i -> events.get(i).path("type").asText().equals("approval.required")).findFirst().orElseThrow();
-        assertThat(events.subList(0,approvalIndex).stream().map(e -> e.path("type").asText())).contains("text.delta");
+        var events=approveChat(token,"我的偏好是远程办公。我的目标城市是杭州。给我一些建议","APPROVE",false);
+        assertThat(events).noneMatch(e -> e.path("type").asText().equals("approval.required"));
+        assertThat(memories.list(owner(token)).items()).isEmpty();
+        var pending=JSONCandidates(token);
+        assertThat(pending).hasSize(2);
+        var city=pending.stream().filter(c -> c.path("kind").asText().equals("LOCATION")).findFirst().orElseThrow();
+        assertThat(city.path("confidence").asDouble()).isBetween(0.0,1.0);
+        assertThat(city.path("sourceMessageId").asText()).isNotBlank();
+        assertThat(request("POST","/memories/candidates/"+city.path("id").asText()+"/confirm",token,null).statusCode()).isEqualTo(200);
         var saved=memories.list(owner(token)).items().get(0);
-        assertThat(saved.fact()).isEqualTo("我的技术栈是Java"); assertThat(saved.source()).isEqualTo(Source.SUGGESTED_ACCEPTED);
-        assertThat(memories.list(owner(token)).items()).hasSize(1);
+        assertThat(saved.fact()).isEqualTo("我的目标城市是杭州");
+        assertThat(saved.source()).isEqualTo(Source.SUGGESTED_ACCEPTED);
+        var preference=pending.stream().filter(c -> c.path("kind").asText().equals("PREFERENCE")).findFirst().orElseThrow();
+        assertThat(request("POST","/memories/candidates/"+preference.path("id").asText()+"/confirm",token,null).statusCode()).isEqualTo(200);
+        var next=approveChat(token,"推荐适合我的职位","APPROVE",false);
+        assertThat(next).anySatisfy(e -> {
+            assertThat(e.path("type").asText()).isEqualTo("memory.used");
+            assertThat(e.path("facts").toString()).contains("我的目标城市是杭州","我的偏好是远程办公");
+        });
+        assertThat(jdbc.queryForObject("SELECT count(DISTINCT conversation_id) FROM agent_runs WHERE user_id=?",Integer.class,owner(token))).isEqualTo(2);
+        var other=identities.create().accessToken();
+        assertThat(request("POST","/memories/candidates/"+city.path("id").asText()+"/confirm",other,null).statusCode()).isEqualTo(404);
+    }
+    @Test void automaticCandidatesDeduplicateHonorSwitchAndDeletedFactsDoNotReappear() throws Exception {
+        String token=identities.create().accessToken(),owner=owner(token);
+        approveChat(token,"我的目标城市是杭州。我的偏好是远程办公","APPROVE",false);
+        var original=JSONCandidates(token);
+        assertThat(original).hasSize(2);
+        approveChat(token,"我的目标城市是杭州。我的偏好是远程办公","APPROVE",false);
+        assertThat(JSONCandidates(token)).containsExactlyElementsOf(original);
+        memories.settings(owner,false);
+        assertThat(request("POST","/memories/candidates/"+original.get(0).path("id").asText()+"/confirm",token,null).statusCode()).isEqualTo(409);
+        approveChat(token,"我的目标城市是上海","APPROVE",false);
+        assertThat(JSONCandidates(token)).hasSize(2);
+        memories.settings(owner,true);
+        for(var candidate:original) assertThat(request("DELETE","/memories/candidates/"+candidate.path("id").asText(),token,null).statusCode()).isEqualTo(200);
+        approveChat(token,"我的目标城市是杭州。我的偏好是远程办公","APPROVE",false);
+        assertThat(JSONCandidates(token)).isEmpty();
+        assertThat(memories.list(owner).items()).isEmpty();
+    }
+    private List<JsonNode> JSONCandidates(String token) throws Exception {
+        var result=new ArrayList<JsonNode>();
+        json.readTree(request("GET","/memories/candidates",token,null).body()).path("data").forEach(result::add);
+        return result;
     }
     private JsonNode replyRequest() {
         return MODEL.requests.stream().filter(r -> r.path("temperature").asDouble() != 0.1).reduce((first, second) -> second).orElseThrow();

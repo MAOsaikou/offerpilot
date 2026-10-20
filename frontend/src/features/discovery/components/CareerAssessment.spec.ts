@@ -86,6 +86,12 @@ async function mount() {
 }
 const button = (text: string) =>
   [...root.querySelectorAll('button')].find((b) => b.textContent?.includes(text))!
+async function flush() {
+  for (let i = 0; i < 10; i++) {
+    await Promise.resolve()
+    await nextTick()
+  }
+}
 async function answer(text: string) {
   const area = root.querySelector('textarea')!
   area.value = text
@@ -135,4 +141,30 @@ it('asks one question at a time, infers, lets the user correct and confirms', as
   })
   expect(confirmed).toHaveBeenCalledWith('杭州')
   expect(changed).toHaveBeenCalledWith(server.confirmed)
+})
+it('asks the new clarification immediately and resumes base questions after answering it', async () => {
+  vi.mocked(saveAssessmentAnswer).mockImplementation(async (step, answer) => {
+    server.answers[step] = answer
+    if (step === 0 && server.questions.length === 7) {
+      server.questions = [...server.questions, '能说一个具体例子吗？']
+      server.answers.push('')
+    }
+    return structuredClone(server)
+  })
+  await mount()
+  const textarea = root.querySelector('textarea')!
+  textarea.value = '不知道'
+  textarea.dispatchEvent(new Event('input'))
+  await flush()
+  button('发送').click()
+  await flush()
+  expect(root.querySelector('.current')?.textContent).toBe('能说一个具体例子吗？')
+  const followup = root.querySelector('textarea')!
+  followup.value = '我最近做过一个小程序'
+  followup.dispatchEvent(new Event('input'))
+  await flush()
+  button('发送').click()
+  await flush()
+  expect(saveAssessmentAnswer).toHaveBeenLastCalledWith(7, '我最近做过一个小程序')
+  expect(root.querySelector('.current')?.textContent).toBe('课余？')
 })

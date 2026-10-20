@@ -16,6 +16,7 @@ import {
   type CareerComparison,
 } from '@/shared/api/career'
 import CareerRadar from './CareerRadar.vue'
+import CareerCardFacts from '@/shared/components/CareerCardFacts.vue'
 const route = useRoute()
 const router = useRouter()
 const revision = ref<CareerRevision | null>(null)
@@ -277,6 +278,7 @@ async function restoreTask(id: string) {
                 : '名次未变'
           }}</span>
           <p>{{ item.changeReason }}</p>
+          <CareerCardFacts :details="item.details" :match="item.occupation.match" />
           <label
             ><input
               type="checkbox"
