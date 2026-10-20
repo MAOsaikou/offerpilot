@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import ResumeVersionTree from './ResumeVersionTree.vue'
+import GitHubEvidencePanel from '@/shared/components/GitHubEvidencePanel.vue'
+import type { ServerResume } from '@/shared/types/resume'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   RouterLink,
@@ -53,13 +55,19 @@ const pdfTemplate = ref<'classic' | 'compact'>('classic')
 const error = ref('')
 const message = ref('')
 const tab = ref(
-  route.query.tab === 'optimize' ? '改写' : route.query.tab === 'diagnosis' ? '诊断' : '内容',
+  route.query.tab === 'github'
+    ? 'GitHub'
+    : route.query.tab === 'optimize'
+      ? '改写'
+      : route.query.tab === 'diagnosis'
+        ? '诊断'
+        : '内容',
 )
 watch(
   () => route.query.tab,
   (value) => {
-    if (!busy.value && (value === 'optimize' || value === 'diagnosis'))
-      tab.value = value === 'optimize' ? '改写' : '诊断'
+    if (!busy.value && (value === 'optimize' || value === 'diagnosis' || value === 'github'))
+      tab.value = value === 'github' ? 'GitHub' : value === 'optimize' ? '改写' : '诊断'
   },
 )
 const history = ref<ResumeVersion[]>([])
@@ -243,6 +251,12 @@ function optimized(version: ResumeVersion) {
   populate()
   message.value = '改写已保存为新版本。'
 }
+function githubAdopted(updated: ServerResume) {
+  cache.setQueryData(['resume', props.id], updated)
+  populate()
+  history.value = []
+  void cache.invalidateQueries({ queryKey: ['resumes'] })
+}
 function lines(value: string) {
   return value.split('\n')
 }
@@ -375,6 +389,9 @@ const basics = [
           ><button :disabled="busy" :class="{ selected: tab === '版本' }" @click="showHistory">
             版本记录
           </button>
+          <button :disabled="busy" :class="{ selected: tab === 'GitHub' }" @click="tab = 'GitHub'">
+            GitHub 实证
+          </button>
         </div>
         <form v-if="tab === '内容'" class="panel form-stack" @submit.prevent="save">
           <fieldset :disabled="busy" class="form-stack resume-fields">
@@ -450,6 +467,14 @@ const basics = [
             ><slot name="optimization-card" v-bind="card"
           /></template>
         </ResumeOptimizationPanel>
+        <GitHubEvidencePanel
+          v-else-if="tab === 'GitHub'"
+          :resume-id="id"
+          :base-version-id="baseVersion"
+          :adoption-disabled="Boolean(dirty) || busy"
+          @adopted="githubAdopted"
+          @adoption-busy="busy = $event"
+        />
         <section v-else class="panel form-stack">
           <p v-if="historyLoading" role="status">正在加载版本…</p>
           <ResumeVersionTree
