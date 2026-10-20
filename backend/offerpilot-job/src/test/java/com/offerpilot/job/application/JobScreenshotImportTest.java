@@ -44,6 +44,12 @@ class JobScreenshotImportTest {
         when(gateway.stream(any(),anyList(),anyDouble())).thenReturn(Flux.error(new IllegalStateException("vendor failure")));
         assertThatThrownBy(() -> screenshots.transcribe("owner",List.of())).hasMessageContaining("视觉模型不可用").hasMessageNotContaining("vendor failure");
     }
+    @Test void overlappingScreenshotsKeepEachRepeatedFullLineOnce() {
+        String merged = JobScreenshotService.dropOverlapRepeats(
+                "岗位职责：\n• 协助梳理用户场景与需求，维护产品文档\n• 协助梳理用户场景与需求，维护产品文档\n任职要求：\n任职要求：\n1. 熟悉 SQL 与数据分析工具");
+        org.assertj.core.api.Assertions.assertThat(merged).isEqualTo(
+                "岗位职责：\n• 协助梳理用户场景与需求，维护产品文档\n任职要求：\n任职要求：\n1. 熟悉 SQL 与数据分析工具");
+    }
     @Test void mimeAndPageCountAreStrict() {
         assertThat(JobScreenshotService.mime("a.PNG",new byte[]{(byte)137,80,78,71,13,10,26,10})).isEqualTo("image/png");
         assertThat(JobScreenshotService.mime("a.jpeg",new byte[]{(byte)255,(byte)216,(byte)255})).isEqualTo("image/jpeg");

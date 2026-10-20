@@ -114,12 +114,29 @@ public class JobScreenshotService {
                     }).map(StringBuilder::toString).block(Duration.ofSeconds(120)));
             if(transcript==null || transcript.strip().length()<30)
                 throw new BusinessException(ErrorCode.STRUCTURED_OUTPUT_INVALID,"未识别到完整岗位文字，"+RETRY);
-            return transcript.strip();
+            return images.size()>1 ? dropOverlapRepeats(transcript.strip()) : transcript.strip();
         } catch (BusinessException ex) {
             throw new BusinessException(ex.errorCode(),ex.getMessage()+ (ex.getMessage().contains(RETRY)?"":"；"+RETRY));
         } catch (RuntimeException ex) {
             throw new BusinessException(ErrorCode.MODEL_UNAVAILABLE,"截图视觉模型不可用或解析超时，"+RETRY);
         }
+    }
+
+    /**
+     * Consecutive screenshots of one posting overlap; the model is asked to keep each repeated full line once but
+     * does not always comply (live JB-06 run 2026-10-21: 1/20 long images kept a duplicated duty line). Drop exact
+     * repeats of a non-trivial line only (≥8 chars after trimming bullets/whitespace); short headings stay intact.
+     */
+    static String dropOverlapRepeats(String transcript) {
+        var seen=new java.util.HashSet<String>();
+        var out=new StringBuilder();
+        for(String line:transcript.split("\\R",-1)) {
+            String key=line.strip().replaceFirst("^[•·\\-*\\d.、)）\\s]+","");
+            if(key.length()>=8 && !seen.add(key)) continue;
+            if(out.length()>0) out.append('\n');
+            out.append(line);
+        }
+        return out.toString();
     }
 
     /** Match extension and magic bytes; never trust the multipart Content-Type. No server image rendering. */
