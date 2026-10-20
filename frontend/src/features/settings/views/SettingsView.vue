@@ -11,6 +11,7 @@ import MemorySettings from '../components/MemorySettings.vue'
 import { sessionRevision } from '@/shared/utils/authSession'
 import ResumeModelSettings from '../components/ResumeModelSettings.vue'
 import AccountPreferences from '../components/AccountPreferences.vue'
+import GitHubEvidencePanel from '@/shared/components/GitHubEvidencePanel.vue'
 const workspace = useWorkspace()
 const route = useRoute()
 const router = useRouter()
@@ -95,6 +96,7 @@ function exportWorkspace() {
         /></label>
       </div>
       <AccountPreferences />
+      <GitHubEvidencePanel :key="sessionRevision" />
     </section>
     <ResumeModelSettings v-else-if="tab === '模型选择'" />
     <section v-else-if="tab === '连接与联调'" class="split-content">
