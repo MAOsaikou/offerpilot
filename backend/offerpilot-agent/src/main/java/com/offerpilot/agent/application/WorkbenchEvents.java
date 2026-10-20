@@ -17,10 +17,15 @@ public class WorkbenchEvents {
         this.jdbc = jdbc; this.json = json; this.conversations = conversations;
     }
     void append(AgentEvent event) {
+        long started = System.nanoTime();
         try {
             jdbc.update("INSERT INTO agent_events(run_id,seq,type,payload) VALUES (?,?,?,CAST(? AS jsonb)) ON CONFLICT DO NOTHING",
                     event.runId(), event.id(), event.type(), json.writeValueAsString(event));
         } catch (com.fasterxml.jackson.core.JsonProcessingException ex) { throw new IllegalStateException("运行事件无法保存", ex); }
+        finally {
+            org.slf4j.LoggerFactory.getLogger(WorkbenchEvents.class).debug("AG02 run={} phase=event-persist event={} elapsedMs={}",
+                    event.runId(), event.type(), (System.nanoTime() - started) / 1_000_000);
+        }
     }
     void complete(String runId) {
         jdbc.update("UPDATE agent_runs SET events_finished=true WHERE id=?",runId);

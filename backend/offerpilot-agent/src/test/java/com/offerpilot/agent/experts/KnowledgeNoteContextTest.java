@@ -19,6 +19,10 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import reactor.core.publisher.Mono;
+import reactor.core.publisher.Flux;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -30,6 +34,74 @@ class KnowledgeNoteContextTest {
     final InterviewCoachForChat interviews = mock(InterviewCoachForChat.class);
     final ModelGateway gateway = mock(ModelGateway.class);
     final ObjectMapper json = new ObjectMapper();
+
+    @Test void prefetchOverlapsPlanningAndReusesOnlyExactOwnerAndQuery() throws Exception {
+        var started = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        when(search.search(anyString(), anyString(), eq(3))).thenAnswer(call -> {
+            started.countDown();
+            assertThat(release.await(3, TimeUnit.SECONDS)).isTrue();
+            return new KnowledgeNoteSearch.Result(List.of(hit(call.getArgument(0), "完整证据")), false);
+        });
+        var context = new KnowledgeNoteContext(notes, json);
+        var planning = reactor.core.publisher.Sinks.<String>one();
+        var result = context.withPrefetch("alice", "缓存", planning.asMono().flatMapMany(ignored -> Flux.concat(
+                context.attach("alice", "缓存", ExpertResult.text("one")),
+                context.attach("alice", "缓存", ExpertResult.text("two")),
+                context.attach("bob", "缓存", ExpertResult.text("other owner")),
+                context.attach("alice", "索引", ExpertResult.text("other query")))))
+                .collectList().toFuture();
+        try {
+            assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(result).isNotDone(); // planner is still blocked, retrieval is already running
+            release.countDown();
+            planning.tryEmitValue("validated");
+            assertThat(result.get(3, TimeUnit.SECONDS)).hasSize(4)
+                    .allSatisfy(value -> assertThat(value.summary()).contains("完整证据"));
+            verify(search).search("alice", "缓存", 3);
+            verify(search).search("bob", "缓存", 3);
+            verify(search).search("alice", "索引", 3);
+            // A new turn cannot use the preceding turn's result.
+            context.withPrefetch("alice", "缓存", context.attach("alice", "缓存", ExpertResult.text("next")).flux()).blockLast();
+            verify(search, times(2)).search("alice", "缓存", 3);
+        } finally { release.countDown(); result.cancel(true); }
+    }
+
+    @Test void cancellingPrefetchInterruptsTheReadAndKeepsOtherSubscriptionsIndependent() throws Exception {
+        var started = new CountDownLatch(1);
+        var interrupted = new CountDownLatch(1);
+        when(search.search("alice", "缓存", 3)).thenAnswer(call -> {
+            started.countDown();
+            try { new CountDownLatch(1).await(); }
+            catch (InterruptedException ex) { interrupted.countDown(); Thread.currentThread().interrupt(); }
+            return new KnowledgeNoteSearch.Result(List.of(), false);
+        });
+        var context = new KnowledgeNoteContext(notes, json);
+        var subscription = context.withPrefetch("alice", "缓存", Flux.never()).subscribe();
+        try { assertThat(started.await(2, TimeUnit.SECONDS)).isTrue(); }
+        finally { subscription.dispose(); }
+        assertThat(interrupted.await(2, TimeUnit.SECONDS)).isTrue();
+    }
+
+    @Test void expertReadAndRetrievalBothStartBeforeEitherCompletesAndSerialFlagRestoresOrdering() throws Exception {
+        for (boolean parallel : List.of(true, false)) {
+            var localNotes = mock(KnowledgeNotesForChat.class);
+            var retrieved = new CountDownLatch(1);
+            when(localNotes.retrieve("alice", "缓存")).thenAnswer(call -> { retrieved.countDown(); return List.of(); });
+            var context = new KnowledgeNoteContext(localNotes, json);
+            context.setParallel(parallel);
+            var expert = reactor.core.publisher.Sinks.<ExpertResult>one();
+            var completed = context.attach("alice", "缓存", expert.asMono()).toFuture();
+            try {
+                if (parallel) assertThat(retrieved.await(2, TimeUnit.SECONDS)).isTrue();
+                else verifyNoInteractions(localNotes);
+                assertThat(completed).isNotDone();
+                expert.tryEmitValue(ExpertResult.text("full result"));
+                assertThat(completed.get(2, TimeUnit.SECONDS).summary()).isEqualTo("full result");
+                verify(localNotes).retrieve("alice", "缓存");
+            } finally { completed.cancel(true); }
+        }
+    }
 
     ExpertRegistry registry() {
         var beans = new StaticListableBeanFactory(); beans.addBean("coach", coach); beans.addBean("interviews", interviews);

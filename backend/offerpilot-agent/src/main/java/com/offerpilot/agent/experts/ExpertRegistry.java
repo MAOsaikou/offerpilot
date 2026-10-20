@@ -107,7 +107,7 @@ public class ExpertRegistry {
 
     private Mono<ExpertResult> withNotes(String owner, PlanStep step, Mono<ExpertResult> work) {
         if (noteContext == null) return work;
-        return work.flatMap(result -> noteContext.attach(owner, text(step.inputs().get("noteQuery")), result));
+        return noteContext.attach(owner, text(step.inputs().get("noteQuery")), work);
     }
 
     private Mono<ExpertResult> withStories(String owner, PlanStep step, Mono<ExpertResult> work) {

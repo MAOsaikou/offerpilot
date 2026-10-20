@@ -119,6 +119,8 @@ offerpilot:
     # Overlap SC-01 with generation, releasing results/effects only after its verdict.
     parallel-safety-screen: ${AGENT_PARALLEL_SAFETY_SCREEN:true}
     early-expert-handoff: ${AGENT_EARLY_EXPERT_HANDOFF:true}
+    # Private note reads overlap planning/expert reads; evidence and safety checks are retained.
+    parallel-note-retrieval: ${AGENT_PARALLEL_NOTE_RETRIEVAL:true}
     # AUTO single JOB searches parse parameters in the planning call; false restores action handoff.
     joint-job-search-planning: ${AGENT_JOINT_JOB_SEARCH_PLANNING:true}
     # AUTO standalone resume-writing questions: skip planner/action models; keep expert + reply gateway.

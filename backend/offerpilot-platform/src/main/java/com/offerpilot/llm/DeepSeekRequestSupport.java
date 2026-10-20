@@ -18,6 +18,10 @@ import java.io.IOException;
 
 /** Spring AI 1.0 has no thinking option. Extend only DeepSeek request serialization. */
 final class DeepSeekRequestSupport {
+    // JDK pools connections per authority. Share across classifier, tiers and both transports,
+    // rather than paying separate DNS/TCP/TLS setup for each logical model client.
+    private static final java.net.http.HttpClient HTTP = java.net.http.HttpClient.newBuilder()
+            .connectTimeout(java.time.Duration.ofSeconds(10)).build();
     private final ObjectMapper requests;
     private final java.time.Duration timeout;
 
@@ -48,8 +52,7 @@ final class DeepSeekRequestSupport {
     }
 
     RestClient.Builder restClient() {
-        var http = java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(10)).build();
-        var factory = new org.springframework.http.client.JdkClientHttpRequestFactory(http);
+        var factory = new org.springframework.http.client.JdkClientHttpRequestFactory(HTTP);
         factory.setReadTimeout(timeout);
         return RestClient.builder().requestFactory(factory).messageConverters(converters -> {
             // Prepend a writer only; keep the default response reader and its unknown-field support.
@@ -61,7 +64,6 @@ final class DeepSeekRequestSupport {
     }
 
     WebClient.Builder webClient() {
-        var http = java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(10)).build();
-        return WebClient.builder().clientConnector(new org.springframework.http.client.reactive.JdkClientHttpConnector(http)).codecs(codecs -> codecs.defaultCodecs().jackson2JsonEncoder(new Jackson2JsonEncoder(requests)));
+        return WebClient.builder().clientConnector(new org.springframework.http.client.reactive.JdkClientHttpConnector(HTTP)).codecs(codecs -> codecs.defaultCodecs().jackson2JsonEncoder(new Jackson2JsonEncoder(requests)));
     }
 }

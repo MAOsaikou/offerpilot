@@ -63,6 +63,11 @@ def one(base, mode, question):
                     marks["total"] = now
                     marks["status"] = event
                     break
+            elif line.startswith("data:") and event == "run.started":
+                # Correlate client TTFT with AG02 stage logs; never change the timing marks.
+                payload = json.loads(line[5:].strip())
+                if payload.get("runId"):
+                    marks["run_id"] = payload["runId"]
     return marks
 
 

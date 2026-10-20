@@ -22,6 +22,28 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DeepSeekGatewayTest {
     record Input(int value) {}
     static final ObjectMapper JSON = new ObjectMapper();
+    @Test void sameOriginReusesConnectionAcrossModelClientsAndSyncAndStreamingTransports() throws Exception {
+        var ports = new java.util.HashSet<Integer>();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/pool", exchange -> {
+            synchronized (ports) { ports.add(exchange.getRemoteAddress().getPort()); }
+            exchange.getRequestBody().readAllBytes();
+            byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            try (var out = exchange.getResponseBody()) { out.write(body); }
+        });
+        server.start();
+        try {
+            String uri = "http://127.0.0.1:" + server.getAddress().getPort() + "/pool";
+            var classification = new DeepSeekRequestSupport("disabled", Duration.ofSeconds(3));
+            var reply = new DeepSeekRequestSupport("disabled", Duration.ofSeconds(5));
+            assertThat(classification.restClient().build().get().uri(uri).retrieve().body(String.class)).isEqualTo("{}");
+            assertThat(reply.webClient().build().get().uri(uri).retrieve().bodyToMono(String.class).block(Duration.ofSeconds(3))).isEqualTo("{}");
+            assertThat(reply.restClient().build().get().uri(uri).retrieve().body(String.class)).isEqualTo("{}");
+            synchronized (ports) { assertThat(ports).hasSize(1); }
+        } finally { server.stop(0); }
+    }
     static ModelGateway gateway(String base, String key) {
         return new ModelGateway(new OfferPilotProperties(null, null, null, null, null,
                 new OfferPilotProperties.Llm("FLASH", Map.of(

@@ -27,6 +27,10 @@ public class Orchestrator {
     @org.springframework.beans.factory.annotation.Value("${offerpilot.agent.max-tool-iterations:8}")
     private int maxToolIterations = 8;
     public void setMaxToolIterations(int limit) { maxToolIterations = Math.max(1, Math.min(8, limit)); }
+    private com.offerpilot.agent.experts.KnowledgeNoteContext noteContext;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNoteContext(com.offerpilot.agent.experts.KnowledgeNoteContext notes) { noteContext = notes; }
 
     public Orchestrator(IntentPlanner planner, ExpertRegistry experts) {
         this.planner = planner;
@@ -41,9 +45,19 @@ public class Orchestrator {
     public Flux<AgentEvent> run(AgentMode mode, String content, List<Message> history, ModelTier tier,
                                String runId, AtomicInteger seq, List<Message> replyPrompt, Consumer<Usage> onUsage,
                                String owner, Map<String, Object> context) {
+        Flux<AgentEvent> work = Flux.defer(() -> runWithContext(mode, content, history, tier, runId, seq,
+                replyPrompt, onUsage, owner, context));
+        // JOB and CAREER never consume private note context; avoid unused reads for explicit modes.
+        return noteContext == null || mode == AgentMode.JOB || mode == AgentMode.CAREER_DISCOVERY ? work
+                : noteContext.withPrefetch(owner, content, work);
+    }
+
+    private Flux<AgentEvent> runWithContext(AgentMode mode, String content, List<Message> history, ModelTier tier,
+                               String runId, AtomicInteger seq, List<Message> replyPrompt, Consumer<Usage> onUsage,
+                               String owner, Map<String, Object> context) {
         var selected=context==null ? Map.<String,Object>of() : context;
         if (selected.containsKey("jobId") || selected.containsKey("applicationId") || selected.containsKey("matchId") || selected.containsKey("jobMatchId"))
-            return com.offerpilot.llm.ModelGateway.beforeEffects().then(Mono.defer(() -> experts.withJobContext(owner,selected)))
+            return com.offerpilot.llm.ChatLatency.mono("selected-context", com.offerpilot.llm.ModelGateway.beforeEffects().then(Mono.defer(() -> experts.withJobContext(owner,selected))))
                 .flatMapMany(resolved -> runSelected(mode,content,history,tier,runId,seq,replyPrompt,onUsage,owner,resolved));
         return runSelected(mode,content,history,tier,runId,seq,replyPrompt,onUsage,owner,selected);
     }
@@ -63,7 +77,7 @@ public class Orchestrator {
             var budget=reactorContext.getOrDefault(com.offerpilot.agent.tools.RunToolBudget.KEY,
                     new com.offerpilot.agent.tools.RunToolBudget(maxToolIterations));
             return planner.prepare(mode, content, history, tier, onUsage, safeContext).flatMapMany(decision ->
-                com.offerpilot.llm.ModelGateway.beforeEffects().thenMany(Flux.defer(() -> {
+                com.offerpilot.llm.ChatLatency.mono("effects-gate", com.offerpilot.llm.ModelGateway.beforeEffects()).thenMany(Flux.defer(() -> {
             if (decision.plan() == null) {
                 if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.JOB)
                         && SelectedResources.matchReady(safeContext)
@@ -128,7 +142,7 @@ public class Orchestrator {
                 String running = willWrite ? (patchWrite ? "等待用户批准采纳简历改写" : coachWrite ? "等待用户批准同步成长任务" : starWrite ? "等待用户批准保存 STAR 故事" : interviewWrite ? "正在准备模拟面试，等待用户批准面试写入" : careerWrite && "rerankCareers".equals(name) ? "等待用户批准保存推荐重排" : careerWrite ? "等待用户批准设置目标职业" : "等待用户批准看板写入") : willSearch ? "正在查询企业官网岗位" : willMatch ? (tier == ModelTier.PRO ? "深度模式较慢，正在分析原文证据（最多3分钟）" : "正在对照岗位要求与简历") : willOptimize ? "正在读取或生成改写建议，未修改简历" : willDiagnose ? "正在读取或生成简历诊断" : willAdvise ? "正在整理简历文字建议" : interviewStep ? ("completedInterview".equals(step.inputs().get("action")) ? "正在整理已完成面试的后续选项" : "正在生成面试评分卡") : careerStep ? "正在根据兴趣推荐职业" : coachStep ? "正在分析技能差距与学习路线" : "正在运行占位专家";
                 Map<String, String> upstream = new LinkedHashMap<>();
                 step.dependsOn().forEach(id -> upstream.put(id, outputs.get(id)));
-                Function<Mono<ExpertResult>, Flux<AgentEvent>> finish = work -> work
+                Function<Mono<ExpertResult>, Flux<AgentEvent>> finish = work -> com.offerpilot.llm.ChatLatency.mono("expert-" + step.agent().name(), work)
                         .timeout(Duration.ofSeconds(willMatch ? (tier == ModelTier.PRO ? 210 : 90) : 120))
                         .switchIfEmpty(Mono.error(new IllegalStateException("专家未返回结果")))
                         .map(ToolCardProjections::expand).flatMapMany(result -> {
