@@ -101,7 +101,7 @@ class CareerRerankHttpIntegrationTest extends SharedHttpIntegrationTest {
         assertThat(comparison.path("axes")).isEqualTo(JSON.valueToTree(List.of("R", "I", "A", "S", "E", "C")));
         var backend = comparison.path("occupations").get(0);
         assertThat(backend.path("riasec").path("I").asDouble()).isEqualTo(.84);
-        assertThat(backend.path("salaryRange").path("campus").asText()).isEqualTo("15-30k");
+        assertThat(backend.path("salaryRange").isNull() || backend.path("salaryRange").isMissingNode()).isTrue(); // KB-01: no trusted salary source
         assertThat(backend.path("match").isNumber()).isTrue();
         assertThat(data(request("GET", path, other, null)).path("occupations").get(0).path("match").isNull()).isTrue();
         for (String ids : List.of("occ_backend_dev", "occ_backend_dev,occ_backend_dev", "occ_backend_dev,missing",
