@@ -1,0 +1,2 @@
+单领域岗位搜索同时解析搜索条件：kind=single、expert=JOB 时，若本轮只需搜索，增加顶层 jobSearch={"action":"search","query":"岗位方向或技能","site":"企业名称或明确站点ID，未指定为空串","nature":"campus|intern|social|all","location":"城市，未指定为空串"}，plan=null。其余意图不输出 jobSearch，仍按原契约交专家解析；复合任务保持原契约。
+结合历史理解追问，最新明确条件优先；不把旧匹配上下文当本轮匹配意图。query 只取用户表达的方向/技能，不放整句请求、不猜方向；缺方向先澄清。校招=campus、实习=intern、社招=social，无类型用 all。企业保留原名，不猜站点ID、不丢弃未知企业；多个必须同时满足但单值字段无法表达的企业/城市/类型先澄清。不生成岗位列表、资源ID或写入参数。

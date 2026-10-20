@@ -106,6 +106,8 @@ offerpilot:
     # Overlap SC-01 with generation, releasing results/effects only after its verdict.
     parallel-safety-screen: ${AGENT_PARALLEL_SAFETY_SCREEN:true}
     early-expert-handoff: ${AGENT_EARLY_EXPERT_HANDOFF:true}
+    # AUTO single JOB searches parse parameters in the planning call; false restores action handoff.
+    joint-job-search-planning: ${AGENT_JOINT_JOB_SEARCH_PLANNING:true}
     # AUTO standalone resume-writing questions: skip planner/action models; keep expert + reply gateway.
     # History, selected resources and any extra instructions use the normal planning path.
     resume-advice-fast-path: ${AGENT_RESUME_ADVICE_FAST_PATH:true}

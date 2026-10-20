@@ -22,6 +22,7 @@ import java.util.function.Consumer;
 
 @Component
 public class JobIntentParser {
+    private static final Set<String> SEARCH_FIELDS = Set.of("action", "query", "site", "nature", "location");
     record Intent(String action, String query, String site, String nature, String location, String question, String status, String note, String nextAction, String nextActionAt) {}
     private final ModelGateway gateway;
     private final ObjectMapper json;
@@ -47,6 +48,21 @@ public class JobIntentParser {
         return attempt(messages, tier, onUsage).map(intent -> normalize(step, intent, context))
                 .onErrorResume(IllegalArgumentException.class, ex ->
                         Mono.just(clarify(step, "请说明岗位关键词、城市和招聘类型，或从岗位详情选择简历版本后发起匹配。")));
+    }
+
+    /** The planner may supply search parameters, never resource IDs or a write action. */
+    Optional<PlanStep> plannedSearch(PlanStep step, Map<String, Object> inputs) {
+        if (inputs == null || !SEARCH_FIELDS.containsAll(inputs.keySet())
+                || !"search".equals(inputs.get("action"))
+                || inputs.values().stream().anyMatch(value -> value != null && !(value instanceof String)))
+            return Optional.empty();
+        try {
+            return Optional.of(normalize(step, new Intent("search", (String) inputs.get("query"),
+                    (String) inputs.get("site"), (String) inputs.get("nature"), (String) inputs.get("location"),
+                    null, null, null, null, null), Map.of()));
+        } catch (IllegalArgumentException invalid) {
+            return Optional.empty();
+        }
     }
 
     private Mono<Intent> attempt(List<Message> messages, ModelTier tier, Consumer<Usage> onUsage) {
