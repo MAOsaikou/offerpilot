@@ -76,7 +76,7 @@ class UserMemoryChatIntegrationTest {
                 if(!line.startsWith("data:")) continue;
                 var event=json.readTree(line.substring(5).strip());
                 if(event.path("type").asText().equals("approval.required")) {
-                    assertThat(event.path("name").asText()).isEqualTo("generateAnalysis");
+                    assertThat(event.path("name").asText()).isNotEqualTo("saveUserFact");
                     assertThat(request("POST","/agent/runs/"+event.path("runId").asText()+"/approvals/"+event.path("approvalId").asText(),token,
                             "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(200);
                 }

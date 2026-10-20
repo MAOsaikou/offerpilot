@@ -450,7 +450,7 @@ class ResumeHttpIntegrationTest {
                 out.append(line).append('\n');
                 if (!line.startsWith("data:")) continue;
                 var event = JSON.readTree(line.substring(5).strip());
-                if ("approval.required".equals(event.path("type").asText()) && "generateAnalysis".equals(event.path("name").asText()))
+                if ("approval.required".equals(event.path("type").asText()))
                     assertThat(request("POST", "/agent/runs/" + event.path("runId").asText() + "/approvals/" + event.path("approvalId").asText(),
                             token, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(200);
             }

@@ -252,7 +252,8 @@ class AccountDataDeletionIntegrationTest {
         String guest=guests.create().accessToken(),o=guests.require("Bearer "+guest);seed(o);
         for(String path:List.of("/admin/ops/status","/admin/ops/cleanup")) {
             assertThat(request(path,null,null).statusCode()).isEqualTo(401);
-            assertThat(request(path,guest,null).statusCode()).isEqualTo(403);
+            // Guest tokens are not staff JWTs: rejected as unauthenticated before any role check.
+            assertThat(request(path,guest,null).statusCode()).isEqualTo(401);
         }
         String staffOwner=owner();jdbc.update("UPDATE users SET roles='{STAFF}' WHERE id=?",staffOwner);
         String staff=tokens.issue(staffOwner,List.of("STAFF"),"fixture");
