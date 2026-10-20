@@ -2,6 +2,8 @@ package com.offerpilot.agent.orchestrator;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.offerpilot.agent.domain.*;
 import com.offerpilot.agent.experts.ExpertRegistry;
 import com.offerpilot.common.error.BusinessException;
@@ -13,6 +15,7 @@ import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Flux;
@@ -32,14 +35,24 @@ public class IntentPlanner {
     void setEarlyExpertHandoff(boolean enabled) { this.earlyExpertHandoff = enabled; }
 
     public record Decision(String kind, ExpertType expert, Double confidence, boolean needsClarification,
-                           String clarifyingQuestion, Plan plan) {}
+                           String clarifyingQuestion, Plan plan, JsonNode jobSearch) {
+        public Decision(String kind, ExpertType expert, Double confidence, boolean needsClarification,
+                        String clarifyingQuestion, Plan plan) {
+            this(kind, expert, confidence, needsClarification, clarifyingQuestion, plan, null);
+        }
+    }
     private final ModelGateway gateway;
     private final ObjectMapper mapper;
     private final ExpertRegistry experts;
     private final String prompt;
+    private final String jobSearchPrompt;
     private final JobIntentParser jobs;
     private final ResumeIntentParser resumes;
     private boolean resumeAdviceFastPath = true;
+    private boolean jointJobSearchPlanning = true;
+
+    @Value("${offerpilot.agent.joint-job-search-planning:true}")
+    void setJointJobSearchPlanning(boolean enabled) { jointJobSearchPlanning = enabled; }
 
     @Value("${offerpilot.agent.resume-advice-fast-path:true}")
     void setResumeAdviceFastPath(boolean enabled) {
@@ -64,15 +77,23 @@ public class IntentPlanner {
         this(gateway, mapper, experts, prompt, jobs, null);
     }
 
-    @Autowired
     public IntentPlanner(ModelGateway gateway, ObjectMapper mapper, ExpertRegistry experts,
                          @Value("classpath:prompts/agent/plan.st") Resource prompt, JobIntentParser jobs,
                          ResumeIntentParser resumes) throws IOException {
+        this(gateway, mapper, experts, prompt, jobs, resumes, new ByteArrayResource(new byte[0]));
+    }
+
+    @Autowired
+    public IntentPlanner(ModelGateway gateway, ObjectMapper mapper, ExpertRegistry experts,
+                         @Value("classpath:prompts/agent/plan.st") Resource prompt, JobIntentParser jobs,
+                         ResumeIntentParser resumes,
+                         @Value("classpath:prompts/agent/plan-job-search.st") Resource jobSearchPrompt) throws IOException {
         this.gateway = gateway;
         this.mapper = mapper.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         this.experts = experts;
         this.prompt = prompt.getContentAsString(StandardCharsets.UTF_8);
+        this.jobSearchPrompt = jobSearchPrompt.getContentAsString(StandardCharsets.UTF_8);
         this.jobs = jobs;
         this.resumes = resumes;
     }
@@ -145,7 +166,8 @@ public class IntentPlanner {
                     PlanValidator.validate(new Plan(content, List.of(step)))));
         }
         List<Message> messages = new ArrayList<>();
-        messages.add(new SystemMessage(prompt.replace("{experts}", experts.capabilities())));
+        messages.add(new SystemMessage(prompt.replace("{experts}", experts.capabilities())
+                + (jointJobSearchPlanning && jobs != null && !jobSearchPrompt.isBlank() ? "\n" + jobSearchPrompt : "")));
         messages.addAll(history.subList(Math.max(0, history.size() - 12), history.size()));
         messages.add(new UserMessage(SelectedResources.describe(safeContext) + "\n本轮请求：" + content));
         return Mono.deferContextual(reactorContext -> {
@@ -164,7 +186,13 @@ public class IntentPlanner {
             if (step.agent() == ExpertType.COACH) return Mono.just(CoachIntentParser.prepare(step, content, context));
             if (step.agent() == ExpertType.INTERVIEWER) return Mono.just(InterviewIntentParser.prepare(step, content, context));
             if (step.agent() == ExpertType.CAREER_DISCOVERY) return Mono.just(CareerIntentParser.prepare(step, content, context));
-            if (step.agent() == ExpertType.JOB && jobs != null) return jobs.prepare(step, content, history, tier, onUsage, context);
+            if (step.agent() == ExpertType.JOB && jobs != null) {
+                // Only decode() can put a validated search action into a single JOB plan.
+                // Composite/model inputs and every other action still use the original parser.
+                if (jointJobSearchPlanning && "single".equals(decision.kind())
+                        && "search".equals(step.inputs().get("action"))) return Mono.just(step);
+                return jobs.prepare(step, content, history, tier, onUsage, context);
+            }
             if (step.agent() == ExpertType.RESUME && resumes != null) return resumes.prepare(step, content, history, tier, onUsage, context);
             return Mono.just(step);
         }).map(step -> {
@@ -254,6 +282,13 @@ public class IntentPlanner {
                         // Other experts are local rule/data services. Only these two have an LLM handoff.
                         if (type != ExpertType.RESUME && type != ExpertType.JOB
                                 || type == ExpertType.RESUME && resumes == null || type == ExpertType.JOB && jobs == null) return;
+                        if (type == ExpertType.JOB && jointJobSearchPlanning) {
+                            // Search parameters arrive in this same stream. Do not spend an extra
+                            // RPM slot on an action stream that would be discarded on adoption.
+                            attempted = true;
+                            onRoute.run();
+                            return;
+                        }
                         route = decode(mapper.writeValueAsString(new Decision(kind, type, confidence, false, null, null)), content, context);
                         attempted = true;
                         onRoute.run(); // cancel the ordinary speculative reply before starting one extra expert call
@@ -300,12 +335,25 @@ public class IntentPlanner {
                 return new Decision(d.kind(), d.expert(), d.confidence(), true, d.clarifyingQuestion(), null);
             }
             Plan plan = switch (d.kind()) {
-                case "single" -> { if (d.expert() == null) throw new IllegalArgumentException("缺少专家"); yield single(content, d.expert(), context); }
+                case "single" -> {
+                    if (d.expert() == null) throw new IllegalArgumentException("缺少专家");
+                    Plan base = single(content, d.expert(), context);
+                    yield plannedSearch(d, base).orElse(base);
+                }
                 case "composite" -> PlanValidator.validate(d.plan());
                 default -> null;
             };
             return new Decision(d.kind(), d.expert(), d.confidence(), false, null, plan);
         } catch (IOException ex) { throw new IllegalArgumentException("无效规划 JSON", ex); }
+    }
+
+    private Optional<Plan> plannedSearch(Decision decision, Plan base) {
+        if (!jointJobSearchPlanning || jobs == null || decision.expert() != ExpertType.JOB
+                || decision.jobSearch() == null || !decision.jobSearch().isObject()) return Optional.empty();
+        Map<String, Object> inputs = mapper.convertValue(decision.jobSearch(), new TypeReference<>() {});
+        // Incomplete/invalid optimization data is never executable. Preserve the action parser.
+        return jobs.plannedSearch(base.steps().get(0), inputs)
+                .map(step -> PlanValidator.validate(new Plan(base.goal(), List.of(step))));
     }
 
     private Plan single(String content, ExpertType expert, Map<String, Object> context) {
