@@ -99,6 +99,49 @@ class InterviewRedesignHttpIntegrationTest extends SharedHttpIntegrationTest {
         var legacy=data(request("GET","/interviews/"+old+"/report",token,null));
         assertThat(legacy.path("note").asText()).contains("文字规则评分");assertThat(legacy.path("turns").size()).isEqualTo(5);
     }
+    @Test void reportTaskProgressFailureRetryAndHistoryReadPersistTheFullReportWithoutRegeneration() throws Exception {
+        String token=guests.create().accessToken(),owner=guests.require("Bearer "+token),id=create(token,3);
+        finish(token,task(token,"INTERVIEW_QUESTIONS",id,Map.of()));
+        data(request("PUT","/interviews/"+id+"/answers/0",token,Map.of("answerText","我负责护理宣教，采用图示解释注意事项。")));
+        data(request("PATCH","/interviews/"+id,token,Map.of("completed",true)));
+        var entered=new CountDownLatch(1);var release=new CountDownLatch(1);
+        when(gateway.stream(eq(ModelTier.FLASH),anyList(),eq(0.3))).thenAnswer(call -> Flux.defer(() -> {
+            entered.countDown();
+            try { if (!release.await(10,TimeUnit.SECONDS)) throw new IllegalStateException("timeout"); }
+            catch(InterruptedException ex) { Thread.currentThread().interrupt(); }
+            return Flux.error(new IllegalStateException("stub unavailable"));
+        }));
+        String failed=task(token,"INTERVIEW_REPORT",id,Map.of());
+        try {
+            assertThat(entered.await(10,TimeUnit.SECONDS)).isTrue();
+            var running=data(request("GET","/generation-tasks/"+failed,token,null));
+            assertThat(running.path("status").asText()).isEqualTo("RUNNING");
+            assertThat(running.path("stage").asText()).isNotBlank();
+            assertThat(data(request("GET","/interviews/"+id+"/report",token,null)).path("turns")).isEmpty();
+            // Changed answers invalidate in-flight reports instead of persisting stale output.
+            data(request("PUT","/interviews/"+id+"/answers/0",token,Map.of("answerText","我负责护理宣教，并检查患者是否理解注意事项。")));
+        } finally { release.countDown(); }
+        await().atMost(Duration.ofSeconds(15)).until(() -> tasks.get(owner,failed).status().equals("FAILED"));
+        var failure=data(request("GET","/generation-tasks/"+failed,token,null));
+        assertThat(failure.path("error").asText()).isNotBlank();
+        assertThat(jdbc.queryForObject("SELECT report::text FROM interview_sessions WHERE id=?",String.class,id)).isNull();
+        stub();
+        String retried=task(token,"INTERVIEW_REPORT",id,Map.of());
+        var report=finish(token,retried);
+        assertThat(report.path("overall").asInt()).isEqualTo(72);
+        assertThat(report.path("dimensions").path("professional").asInt()).isEqualTo(72);
+        assertThat(report.path("turns").get(0).path("feedback").asText()).isNotBlank();
+        assertThat(report.path("turns").get(0).path("improvedAnswer").asText()).contains("我负责护理宣教");
+        assertThat(report.path("weaknesses")).isNotEmpty();
+        assertThat(json.readTree(jdbc.queryForObject("SELECT report::text FROM interview_sessions WHERE id=?",String.class,id))).isEqualTo(report);
+        clearInvocations(gateway);
+        var history=data(request("GET","/interviews",token,null));
+        assertThat(history.findValuesAsText("id")).contains(id);
+        assertThat(data(request("GET","/interviews/"+id,token,null)).path("completed").asBoolean()).isTrue();
+        assertThat(data(request("GET","/interviews/"+id+"/report",token,null))).isEqualTo(report);
+        assertThat(data(request("GET","/generation-tasks/"+retried,token,null)).path("status").asText()).isEqualTo("SUCCEEDED");
+        verifyNoInteractions(gateway);
+    }
     @Test void unavailableModelProducesLabeledRulesAndNullScoresAndAnswerEditsInvalidateFeedback() throws Exception {
         doThrow(new com.offerpilot.common.error.BusinessException(com.offerpilot.common.error.ErrorCode.MODEL_UNAVAILABLE)).when(gateway).requireAvailable(any(),anyBoolean());
         String token=guests.create().accessToken();String id=create(token,3);

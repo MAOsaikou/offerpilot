@@ -353,7 +353,7 @@ function exportLegacy(session: Interview) {
         <div class="interview-record-actions">
           <span class="tag">{{ session.completed ? '已完成' : '进行中' }}</span>
           <RouterLink :to="'/interviews/' + session.id">{{
-            session.completed ? '查看复盘' : '继续练习'
+            session.completed ? '查看报告' : '继续练习'
           }}</RouterLink>
         </div>
       </article>

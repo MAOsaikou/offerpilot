@@ -5,7 +5,7 @@ import { RouterLink } from 'vue-router'
 import { asPayload } from '@/shared/utils/payload'
 import type { InterviewReportPayload } from '@/shared/types/cards'
 
-const props = defineProps<{ payload: unknown }>()
+const props = defineProps<{ payload: unknown; inline?: boolean }>()
 const data = computed(() => asPayload<InterviewReportPayload>(props.payload, 'dimensions'))
 const dimensions = [
   { key: 'professional', label: '专业', reason: '职责、行动、结果与量化线索' },
@@ -21,7 +21,7 @@ const starParts = [
 ] as const
 const sections = [
   { key: 'strengths', label: '优势线索' },
-  { key: 'weaknesses', label: '待补充' },
+  { key: 'weaknesses', label: '短板与待补充' },
   { key: 'advice', label: '改进建议' },
 ] as const
 </script>
@@ -31,12 +31,13 @@ const sections = [
     <header>
       <h3 class="font-semibold">面试评分与复盘</h3>
       <p class="mt-2 text-2xl font-semibold">
-        {{ data.overall ?? '未评分' }}<span class="text-sm"> / 100</span>
+        <span class="text-sm">总分 </span>{{ data.overall ?? '未评分'
+        }}<span class="text-sm"> / 100</span>
       </p>
       <p class="mt-1 break-words text-xs text-muted-foreground">
         {{ data.note || '文字规则评分；端侧表现分析未启用。' }}
       </p>
-      <RouterLink v-if="data.id" :to="'/interviews/' + data.id" class="btn mt-2"
+      <RouterLink v-if="data.id && !inline" :to="'/interviews/' + data.id" class="btn mt-2"
         >打开面试复盘</RouterLink
       >
     </header>
@@ -84,9 +85,9 @@ const sections = [
           {{ turn.star[part.key] ? '✓' : '○' }} {{ part.label }}
         </span>
       </div>
-      <p class="break-words">{{ turn.feedback }}</p>
+      <p class="break-words">评分理由：{{ turn.feedback }}</p>
       <InterviewFeedback v-if="turn.evaluation" :evaluation="turn.evaluation" />
-      <details v-else-if="turn.improvedAnswer">
+      <details v-else-if="turn.improvedAnswer" open>
         <summary class="cursor-pointer text-primary">改进答案（原文事实）</summary>
         <p class="prose-content">{{ turn.improvedAnswer }}</p>
       </details>

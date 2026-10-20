@@ -14,7 +14,6 @@ import {
   getInterview,
   generateInterviewQuestions,
   scoreInterviewAnswer,
-  generateInterviewReport,
   requestInterviewFollowUp,
   saveInterviewAnswer,
   saveInterviewFollowUpAnswer,
@@ -43,9 +42,8 @@ const error = ref('')
 const busy = ref(false)
 const generating = ref(false)
 const scoring = ref(false)
-const reporting = ref(false)
+const reportRequested = ref(false)
 const revealed = ref(false)
-const reportVersion = ref(0)
 const redesigned = computed(() => Boolean(session.value?.generationSource))
 const questionStarted = ref(Date.now())
 const questionSeconds = computed(() =>
@@ -96,24 +94,8 @@ async function scoreCurrent() {
   }
 }
 async function finish() {
-  if (!(await persist(undefined, true)) || !session.value || !redesigned.value) return
-  await buildReport()
-}
-async function buildReport() {
-  if (!session.value || reporting.value) return
-  reporting.value = true
-  const version = revision
-  try {
-    await generateInterviewReport(session.value.id, controller.signal)
-    if (version === revision) {
-      reportVersion.value++
-      await cache.invalidateQueries({ queryKey: ['interview-report', session.value.id] })
-    }
-  } catch (cause) {
-    if (version === revision) error.value = (cause as Error).message
-  } finally {
-    if (version === revision) reporting.value = false
-  }
+  reportRequested.value = redesigned.value
+  if (!(await persist(undefined, true))) reportRequested.value = false
 }
 const starCandidates = ref<StarStoryCandidate[]>([])
 const starBusy = ref(false)
@@ -237,7 +219,7 @@ async function load() {
   loading.value = true
   generating.value = false
   scoring.value = false
-  reporting.value = false
+  reportRequested.value = false
   revealed.value = false
   starCandidates.value = []
   starMessage.value = ''
@@ -452,7 +434,7 @@ async function saveBeforeLeave() {
     speech.cancelAll()
     return true
   }
-  const saved = await persist()
+  const saved = session.value.completed || (await persist())
   speech.cancelAll()
   return saved
 }
@@ -470,7 +452,6 @@ async function restoreTask() {
       syncDrafts()
       if (keepAnswer !== undefined) answer.value = keepAnswer
       if (keepFollowUp !== undefined) followUpDraft.value = keepFollowUp
-      reportVersion.value++
       void cache.invalidateQueries({ queryKey: ['interview-report', saved.id] })
     }
   } catch (cause) {
@@ -493,7 +474,7 @@ async function restoreTask() {
       @completed="restoreTask"
     />
     <BackgroundTaskStatus
-      v-for="taskKind in ['INTERVIEW_QUESTIONS', 'INTERVIEW_SCORE', 'INTERVIEW_REPORT'] as const"
+      v-for="taskKind in ['INTERVIEW_QUESTIONS', 'INTERVIEW_SCORE'] as const"
       :key="taskKind"
       :kind="taskKind"
       :entity-id="String(route.params.id)"
@@ -505,6 +486,7 @@ async function restoreTask() {
     >
       <RouterLink to="/interviews" class="btn">返回练习列表</RouterLink>
       <button
+        v-if="!session.completed"
         class="btn"
         :disabled="busy || dirty || exportBusy"
         :aria-busy="exportBusy"
@@ -739,18 +721,16 @@ async function restoreTask() {
       </form>
     </template>
     <template v-else>
-      <button
-        v-if="redesigned"
-        class="btn"
-        :disabled="busy || reporting"
-        @click="persist(0, false)"
+      <InterviewReportPanel
+        :key="session.id"
+        :session-id="session.id"
+        :can-generate="redesigned"
+        :auto-generate="reportRequested"
       >
-        重新练习这些题目
-      </button>
-      <button v-if="redesigned" class="btn primary" :disabled="reporting" @click="buildReport">
-        {{ reporting ? '正在生成整体报告…' : '生成或刷新整体报告' }}
-      </button>
-      <InterviewReportPanel :key="session.id + ':' + reportVersion" :session-id="session.id" />
+        <button class="btn" :disabled="exportBusy" :aria-busy="exportBusy" @click="downloadRecap">
+          {{ exportBusy ? '正在导出…' : '导出复盘' }}
+        </button>
+      </InterviewReportPanel>
       <div class="success-banner">
         已结束本场
         {{ session.answers.length }}

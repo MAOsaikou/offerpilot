@@ -33,6 +33,11 @@ import { downloadText } from '@/shared/utils/download'
 import { useWorkspace } from '@/shared/stores/workspace'
 import { installSpeechMocks } from '@/test/speech'
 
+vi.mock('@/shared/api/generationTasks', async (original) => ({
+  ...(await original<typeof import('@/shared/api/generationTasks')>()),
+  recentGenerationTasks: vi.fn(async () => []),
+}))
+
 vi.mock('@/shared/api/jobs', () => ({ getJob: vi.fn() }))
 vi.mock('@/shared/api/applications', () => ({ listApplications: vi.fn() }))
 vi.mock('@/shared/api/interviews', () => ({
@@ -295,6 +300,22 @@ it('enforces the textarea limit for dictation and releases the microphone on lea
   expect(mock.synthesis.cancel).toHaveBeenCalled()
 })
 
+it('flushes the final speech result when leaving before any text has arrived', async () => {
+  const mock = installSpeechMocks()
+  withoutFollowUps()
+  await mount()
+  await loaded()
+  button('开始口述').click()
+  const active = mock.latest()
+  active.stop.mockImplementation(() => {
+    active.result([{ text: '离开时才返回的最终回答', final: true }])
+    active.onend?.()
+  })
+  expect(root.querySelector('textarea')!.value).toBe('')
+  await router.push('/interviews')
+  expect(server.answers[0]!.answerText).toBe('离开时才返回的最终回答')
+})
+
 it('persists opt-in autoplay, reads changed questions and cleans up on unmount', async () => {
   const mock = installSpeechMocks()
   await mount()
@@ -507,7 +528,7 @@ it('completes after saving the final answer and restores the review', async () =
   )
   unmount()
   await mount()
-  await vi.waitFor(() => expect(root.textContent).toContain('学习计划'))
+  await vi.waitFor(() => expect(button('导出复盘')).toBeDefined())
   button('导出复盘').click()
   await vi.waitFor(() =>
     expect(downloadText).toHaveBeenCalledWith(
@@ -797,7 +818,17 @@ it('defers feedback until finish and renders unscored report honestly', async ()
     id: 'iv_1',
     overall: null,
     dimensions: { professional: null, expression: null, logic: null, jobFit: null },
-    turns: [],
+    turns: [
+      {
+        question: '如何复盘？',
+        answerSummary: '我负责复盘',
+        score: null,
+        star: { situation: false, task: true, action: false, result: false },
+        feedback: '模型不可用，本题未评分',
+        betterAnswerOutline: [],
+        source: 'unavailable',
+      },
+    ],
     strengths: [],
     weaknesses: [],
     advice: [],
