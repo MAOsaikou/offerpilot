@@ -51,12 +51,12 @@ spring:
           model: ${LLM_MODEL_FLASH:qwen3.8-flash}
           temperature: 0.3
       embedding:
-        # Any OpenAI-compatible /v1/embeddings: Bailian by default, or local Ollama bge-m3
-        # (EMBEDDING_BASE_URL=http://localhost:11434, EMBEDDING_API_KEY=ollama, LLM_MODEL_EMBEDDING=bge-m3).
-        base-url: ${EMBEDDING_BASE_URL:${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}}
-        api-key: ${EMBEDDING_API_KEY:${BAILIAN_API_KEY:sk-not-configured}}
+        # Local Ollama bge-m3 by default; credentials/endpoints may be overridden by deployment.
+        # Retrieval debug accepts only local bge-m3 with a matching persisted index fingerprint.
+        base-url: ${EMBEDDING_BASE_URL:http://localhost:11434}
+        api-key: ${EMBEDDING_API_KEY:ollama}
         options:
-          model: ${LLM_MODEL_EMBEDDING:text-embedding-v4}
+          model: ${LLM_MODEL_EMBEDDING:bge-m3}
           dimensions: ${LLM_EMBEDDING_DIMENSIONS:1024}
     deepseek:
       base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
@@ -203,6 +203,7 @@ offerpilot:
     search-url: ${SEARCH_MCP_URL:}
     search-api-key: ${SEARCH_MCP_API_KEY:}
     github-url: ${GITHUB_MCP_URL:https://api.githubcopilot.com/mcp/}
+    github-token: ${GITHUB_MCP_TOKEN:}
     server-enabled: ${MCP_SERVER_ENABLED:false}
     server-api-key: ${MCP_SERVER_API_KEY:}
 

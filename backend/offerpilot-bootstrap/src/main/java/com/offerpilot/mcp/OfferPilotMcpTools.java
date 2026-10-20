@@ -90,6 +90,30 @@ public class OfferPilotMcpTools {
         return result;
     }
 
+    @Tool(name = "diagnose_resume", description = "只读简历诊断 / Read-only alias of resume.diagnose; supplied text only, no private records or report writes.")
+    public ObjectNode diagnoseResumeAlias(
+            @ToolParam(description = "简历纯文本 / Resume plain text, 1-50000 characters") String resumeText,
+            @ToolParam(description = "可选岗位描述 / Optional job description, at most 20000 characters", required = false) String jobDescription) {
+        return diagnoseResume(resumeText, jobDescription);
+    }
+
+    @Tool(name = "search_jobs", description = "只读岗位搜索 / Read-only alias of jobs.search; may refresh public cache, never writes private user data.")
+    public ObjectNode searchJobsAlias(
+            @ToolParam(description = "搜索关键词 / Search query, 1-100 characters") String query,
+            @ToolParam(description = "企业站点 / Optional site, at most 60 characters", required = false) String site,
+            @ToolParam(description = "招聘类型 / campus, intern, social, all", required = false) String nature,
+            @ToolParam(description = "城市 / Optional location, at most 60 characters", required = false) String location,
+            @ToolParam(description = "返回数量 / Limit 1-20", required = false) Integer limit) {
+        return searchJobs(query, site, nature, location, limit);
+    }
+
+    @Tool(name = "match_job", description = "只读岗位匹配 / Read-only alias of jobs.match; supplied text only, no match history writes.")
+    public ObjectNode matchJobAlias(
+            @ToolParam(description = "简历纯文本 / Resume plain text, 1-50000 characters") String resumeText,
+            @ToolParam(description = "岗位描述 / Job description, 1-20000 characters") String jobDescription) {
+        return matchJob(resumeText, jobDescription);
+    }
+
     private ObjectNode searchItem(JsonNode source) {
         var item = json.createObjectNode();
         for (String field : new String[]{"id", "site", "nature", "source", "snapshotDate"})

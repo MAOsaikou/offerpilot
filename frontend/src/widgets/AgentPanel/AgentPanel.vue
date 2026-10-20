@@ -4,6 +4,7 @@ import ApprovalCard from './ApprovalCard.vue'
 import PlanSteps from './PlanSteps.vue'
 import ToolTimeline from './ToolTimeline.vue'
 import UsageBadge from './UsageBadge.vue'
+import McpTools from './McpTools.vue'
 import type { RunState } from '@/shared/stores/agentRun'
 
 const props = defineProps<{
@@ -51,6 +52,7 @@ const statusLabel = computed(() => {
     </header>
 
     <div class="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+      <McpTools :tool-calls="run?.toolCalls ?? []" />
       <template v-if="hasRun">
         <PlanSteps
           :goal="run?.goal ?? null"

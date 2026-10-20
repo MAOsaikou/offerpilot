@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { listStaffUsers, setUserStatus, verifyToken, type StaffUserRow } from '@/shared/api/auth'
 import { useAuthStore } from '@/shared/stores/auth'
 import { getStoredToken, identitySignal } from '@/shared/utils/authSession'
@@ -124,6 +124,7 @@ onMounted(async () => {
         <p class="subtle">管理所有用户端账号：查看、启用、禁用。</p>
       </div>
       <div class="head-right">
+        <RouterLink to="/staff/retrieval-debug" class="btn">检索调试</RouterLink>
         <span v-if="staffName" class="staff-chip">{{ staffName }}</span>
         <button class="btn ghost" type="button" @click="logout">退出登录</button>
       </div>

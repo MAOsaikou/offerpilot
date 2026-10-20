@@ -184,7 +184,8 @@ public class ModelGateway {
             var secrets = new java.util.ArrayList<String>();
             for (String key : List.of("spring.ai.deepseek.api-key", "spring.ai.deepseek.chat.api-key", "spring.ai.openai.api-key",
                     "spring.ai.openai.chat.api-key", "spring.ai.openai.embedding.api-key", "offerpilot.security.jwt-secret",
-                    "offerpilot.llm.providers.custom.api-key", "offerpilot.mcp.search-api-key"))
+                    "offerpilot.llm.providers.custom.api-key", "offerpilot.mcp.search-api-key",
+                    "offerpilot.mcp.github-token", "offerpilot.mcp.server-api-key"))
                 secrets.add(environment.getProperty(key, ""));
             moderation = new com.offerpilot.llm.safety.OutputModeration(secrets);
         }
