@@ -88,6 +88,27 @@ class OfferPilotMcpToolsTest {
                 });
     }
 
+    @Test
+    void canonicalAndLegacyToolsHaveReadOnlyDescriptionsAndIdenticalArgumentContracts() throws Exception {
+        var callbacks = org.springframework.ai.tool.method.MethodToolCallbackProvider.builder().toolObjects(tools).build().getToolCallbacks();
+        assertThat(callbacks).extracting(callback -> callback.getToolDefinition().name())
+                .containsExactlyInAnyOrder("diagnose_resume", "search_jobs", "match_job", "resume.diagnose", "jobs.search", "jobs.match");
+        var schemas = new java.util.HashMap<String, com.fasterxml.jackson.databind.JsonNode>();
+        for (var callback : callbacks) {
+            assertThat(callback.getToolDefinition().description()).contains("只读", "Read-only");
+            schemas.put(callback.getToolDefinition().name(), new ObjectMapper().readTree(callback.getToolDefinition().inputSchema()));
+        }
+        for (var pair : java.util.Map.of("diagnose_resume", "resume.diagnose", "search_jobs", "jobs.search", "match_job", "jobs.match").entrySet()) {
+            assertThat(schemas.get(pair.getKey()).path("required")).isEqualTo(schemas.get(pair.getValue()).path("required"));
+            assertThat(schemas.get(pair.getKey()).path("properties").fieldNames()).toIterable()
+                    .containsExactlyElementsOf(() -> schemas.get(pair.getValue()).path("properties").fieldNames());
+        }
+        invalid(() -> tools.diagnoseResumeAlias(" ", null), "resumeText");
+        invalid(() -> tools.searchJobsAlias("Java", null, null, null, 21), "limit");
+        invalid(() -> tools.matchJobAlias("Java", " "), "jobDescription");
+        verifyNoInteractions(diagnoser, matcher, jobs, gateway);
+    }
+
     private void invalid(Runnable call, String field) {
         assertThatThrownBy(call::run).isInstanceOfSatisfying(BusinessException.class, ex -> {
             assertThat(ex.errorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);

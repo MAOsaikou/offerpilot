@@ -100,6 +100,7 @@ function exportWorkspace() {
     <section v-else-if="tab === '连接与联调'" class="split-content">
       <div class="panel form-stack">
         <h2>后端连接</h2>
+        <RouterLink to="/integrations/mcp" class="btn">管理 MCP 工具连接</RouterLink>
         <p class="subtle">
           API 入口：<code>{{ API_BASE }}</code
           ><br />当前对话：{{ '真实后端（开发时可显式开启 Mock）' }}<br />Nginx

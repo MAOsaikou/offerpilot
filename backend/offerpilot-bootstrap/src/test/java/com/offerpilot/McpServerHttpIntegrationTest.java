@@ -94,9 +94,9 @@ class McpServerHttpIntegrationTest {
     }
 
     @Test
-    void enabledServerPublishesOnlyTheThreeReadOnlySchemas() throws Exception {
+    void enabledServerPublishesThreeReadOnlyToolsAndCompatibleAliases() throws Exception {
         assertThat(provider.getToolCallbacks()).extracting(callback -> callback.getToolDefinition().name())
-                .containsExactlyInAnyOrder("resume.diagnose", "jobs.search", "jobs.match");
+                .containsExactlyInAnyOrder("resume.diagnose", "jobs.search", "jobs.match", "diagnose_resume", "search_jobs", "match_job");
         for (var callback : provider.getToolCallbacks()) {
             assertThat(callback.getToolDefinition().description()).contains("只读", "Read-only");
             var schema = json.readTree(callback.getToolDefinition().inputSchema());
@@ -104,7 +104,7 @@ class McpServerHttpIntegrationTest {
             for (var parameter : schema.path("properties"))
                 assertThat(parameter.path("description").asText()).containsPattern("[\\p{IsHan}]").containsPattern("[A-Za-z]");
             assertThat(schema.path("required").toString()).contains(
-                    callback.getToolDefinition().name().equals("jobs.search") ? "query" : "resumeText");
+                    callback.getToolDefinition().name().contains("search") ? "query" : "resumeText");
         }
     }
 
@@ -133,7 +133,7 @@ class McpServerHttpIntegrationTest {
             assertThat(client.initialize().serverInfo().name()).isEqualTo("offerpilot");
             var tools = client.listTools().tools();
             assertThat(tools).extracting(McpSchema.Tool::name)
-                    .containsExactlyInAnyOrder("resume.diagnose", "jobs.search", "jobs.match");
+                    .containsExactlyInAnyOrder("resume.diagnose", "jobs.search", "jobs.match", "diagnose_resume", "search_jobs", "match_job");
             for (var tool : tools) {
                 assertThat(tool.description()).contains("只读", "Read-only");
                 assertThat(tool.inputSchema().properties()).isNotEmpty();
@@ -144,9 +144,9 @@ class McpServerHttpIntegrationTest {
             assertThat(diagnosis.path("topIssues").get(0).path("severity").asText()).isEqualTo("HIGH");
             assertThat(diagnosis.path("jobMatch").path("score").asInt()).isEqualTo(100);
             assertThat(diagnosis.has("findings")).isFalse();
-            JsonNode basic = call(client, "resume.diagnose", Map.of("resumeText", "Java项目经验"));
+            JsonNode basic = call(client, "diagnose_resume", Map.of("resumeText", "Java项目经验"));
             assertThat(basic.has("jobMatch")).isFalse();
-            JsonNode match = call(client, "jobs.match", Map.of("resumeText", "Java项目经验", "jobDescription", "Java开发"));
+            JsonNode match = call(client, "match_job", Map.of("resumeText", "Java项目经验", "jobDescription", "Java开发"));
             assertThat(match.path("score").asInt()).isEqualTo(100);
             assertThat(match.path("requirements").get(0).path("resumePath").asText()).isEqualTo("/rawText");
             // Scope the fixture so AUTO snapshot rows from another test cannot precede it.
@@ -158,7 +158,7 @@ class McpServerHttpIntegrationTest {
             assertThat(search.toString().length()).isLessThan(1600);
             assertThat(search.path("meta").path("sites").get(0).asText()).isEqualTo("fixture");
             assertThat(search.path("truncated").asBoolean()).isTrue();
-            JsonNode defaultSearch = call(client, "jobs.search", Map.of("query", "Java", "site", "fixture"));
+            JsonNode defaultSearch = call(client, "search_jobs", Map.of("query", "Java", "site", "fixture"));
             assertThat(defaultSearch.path("limit").asInt()).isEqualTo(10);
             var invalid = client.callTool(new McpSchema.CallToolRequest("jobs.search", Map.of("query", " ")));
             assertThat(invalid.isError()).isTrue();

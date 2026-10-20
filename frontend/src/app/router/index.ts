@@ -100,6 +100,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '设置' },
       },
       {
+        path: 'integrations/mcp',
+        name: 'mcp',
+        component: () => import('@/features/mcp/views/McpManagementView.vue'),
+        meta: { title: 'MCP 工具连接' },
+      },
+      {
         path: 'notifications',
         name: 'notifications',
         component: () => import('@/features/notifications/views/NotificationsView.vue'),
@@ -112,6 +118,12 @@ export const routes: RouteRecordRaw[] = [
     name: 'staff-login',
     component: () => import('@/features/auth/views/StaffLoginView.vue'),
     meta: { title: '客服登录', public: true },
+  },
+  {
+    path: '/staff/retrieval-debug',
+    name: 'retrieval-debug',
+    component: () => import('@/features/kb/views/RetrievalDebugView.vue'),
+    meta: { title: '检索调试', staff: true },
   },
   {
     path: '/staff',
