@@ -149,7 +149,8 @@ export interface JobImportDraft {
 export interface JobImportParse {
   draft: JobImportDraft
   url: string
-  sourceKind: 'text' | 'url'
+  sourceKind: 'text' | 'url' | 'screenshot'
+  fileIds?: string[]
   /** SC-01: labels of suspected injected instructions found in the source text. */
   securityNotices?: string[]
 }

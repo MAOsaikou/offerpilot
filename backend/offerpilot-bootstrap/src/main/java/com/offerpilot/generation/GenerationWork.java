@@ -29,6 +29,7 @@ public class GenerationWork {
     private final CareerRecommendationService careers;
     private final InterviewService interviews;
     private final JobImportService imports;
+    private final com.offerpilot.job.application.JobScreenshotService screenshots;
     private final ResumeService resumes;
     private final JobService jobs;
     @org.springframework.beans.factory.annotation.Autowired
@@ -37,7 +38,8 @@ public class GenerationWork {
 
     public GenerationWork(ResumeDiagnosisService diagnoses, ResumeOptimizationService optimizations,
             JobMatchService matches, CareerAssessmentService assessments, CareerRecommendationService careers,
-            InterviewService interviews, JobImportService imports, ResumeService resumes, JobService jobs, ObjectMapper json) {
+            InterviewService interviews, JobImportService imports, ResumeService resumes, JobService jobs, ObjectMapper json, com.offerpilot.job.application.JobScreenshotService screenshots) {
+        this.screenshots=screenshots;
         this.diagnoses=diagnoses; this.optimizations=optimizations; this.matches=matches; this.assessments=assessments;
         this.careers=careers; this.interviews=interviews; this.imports=imports; this.resumes=resumes; this.jobs=jobs; this.json=json;
     }
@@ -63,7 +65,21 @@ public class GenerationWork {
             }
             default -> throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         }
+        if (body.kind().equals("JOB_IMPORT") && input.has("fileIds")) {
+            if (input.has("text") || input.has("url")) throw new BusinessException(ErrorCode.VALIDATION_FAILED,"文本、网址、截图只能选一种");
+            screenshots.validate(owner, fileIds(input));
+        }
         if (body.kind().equals("JOB_MATCH") && input.hasNonNull("modelTier")) tier(input);
+    }
+    private java.util.List<String> fileIds(JsonNode input) {
+        var node=input.path("fileIds");
+        if (!node.isArray() || node.isEmpty() || node.size()>3) throw new BusinessException(ErrorCode.VALIDATION_FAILED,"请选择同一岗位的 1–3 张连续截图");
+        var ids=new java.util.ArrayList<String>();
+        for (var id:node) {
+            if (!id.isTextual()) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+            ids.add(id.asText());
+        }
+        return ids;
     }
     private String required(JsonNode input, String name) {
         if (!input.path(name).isTextual() || !input.path(name).asText().matches("[a-zA-Z0-9_-]{1,80}"))
@@ -104,7 +120,7 @@ public class GenerationWork {
                     throw new BusinessException(ErrorCode.VALIDATION_FAILED,"回答已改变，请保存最新回答后重新生成追问");
                 yield json.valueToTree(saved);
             }
-            case "JOB_IMPORT" -> json.valueToTree(imports.parse(owner,i.hasNonNull("text")?i.path("text").asText():null,i.hasNonNull("url")?i.path("url").asText():null));
+            case "JOB_IMPORT" -> json.valueToTree(i.has("fileIds") ? screenshots.parse(owner,fileIds(i)) : imports.parse(owner,i.hasNonNull("text")?i.path("text").asText():null,i.hasNonNull("url")?i.path("url").asText():null));
             default -> throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         };
     }

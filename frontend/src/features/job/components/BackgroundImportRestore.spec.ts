@@ -10,6 +10,7 @@ vi.mock('@/shared/api/jobs', () => ({
   listImportedJobs: vi.fn(async () => []),
   parseJobImport: vi.fn(),
   saveJobImport: vi.fn(),
+  readJobScreenshot: vi.fn(async () => new Blob()),
 }))
 vi.mock('@/shared/api/generationTasks', async (original) => ({
   ...(await original<typeof import('@/shared/api/generationTasks')>()),
@@ -39,6 +40,10 @@ afterEach(() => {
   root.remove()
 })
 it('restores live progress after remount and retrieves persisted review draft after completion/reload', async () => {
+  vi.stubGlobal(
+    'URL',
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:restored'), revokeObjectURL: vi.fn() }),
+  )
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/jobs', component: { template: '<div />' } }],
@@ -78,7 +83,8 @@ it('restores live progress after remount and retrieves persisted review draft af
       parser: 'rule',
     },
     url: '',
-    sourceKind: 'text',
+    sourceKind: 'screenshot',
+    fileIds: ['file_saved'],
     securityNotices: [],
   })
   await useGenerationTasks(pinia).refresh()
@@ -97,4 +103,5 @@ it('restores live progress after remount and retrieves persisted review draft af
     ),
   )
   expect(generationResult).toHaveBeenCalledWith('gen_restore')
+  await vi.waitFor(() => expect(root.querySelector('img')?.alt).toBe('核对截图 1'))
 })

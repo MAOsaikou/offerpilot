@@ -1,5 +1,13 @@
 import { runGeneration } from './generationTasks'
-import { apiRequest, apiUrl, authenticatedHeaders, fetchWithIdentity, toApiError } from './client'
+import {
+  apiRequest,
+  apiUrl,
+  authenticatedHeaders,
+  fetchWithIdentity,
+  readApiData,
+  assertResponseIdentity,
+  toApiError,
+} from './client'
 import { downloadText } from '@/shared/utils/download'
 import type { ModelTier } from '@/shared/types/model-tier'
 import type {
@@ -23,7 +31,7 @@ export const listJobSites = (signal?: AbortSignal) =>
 export const searchJobs = (search: JobSearch, signal?: AbortSignal) =>
   apiRequest<JobSearchResult>('/jobs?' + new URLSearchParams({ ...search }), { signal })
 /** JB-06: parse JD text / a public URL in the background; only a review draft is stored until explicit save. */
-export const parseJobImport = (source: { text?: string; url?: string }) =>
+export const parseJobImport = (source: { text?: string; url?: string; fileIds?: string[] }) =>
   runGeneration<JobImportParse>('JOB_IMPORT', 'current', source)
 /** Save the reviewed draft as a job only this user can see. */
 export const saveJobImport = (fields: JobImportFields) =>
@@ -63,3 +71,40 @@ export async function exportJobEvalMarkdown(
 
 export const getJobRecommendations = (signal?: AbortSignal) =>
   apiRequest<DailyJobRecommendations>('/jobs/recommendations', { signal })
+
+export interface JobScreenshotFile {
+  fileId: string
+  name: string
+  mime: string
+  size: number
+}
+export function validateJobScreenshot(file: File): string | undefined {
+  if (!file.size) return '截图为空，请重新选择。'
+  if (file.size > 5 * 1024 * 1024) return '单张截图不能超过 5MB。'
+  if (!/\.(png|jpe?g|webp)$/i.test(file.name)) return '请选择 PNG、JPG 或 WebP 截图。'
+}
+export async function uploadJobScreenshot(file: File): Promise<JobScreenshotFile> {
+  const error = validateJobScreenshot(file)
+  if (error) throw new Error(error)
+  const body = new FormData()
+  body.append('file', file)
+  const response = await fetchWithIdentity(apiUrl('/jobs/import/screenshots'), {
+    method: 'POST',
+    headers: await authenticatedHeaders(),
+    body,
+  })
+  if (!response.ok) throw await toApiError(response)
+  return readApiData<JobScreenshotFile>(response)
+}
+export async function readJobScreenshot(id: string): Promise<Blob> {
+  const response = await fetchWithIdentity(
+    apiUrl(`/jobs/import/screenshots/${encodeURIComponent(id)}`),
+    {
+      headers: await authenticatedHeaders(),
+    },
+  )
+  if (!response.ok) throw await toApiError(response)
+  const blob = await response.blob()
+  assertResponseIdentity(response)
+  return blob
+}
