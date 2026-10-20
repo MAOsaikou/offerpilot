@@ -119,8 +119,14 @@ public class ModelGateway {
     private List<String> detectInjection(String text, java.time.Duration budget) {
         if (!environment.getProperty("offerpilot.llm.injection-classifier-enabled", Boolean.class, true))
             return com.offerpilot.llm.safety.PromptInjectionDetector.detect(text);
-        return injectionClassifier.detect(text, budget);
+        var result = injectionClassifier.detectWithMetadata(text, budget);
+        injectionClassificationCompleted(result);
+        return result.categories();
     }
+
+    /** Observation hook: immutable per-call outcomes only; never raw inputs or provider outputs. */
+    protected void injectionClassificationCompleted(
+            com.offerpilot.llm.safety.PromptInjectionClassifier.Detection result) {}
 
     private Prompt inputBoundary(String owner, Prompt prompt) {
         return inputBoundary(owner, prompt, null);
@@ -136,7 +142,7 @@ public class ModelGateway {
         return screened;
     }
 
-    /** Dedicated provider entry: no input screening recursion, no tools, no retry, fixed FLASH budget. */
+    /** Dedicated provider entry: no recursion/tools/provider retries; classifier owns the bounded format retry. */
     protected reactor.core.publisher.Mono<String> classifyInjection(Prompt prompt) {
         requireAvailable(ModelTier.FLASH, false);
         var admission = admit(LlmUserContext.current(), ModelTier.FLASH);
@@ -148,7 +154,8 @@ public class ModelGateway {
                 .map(response -> response.getResult() == null || response.getResult().getOutput().getText() == null
                         ? "" : response.getResult().getOutput().getText())
                 .reduce(new StringBuilder(), (body, part) -> {
-                    if (body.length() + part.length() > 2048) throw new IllegalArgumentException("Classifier output limit");
+                    if (body.length() + part.length() > 2048)
+                        throw new com.offerpilot.llm.safety.PromptInjectionClassifier.InvalidOutputException();
                     return body.append(part);
                 }).map(StringBuilder::toString)
                 .doFinally(signal -> record(admission, usage.get()));
