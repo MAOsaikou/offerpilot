@@ -84,6 +84,22 @@ class InterviewIntelligenceTest {
         var captor=org.mockito.ArgumentCaptor.forClass(List.class);verify(gateway,times(2)).stream(eq(ModelTier.FLASH),captor.capture(),eq(0.3));
         assertThat(captor.getAllValues().get(0).toString()).contains("护士","医疗","病区患者教育","我负责护理宣教","questionCount").doesNotContain("Java");
     }
+    @Test void curatedQuestionReferencesArePassedAsSeparateSourceData() throws Exception {
+        when(providers.getIfAvailable()).thenReturn(gateway);
+        var output=json.createObjectNode();var list=output.putArray("questions");
+        for(int i=0;i<3;i++) list.addObject().put("text","护士如何处理交接场景"+i).put("type","CASE").put("difficulty","HARD");
+        when(gateway.stream(eq(ModelTier.FLASH),anyList(),eq(0.3))).thenReturn(response(output.toString()));
+        var model=model();var references=mock(InterviewQuestionReference.class);
+        when(references.find("护士","医疗","HARD")).thenReturn(List.of(new InterviewQuestionReference.Reference("kbq-nurse","核验交接信息","CASE","HARD","curated","非真实候选人面经")));
+        org.springframework.test.util.ReflectionTestUtils.setField(model,"questionBank",references);
+        var session=new InterviewService.Session("iv","护士","综合",0,false,"","",List.of(),null,options(3,Map.of("CASE",3)),"pending");
+        assertThat(model.questions("owner",session,"本人真实护理经历","岗位交接要求")).hasSize(3);
+        var captor=org.mockito.ArgumentCaptor.forClass(List.class);verify(gateway).stream(eq(ModelTier.FLASH),captor.capture(),eq(0.3));
+        List<Message> messages=captor.getValue();var input=json.readTree(messages.get(1).getText());
+        assertThat(input.path("questionBankReferences").get(0).path("source").asText()).isEqualTo("curated");
+        assertThat(input.path("questionBankReferences").get(0).path("id").asText()).isEqualTo("kbq-nurse");
+        assertThat(input.path("resume").asText()).isEqualTo("本人真实护理经历");
+    }
     Flux<ChatResponse> response(String text) {return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(text)))));}
     JsonNode liveFailures() throws Exception {
         try(var input=getClass().getResourceAsStream("/fixtures/interview/cross-industry-failures.json")) {
