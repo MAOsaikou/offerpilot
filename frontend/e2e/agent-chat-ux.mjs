@@ -120,7 +120,9 @@ try {
     for (let i = 0; i < 80 && !ready; i++) {
       try {
         ready = (await fetch(base)).ok
-      } catch {}
+      } catch {
+        /* wait for Vite */
+      }
       if (!ready) await delay(250)
     }
     if (!ready) throw new Error('Vite did not start')
