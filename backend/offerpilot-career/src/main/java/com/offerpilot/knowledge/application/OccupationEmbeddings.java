@@ -43,6 +43,15 @@ public class OccupationEmbeddings {
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.offerpilot.llm.privacy.PiiMaskingPreference privacy;
     public List<float[]> embed(List<String> documents) {
+        long started = System.nanoTime();
+        try { return embedDocuments(documents); }
+        finally {
+            var scope = com.offerpilot.llm.UsageJournal.current();
+            if (scope != null) log.debug("AG02 run={} phase=embedding elapsedMs={}", scope.runId(), (System.nanoTime() - started) / 1_000_000);
+        }
+    }
+
+    private List<float[]> embedDocuments(List<String> documents) {
         if (!configured()) {
             log.warn("职业向量不可用：embedding 已关闭或未配置 Bailian Key；保留全文索引与规则推荐");
             return List.of();

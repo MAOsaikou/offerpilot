@@ -17,7 +17,11 @@ public class JobSearchWork {
         if (work == null) return fallback;
         try { return work.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS); }
         catch (InterruptedException ex) { Thread.currentThread().interrupt(); return fallback; }
-        catch (ExecutionException | TimeoutException | CancellationException ex) { return fallback; }
+        catch (ExecutionException ex) {
+            org.slf4j.LoggerFactory.getLogger(JobSearchWork.class).warn("Job search worker failed", ex.getCause());
+            return fallback;
+        }
+        catch (TimeoutException | CancellationException ex) { return fallback; }
         finally { if (!work.isDone()) work.cancel(true); }
     }
     @PreDestroy public void close() { pool.shutdownNow(); }

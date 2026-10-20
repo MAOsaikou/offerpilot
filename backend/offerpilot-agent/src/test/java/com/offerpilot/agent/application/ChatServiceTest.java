@@ -75,6 +75,51 @@ class ChatServiceTest {
         return (Map<?, ?>) org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations");
     }
 
+    @Test void firstDeltaIsDeliveredBeforeBlockedCheckpointAndCompletionStillAwaitsIt() throws Exception {
+        var delivered = new AtomicBoolean();
+        var saving = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.just(reply("真实首块")));
+        when(conversations.checkpoint(any(), anyString())).thenAnswer(call -> {
+            assertThat(delivered).isTrue();
+            saving.countDown();
+            assertThat(release.await(3, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            return true;
+        });
+        var result = service.chat("owner", request()).doOnNext(event -> {
+            if (event instanceof AgentEvent.TextDelta) delivered.set(true);
+        }).collectList().toFuture();
+        try {
+            assertThat(saving.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(delivered).isTrue();
+            assertThat(result).isNotDone();
+            verify(conversations, never()).finish(any(), anyString(), anyString(), any(), any(), any());
+            release.countDown();
+            assertThat(result.get(3, java.util.concurrent.TimeUnit.SECONDS)).last().isInstanceOf(AgentEvent.RunCompleted.class);
+            verify(conversations).checkpoint(any(), eq("真实首块"));
+        } finally { release.countDown(); result.cancel(true); }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void checkpointFailureOrTerminalRunStopsBeforeAnotherDelta(boolean persistenceFailure) {
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.just(reply("首块"), reply("不得交付的后续块")));
+        when(conversations.checkpoint(any(), anyString())).thenAnswer(call -> {
+            if (persistenceFailure) throw new IllegalStateException("database fixture unavailable");
+            return false; // another instance already made the run terminal
+        });
+        if (!persistenceFailure) when(conversations.finish(any(), anyString(), anyString(), any(), any(), any())).thenReturn("CANCELLED");
+        var result = events();
+        assertThat(result.stream().filter(AgentEvent.TextDelta.class::isInstance).map(AgentEvent.TextDelta.class::cast)
+                .map(AgentEvent.TextDelta::text)).containsExactly("首块");
+        verify(conversations).checkpoint(any(), eq("首块"));
+        if (persistenceFailure) {
+            assertThat(result).last().isInstanceOf(AgentEvent.ErrorEvent.class);
+            verify(conversations).finish(any(), eq("首块"), eq("FAILED"), any(), any(), any());
+        } else assertThat(result).last().satisfies(event -> assertThat(((AgentEvent.RunCompleted) event).status()).isEqualTo("CANCELLED"));
+        assertThat(activeRuns()).isEmpty();
+    }
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
     void registryIsEmptyWhenSubscriberObservesSuccessOrFailure(boolean failure) {
@@ -298,6 +343,22 @@ class ChatServiceTest {
     }
 
     @Test
+    void ruleRoutesSkipOrdinarySpeculationAndOnlyUseTheFinalReplyGateway() {
+        service.setSpeculativeReply(true);
+        for (String question : List.of("我想探索职业方向", "找上海Java实习岗位")) {
+            clearInvocations(gateway, conversations);
+            when(gateway.stream(eq(ModelTier.PRO), anyList())).thenReturn(Flux.just(reply("按实际专家结果回答。")));
+            var result = service.chat("owner", new ChatRequest(null, question, null, AgentMode.AUTO,
+                    new ChatRequest.Options("PRO", null, null))).collectList().block(Duration.ofSeconds(5));
+            assertThat(result).last().isInstanceOf(AgentEvent.RunCompleted.class);
+            verify(gateway, never()).stream(any(), anyList(), anyDouble());
+            verify(gateway).stream(eq(ModelTier.PRO), argThat(prompt ->
+                    prompt.toString().contains("<orchestrator-data>")));
+            verify(gateway).checkQuota("owner", ModelTier.PRO);
+        }
+    }
+
+    @Test
     void cancellingFastAdviceCancelsItsOnlyProviderAndReleasesTheRun() {
         service.setSpeculativeReply(true);
         var cancelled = new AtomicBoolean();
@@ -325,7 +386,7 @@ class ChatServiceTest {
     }
 
     @Test
-    void autoImageTurnNeverStartsPlainSpeculation() {
+    void autoImageTurnSkipsRuleRoutingAndNeverStartsPlainSpeculation() {
         service.setSpeculativeReply(true);
         var attachments = mock(com.offerpilot.conversation.application.ChatAttachments.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "attachments", attachments);
@@ -345,7 +406,7 @@ class ChatServiceTest {
                     .anySatisfy(message -> assertThat(((org.springframework.ai.chat.messages.UserMessage) message).getMedia()).hasSize(1));
             return Flux.just(reply("截图建议"));
         });
-        var result = service.chat("owner", new ChatRequest(null, "看看这张截图", List.of(new ChatRequest.Attachment("file1", "image")),
+        var result = service.chat("owner", new ChatRequest(null, "找上海Java实习岗位", List.of(new ChatRequest.Attachment("file1", "image")),
                 AgentMode.AUTO, null)).collectList().block(Duration.ofSeconds(5));
         assertThat(result).last().isInstanceOf(AgentEvent.RunCompleted.class);
         verify(gateway).stream(any(), anyList());

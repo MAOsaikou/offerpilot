@@ -107,7 +107,7 @@ public class ExpertRegistry {
 
     private Mono<ExpertResult> withNotes(String owner, PlanStep step, Mono<ExpertResult> work) {
         if (noteContext == null) return work;
-        return work.flatMap(result -> noteContext.attach(owner, text(step.inputs().get("noteQuery")), result));
+        return noteContext.attach(owner, text(step.inputs().get("noteQuery")), work);
     }
 
     private Mono<ExpertResult> withStories(String owner, PlanStep step, Mono<ExpertResult> work) {
@@ -222,6 +222,17 @@ public class ExpertRegistry {
         this(matches, diagnoses, searches, optimizations, descriptions, boards, careers, careerWrites, interviews, interviewWrites, coach, coachWrites);
         this.patchWrites = patchWrites.getIfAvailable();
     }
+    /** Audited local reads only; never infer this from ToolAccess.READ or an absent write adapter. */
+    public boolean earlyReadOnly(PlanStep step, Map<String, Object> context) {
+        // Selected job provenance is resolved behind the gate; keep those paths conservative.
+        if (context != null && java.util.List.of("jobId", "applicationId", "matchId", "jobMatchId")
+                .stream().anyMatch(context::containsKey)) return false;
+        Object action = step.inputs().get("action");
+        return step.agent() == ExpertType.RESUME && "advice".equals(action)
+                || step.agent() == ExpertType.COACH && "planLearning".equals(action)
+                || step.agent() == ExpertType.CAREER_DISCOVERY && "recommend".equals(action);
+    }
+
     public boolean writingPatches(PlanStep step) { return ResumePatchWriteTools.recognizes(step); }
     public ApprovalService.Ticket requestPatch(String owner, String runId, PlanStep step) {
         if (patchWrites == null) throw new IllegalStateException("简历补丁工具暂不可用");
@@ -302,6 +313,23 @@ public class ExpertRegistry {
         return "read_optimization".equals(step.inputs().get("action"))
                 ? text(context.get("optimizationReportId")) != null
                 : "optimize".equals(step.inputs().get("action")) && descriptions != null && text(context.get("jobId")) != null;
+    }
+
+    public record PreparedSearch(ExpertResult preview, java.util.function.Supplier<ExpertResult> persist) {}
+    public Mono<PreparedSearch> prepareRuleSearch(String runId, PlanStep step) {
+        return com.offerpilot.llm.UsageJournal.callable(() -> {
+            var inputs=step.inputs();
+            var prepared=searches.prepareRuleSearch((String)inputs.get("query"),(String)inputs.get("site"),
+                    (String)inputs.get("nature"),(String)inputs.get("location"));
+            return new PreparedSearch(searchResult(runId,step,prepared.preview()),
+                    () -> searchResult(runId,step,prepared.persist().get()));
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+    private ExpertResult searchResult(String runId,PlanStep step,com.fasterxml.jackson.databind.node.ObjectNode card) {
+        String sourceLabel="LOCAL_SNAPSHOT".equals(card.path("meta").path("source").asText())
+                ? "离线示例岗位快照（人工整理，非实时数据，不代表当前开放岗位）"
+                : "企业官网岗位搜索结果（仅含本次返回结果，不是全站总数）";
+        return ExpertResult.card(sourceLabel+"："+jsonSummary(card),requestId(runId,step.id()),"job_card",card);
     }
 
     public boolean searching(PlanStep step) {
@@ -433,11 +461,7 @@ public class ExpertRegistry {
                 var inputs = step.inputs();
                 var card = searches.search((String) inputs.get("query"), (String) inputs.get("site"),
                         (String) inputs.get("nature"), (String) inputs.get("location"));
-                String sourceLabel = "LOCAL_SNAPSHOT".equals(card.path("meta").path("source").asText())
-                        ? "离线示例岗位快照（人工整理，非实时数据，不代表当前开放岗位）："
-                        : "企业官网岗位搜索结果（仅含本次返回结果，不是全站总数）：";
-                return ExpertResult.card(sourceLabel + jsonSummary(card),
-                        requestId(runId, step.id()), "job_card", card);
+                return searchResult(runId,step,card);
             }).subscribeOn(Schedulers.boundedElastic());
         }
         if (optimizing(step, context)) {

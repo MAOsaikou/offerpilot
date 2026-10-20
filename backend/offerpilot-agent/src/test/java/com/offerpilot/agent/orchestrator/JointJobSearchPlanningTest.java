@@ -38,8 +38,10 @@ class JointJobSearchPlanningTest {
 
     IntentPlanner planner() throws Exception {
         var jobs = new JobIntentParser(gateway, json, new ByteArrayResource("action prompt".getBytes()));
-        return new IntentPlanner(gateway, json, experts, new ByteArrayResource("planner".getBytes()), jobs,
+        var planner = new IntentPlanner(gateway, json, experts, new ByteArrayResource("planner".getBytes()), jobs,
                 null, new ByteArrayResource("joint search contract".getBytes()));
+        planner.setRuleFirstRouting(false); // Exercise the model path independently of the new rule route.
+        return planner;
     }
 
     ChatResponse chunk(String text) {

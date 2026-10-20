@@ -67,10 +67,15 @@ class BoardIntentParserTest {
         var gateway = mock(ModelGateway.class);
         when(gateway.stream(any(), anyList(), eq(0.1))).thenAnswer(invocation -> {
             List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(1);
-            String request = messages.get(messages.size() - 1).getText();
-            assertThat(request).contains("jobId：true", "resumeId：true", "resumeVersionId：false", "applicationId：false")
+            boolean planning = messages.get(0).getText().equals("planner");
+            String selections = messages.get(messages.size() - (planning ? 2 : 1)).getText();
+            assertThat(selections).contains("jobId：true", "resumeId：true", "resumeVersionId：false", "applicationId：false")
                     .doesNotContain("private-selected-id", "x".repeat(81));
-            String output = messages.get(0).getText().equals("planner")
+            if (planning) {
+                assertThat(messages.get(messages.size() - 2)).isInstanceOf(org.springframework.ai.chat.messages.SystemMessage.class);
+                assertThat(messages.get(messages.size() - 1).getText()).isEqualTo("请登记这个岗位的申请进度到我的跟踪记录中，阶段先记待投递。");
+            }
+            String output = planning
                     ? "{\"kind\":\"single\",\"expert\":\"JOB\",\"confidence\":1,\"needsClarification\":false}"
                     : "{\"action\":\"createApplication\"}";
             return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(output)))));

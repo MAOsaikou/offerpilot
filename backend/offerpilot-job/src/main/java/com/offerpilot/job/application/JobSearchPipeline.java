@@ -18,10 +18,13 @@ public class JobSearchPipeline {
         this.work=work; this.parser=parser; this.local=local; this.source=source; this.json=json;
     }
     public JsonNode search(String owner,String query,String site,String nature,String location,BiFunction<JsonNode,String,JsonNode> save) {
+        return search(owner,query,site,nature,location,save,false);
+    }
+    JsonNode search(String owner,String query,String site,String nature,String location,BiFunction<JsonNode,String,JsonNode> save,boolean structured) {
         long start=System.nanoTime(), deadline=start+TimeUnit.MILLISECONDS.toNanos(7700);
         var progress=new AtomicReference<ObjectNode>(empty());
         Future<ObjectNode> task;
-        try { task=work.submit(()->execute(owner,query,site,nature,location,save,deadline,progress)); }
+        try { task=work.submit(()->execute(owner,query,site,nature,location,save,deadline,progress,structured)); }
         catch(RejectedExecutionException ex) { return partial(progress.get(),"SEARCH_BUSY",false,start); }
         ObjectNode result=JobSearchWork.await(task,deadline,null);
         if(result==null) return partial(progress.get(),task.isCancelled()?"SEARCH_TIMEOUT":"SEARCH_UNAVAILABLE",task.isCancelled(),start);
@@ -29,9 +32,9 @@ public class JobSearchPipeline {
         return result;
     }
     private ObjectNode execute(String owner,String query,String site,String nature,String location,
-            BiFunction<JsonNode,String,JsonNode> save,long deadline,AtomicReference<ObjectNode> progress) {
+            BiFunction<JsonNode,String,JsonNode> save,long deadline,AtomicReference<ObjectNode> progress,boolean structured) {
         var fallback=JobSearchParser.rules(query,site,nature,location);
-        var parsed=JobSearchWork.await(work.submit(()->parser.parse(owner,query,site,nature,location)),
+        var parsed=structured ? new JobSearchParser.Criteria(query,"",site,nature,location,"rule-route") : JobSearchWork.await(work.submit(()->parser.parse(owner,query,site,nature,location)),
                 Math.min(deadline,System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(1100)),fallback);
         ObjectNode output=empty(); output.set("criteria",json.valueToTree(parsed));
         progress.set(output.deepCopy());

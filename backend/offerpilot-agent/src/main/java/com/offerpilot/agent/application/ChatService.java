@@ -11,6 +11,7 @@ import com.offerpilot.conversation.application.ConversationService;
 import com.offerpilot.conversation.application.MessageCardBuffer;
 import com.offerpilot.llm.ModelGateway;
 import com.offerpilot.llm.ModelTier;
+import com.offerpilot.llm.ChatLatency;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -92,28 +93,31 @@ public class ChatService {
     }
 
     public Flux<AgentEvent> chat(String owner, ChatRequest request) {
+        var timing = new ChatLatency();
         String rawTier = request.options() == null ? null : request.options().modelTier();
         ModelTier selected = ModelTier.from(rawTier, gateway.defaultTier());
         ModelTier tier = selected == ModelTier.VISION_ALT ? gateway.defaultTier() : selected;
         // AG-02: images go to the vision-capable model for this turn only; later turns keep the text history.
-        var images = images(owner, request.attachments());
+        var images = timing.measure("attachments", () -> images(owner, request.attachments()));
         if (!images.isEmpty()) gateway.requireAvailable(tier, true);
         // Ownership and concurrency errors remain ordinary HTTP errors before SSE starts.
         boolean explicitMemory = memory != null && com.offerpilot.memory.application.MemoryCandidate.explicit(request.content());
         // SC-03: crisis gets support resources first; forgery/violence requests get a fixed refusal without a model call.
-        var concern = com.offerpilot.llm.safety.InputSafety.screen(request.content());
+        var concern = timing.measure("input-rules", () -> com.offerpilot.llm.safety.InputSafety.screen(request.content()));
         boolean refuse = concern == com.offerpilot.llm.safety.InputSafety.Concern.FORGERY
                 || concern == com.offerpilot.llm.safety.InputSafety.Concern.VIOLENCE;
         boolean crisis = concern == com.offerpilot.llm.safety.InputSafety.Concern.CRISIS;
-        if (!explicitMemory && concern == null) gateway.checkQuota(owner, tier);
-        boolean memoryEnabled = memory != null && memory.enabled(owner);
+        if (!explicitMemory && concern == null) timing.measure("quota-preflight", () -> { gateway.checkQuota(owner, tier); return true; });
+        boolean memoryEnabled = timing.measure("memory-settings", () -> memory != null && memory.enabled(owner));
         ArrayList<Message> memoryPrompt = new ArrayList<>();
-        var memoryFacts = memory == null || explicitMemory || concern != null ? List.<AgentEvent.MemoryFact>of() : memory.recall(owner, request.content(), memoryPrompt);
-        var memoryCandidate = memory == null || concern != null ? null : memory.candidate(owner, request.content());
+        var memoryFacts = timing.measure("memory-recall", () -> memory == null || explicitMemory || concern != null ? List.<AgentEvent.MemoryFact>of() : memory.recall(owner, request.content(), memoryPrompt));
+        var memoryCandidate = timing.measure("memory-candidate", () -> memory == null || concern != null ? null : memory.candidate(owner, request.content()));
         String model = gateway.modelName(tier);
-        var turn = images.isEmpty() ? conversations.begin(owner, request.conversationId(), request.content(), request.mode(), model)
+        var turn = timing.measure("conversation-begin", () -> images.isEmpty() ? conversations.begin(owner, request.conversationId(), request.content(), request.mode(), model)
                 : conversations.begin(owner, request.conversationId(), request.content(), request.mode(), model,
-                images.stream().map(image -> new ConversationService.ImagePart(image.fileId(), image.name())).toList());
+                images.stream().map(image -> new ConversationService.ImagePart(image.fileId(), image.name())).toList()));
+        timing.bind(turn.runId());
+        timing.mark("prepared");
         var cancel = Sinks.<Void>empty();
         AtomicInteger seq = new AtomicInteger();
         AtomicReference<Usage> usage = new AtomicReference<>();
@@ -138,9 +142,11 @@ public class ChatService {
         // Only plain AUTO turns: modes, selected resources, images, memory writes and safety paths change the reply.
         boolean speculate = speculativeReply && (turn.mode() == null || turn.mode() == AgentMode.AUTO) && images.isEmpty()
                 && context.isEmpty() && !refuse && !crisis && !explicitMemory
-                && !orchestrator.usesResumeAdviceFastPath(turn.mode(), request.content(), turn.history(), context);
+                && !orchestrator.usesResumeAdviceFastPath(turn.mode(), request.content(), turn.history(), context)
+                && !orchestrator.usesRuleFirstRoute(turn.mode(), request.content(), turn.history(), context);
         int basePromptSize = prompt.size();
         AtomicReference<Flux<ChatResponse>> early = new AtomicReference<>();
+        var ruleSearchReply = new java.util.concurrent.atomic.AtomicBoolean();
         AtomicReference<reactor.core.Disposable> earlyConnection = new AtomicReference<>();
         Runnable dropEarly = () -> {
             early.set(null);
@@ -149,7 +155,7 @@ public class ChatService {
         };
         Flux<AgentEvent> response = Flux.defer(() -> {
                     Flux<ChatResponse> speculative = early.getAndSet(null);
-                    if (speculative != null && prompt.size() == basePromptSize) return speculative;
+                    if (speculative != null && (ruleSearchReply.get() || prompt.size() == basePromptSize)) return speculative;
                     dropEarly.run();
                     // Expert rules appended by the orchestrator can crowd out the image; restate it for the final reply.
                     if (!images.isEmpty()) prompt.add(new SystemMessage("用户本轮附带了 " + images.size()
@@ -168,15 +174,23 @@ public class ChatService {
                                 return;
                             }
                             answer.append(text);
-                            if (System.currentTimeMillis() - lastSaved[0] >= 1000) {
-                                if (!conversations.checkpoint(turn, answer.toString())) { sink.complete(); return; }
-                                lastSaved[0] = System.currentTimeMillis();
-                            }
                             sink.next(new AgentEvent.TextDelta("text.delta", seq.incrementAndGet(), turn.runId(), Instant.now(), null, text));
                         }
                     }
-                });
+                })
+                // Deliver each delta before its throttled checkpoint, while keeping writes ordered and
+                // awaited before run.completed. Cancellation's terminal CAS still rejects late writes.
+                .concatMap(event -> Flux.just(event).concatWith(Flux.defer(() -> {
+                    if (System.currentTimeMillis() - lastSaved[0] >= 1000) {
+                        boolean running = timing.measure("checkpoint", () -> conversations.checkpoint(turn, answer.toString()));
+                        lastSaved[0] = System.currentTimeMillis();
+                        if (!running) cancel.tryEmitEmpty();
+                    }
+                    return Flux.empty();
+                })), 0);
         Flux<AgentEvent> work = Flux.deferContextual(reactorContext -> {
+                    // Orchestrator supplies the complete compact search prompt before waiting to persist.
+                    // Replay stays inside the gateway's SC-01/SC-03 gate and is disposed with this turn.
                     if (speculate) {
                         try {
                             var replay = timedReply(gateway.stream(tier, List.copyOf(prompt)), "speculative-reply", turn.runId())
@@ -194,7 +208,15 @@ public class ChatService {
                             planningCompletionTokens.addAndGet(u.getCompletionTokens());
                         }, owner, context)))
                 .concatWith(response)
-                .contextWrite(c -> c.put(com.offerpilot.agent.orchestrator.IntentPlanner.ON_EXPERT_ROUTE, dropEarly));
+                .contextWrite(c -> c.put(Orchestrator.START_RULE_SEARCH_REPLY, (java.util.function.Consumer<List<Message>>) narration -> {
+                    dropEarly.run();
+                    var replay=timedReply(gateway.stream(tier,narration),"expert-reply",turn.runId())
+                            .contextWrite(c).replay();
+                    ruleSearchReply.set(true);
+                    early.set(replay);
+                    earlyConnection.set(replay.connect());
+                }).put(com.offerpilot.agent.orchestrator.IntentPlanner.ON_EXPERT_ROUTE, dropEarly)
+                        .put(com.offerpilot.agent.orchestrator.IntentPlanner.RULE_ROUTING_ALLOWED, images.isEmpty()));
         if (refuse || crisis) {
             String fixed = com.offerpilot.llm.safety.InputSafety.refusal(concern);
             Flux<AgentEvent> lead = Flux.defer(() -> {
@@ -242,11 +264,13 @@ public class ChatService {
         });
         Flux<AgentEvent> recalled = memoryFacts.isEmpty() ? Flux.empty() : Flux.defer(() -> Flux.just(
                 new AgentEvent.MemoryUsed("memory.used", seq.incrementAndGet(), turn.runId(), Instant.now(), memoryFacts)));
+        var firstText = new java.util.concurrent.atomic.AtomicBoolean();
         Flux<AgentEvent> streamed = Flux.just(first).concatWith(recalled).concatWith(work).handle((AgentEvent event, SynchronousSink<AgentEvent> sink) -> {
             if (event instanceof AgentEvent.UiCard card && "job_match".equals(card.cardType())
                     && com.offerpilot.conversation.application.MessageCards.parse(card.cardId(), card.cardType(), card.payload(), json) == null)
                 throw new BusinessException(ErrorCode.STRUCTURED_OUTPUT_INVALID, "匹配报告未能展示：卡片内容无效或过长，请在岗位详情查看报告或重新分析。");
             if (event instanceof AgentEvent.UiCard card && !cards.accept(card.cardId(), card.cardType(), card.payload())) return;
+            if (event instanceof AgentEvent.TextDelta && firstText.compareAndSet(false, true)) timing.mark("first-text");
             sink.next(event);
         });
         return streamed.concatWith(memory == null || explicitMemory || concern != null ? Flux.empty() : memory.collect(owner, turn.runId(), () -> !answer.toString().isBlank() && !cancel.scan(reactor.core.Scannable.Attr.TERMINATED)).takeUntilOther(cancel.asMono()))
@@ -287,7 +311,7 @@ public class ChatService {
                             org.slf4j.LoggerFactory.getLogger(ChatService.class).warn("Unable to save interrupted run {}", turn.runId());
                         }
                     }
-                }).contextWrite(quotaContext -> com.offerpilot.llm.quota.LlmUserContext.withUser(quotaContext, owner)
+                }).contextWrite(quotaContext -> com.offerpilot.llm.quota.LlmUserContext.withUser(quotaContext, owner).put(ChatLatency.KEY, timing)
                         .put(com.offerpilot.agent.tools.RunToolBudget.KEY,new com.offerpilot.agent.tools.RunToolBudget(maxToolIterations))
                         .put(com.offerpilot.llm.UsageJournal.KEY, new com.offerpilot.llm.UsageJournal.Scope(owner, turn.runId(), turn.messageId())));
     }

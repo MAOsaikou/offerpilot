@@ -29,13 +29,18 @@ import java.util.function.Consumer;
 @Component
 public class IntentPlanner {
     public static final String ON_EXPERT_ROUTE = IntentPlanner.class.getName() + ".route";
+    public static final String RULE_ROUTING_ALLOWED = IntentPlanner.class.getName() + ".ruleAllowed";
     private boolean earlyExpertHandoff = true;
 
     @Value("${offerpilot.agent.early-expert-handoff:true}")
     void setEarlyExpertHandoff(boolean enabled) { this.earlyExpertHandoff = enabled; }
 
     public record Decision(String kind, ExpertType expert, Double confidence, boolean needsClarification,
-                           String clarifyingQuestion, Plan plan, JsonNode jobSearch) {
+                           String clarifyingQuestion, Plan plan, JsonNode jobSearch, @com.fasterxml.jackson.annotation.JsonIgnore boolean ruleRoute) {
+        public Decision(String kind, ExpertType expert, Double confidence, boolean needsClarification,
+                        String clarifyingQuestion, Plan plan, JsonNode jobSearch) {
+            this(kind,expert,confidence,needsClarification,clarifyingQuestion,plan,jobSearch,false);
+        }
         public Decision(String kind, ExpertType expert, Double confidence, boolean needsClarification,
                         String clarifyingQuestion, Plan plan) {
             this(kind, expert, confidence, needsClarification, clarifyingQuestion, plan, null);
@@ -50,6 +55,22 @@ public class IntentPlanner {
     private final ResumeIntentParser resumes;
     private boolean resumeAdviceFastPath = true;
     private boolean jointJobSearchPlanning = true;
+    private boolean ruleFirstRouting = true;
+
+    @Value("${offerpilot.agent.rule-first-routing:true}")
+    void setRuleFirstRouting(boolean enabled) { ruleFirstRouting = enabled; }
+
+    public boolean usesRuleFirstRoute(AgentMode mode, String content, List<Message> history,
+                                     Map<String, Object> context) {
+        return ruleRoute(mode, content, history, context).isPresent();
+    }
+
+    private Optional<PlanStep> ruleRoute(AgentMode mode, String content, List<Message> history,
+                                         Map<String, Object> context) {
+        if (!ruleFirstRouting || mode != null && mode != AgentMode.AUTO || !history.isEmpty()
+                || context != null && !context.isEmpty()) return Optional.empty();
+        return ReadOnlyRuleRoute.parse(content);
+    }
 
     @Value("${offerpilot.agent.joint-job-search-planning:true}")
     void setJointJobSearchPlanning(boolean enabled) { jointJobSearchPlanning = enabled; }
@@ -100,16 +121,17 @@ public class IntentPlanner {
 
     public Mono<Decision> prepare(AgentMode mode, String content, List<Message> history, ModelTier tier,
                                   Consumer<Usage> onUsage, Map<String, Object> context) {
-        return Mono.defer(() -> {
+        return Mono.deferContextual(reactorContext -> {
             long started = System.nanoTime();
-            return prepareDecision(mode, content, history, tier, onUsage, context)
+            return com.offerpilot.llm.ChatLatency.mono("planner", prepareDecision(mode, content, history, tier, onUsage, context,
+                    reactorContext.getOrDefault(RULE_ROUTING_ALLOWED, true)))
                     .doFinally(signal -> org.slf4j.LoggerFactory.getLogger(IntentPlanner.class)
                             .debug("AG02 phase=planner elapsedMs={} signal={}", (System.nanoTime() - started) / 1_000_000, signal));
         });
     }
 
     private Mono<Decision> prepareDecision(AgentMode mode, String content, List<Message> history, ModelTier tier,
-                                           Consumer<Usage> onUsage, Map<String, Object> context) {
+                                           Consumer<Usage> onUsage, Map<String, Object> context, boolean ruleRoutingAllowed) {
         Map<String, Object> safeContext = context == null ? Map.of() : context;
         if (safeContext.containsKey("jobAction")) {
             if (!"match".equals(safeContext.get("jobAction"))
@@ -165,11 +187,22 @@ public class IntentPlanner {
             return Mono.just(new Decision("single", ExpertType.RESUME, 1.0, false, null,
                     PlanValidator.validate(new Plan(content, List.of(step)))));
         }
+        var rule = ruleRoutingAllowed ? ruleRoute(mode, content, history, safeContext) : Optional.<PlanStep>empty();
+        if (rule.isPresent()) {
+            PlanStep step = rule.get();
+            return com.offerpilot.llm.ChatLatency.mono("rule-route", Mono.fromSupplier(() ->
+                    new Decision("single", step.agent(), 1.0, false, null,
+                            PlanValidator.validate(new Plan(content, List.of(step))), null, true)));
+        }
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(prompt.replace("{experts}", experts.capabilities())
                 + (jointJobSearchPlanning && jobs != null && !jobSearchPrompt.isBlank() ? "\n" + jobSearchPrompt : "")));
         messages.addAll(history.subList(Math.max(0, history.size() - 12), history.size()));
-        messages.add(new UserMessage(SelectedResources.describe(safeContext) + "\n本轮请求：" + content));
+        // Only fixed field names and booleans enter this trusted message, never caller IDs/values.
+        // Keep the actual user fragment byte-for-byte identical to the turn input so SC-01's
+        // request-local session can share its verdict with planning and the ordinary reply.
+        messages.add(new SystemMessage(SelectedResources.describe(safeContext)));
+        messages.add(new UserMessage(content));
         return Mono.deferContextual(reactorContext -> {
             var early = new EarlyHandoff(content, history, tier, safeContext,
                     reactorContext.getOrDefault(ON_EXPERT_ROUTE, (Runnable) () -> {}), reactorContext);
@@ -219,7 +252,7 @@ public class IntentPlanner {
                                    Consumer<Usage> onUsage, int retry, Map<String, Object> context, EarlyHandoff early) {
         return Mono.defer(() -> {
             AtomicReference<Usage> usage = new AtomicReference<>();
-            return gateway.stream(tier, messages, 0.1).doOnNext(chunk -> {
+            return com.offerpilot.llm.ChatLatency.flux("intent-model", gateway.stream(tier, messages, 0.1)).doOnNext(chunk -> {
                 var current = chunk.getMetadata().getUsage();
                 if (current != null && current.getTotalTokens() != null && current.getTotalTokens() > 0) usage.set(current);
             }).map(chunk -> chunk.getResult() == null || chunk.getResult().getOutput() == null || chunk.getResult().getOutput().getText() == null

@@ -37,7 +37,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ChatParallelEffectsTest {
-    @Test void jointJobSearchWaitsForGateAndOnlyFinalModelContentBecomesText() throws Exception {
+    @Test void disabledRuleJobSearchWaitsForGateAndOnlyFinalModelContentBecomesText() throws Exception {
         for (boolean cancel : List.of(false, true)) {
             var gateway = new Gateway();
             gateway.replyResult = Sinks.one();
@@ -50,8 +50,10 @@ class ChatParallelEffectsTest {
             var jobs = new JobIntentParser(gateway, json, new ByteArrayResource("actions".getBytes()));
             var planner = new IntentPlanner(gateway, json, experts, new ByteArrayResource("planner".getBytes()), jobs);
             var conversations = conversations();
+            var orchestrator = new Orchestrator(planner, experts);
+            org.springframework.test.util.ReflectionTestUtils.setField(orchestrator,"earlyReadonlyExpert",false);
             var service = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()),
-                    new Orchestrator(planner, experts), json);
+                    orchestrator, json);
             service.setParallelSafetyScreen(true);
             var events = new java.util.concurrent.CopyOnWriteArrayList<AgentEvent>();
             var completed = new CountDownLatch(1);
@@ -72,24 +74,24 @@ class ChatParallelEffectsTest {
                                 .usage(new org.springframework.ai.chat.metadata.DefaultUsage(20, 5)).build()));
             }
             assertThat(completed.await(2, TimeUnit.SECONDS)).isTrue();
-            assertThat(gateway.planningCalls).hasValue(1);
+            assertThat(gateway.planningCalls).hasValue(0);
             if (cancel) {
                 verifyNoInteractions(searches);
-                assertThat(events).extracting(AgentEvent::type).containsExactly("run.started", "usage", "run.completed");
+                assertThat(events).extracting(AgentEvent::type).containsExactly("run.started", "run.completed");
             } else {
                 assertThat(events).filteredOn(AgentEvent.TextDelta.class::isInstance).singleElement()
                         .satisfies(e -> assertThat(((AgentEvent.TextDelta) e).text()).isEqualTo("搜索未返回岗位，可以调整条件。"));
                 assertThat(events).filteredOn(AgentEvent.Usage.class::isInstance).singleElement().satisfies(e -> {
-                    assertThat(((AgentEvent.Usage) e).promptTokens()).isEqualTo(30);
-                    assertThat(((AgentEvent.Usage) e).completionTokens()).isEqualTo(7);
+                    assertThat(((AgentEvent.Usage) e).promptTokens()).isEqualTo(20);
+                    assertThat(((AgentEvent.Usage) e).completionTokens()).isEqualTo(5);
                 });
                 verify(conversations).finish(any(), eq("搜索未返回岗位，可以调整条件。"), eq("COMPLETED"),
-                        eq(Map.of("promptTokens", 30, "completionTokens", 7)), isNull(), any());
+                        eq(Map.of("promptTokens", 20, "completionTokens", 5)), isNull(), any());
             }
         }
     }
 
-    @Test void directAdviceToolAndReplyWaitForCleanAndCancelLeavesNoRun() throws Exception {
+    @Test void disabledEarlyReadonlyAdviceWaitsForGateAndCancellationLeavesNoRun() throws Exception {
         for (boolean cancel : List.of(false, true)) {
             var gateway = new Gateway();
             var experts = spy(new ExpertRegistry());
@@ -143,8 +145,10 @@ class ChatParallelEffectsTest {
 
     private ChatService service(Gateway gateway, ExpertRegistry experts, ConversationService conversations, MemoryChat memory) throws Exception {
         var planner = new IntentPlanner(gateway, new ObjectMapper(), experts, new ByteArrayResource("planner".getBytes()));
+        var orchestrator = new Orchestrator(planner, experts);
+        org.springframework.test.util.ReflectionTestUtils.setField(orchestrator, "earlyReadonlyExpert", false);
         var service = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()),
-                new Orchestrator(planner, experts), new ObjectMapper(), memory);
+                orchestrator, new ObjectMapper(), memory);
         service.setParallelSafetyScreen(true);
         return service;
     }

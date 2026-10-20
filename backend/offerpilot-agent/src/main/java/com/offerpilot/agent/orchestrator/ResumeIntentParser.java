@@ -54,7 +54,7 @@ public class ResumeIntentParser {
                 + "\n已关联诊断报告：" + selected(context, "diagnosisReportId")));
         return Mono.defer(() -> {
             AtomicReference<Usage> usage = new AtomicReference<>();
-            return gateway.stream(tier, messages, 0.1).doOnNext(chunk -> {
+            return com.offerpilot.llm.ChatLatency.flux("resume-action-model", gateway.stream(tier, messages, 0.1)).doOnNext(chunk -> {
                 var current = chunk.getMetadata().getUsage();
                 if (current != null && current.getTotalTokens() != null && current.getTotalTokens() > 0) usage.set(current);
             }).map(chunk -> chunk.getResult() == null || chunk.getResult().getOutput() == null

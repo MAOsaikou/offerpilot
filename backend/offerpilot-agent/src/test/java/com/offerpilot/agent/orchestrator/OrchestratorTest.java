@@ -124,7 +124,7 @@ class OrchestratorTest {
                     .when(experts).execute(any(), any(), any(), any(), anyMap());
         } else {
             ExpertResult result = path.equals("card")
-                    ? ExpertResult.card(payload, "card_1", "job_card", Map.of()) : ExpertResult.text(payload);
+                    ? ExpertResult.card(payload, "card_1", "job_card", Map.of("items", List.of(Map.of("title", payload)))) : ExpertResult.text(payload);
             doReturn(Mono.just(result)).when(experts).execute(any(), any(), any(), any(), anyMap());
             if (path.equals("placeholder")) model(composite().replace("\"COACH\"", "\"JOB\""));
         }
