@@ -234,6 +234,20 @@ class ChatServiceTest {
     }
 
 
+    @Test void failedMessageEmitsLoggedPartialUsageBeforeItsTerminalError() {
+        var journal=mock(com.offerpilot.llm.UsageJournal.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"journal",journal);
+        when(journal.summary("owner","msg")).thenReturn(new com.offerpilot.llm.UsageJournal.Summary("actual-model",12,3,80L,null,true,false));
+        when(gateway.stream(any(),anyList())).thenReturn(Flux.error(new IllegalStateException("offline")));
+        var result=events();
+        assertThat(result).extracting(AgentEvent::type).containsExactly("run.started","usage","error");
+        assertThat(result).extracting(AgentEvent::id).containsExactly(1,2,3);
+        assertThat((AgentEvent.Usage)result.get(1)).satisfies(usage->{
+            assertThat(usage.model()).isEqualTo("actual-model");assertThat(usage.promptTokens()).isEqualTo(12);
+            assertThat(usage.costEstimate()).isNull();assertThat(usage.durationMs()).isEqualTo(80L);
+        });
+    }
+
     private static ChatResponse reply(String text) {
         return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
     }

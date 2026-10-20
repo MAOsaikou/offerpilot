@@ -68,7 +68,7 @@ class InterviewApprovalTest {
                     "run_score", new AtomicInteger(), reply, u -> {}, "alice", Map.of("interviewSessionId", "iv_1"))
                     .collectList().block(Duration.ofSeconds(3));
             assertThat(scoring.stream().filter(AgentEvent.UiCard.class::isInstance).map(AgentEvent.UiCard.class::cast))
-                    .extracting(AgentEvent.UiCard::cardType).containsExactly("interview_report");
+                    .extracting(AgentEvent.UiCard::cardType).containsExactly("interview_report", "interview_turn_score");
             assertThat(scoring).noneMatch(AgentEvent.ApprovalRequired.class::isInstance);
             assertThat(reply.stream().map(Message::getText).collect(java.util.stream.Collectors.joining()))
                     .contains("文字规则评分").doesNotContain("iv_1", "s1：", "四周主题");

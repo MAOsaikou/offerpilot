@@ -28,7 +28,7 @@ export interface CitationSource {
   docId: string
   title: string
   snippet: string
-  score: number
+  score: number | null
   url?: string
   collection: string
   index: number
@@ -103,7 +103,9 @@ export type AgentEvent =
       model: string
       promptTokens: number
       completionTokens: number
-      costEstimate: number
+      costEstimate: number | null
+      durationMs?: number | null
+      usageReported?: boolean
       fallbackUsed: boolean
     })
   | (EventBase & { type: 'error'; code: number; message: string; recoverable: boolean })

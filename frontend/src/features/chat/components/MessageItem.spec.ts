@@ -1,3 +1,4 @@
+/* eslint-disable vue/one-component-per-file -- 每个测试挂载独立消息实例 */
 import { createApp, h, nextTick, type App } from 'vue'
 import { afterEach, expect, it, vi } from 'vitest'
 import MessageItem from './MessageItem.vue'
@@ -41,5 +42,44 @@ it('a [KB-…] reference in the reply jumps to that note in the turn source card
   expect(scroll).toHaveBeenCalled()
   expect(note.classList.contains('cite-flash')).toBe(true)
   expect(document.activeElement).toBe(note)
+  root.remove()
+})
+
+it('数字引用按当前消息来源定位，代码与无来源编号保持纯文本，恶意链接不进入面板', async () => {
+  const root = document.createElement('div')
+  document.body.append(root)
+  const scroll = vi.fn()
+  Element.prototype.scrollIntoView = scroll
+  app = createApp({
+    render: () =>
+      h(MessageItem, {
+        message: {
+          id: 'm',
+          role: 'assistant',
+          text: '证据[1] 未知[2] `代码[1]`',
+          citations: [
+            {
+              index: 1,
+              docId: 'd',
+              title: '真实来源',
+              snippet: '原文片段',
+              score: null,
+              collection: 'notes',
+              url: 'javascript:alert(1)',
+            },
+          ],
+        },
+      }),
+  })
+  app.mount(root)
+  await nextTick()
+  expect(root.querySelectorAll('button.md-citation')).toHaveLength(1)
+  expect(root.textContent).toContain('真实来源')
+  expect(root.textContent).toContain('原文片段')
+  expect(root.querySelector('a')).toBeNull()
+  root.querySelector<HTMLButtonElement>('button.md-citation')!.click()
+  await nextTick()
+  expect(scroll).toHaveBeenCalled()
+  expect(document.activeElement?.getAttribute('data-citation-index')).toBe('1')
   root.remove()
 })

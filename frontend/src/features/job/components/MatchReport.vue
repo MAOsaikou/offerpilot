@@ -124,4 +124,5 @@ const severityLabel = { LOW: '轻微', MEDIUM: '中等', HIGH: '严重' } as con
       </ul>
     </section>
   </article>
+  <p v-else role="alert">匹配报告数据不可用，请重新分析。</p>
 </template>

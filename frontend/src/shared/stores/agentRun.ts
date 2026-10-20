@@ -62,10 +62,13 @@ export interface CardView {
 }
 
 export interface UsageView {
+  source?: 'llm_usage_logs' | 'legacy_message'
   model: string
   promptTokens: number
   completionTokens: number
-  costEstimate: number
+  costEstimate: number | null
+  durationMs?: number | null
+  usageReported?: boolean
   fallbackUsed: boolean
 }
 
@@ -347,11 +350,14 @@ export const useAgentRunStore = defineStore('agentRun', () => {
         break
       case 'usage':
         setUsage(event.runId, {
+          source: 'llm_usage_logs',
           model: event.model,
           promptTokens: event.promptTokens,
           completionTokens: event.completionTokens,
           costEstimate: event.costEstimate,
+          usageReported: event.usageReported,
           fallbackUsed: event.fallbackUsed,
+          durationMs: event.durationMs,
         })
         break
       case 'error':

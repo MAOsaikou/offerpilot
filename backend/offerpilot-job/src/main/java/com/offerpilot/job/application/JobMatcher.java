@@ -51,6 +51,7 @@ public class JobMatcher {
     reactor.core.publisher.Mono<JsonNode> analyze(JsonNode job, JsonNode resume,
             com.offerpilot.llm.ModelTier tier, reactor.core.scheduler.Scheduler clock) {
         String owner = com.offerpilot.llm.quota.LlmUserContext.current();
+        var usageScope = com.offerpilot.llm.UsageJournal.current();
         return reactor.core.publisher.Mono.defer(() -> {
             String jd = JobService.evidenceText(job);
             if (job.path("description").asText().isBlank() && job.path("requirement").asText().isBlank())
@@ -74,7 +75,8 @@ public class JobMatcher {
                     .map(report -> { ((ObjectNode) report).put("durationMs", (System.nanoTime() - start) / 1000000); return report; })
                     .onErrorMap(error -> modelFailure(error, tier, budget));
         }).contextWrite(context -> owner == null ? context
-                : com.offerpilot.llm.quota.LlmUserContext.withUser(context, owner));
+                : com.offerpilot.llm.quota.LlmUserContext.withUser(context, owner))
+          .contextWrite(context -> usageScope == null ? context : context.put(com.offerpilot.llm.UsageJournal.KEY, usageScope));
     }
 
     private reactor.core.publisher.Mono<JsonNode> generate(String jd, JsonNode resume,

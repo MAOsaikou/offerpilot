@@ -60,6 +60,11 @@ export function useConversationChat() {
       text: m.plainText || '',
       status: m.status,
       runId: m.runId,
+      model: m.model,
+      usage: m.usage,
+      citations: (m.parts ?? []).flatMap((part) =>
+        part.type === 'citation' ? (part.sources ?? []) : [],
+      ),
     }
     if (view.role === 'user') {
       const images = (m.parts ?? []).flatMap((part) =>
@@ -92,6 +97,11 @@ export function useConversationChat() {
               (activeRun.value.status === 'FAILED' ? activeRun.value.error?.message || '' : ''),
             reasoning: activeRun.value.reasoning,
             cards: activeRun.value.cards,
+            runId: activeRun.value.runId,
+            model: activeRun.value.model ?? undefined,
+            usage: activeRun.value.usage,
+            citations: activeRun.value.citations,
+            durationMs: activeRun.value.durationMs,
             streaming: stream.streaming.value,
           }
         : m,

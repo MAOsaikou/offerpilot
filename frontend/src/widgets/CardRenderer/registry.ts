@@ -6,13 +6,15 @@ import type { CardType } from '@/shared/types/cards'
 /**
  * cardType → 组件（docs/07 §9）。
  *
- * 已接入的业务卡片在此注册；其余类型走 CardFallback 显示原始 JSON，
- * 等对应 feature 完成后逐个补上，届时 registry 完整性测试（docs/07 §14）才成立。
+ * 已接入的业务卡片在此注册；未知类型安全降级为纯文本。
  */
 export type CardLoader = () => Promise<Component>
 
 export const cardRegistry: Partial<Record<CardType, CardLoader>> = {
   knowledge_note_citations: () => import('@/features/kb/components/KnowledgeNoteCitationsCard.vue'),
+  skill_radar: () => import('@/features/growth/components/SkillRadarCard.vue'),
+  campus_calendar: () => import('@/features/job/components/CampusCalendarCard.vue'),
+  interview_turn_score: () => import('@/features/interview/components/InterviewTurnScoreCard.vue'),
   skill_gap: () => import('@/features/growth/components/SkillGapCard.vue'),
   roadmap: () => import('@/features/growth/components/RoadmapCard.vue'),
   star_story_citations: () => import('@/features/interview/components/StarStoryCitationsCard.vue'),
@@ -36,7 +38,9 @@ export function resolveCardComponent(cardType: string): Component | null {
   const cached = asyncCache.get(cardType)
   if (cached) return cached
 
-  const loader = cardRegistry[cardType as CardType]
+  const loader = Object.hasOwn(cardRegistry, cardType)
+    ? cardRegistry[cardType as CardType]
+    : undefined
   if (!loader) return null
 
   const component = defineAsyncComponent({

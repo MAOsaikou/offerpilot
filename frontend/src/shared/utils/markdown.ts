@@ -53,7 +53,27 @@ function renderCitations(html: string): string {
     .join('')
 }
 
-export function renderMarkdown(source: string, options: { streaming?: boolean } = {}): string {
+const textRenderer = md.renderer.rules.text!
+md.renderer.rules.text = (tokens, idx, options, env, self) => {
+  const text = textRenderer(tokens, idx, options, env, self)
+  let inLink = false
+  for (let i = 0; i < idx; i++) {
+    if (tokens[i]?.type === 'link_open') inLink = true
+    if (tokens[i]?.type === 'link_close') inLink = false
+  }
+  if (inLink) return text
+  return text.replace(/\[(\d+)\]/g, (whole, index) =>
+    Array.isArray(env?.citationIndexes) && env.citationIndexes.includes(Number(index))
+      ? `<button type="button" class="md-citation" data-citation-index="${index}">[${index}]</button>`
+      : whole,
+  )
+}
+export function renderMarkdown(
+  source: string,
+  options: { streaming?: boolean; citationIndexes?: number[] } = {},
+): string {
   const input = options.streaming ? closeOpenFences(source) : source
-  return DOMPurify.sanitize(renderCitations(md.render(input)))
+  return DOMPurify.sanitize(
+    renderCitations(md.render(input, { citationIndexes: options.citationIndexes })),
+  )
 }

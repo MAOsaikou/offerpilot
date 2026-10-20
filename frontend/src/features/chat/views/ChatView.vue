@@ -8,6 +8,7 @@ import MessageList from '../components/MessageList.vue'
 import ConversationHistory from '../components/ConversationHistory.vue'
 import ChatWelcome from '../components/ChatWelcome.vue'
 import ChatToolbar from '../components/ChatToolbar.vue'
+import { useRunReplay } from '@/shared/composables/useRunReplay'
 import { useConversationChat } from '../composables/useConversationChat'
 import { optimizationContext } from '../optimizationContext'
 import { normalizeModelTier, type ModelTier } from '@/shared/types/model-tier'
@@ -16,6 +17,7 @@ import type { Conversation } from '@/shared/types/conversation'
 import { getPreferences } from '@/shared/api/preferences'
 import type { PatchDecision } from '@/shared/types/optimization'
 import type { CareerTargetSelection } from '@/shared/types/cards'
+const replay = useRunReplay()
 const privacyWarning = ref('')
 const route = useRoute()
 const router = useRouter()
@@ -44,6 +46,36 @@ const modes: { value: AgentMode; label: string }[] = [
   { value: 'INTERVIEWER', label: '面试练习' },
   { value: 'COACH', label: '成长教练' },
 ]
+const displayedMessages = computed(() =>
+  viewMessages.value.map((message) => {
+    if (!replay.runId.value || message.role !== 'assistant' || message.runId !== replay.runId.value)
+      return message
+    const run = replay.run.value
+    return {
+      ...message,
+      text: run?.text ?? '',
+      cards: run?.cards ?? [],
+      reasoning: run?.reasoning ?? '',
+      citations: run?.citations ?? [],
+      usage: run?.usage ?? null,
+      model: run?.model ?? undefined,
+      durationMs: run?.durationMs,
+      status: run?.status ?? ('RUNNING' as const),
+      streaming: false,
+    }
+  }),
+)
+watch(
+  () => route.params.conversationId,
+  () => replay.close(),
+)
+watch(sending, (value) => {
+  if (value) replay.close()
+})
+async function openReplay(id: string) {
+  panelOpen.value = true
+  await replay.open(id)
+}
 const mode = ref<AgentMode>('AUTO')
 watch(
   [() => route.query.diagnosisReportId, () => route.query.optimizationReportId],
@@ -414,7 +446,72 @@ async function remove(id: string) {
               加载更早消息
             </button>
             <p v-if="loading" class="subtle" role="status">正在加载记录…</p>
-            <MessageList v-if="viewMessages.length" :messages="viewMessages"
+            <section
+              v-if="replay.runId.value"
+              class="panel form-stack mb-4"
+              aria-label="运行回放"
+              aria-live="polite"
+            >
+              <h3>历史运行回放</h3>
+              <p v-if="replay.loading.value" role="status">正在读取事件…</p>
+              <p v-if="replay.error.value" role="alert">{{ replay.error.value }}</p>
+              <p v-if="replay.partial.value">旧运行未保存正文或卡片事件，只能回放已记录过程。</p>
+              <p>{{ replay.position.value }} / {{ replay.events.value.length }} 个事件</p>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  class="btn"
+                  :disabled="replay.loading.value || replay.complete.value"
+                  @click="replay.play"
+                >
+                  播放
+                </button>
+                <button class="btn" :disabled="!replay.playing.value" @click="replay.pause">
+                  暂停
+                </button>
+                <button
+                  class="btn"
+                  :disabled="replay.loading.value || replay.complete.value"
+                  @click="replay.step"
+                >
+                  下一事件
+                </button>
+                <button class="btn" :disabled="replay.loading.value" @click="replay.seek(0)">
+                  从头开始
+                </button>
+                <button
+                  v-if="replay.error.value"
+                  class="btn"
+                  @click="replay.open(replay.runId.value)"
+                >
+                  重新读取
+                </button>
+                <label
+                  >速度
+                  <select v-model="replay.speed.value">
+                    <option :value="0.5">0.5×</option>
+                    <option :value="1">1×</option>
+                    <option :value="2">2×</option>
+                    <option :value="4">4×</option>
+                  </select></label
+                >
+                <button class="btn" @click="replay.close">退出回放</button>
+              </div>
+              <label
+                >事件进度
+                <input
+                  type="range"
+                  min="0"
+                  :max="replay.events.value.length"
+                  :value="replay.position.value"
+                  :disabled="replay.loading.value"
+                  @input="replay.seek(Number(($event.target as HTMLInputElement).value))"
+              /></label>
+            </section>
+            <MessageList
+              v-if="viewMessages.length"
+              :messages="displayedMessages"
+              :replay-disabled="busy"
+              @replay="openReplay"
               ><template #cards="{ cards }"
                 ><slot
                   name="cards"
@@ -423,7 +520,7 @@ async function remove(id: string) {
                     adoptTarget,
                     adoptGrowth,
                     applyPatches,
-                    disabled: busy || missingConversation,
+                    disabled: busy || missingConversation || Boolean(replay.runId.value),
                   }" /></template
             ></MessageList>
             <ChatWelcome v-else-if="!loading && !missingConversation" @pick="seed = $event" />
@@ -505,7 +602,11 @@ async function remove(id: string) {
         </div>
       </div>
       <aside v-if="panelOpen" class="chat-panel visible">
-        <slot name="agent" :run="activeRun" />
+        <slot
+          name="agent"
+          :run="replay.runId.value ? replay.run.value : activeRun"
+          :readonly="Boolean(replay.runId.value)"
+        />
       </aside>
     </div>
   </section>

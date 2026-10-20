@@ -1,17 +1,26 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { CareerRecommendationPayload, CareerTargetSelection } from '@/shared/types/cards'
 
-defineProps<{
+const props = defineProps<{
   payload: CareerRecommendationPayload
   interactive?: boolean
   disabled?: boolean
 }>()
 const emit = defineEmits<{ adoptTarget: [selection: CareerTargetSelection] }>()
+const valid = computed(
+  () =>
+    Array.isArray(props.payload?.recommendations) && Array.isArray(props.payload?.interestsUsed),
+)
 </script>
 
 <template>
-  <section class="min-w-0 rounded-xl border border-border bg-card p-4" aria-label="职业推荐">
+  <section
+    v-if="valid"
+    class="min-w-0 rounded-xl border border-border bg-card p-4"
+    aria-label="职业推荐"
+  >
     <h3 class="font-semibold">职业兴趣推荐 · {{ payload.hollandCode }}</h3>
     <p class="mt-1 text-sm text-muted-foreground">
       {{
@@ -73,4 +82,5 @@ const emit = defineEmits<{ adoptTarget: [selection: CareerTargetSelection] }>()
       </li>
     </ol>
   </section>
+  <p v-else role="alert">职业推荐数据不可用，请重新查询。</p>
 </template>

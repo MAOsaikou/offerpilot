@@ -7,7 +7,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import java.util.List;
 
-/** Durable workbench history in the existing V3 table. Text stays in messages, avoiding token-by-token writes. */
+/** Durable ordered event history in V3; new runs include text and cards for faithful replay. */
 @Component
 public class WorkbenchEvents {
     private final JdbcTemplate jdbc;
@@ -17,8 +17,6 @@ public class WorkbenchEvents {
         this.jdbc = jdbc; this.json = json; this.conversations = conversations;
     }
     void append(AgentEvent event) {
-        if (event instanceof AgentEvent.TextDelta || event instanceof AgentEvent.ReasoningDelta
-                || event instanceof AgentEvent.UiCard || event instanceof AgentEvent.MemoryUsed) return;
         try {
             jdbc.update("INSERT INTO agent_events(run_id,seq,type,payload) VALUES (?,?,?,CAST(? AS jsonb)) ON CONFLICT DO NOTHING",
                     event.runId(), event.id(), event.type(), json.writeValueAsString(event));

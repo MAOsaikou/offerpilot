@@ -4,11 +4,13 @@ import ApprovalCard from './ApprovalCard.vue'
 import PlanSteps from './PlanSteps.vue'
 import ToolTimeline from './ToolTimeline.vue'
 import UsageBadge from './UsageBadge.vue'
+import CitationPanel from '@/shared/components/CitationPanel.vue'
 import McpTools from './McpTools.vue'
 import type { RunState } from '@/shared/stores/agentRun'
 
 const props = defineProps<{
   run: RunState | null
+  readonly?: boolean
 }>()
 
 const reasoningOpen = ref(false)
@@ -79,21 +81,10 @@ const statusLabel = computed(() => {
         <ApprovalCard
           :approvals="run?.approvals ?? []"
           :run-id="run?.runId ?? ''"
-          :running="run?.status === 'RUNNING'"
+          :running="!readonly && run?.status === 'RUNNING'"
         />
 
-        <section v-if="run && run.citations.length > 0">
-          <h3 class="mb-2 text-xs font-semibold text-muted-foreground">引用</h3>
-          <ul class="space-y-1.5">
-            <li v-for="source in run.citations" :key="source.docId" class="text-xs">
-              <span class="num text-primary">[{{ source.index }}]</span>
-              {{ source.title }}
-              <span class="ml-1 text-muted-foreground">
-                {{ (source.score * 100).toFixed(0) }}%
-              </span>
-            </li>
-          </ul>
-        </section>
+        <CitationPanel :sources="run?.citations ?? []" />
 
         <section v-if="run && run.memoryFacts.length > 0">
           <h3 class="mb-2 text-xs font-semibold text-muted-foreground">用到的记忆</h3>

@@ -46,6 +46,8 @@ public class Orchestrator {
     }
     private Flux<AgentEvent> runSelected(AgentMode mode,String content,List<Message> history,ModelTier tier,String runId,
             AtomicInteger seq,List<Message> replyPrompt,Consumer<Usage> onUsage,String owner,Map<String,Object> safeContext) {
+        AtomicInteger citationIndex = new AtomicInteger();
+        List<AgentEvent.CitationSource> citationSources = new java.util.ArrayList<>();
         AtomicBoolean attemptedBusiness = new AtomicBoolean();
         AtomicBoolean producedCard = new AtomicBoolean();
         var matchFailure = new java.util.concurrent.atomic.AtomicReference<BusinessException>();
@@ -115,7 +117,7 @@ public class Orchestrator {
                 Function<Mono<ExpertResult>, Flux<AgentEvent>> finish = work -> work
                         .timeout(Duration.ofSeconds(willMatch ? (tier == ModelTier.PRO ? 210 : 90) : 120))
                         .switchIfEmpty(Mono.error(new IllegalStateException("专家未返回结果")))
-                        .flatMapMany(result -> {
+                        .map(ToolCardProjections::expand).flatMapMany(result -> {
                             outputs.put(step.id(), result.summary());
                             String digest = CardNarrationDigest.of(result.cards());
                             if (!"[]".equals(digest)) cardDigests.put(step.id(), digest);
@@ -128,7 +130,9 @@ public class Orchestrator {
                             String preview = result.summary() == null ? "" : result.summary();
                             boolean truncated = preview.length() > 500;
                             if (truncated) preview = com.offerpilot.common.text.TextBounds.truncate(preview, 500);
-                            return outcome(runId, seq, step.id(), callId, name, true, preview, truncated, result.cards(), started, result.summary());
+                            var sources = CardCitations.read(result.cards(), citationIndex);
+                            citationSources.addAll(sources);
+                            return outcome(runId, seq, step.id(), callId, name, true, preview, truncated, result.cards(), started, result.summary(), sources);
                         });
                 return Flux.<AgentEvent>just(new AgentEvent.StepUpdated("step.updated", seq.incrementAndGet(), runId, started,
                                 step.id(), AgentEvent.StepStatus.RUNNING, running, null),
@@ -162,7 +166,7 @@ public class Orchestrator {
                                 summary = declined.computeIfAbsent(step.id(), ignored -> approvalSummary(name, "REJECT"));
                             }
                             outputs.put(step.id(), summary);
-                            return outcome(runId, seq, step.id(), callId, name, false, summary, false, List.of(), started, summary);
+                            return outcome(runId, seq, step.id(), callId, name, false, summary, false, List.of(), started, summary, List.of());
                         }));
             })), 1)).concatWith(Flux.defer(() -> {
                 if (interviewFailed.get())
@@ -177,8 +181,9 @@ public class Orchestrator {
                         renderOutputs(declined) + "；只读替代建议：" + renderOutputs(alternatives));
                 if (!declined.isEmpty() && declined.keySet().containsAll(outputs.keySet())) return Flux.empty();
                 if (producedCard.get()) {
-                    addReplyData(replyPrompt, CardNarrationDigest.rules(cardTypes),
-                            "报告摘要：" + renderOutputs(outputs) + "；已展示卡片的结构化明细：" + renderOutputs(cardDigests) + "；失败或跳过的步骤：" + (failed.size() - declined.size()) + " 项");
+                    addReplyData(replyPrompt, CardNarrationDigest.rules(cardTypes)
+                                    + (citationSources.isEmpty() ? "" : "数字引用使用数据中index对应的[n]编号，只能引用支持本句的摘录，不猜测编号。"),
+                            "报告摘要：" + renderOutputs(outputs) + "；已展示卡片的结构化明细：" + renderOutputs(cardDigests) + (citationSources.isEmpty() ? "" : "；数字引用来源：" + CardCitations.describe(citationSources)) + "；失败或跳过的步骤：" + (failed.size() - declined.size()) + " 项");
                 } else if (!declined.isEmpty()) {
                     addReplyData(replyPrompt, "按各项操作的实际结果分别说明；只有明确成功的操作才能声称写入，用户拒绝或确认超时的操作未执行。",
                             "本轮结果：" + renderOutputs(outputs));
@@ -249,12 +254,13 @@ public class Orchestrator {
     }
 
     private Flux<AgentEvent> outcome(String runId, AtomicInteger seq, String stepId, String callId, String name,
-                                     boolean ok, String summary, boolean truncated, List<ExpertResult.Card> cards, Instant started, String fullSummary) {
+                                     boolean ok, String summary, boolean truncated, List<ExpertResult.Card> cards, Instant started, String fullSummary, List<AgentEvent.CitationSource> sources) {
         int elapsed = (int) Duration.between(started, Instant.now()).toMillis();
         Flux<AgentEvent> events = Flux.just(new AgentEvent.ToolResult("tool.result", seq.incrementAndGet(), runId, Instant.now(), stepId,
                 callId, name, ok, summary, elapsed, truncated, Map.of("summary", fullSummary == null ? "" : fullSummary, "cards",
                         cards.stream().map(card -> Map.of("cardType", card.cardType(), "payload", card.payload())).toList()),
                 toolSource(name, cards), "MCP".equals(toolSource(name, cards)) ? "jobs-mcp" : null));
+        if (!sources.isEmpty()) events = events.concatWith(Flux.just(new AgentEvent.Citation("citation", seq.incrementAndGet(),runId,Instant.now(),stepId,sources)));
         for (var card : cards) {
             events = events.concatWith(Flux.just(new AgentEvent.UiCard("ui.card", seq.incrementAndGet(), runId, Instant.now(),
                     stepId, card.cardId(), card.cardType(), card.payload())));
