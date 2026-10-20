@@ -55,3 +55,27 @@ it('renders running/finished/failed tasks with result links, real stages and not
   expect(root.querySelectorAll('li button')).toHaveLength(1)
   expect(root.querySelector('[aria-live]')?.textContent).toContain('已完成')
 })
+
+it('auto-dismisses completion notice and collapses to a compact pill when idle', async () => {
+  vi.useFakeTimers()
+  pinia = createPinia()
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/', component: { template: '<div />' } }],
+  })
+  await router.push('/')
+  root = document.createElement('div')
+  document.body.append(root)
+  app = createApp(GenerationProgressDock).use(pinia).use(router)
+  app.mount(root)
+  const store = useGenerationTasks(pinia)
+  store.notice = '面试整体报告：已完成'
+  await nextTick()
+  expect(root.querySelector('.generation-dock--compact')).toBeNull()
+  vi.advanceTimersByTime(6100)
+  await nextTick()
+  expect(store.notice).toBe('')
+  expect(root.querySelector('.generation-dock--compact')).not.toBeNull()
+  expect(root.textContent).not.toContain('进行中')
+  vi.useRealTimers()
+})

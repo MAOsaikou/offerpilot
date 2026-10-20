@@ -13,6 +13,7 @@ const { chromium, expect } = require(
 const frontend = fileURLToPath(new URL('..', import.meta.url))
 const output =
   process.env.SCREENSHOT_DIR || '/workspace/docs-eval-local/iv-report-inline-2026-10-20'
+const suffix = process.env.SCREENSHOT_SUFFIX || ''
 const base = process.env.E2E_BASE_URL || 'http://127.0.0.1:6198'
 const report = {
   id: 'iv_inline',
@@ -206,7 +207,7 @@ try {
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       ).toBe(true)
-      await page.screenshot({ path: `${output}/${name}-${stateName}.png`, fullPage: true })
+      await page.screenshot({ path: `${output}/${name}-${stateName}${suffix}.png`, fullPage: true })
     }
     await page.goto(`${base}/interviews/iv_inline`)
     await expect(page.getByRole('button', { name: '结束并生成报告', exact: true })).toBeVisible()
@@ -238,6 +239,12 @@ try {
     await expect(panel.getByText('活动效果验证不足', { exact: true })).toBeVisible()
     await expect(panel.getByText('总分', { exact: true })).toBeVisible()
     await expect(panel.getByText('本题未作答，不评分。', { exact: false }).first()).toBeVisible()
+    // The completion notice auto-collapses into a compact pill that does not cover report content.
+    const dock = page.getByRole('complementary', { name: '后台生成进度' })
+    await expect(dock).toHaveClass(/generation-dock--compact/, { timeout: 8000 })
+    const dockBox = await dock.boundingBox()
+    expect(dockBox.width).toBeLessThan(200)
+    expect(dockBox.height).toBeLessThan(60)
     await shot('report')
     await panel.getByRole('button', { name: '一键生成学习计划' }).click()
     await expect(panel.getByRole('link', { name: '查看学习计划' })).toHaveAttribute(

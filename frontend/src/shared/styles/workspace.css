@@ -1216,3 +1216,8 @@ a.job-row:hover {
 .workspace-content > .error-banner {
   margin-bottom: 20px;
 }
+
+/* 给右下角后台任务坞留出滚动余量，结果内容可滚到其上方，不被遮挡。 */
+.workspace-content {
+  padding-bottom: max(120px, calc(env(safe-area-inset-bottom) + 120px));
+}
