@@ -35,7 +35,11 @@ public class CareerRecommendationService implements CareerRerankForChat {
                              JsonNode coreSkills, JsonNode salaryRange, String growthPath, String source,
                              Double match) {}
     public record Item(Occupation occupation, double baseScore, double score, int rank, int rankDelta,
-                       String changeReason) {}
+                       String changeReason, CareerCardDetails.Details details) {
+        public Item(Occupation occupation,double baseScore,double score,int rank,int rankDelta,String changeReason) {
+            this(occupation,baseScore,score,rank,rankDelta,changeReason,null);
+        }
+    }
     public record Revision(String id, String parentId, Constraints constraints, List<Item> items,
                            long elapsedMs, boolean explanationFallback, String createdAt) {}
     public record CatalogEntry(String occupationId, String name) {}
@@ -109,7 +113,7 @@ public class CareerRecommendationService implements CareerRerankForChat {
             // follow-ups even though the catalog supplies no evidence for that constraint.
             double prior = 1.0 - items.size() / (double) result.payload().recommendations().size();
             items.add(new Item(occupation(item.occupationId(), item.similarity()), prior, prior,
-                    items.size() + 1, 0, String.join("；", item.reasons())));
+                    items.size() + 1, 0, String.join("；", item.reasons()), item.details()));
         }
         com.offerpilot.common.artifact.BackgroundWork.check();
         return save(owner, new Revision(UUID.randomUUID().toString(), null, Constraints.empty(), items,
@@ -147,7 +151,7 @@ public class CareerRecommendationService implements CareerRerankForChat {
             int rank = items.size() + 1;
             String reason = reason(item, constraints, parent.constraints(), fallback);
             items.add(new Item(item.occupation(), item.baseScore(), scores.get(item.occupation().occupationId()), rank,
-                    item.rank() - rank, reason));
+                    item.rank() - rank, reason,item.details()));
         }
         return new Revision(UUID.randomUUID().toString(), parent.id(), constraints, items,
                 Math.max(0, (clock.getAsLong() - start) / 1_000_000), fallback, java.time.Instant.now().toString());

@@ -23,6 +23,8 @@ import java.util.Map;
 public class CareerAssessmentController {
     private final CareerAssessmentService assessments;
     private final CurrentUser users;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.offerpilot.career.application.AssessmentFollowup followup;
 
     public CareerAssessmentController(CareerAssessmentService assessments, CurrentUser users) {
         this.assessments = assessments;
@@ -49,7 +51,13 @@ public class CareerAssessmentController {
                                                                   HttpServletRequest request) {
         int index;
         try { index = Integer.parseInt(step); } catch (NumberFormatException ex) { throw new BusinessException(ErrorCode.VALIDATION_FAILED); }
-        return ok(assessments.saveAnswer(owner(request), index, body.answer()), request);
+        String owner = owner(request);
+        var saved = assessments.saveAnswer(owner,index,body.answer());
+        if (index<7 && assessments.canFollowup(owner,index) && com.offerpilot.career.application.AssessmentFollowup.needs(body.answer())) {
+            String question = followup.ask(owner,saved.questions().get(index),body.answer());
+            saved = assessments.addFollowup(owner,index,body.answer().strip(),question);
+        }
+        return ok(saved,request);
     }
 
     @PostMapping("/infer")

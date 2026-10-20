@@ -36,6 +36,7 @@ const loading = ref(true)
 const busy = ref(false)
 const error = ref('')
 const step = ref(0)
+const skipped = ref(new Set<number>())
 const draft = ref('')
 const editing = ref(false)
 const scores = ref<Record<RiasecLetter, number>>({ R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 })
@@ -45,8 +46,18 @@ const constraints = ref({ city: '', salary: '', overtime: '' })
 let disposed = false
 onBeforeUnmount(() => (disposed = true))
 
-const answered = computed(() => state.value?.answers.filter((a) => a.trim()).length ?? 0)
+const answered = computed(
+  () => state.value?.answers.slice(0, 7).filter((a) => a.trim()).length ?? 0,
+)
 const questions = computed(() => state.value?.questions ?? [])
+const transcript = computed(() =>
+  questions.value
+    .map((question, index) => ({ question, index }))
+    .filter(
+      ({ index }) =>
+        index !== step.value && (state.value?.answers[index]?.trim() || skipped.value.has(index)),
+    ),
+)
 const finishedQuestions = computed(() => step.value >= questions.value.length)
 const chatting = ref(false)
 const phase = computed(() => {
@@ -62,10 +73,16 @@ const code = computed(() =>
     .join(''),
 )
 
+function nextStep(next: CareerAssessment, exclude = -1) {
+  const pending = (a: string, i: number) => !a.trim() && i !== exclude && !skipped.value.has(i)
+  const extra = next.answers.findIndex((a, i) => i >= 7 && pending(a, i))
+  const base = next.answers.findIndex(pending)
+  return extra >= 0 ? extra : base < 0 ? next.questions.length : base
+}
+
 function apply(next: CareerAssessment) {
   state.value = next
-  const first = next.answers.findIndex((a) => !a.trim())
-  step.value = first === -1 ? next.questions.length : first
+  step.value = nextStep(next)
   draft.value = next.answers[step.value] ?? ''
   // An unconfirmed inference (e.g. after reload) goes straight to the confirmation card.
   if (next.inference && !next.confirmed && !editing.value && !chatting.value)
@@ -114,15 +131,16 @@ function send() {
     () => saveAssessmentAnswer(index, text),
     (next) => {
       // Continue with the next question even when the user is revising earlier answers.
-      const later = next.answers.findIndex((a, i) => i > index && !a.trim())
-      step.value = later === -1 ? next.questions.length : later
+      skipped.value.delete(index)
+      step.value = nextStep(next, index)
       draft.value = next.answers[step.value] ?? ''
     },
   )
 }
 
 function skip() {
-  step.value += 1
+  skipped.value.add(step.value)
+  step.value = state.value ? nextStep(state.value) : step.value + 1
   draft.value = state.value?.answers[step.value] ?? ''
 }
 
@@ -207,8 +225,9 @@ async function restoreTask() {
         不用做 60 道题。回答几个关于你的问题（每次一个），AI 会推断你的 Holland
         兴趣与性格特质，并请你确认、修正。
       </p>
+      <p class="subtle">7 个基础问题；回答较短或模糊时最多补问 5 次，总轮数不超过 12。</p>
       <ol class="transcript">
-        <li v-for="(question, index) in questions.slice(0, step)" :key="index">
+        <li v-for="{ question, index } in transcript" :key="index">
           <p class="bubble ask">{{ question }}</p>
           <p v-if="state!.answers[index]" class="bubble reply">
             {{ state!.answers[index] }}
@@ -332,8 +351,10 @@ async function restoreTask() {
 
     <template v-else-if="phase === 'done' && state?.confirmed">
       <p class="success-banner" role="status">
-        画像已确认：兴趣码 <strong>{{ state.confirmed.code }}</strong
-        >。职业推荐会优先使用这份画像。
+        画像已确认：兴趣码 <strong>{{ state.confirmed.code || '未分化' }}</strong
+        >。{{
+          state.confirmed.code ? '职业推荐会优先使用这份画像。' : '请补充兴趣信息后再推荐职业。'
+        }}
       </p>
       <p class="subtle">
         {{ state.confirmed.traits.map((t) => t.name).join(' · ') }}

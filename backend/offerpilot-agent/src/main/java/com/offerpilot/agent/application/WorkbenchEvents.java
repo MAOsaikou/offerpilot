@@ -22,6 +22,25 @@ public class WorkbenchEvents {
                     event.runId(), event.id(), event.type(), json.writeValueAsString(event));
         } catch (com.fasterxml.jackson.core.JsonProcessingException ex) { throw new IllegalStateException("运行事件无法保存", ex); }
     }
+    void complete(String runId) {
+        jdbc.update("UPDATE agent_runs SET events_finished=true WHERE id=?",runId);
+    }
+    public void authorize(String owner,String runId) { conversations.requireRunOwner(owner,runId); }
+    public record Batch(List<AgentEvent> events, boolean active) {}
+    public Batch tail(String owner,String runId,int after) {
+        conversations.requireRunOwner(owner,runId);
+        jdbc.update("UPDATE agent_runs SET reconnect_until=now()+interval '5 seconds' WHERE id=? AND user_id=?",runId,owner);
+        boolean active=Boolean.TRUE.equals(jdbc.queryForObject("SELECT NOT events_finished AND (lease_expires_at IS NULL OR lease_expires_at>now()) FROM agent_runs WHERE id=? AND user_id=?",Boolean.class,runId,owner));
+        // Read the completion marker BEFORE rows: a completed marker guarantees the following read sees the last append.
+        var events=jdbc.query("SELECT payload FROM agent_events WHERE run_id=? AND seq>? ORDER BY seq LIMIT 500",(rs,n) -> {
+            try { return json.readValue(rs.getString(1),AgentEvent.class); }
+            catch (com.fasterxml.jackson.core.JsonProcessingException ex) { throw new IllegalStateException(ex); }
+        },runId,after);
+        return new Batch(events,active);
+    }
+    boolean connected(String runId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT reconnect_until>now() FROM agent_runs WHERE id=?",Boolean.class,runId));
+    }
     public List<AgentEvent> read(String owner, String runId) {
         conversations.requireRunOwner(owner, runId);
         List<AgentEvent> events = new java.util.ArrayList<>(jdbc.query("SELECT payload FROM agent_events WHERE run_id=? ORDER BY seq", (rs, i) -> {

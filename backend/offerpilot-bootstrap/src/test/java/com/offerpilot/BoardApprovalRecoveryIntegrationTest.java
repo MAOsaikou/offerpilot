@@ -178,8 +178,9 @@ class BoardApprovalRecoveryIntegrationTest extends SharedHttpIntegrationTest {
         // A fresh relay has no in-memory run; the existing events table still reconstructs the plan/tool states.
         var restarted = new com.offerpilot.agent.application.RunRelay(java.time.Duration.ZERO,java.time.Duration.ZERO,workbench);
         assertThat(restarted.history(owner,turn.runId())).isEqualTo(events);
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> restarted.resume(owner,turn.runId(),5))
-                .isInstanceOf(com.offerpilot.common.error.BusinessException.class);
+        // AG-07: a relay without the run in memory resumes from the shared events table after the cursor.
+        assertThat(restarted.resume(owner,turn.runId(),5).collectList().block(java.time.Duration.ofSeconds(10)))
+                .isEqualTo(events.subList(5,7));
         var required = new com.offerpilot.agent.event.AgentEvent.ApprovalRequired("",8,turn.runId(),now,"s",ticket.id(),"c",
                 "startInterview",original,"确认",ticket.expiresAt(),List.of("role","kind"));
         relay.start(owner,reactor.core.publisher.Flux.just(required)).collectList().block();

@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * CD-01: a fixed conversational state machine — one question per turn, seven turns — then CD-02
+ * CD-01: seven base questions and at most five clarifications, one question per turn — then CD-02
  * inference and a user-confirmed profile that recommendations use instead of the interest chips.
  */
 @Service
@@ -32,6 +32,7 @@ public class CareerAssessmentService {
 
     public record Confirmed(Map<String, Integer> riasec, String code, List<CareerAssessmentInference.Trait> traits,
                             CareerAssessmentInference.Constraints constraints) {}
+    public record Followup(int parent, String question, String answer) {}
     public record Assessment(List<String> questions, List<String> answers, CareerAssessmentInference.Inference inference,
                              Confirmed confirmed, String confirmedAt) {}
 
@@ -50,11 +51,38 @@ public class CareerAssessmentService {
 
     @Transactional(readOnly = true)
     public Assessment get(String owner) {
-        var rows = jdbc.query("SELECT * FROM career_assessments WHERE user_id=?", (rs, row) -> new Assessment(QUESTIONS,
-                answers(rs.getString("answers")), read(rs.getString("inference"), CareerAssessmentInference.Inference.class),
+        var rows = jdbc.query("SELECT * FROM career_assessments WHERE user_id=?", (rs, row) -> assessment(answers(rs.getString("answers")), followups(rs.getString("followups")), read(rs.getString("inference"), CareerAssessmentInference.Inference.class),
                 read(rs.getString("confirmed"), Confirmed.class),
                 rs.getTimestamp("confirmed_at") == null ? null : rs.getTimestamp("confirmed_at").toInstant().toString()), owner);
         return rows.isEmpty() ? new Assessment(QUESTIONS, answers("[]"), null, null, null) : rows.get(0);
+    }
+
+    private Assessment assessment(List<String> base, List<Followup> extra, CareerAssessmentInference.Inference inferred,
+                                  Confirmed confirmed, String at) {
+        var questions = new ArrayList<>(QUESTIONS);
+        var values = new ArrayList<>(base);
+        extra.forEach(f -> { questions.add(f.question()); values.add(f.answer()); });
+        return new Assessment(List.copyOf(questions),List.copyOf(values),inferred,confirmed,at);
+    }
+    private List<Followup> followups(String raw) {
+        List<Followup> result = read(raw,new TypeReference<List<Followup>>() {});
+        return result == null ? List.of() : result;
+    }
+    public boolean canFollowup(String owner,int parent) {
+        if (parent<0 || parent>=QUESTIONS.size()) return false;
+        var extra=followups(jdbc.queryForObject("SELECT followups FROM career_assessments WHERE user_id=?",String.class,owner));
+        return extra.size()<5 && extra.stream().noneMatch(f -> f.parent()==parent);
+    }
+    @Transactional
+    public Assessment addFollowup(String owner, int parent, String expectedAnswer, String question) {
+        lockRow(owner);
+        var current = get(owner);
+        var extra = new ArrayList<>(followups(jdbc.queryForObject("SELECT followups FROM career_assessments WHERE user_id=?",String.class,owner)));
+        if (parent<0 || parent>=QUESTIONS.size() || !current.answers().get(parent).equals(expectedAnswer)
+                || question==null || current.questions().size()>=12 || extra.stream().anyMatch(f -> f.parent()==parent)) return current;
+        extra.add(new Followup(parent,question,""));
+        jdbc.update("UPDATE career_assessments SET followups=?::jsonb,inference=NULL WHERE user_id=?",write(extra),owner);
+        return get(owner);
     }
 
     /** Confirmed profile for recommendations, or null when the user has not confirmed one. */
@@ -63,11 +91,20 @@ public class CareerAssessmentService {
 
     @Transactional
     public Assessment saveAnswer(String owner, int step, String answer) {
-        if (step < 0 || step >= QUESTIONS.size()) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题目序号必须为 0-6。");
+        if (step < 0 || step >= 12) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题目序号无效。");
         if (answer == null || answer.codePointCount(0, answer.length()) > 1000)
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "回答最多 1000 字。");
         lockRow(owner);
-        var answers = new ArrayList<>(get(owner).answers());
+        var current = get(owner);
+        if (step >= current.questions().size()) throw new BusinessException(ErrorCode.VALIDATION_FAILED,"题目不存在");
+        var answers = new ArrayList<>(current.answers().subList(0,QUESTIONS.size()));
+        if (step >= QUESTIONS.size()) {
+            var extra = new ArrayList<>(followups(jdbc.queryForObject("SELECT followups FROM career_assessments WHERE user_id=?",String.class,owner)));
+            var old = extra.get(step-QUESTIONS.size());
+            extra.set(step-QUESTIONS.size(),new Followup(old.parent(),old.question(),answer.strip()));
+            jdbc.update("UPDATE career_assessments SET followups=?::jsonb,inference=NULL WHERE user_id=?",write(extra),owner);
+            return get(owner);
+        }
         String text = answer.strip();
         if (text.equals(answers.get(step))) return get(owner);
         answers.set(step, text);
@@ -80,27 +117,40 @@ public class CareerAssessmentService {
     public Assessment infer(String owner) {
         var current = get(owner);
         var qa = new ArrayList<CareerAssessmentInference.QA>();
-        for (int i = 0; i < QUESTIONS.size(); i++)
-            if (!current.answers().get(i).isBlank()) qa.add(new CareerAssessmentInference.QA(QUESTIONS.get(i), current.answers().get(i)));
-        if (qa.size() < MIN_ANSWERS)
+        for (int i = 0; i < current.questions().size(); i++)
+            if (!current.answers().get(i).isBlank()) qa.add(new CareerAssessmentInference.QA(current.questions().get(i), current.answers().get(i)));
+        if (current.answers().subList(0,QUESTIONS.size()).stream().filter(a -> !a.isBlank()).count() < MIN_ANSWERS)
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请至少回答 " + MIN_ANSWERS + " 个问题，再生成画像。");
+        String extraSnapshot = write(java.util.stream.IntStream.range(QUESTIONS.size(),current.questions().size())
+                .mapToObj(i -> Map.of("question",current.questions().get(i),"answer",current.answers().get(i))).toList());
         var result = inference.infer(owner, qa);
         com.offerpilot.common.artifact.BackgroundWork.check();
-        jdbc.update("UPDATE career_assessments SET inference=?::jsonb WHERE user_id=? AND answers=?::jsonb",
-                write(result), owner, write(current.answers()));
+        jdbc.update("UPDATE career_assessments SET inference=?::jsonb WHERE user_id=? AND answers=?::jsonb AND (SELECT coalesce(jsonb_agg(jsonb_build_object('question',f->'question','answer',f->'answer')),'[]'::jsonb) FROM jsonb_array_elements(followups) f)=?::jsonb",
+                write(result), owner, write(current.answers().subList(0,QUESTIONS.size())),extraSnapshot);
         return get(owner);
     }
 
     @Transactional
     public Assessment confirm(String owner, Map<String, Integer> riasec, List<String> traitNames,
                               CareerAssessmentInference.Constraints constraints) {
+        return confirm(owner,riasec,traitNames,constraints,false);
+    }
+    @Transactional
+    public Assessment confirmQuestionnaire(String owner, Map<String,Integer> scores) {
+        lockOwner(owner);
+        var previous = get(owner).confirmed();
+        return confirm(owner,scores, previous==null ? List.of() : previous.traits().stream().map(CareerAssessmentInference.Trait::name).toList(),
+                previous==null ? new CareerAssessmentInference.Constraints(profiles.get(owner).city(),"","") : previous.constraints(),true);
+    }
+    private Assessment confirm(String owner,Map<String,Integer> riasec,List<String> traitNames,
+                               CareerAssessmentInference.Constraints constraints,boolean allowFlat) {
         var scores = new LinkedHashMap<String, Integer>();
         for (char letter : CareerAssessmentInference.LETTERS.toCharArray()) {
             Integer value = riasec == null ? null : riasec.get(String.valueOf(letter));
             if (value == null || value < 0 || value > 100) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "六个兴趣维度都需要 0-100 的分数。");
             scores.put(String.valueOf(letter), value);
         }
-        if (scores.values().stream().distinct().count() == 1)
+        if (!allowFlat && scores.values().stream().distinct().count() == 1)
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "六个维度分数完全相同，无法区分兴趣倾向，请调整后再确认。");
         lockOwner(owner);
         lockRow(owner);
@@ -108,11 +158,11 @@ public class CareerAssessmentService {
         var inferred = previous.inference();
         var byName = new LinkedHashMap<String, CareerAssessmentInference.Trait>();
         if (previous.confirmed() != null) previous.confirmed().traits().forEach(t -> byName.put(t.name(), t));
-        if (inferred != null) inferred.traits().forEach(t -> byName.put(t.name(), t));
+        if (!allowFlat && inferred != null) inferred.traits().forEach(t -> byName.put(t.name(), t));
         // Kept traits keep their evidence; user-added ones are marked as self-reported (no quote).
         var traits = traitNames.stream().map(String::strip).filter(n -> !n.isEmpty()).distinct()
                 .map(n -> byName.getOrDefault(n, new CareerAssessmentInference.Trait(n, 1.0, ""))).toList();
-        var confirmed = new Confirmed(scores, code(scores), traits, constraints);
+        var confirmed = new Confirmed(scores, scores.values().stream().distinct().count()==1 ? "" : code(scores), traits, constraints);
         jdbc.update("UPDATE career_assessments SET confirmed=?::jsonb, confirmed_at=now() WHERE user_id=?", write(confirmed), owner);
         profiles.saveAssessmentCity(owner, constraints.city());
         return get(owner);

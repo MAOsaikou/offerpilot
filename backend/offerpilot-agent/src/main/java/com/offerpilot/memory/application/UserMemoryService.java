@@ -74,7 +74,7 @@ public class UserMemoryService {
         if (jdbc.update("DELETE FROM user_memories WHERE user_id=? AND id=?", owner, id) == 0) throw missing();
     }
     @Transactional
-    public void clear(String owner) { lock(owner); jdbc.update("DELETE FROM user_memories WHERE user_id=?", owner); }
+    public void clear(String owner) { lock(owner); jdbc.update("UPDATE memory_candidates SET status='DELETED' WHERE user_id=?", owner); jdbc.update("DELETE FROM user_memories WHERE user_id=?", owner); }
 
     /** Stable user-authored facts from an explicit profile save; shares cap, validation, FTS and owner lock. */
     @Transactional
@@ -106,7 +106,7 @@ public class UserMemoryService {
     public List<Memory> recall(String owner, String query) {
         if (!enabled(owner)) return List.of();
         String q = OccupationDocument.lexicalQuery(query == null ? "" : query);
-        // Reserve one latest GOAL and one latest LOCATION; fill remaining slots by FTS relevance/recency.
+        // Reserve one latest GOAL, LOCATION and PREFERENCE; fill remaining slots by FTS relevance/recency.
         // A hard total of five applies even when the user has many goals and locations.
         return jdbc.query("""
                 WITH ranked AS (
@@ -114,8 +114,8 @@ public class UserMemoryService {
                     ts_rank_cd(tsv,to_tsquery('simple',?)) AS score
                   FROM user_memories m WHERE user_id=?
                 ) SELECT * FROM ranked
-                WHERE (kind IN ('GOAL','LOCATION') AND position=1) OR score>0
-                ORDER BY (kind IN ('GOAL','LOCATION') AND position=1) DESC,score DESC,updated_at DESC,id LIMIT 5
+                WHERE (kind IN ('GOAL','LOCATION','PREFERENCE') AND position=1) OR score>0
+                ORDER BY (kind IN ('GOAL','LOCATION','PREFERENCE') AND position=1) DESC,score DESC,updated_at DESC,id LIMIT 5
                 """, UserMemoryService::map, q, owner);
     }
 
@@ -153,6 +153,66 @@ public class UserMemoryService {
                 && grounded.fact().contains(candidate.fact()))) throw invalid("记忆必须来自本轮用户原话");
         return insert(owner, new Draft(candidate.kind(), candidate.fact()), candidate.source(),
                 (String) row.get("conversation_id"), (String) row.get("user_message_id"));
+    }
+    public record Pending(String id, Kind kind, String fact, double confidence, String extractor,
+                          String sourceConversationId, String sourceMessageId) {}
+    public record MessageSource(String conversationId, String messageId, String text) {}
+    public MessageSource extractionSource(String owner, String runId) {
+        var rows = jdbc.query("""
+                SELECT r.conversation_id,m.id,m.plain_text FROM agent_runs r
+                JOIN messages m ON m.id=r.user_message_id AND m.user_id=r.user_id AND m.role='USER'
+                WHERE r.id=? AND r.user_id=?
+                """, (rs,n) -> new MessageSource(rs.getString(1),rs.getString(2),rs.getString(3)), runId,owner);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+    public List<Pending> candidates(String owner) {
+        return jdbc.query("""
+                SELECT c.* FROM memory_candidates c WHERE user_id=? AND status='PENDING'
+                AND NOT EXISTS(SELECT 1 FROM user_memories m WHERE m.user_id=c.user_id AND m.normalized_fact=c.normalized_fact)
+                ORDER BY created_at,id
+                """, (rs,n) -> new Pending(rs.getString("id"),Kind.valueOf(rs.getString("kind")),rs.getString("fact"),
+                rs.getDouble("confidence"),rs.getString("extractor"),rs.getString("source_conversation_id"),rs.getString("source_message_id")),owner);
+    }
+    @Transactional
+    public void suggest(String owner, String runId, MessageSource source, List<AutomaticMemoryExtractor.Fact> facts) {
+        lock(owner);
+        if (!enabled(owner)) return;
+        if (jdbc.queryForList("SELECT id FROM agent_runs WHERE id=? AND user_id=? AND status='RUNNING' FOR UPDATE",String.class,runId,owner).isEmpty()
+                || !source.equals(extractionSource(owner,runId))) return;
+        int pending = candidates(owner).size();
+        for (var fact : facts) {
+            if (pending >= CAP) break;
+            // Revalidate independently of the provider, including first-person assertion and exact provenance.
+            if (AutomaticMemoryExtractor.rules(source.text()).stream().noneMatch(f -> f.fact().equals(fact.fact()) && f.kind()==fact.kind())
+                    || !Double.isFinite(fact.confidence()) || fact.confidence()<0 || fact.confidence()>1 || contains(owner,fact.fact())) continue;
+            pending += jdbc.update("""
+                    INSERT INTO memory_candidates(id,user_id,kind,fact,normalized_fact,confidence,extractor,source_conversation_id,source_message_id)
+                    VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,normalized_fact) DO NOTHING
+                    """, "mc_"+UUID.randomUUID(),owner,fact.kind().name(),fact.fact(),normalize(fact.fact()),fact.confidence(),fact.extractor(),source.conversationId(),source.messageId());
+        }
+    }
+    @Transactional
+    public Memory confirmCandidate(String owner, String id) {
+        lock(owner);
+        if (!enabled(owner)) throw conflict("长期记忆已关闭，未保存");
+        var candidate = candidates(owner).stream().filter(c -> c.id().equals(id)).findFirst().orElse(null);
+        if (candidate == null) {
+            var accepted = jdbc.query("""
+                    SELECT m.* FROM memory_candidates c JOIN user_memories m ON m.user_id=c.user_id AND m.normalized_fact=c.normalized_fact
+                    WHERE c.user_id=? AND c.id=? AND c.status='ACCEPTED'
+                    """,UserMemoryService::map,owner,id);
+            if (accepted.isEmpty()) throw missing();
+            return accepted.get(0);
+        }
+        var memory = insert(owner,new Draft(candidate.kind(),candidate.fact()),Source.SUGGESTED_ACCEPTED,
+                candidate.sourceConversationId(),candidate.sourceMessageId());
+        jdbc.update("UPDATE memory_candidates SET status='ACCEPTED' WHERE user_id=? AND id=?",owner,id);
+        return memory;
+    }
+    @Transactional
+    public void deleteCandidate(String owner, String id) {
+        lock(owner);
+        if (jdbc.update("UPDATE memory_candidates SET status='DELETED' WHERE user_id=? AND id=?",owner,id)==0) throw missing();
     }
     private Memory insert(String owner, Draft draft, Source source, String conversation, String message) {
         validate(draft);

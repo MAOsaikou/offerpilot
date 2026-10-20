@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import CareerCardFacts from '@/shared/components/CareerCardFacts.vue'
 import { RouterLink } from 'vue-router'
 import type { CareerRecommendationPayload, CareerTargetSelection } from '@/shared/types/cards'
 
@@ -69,6 +70,7 @@ const valid = computed(
         >
           引用来源：{{ citation.title }} · {{ citation.excerpt }}
         </p>
+        <CareerCardFacts :details="item.details" :match="item.similarity" />
         <button
           v-if="interactive"
           type="button"

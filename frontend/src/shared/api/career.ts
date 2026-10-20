@@ -124,6 +124,7 @@ export interface CareerRevision {
     rank: number
     rankDelta: number
     changeReason: string
+    details?: CareerCardDetails
   }>
   elapsedMs: number
   explanationFallback: boolean
@@ -151,4 +152,35 @@ export const rerankCareers = (id: string, constraints: CareerConstraints, signal
 export const compareCareers = (ids: string[], signal?: AbortSignal) =>
   apiRequest<CareerComparison>(`/career/compare?ids=${ids.map(encodeURIComponent).join(',')}`, {
     signal,
+  })
+
+export interface CareerCardDetails {
+  evidence: Array<{ field: string; value: string; source: string }>
+  typicalTitles: string[]
+  coreSkills: string[]
+  growthPath: string
+  salaryRange: string
+  companies: string[]
+  concerns: string
+  sourceOccupationId: string
+  source: string
+}
+export interface CareerQuestionnaire {
+  questions: Array<{ id: string; axis: RiasecLetter; text: string }>
+  answers: Record<string, number>
+  revision: number
+  completed: boolean
+  scores: Partial<Record<RiasecLetter, number>>
+  code: string
+}
+export const getQuestionnaire = () => apiRequest<CareerQuestionnaire>('/career/questionnaire')
+export const saveQuestionnaireAnswer = (id: string, value: number) =>
+  apiRequest<CareerQuestionnaire>(`/career/questionnaire/answers/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value }),
+  })
+export const completeQuestionnaire = (revision: number) =>
+  apiRequest<CareerQuestionnaire>('/career/questionnaire/complete', {
+    method: 'POST',
+    body: JSON.stringify({ revision }),
   })

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { sessionRevision } from '@/shared/utils/authSession'
 import { RouterLink } from 'vue-router'
 import type { AssessmentConfirmed, CareerProfile } from '@/shared/api/career'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { useCareerProfile } from '@/shared/composables/useCareerProfile'
 import CareerAssessment from '../components/CareerAssessment.vue'
+import CareerQuestionnaire from '../components/CareerQuestionnaire.vue'
 import ProfilePersonality from '../components/ProfilePersonality.vue'
 import ProfileUpdates from '../components/ProfileUpdates.vue'
 import TargetPlanPanel from '@/shared/components/TargetPlanPanel.vue'
@@ -21,6 +23,7 @@ const {
   applyAssessment,
 } = useCareerProfile()
 const assessmentRevision = ref(0)
+const questionnaireRevision = ref(0)
 const evidenceBusy = ref(false)
 function evidenceConfirmed(saved: CareerProfile) {
   profile.value.skills = saved.skills
@@ -30,6 +33,11 @@ function evidenceConfirmed(saved: CareerProfile) {
 function personalityConfirmed(assessment: AssessmentConfirmed) {
   applyAssessment(assessment)
   assessmentRevision.value++
+  questionnaireRevision.value++
+}
+function assessmentChanged(assessment: AssessmentConfirmed | null) {
+  applyAssessment(assessment)
+  questionnaireRevision.value++
 }
 const interests = ['技术研发', '产品策划', '数据分析', '创意设计', '沟通协作', '研究探索']
 const directions = [
@@ -151,7 +159,7 @@ function choose(role: string) {
         <span class="tag">02 · 喜欢与擅长</span>
         <h2 id="interests-title">兴趣与技能</h2>
         <p v-if="profile.assessment" class="helper-note">
-          已确认的 Holland 兴趣码：<strong>{{ profile.assessment.code }}</strong>
+          已确认的 Holland 兴趣码：<strong>{{ profile.assessment.code || '未分化' }}</strong>
         </p>
         <label class="field"
           >已有技能<textarea
@@ -206,11 +214,16 @@ function choose(role: string) {
         <p v-else class="subtle">{{ loading ? '正在读取性格画像…' : '请先重试读取职业画像。' }}</p>
       </section>
     </div>
+    <CareerQuestionnaire
+      :key="`${sessionRevision}:${questionnaireRevision}`"
+      :before-confirm="flushProfile"
+      @confirmed="personalityConfirmed"
+    />
     <div id="career-assessment" tabindex="-1">
       <CareerAssessment
-        :key="assessmentRevision"
+        :key="`${sessionRevision}:${assessmentRevision}`"
         :before-confirm="flushProfile"
-        @changed="applyAssessment"
+        @changed="assessmentChanged"
       />
     </div>
     <div class="section-heading">

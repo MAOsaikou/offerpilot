@@ -6,6 +6,9 @@ import { sessionRevision } from '@/shared/utils/authSession'
 vi.mock('@/shared/api/memories', async (original) => ({
   ...(await original<typeof api>()),
   listMemories: vi.fn(),
+  listMemoryCandidates: vi.fn(),
+  confirmMemoryCandidate: vi.fn(),
+  deleteMemoryCandidate: vi.fn(),
   addMemory: vi.fn(),
   editMemory: vi.fn(),
   deleteMemory: vi.fn(),
@@ -43,6 +46,7 @@ function mount() {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(api.listMemoryCandidates).mockResolvedValue([])
   host = document.createElement('div')
   document.body.append(host)
   vi.mocked(api.listMemories).mockResolvedValue({ items: [memory], memoryEnabled: true, limit: 50 })
@@ -191,4 +195,53 @@ it('Settings identity key remount prevents old owner responses and drafts from a
   expect(host.querySelectorAll('li')).toHaveLength(0)
   expect(host.textContent).toContain('还没有长期记忆')
   expect(host.querySelector<HTMLInputElement>('input[type=checkbox]')!.checked).toBe(false)
+})
+it('shows exact extracted facts with confidence and source and confirms or discards explicitly', async () => {
+  const candidate: api.MemoryCandidate = {
+    id: 'candidate',
+    kind: 'LOCATION',
+    fact: '我的目标城市是杭州',
+    confidence: 0.85,
+    extractor: 'model',
+    sourceConversationId: 'conv',
+    sourceMessageId: 'msg',
+  }
+  vi.mocked(api.listMemoryCandidates).mockResolvedValue([candidate])
+  vi.mocked(api.confirmMemoryCandidate)
+    .mockRejectedValueOnce(new Error('暂时失败'))
+    .mockResolvedValue(memory)
+  mount()
+  await flush()
+  expect(host.textContent).toContain('85%')
+  expect(host.querySelector('a')?.getAttribute('href')).toContain('/chat/conv?messageId=msg')
+  button('确认候选').click()
+  await flush()
+  expect(host.textContent).toContain('暂时失败')
+  expect(host.querySelector('[aria-label="待确认记忆"]')).not.toBeNull()
+  button('确认候选').click()
+  await flush()
+  expect(api.confirmMemoryCandidate).toHaveBeenLastCalledWith('candidate')
+  expect(host.querySelector('[aria-label="待确认记忆"]')).toBeNull()
+})
+it('disabled memory prevents candidate acceptance but still allows candidate deletion', async () => {
+  vi.mocked(api.listMemories).mockResolvedValue({ items: [], memoryEnabled: false, limit: 50 })
+  vi.mocked(api.listMemoryCandidates).mockResolvedValue([
+    {
+      id: 'candidate',
+      kind: 'GOAL',
+      fact: '我想做后端',
+      confidence: 0.75,
+      extractor: 'rule',
+      sourceConversationId: 'c',
+      sourceMessageId: 'm',
+    },
+  ])
+  vi.mocked(api.deleteMemoryCandidate).mockResolvedValue(null)
+  mount()
+  await flush()
+  expect(button('确认候选').disabled).toBe(true)
+  button('删除候选').click()
+  await flush()
+  expect(api.deleteMemoryCandidate).toHaveBeenCalledWith('candidate')
+  expect(host.querySelector('[aria-label="待确认记忆"]')).toBeNull()
 })

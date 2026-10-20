@@ -41,3 +41,18 @@ export const setMemoryEnabled = (memoryEnabled: boolean) =>
     method: 'PUT',
     body: JSON.stringify({ memoryEnabled }),
   })
+
+export interface MemoryCandidate extends MemoryDraft {
+  id: string
+  confidence: number
+  extractor: 'model' | 'rule'
+  sourceConversationId: string
+  sourceMessageId: string
+}
+export const listMemoryCandidates = () => apiRequest<MemoryCandidate[]>('/memories/candidates')
+export const confirmMemoryCandidate = (id: string) =>
+  apiRequest<UserMemory>(`/memories/candidates/${encodeURIComponent(id)}/confirm`, {
+    method: 'POST',
+  })
+export const deleteMemoryCandidate = (id: string) =>
+  apiRequest<null>(`/memories/candidates/${encodeURIComponent(id)}`, { method: 'DELETE' })

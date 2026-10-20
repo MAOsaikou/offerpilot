@@ -62,6 +62,39 @@ class RunRelayTest {
         assertThat(cancelled).isFalse();
     }
 
+    @Test void anotherInstanceTailsSharedEventsAfterCursorAndOriginalSurvivesGrace() {
+        var history=org.mockito.Mockito.mock(WorkbenchEvents.class);
+        var stored=new CopyOnWriteArrayList<AgentEvent>();
+        var remote=new AtomicBoolean();
+        var active=new AtomicBoolean(true);
+        org.mockito.Mockito.doAnswer(c -> { stored.add(c.getArgument(0)); return null; }).when(history).append(org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.when(history.connected("run_1")).thenAnswer(c -> remote.get());
+        org.mockito.Mockito.when(history.tail(org.mockito.ArgumentMatchers.eq("owner"),org.mockito.ArgumentMatchers.eq("run_1"),org.mockito.ArgumentMatchers.anyInt()))
+                .thenAnswer(c -> { remote.set(true); int after=c.getArgument(2); return new WorkbenchEvents.Batch(stored.stream().filter(e -> e.id()>after).toList(),active.get()); });
+        var producer=new RunRelay(Duration.ofMillis(200),Duration.ofMillis(50),history);
+        var other=new RunRelay(Duration.ofMillis(200),Duration.ofMillis(50),history);
+        var source=Sinks.many().unicast().<AgentEvent>onBackpressureBuffer();
+        var cancelled=new AtomicBoolean();
+        var initial=producer.start("owner",source.asFlux().startWith(started()).doOnCancel(() -> cancelled.set(true))).subscribe();
+        source.tryEmitNext(delta(2,"a"));
+        await().atMost(Duration.ofSeconds(3)).until(() -> stored.size()==2);
+        var received=new CopyOnWriteArrayList<Integer>();
+        var done=new AtomicBoolean();
+        other.resume("owner","run_1",2).subscribe(e -> received.add(e.id()),e -> { throw new AssertionError(e); },() -> done.set(true));
+        await().atMost(Duration.ofSeconds(3)).untilTrue(remote);
+        initial.dispose();
+        source.tryEmitNext(delta(3,"b"));
+        await().pollDelay(Duration.ofMillis(350)).atMost(Duration.ofSeconds(3)).until(() -> received.size()==1);
+        assertThat(cancelled).isFalse();
+        source.tryEmitNext(delta(4,"c"));
+        source.tryEmitNext(new AgentEvent.RunCompleted("run.completed",5,"run_1",Instant.now(),"msg","COMPLETED",0));
+        source.tryEmitComplete(); active.set(false);
+        await().atMost(Duration.ofSeconds(3)).untilTrue(done);
+        assertThat(received).containsExactly(3,4,5);
+        await().atMost(Duration.ofSeconds(3)).until(() -> producer.tracked()==0);
+        assertThat(producer.resume("owner","run_1",3).map(AgentEvent::id).collectList().block(Duration.ofSeconds(3))).containsExactly(4,5);
+    }
+
     @Test void nobodyReconnectingCancelsTheRunAfterGrace() {
         var relay = new RunRelay(Duration.ofMillis(50), Duration.ofMillis(50));
         Sinks.Many<AgentEvent> model = Sinks.many().unicast().onBackpressureBuffer();

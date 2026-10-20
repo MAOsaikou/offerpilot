@@ -29,6 +29,21 @@ public class MemoryChat {
     public MemoryChat(UserMemoryService memories, ApprovalService approvals, ObjectMapper json) {
         this.memories = memories; this.approvals = approvals; this.json = json;
     }
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.offerpilot.memory.application.AutomaticMemoryExtractor automatic;
+    public Flux<AgentEvent> collect(String owner, String runId) { return collect(owner,runId,() -> true); }
+    public Flux<AgentEvent> collect(String owner, String runId, java.util.function.BooleanSupplier active) {
+        if (automatic == null) return Flux.empty();
+        return com.offerpilot.llm.UsageJournal.<Void>callable(() -> {
+            if (!active.getAsBoolean() || !enabled(owner)) return null;
+            var source = memories.extractionSource(owner,runId);
+            if (source != null) {
+                var facts=automatic.extract(owner,source.text());
+                if (active.getAsBoolean()) memories.suggest(owner,runId,source,facts);
+            }
+            return null;
+        }).subscribeOn(Schedulers.boundedElastic()).onErrorComplete().thenMany(Flux.empty());
+    }
     public static boolean action(String action) { return ACTION.equals(action); }
     public static void validate(Map<String, Object> args) {
         if (args == null || !args.keySet().equals(Set.of("kind", "fact", "source"))) throw invalid();
@@ -59,6 +74,7 @@ public class MemoryChat {
     public MemoryCandidate.Candidate candidate(String owner, String content) {
         if (!enabled(owner)) return null;
         var candidate = MemoryCandidate.extract(content);
+        if (automatic != null && candidate != null && candidate.source() != UserMemoryService.Source.EXPLICIT) return null;
         if (candidate == null || candidate.source() == UserMemoryService.Source.SUGGESTED_ACCEPTED
                 && (memories.contains(owner, candidate.fact()) || memories.list(owner).items().size() >= UserMemoryService.CAP))
             return null;

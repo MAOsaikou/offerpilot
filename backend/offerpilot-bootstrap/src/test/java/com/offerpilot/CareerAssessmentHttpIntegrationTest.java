@@ -39,6 +39,52 @@ class CareerAssessmentHttpIntegrationTest extends SharedHttpIntegrationTest {
         return JSON.readTree(response.body()).path("data");
     }
 
+    @Test void shortAnswersClarifyOncePerBaseAndNeverExceedTwelveWithOwnerIsolation() throws Exception {
+        String token=guests.create().accessToken();
+        for(int i=0;i<7;i++) {
+            var saved=data(call("PUT","/assessment/answers/"+i,token,Map.of("answer","不知道")));
+            assertThat(saved.path("questions").size()).isEqualTo(Math.min(8+i,12));
+            assertThat(saved.path("questions")).allSatisfy(q -> assertThat(q.asText()).isNotBlank());
+        }
+        var repeated=data(call("PUT","/assessment/answers/0",token,Map.of("answer","还没想好")));
+        assertThat(repeated.path("questions").size()).isEqualTo(12);
+        for(int i=7;i<12;i++) data(call("PUT","/assessment/answers/"+i,token,Map.of("answer","我喜欢编程，做过一个可用的小项目")));
+        assertThat(data(call("GET","/assessment",token,null)).path("answers").get(7).asText()).contains("可用的小项目");
+        assertThat(data(call("GET","/assessment",guests.create().accessToken(),null)).path("questions").size()).isEqualTo(7);
+        assertThat(call("PUT","/assessment/answers/12",token,Map.of("answer","越界")).statusCode()).isEqualTo(400);
+    }
+    @Test void questionnaireResumesAndExplicitCompletionReplacesOnlyInterests() throws Exception {
+        String token=guests.create().accessToken();
+        var confirmed=data(call("PUT","/assessment/confirm",token,Map.of("riasec",Map.of("R",20,"I",90,"A",10,"S",40,"E",60,"C",30),
+                "traits",List.of("细致"),"city","杭州","salary","12k","overtime","双休"))).path("confirmed");
+        data(call("PUT","/questionnaire/answers/R1",token,Map.of("value",1)));
+        assertThat(data(call("GET","/questionnaire",token,null)).path("answers").path("R1").asInt()).isEqualTo(1);
+        assertThat(data(call("GET","/questionnaire",guests.create().accessToken(),null)).path("answers").size()).isZero();
+        assertThat(call("PUT","/questionnaire/answers/R1",token,Map.of("value",6)).statusCode()).isEqualTo(400);
+        assertThat(call("POST","/questionnaire/complete",token,Map.of("revision",1)).statusCode()).isEqualTo(400);
+        JsonNode state=null;
+        for(var q:com.offerpilot.career.application.CareerQuestionnaire.QUESTIONS)
+            state=data(call("PUT","/questionnaire/answers/"+q.id(),token,Map.of("value",q.axis().equals("I")?5:q.axis().equals("A")?4:q.axis().equals("S")?3:1)));
+        assertThat(data(call("GET","/profile",token,null)).path("assessment")).isEqualTo(confirmed);
+        assertThat(call("POST","/questionnaire/complete",token,Map.of("revision",0)).statusCode()).isEqualTo(400);
+        var done=data(call("POST","/questionnaire/complete",token,Map.of("revision",state.path("revision").asInt())));
+        assertThat(done.path("code").asText()).isEqualTo("IAS");
+        var merged=data(call("GET","/profile",token,null)).path("assessment");
+        assertThat(merged.path("code").asText()).isEqualTo("IAS");
+        assertThat(merged.path("traits")).isEqualTo(confirmed.path("traits"));
+        assertThat(merged.path("constraints")).isEqualTo(confirmed.path("constraints"));
+        data(call("POST","/questionnaire/complete",token,Map.of("revision",state.path("revision").asInt())));
+        var result=careers.recommend(users.require("Bearer "+token));
+        assertThat(result.payload().recommendations()).hasSizeBetween(5,8).allSatisfy(card -> {
+            assertThat(card.details().sourceOccupationId()).isEqualTo(card.occupationId());
+            assertThat(card.details().evidence()).hasSizeGreaterThanOrEqualTo(2);
+            assertThat(card.details().typicalTitles()).isNotEmpty();assertThat(card.details().companies()).isNotEmpty();
+            assertThat(card.details().salaryRange()).isNotBlank();assertThat(card.details().concerns()).isNotBlank();
+        });
+        data(call("PUT","/questionnaire/answers/R1",token,Map.of("value",5)));
+        assertThat(data(call("GET","/questionnaire",token,null)).path("completed").asBoolean()).isFalse();
+    }
+
     @Test void threePanelsRoundTripAndLegacyWritesPreserveNewFields() throws Exception {
         String token = guests.create().accessToken();
         var empty = data(call("GET", "/profile", token, null));
@@ -113,7 +159,8 @@ class CareerAssessmentHttpIntegrationTest extends SharedHttpIntegrationTest {
         // Fewer than four answers: not enough evidence for a profile.
         assertThat(call("POST", "/assessment/infer", token, null).statusCode()).isEqualTo(400);
         data(call("PUT", "/assessment/answers/3", token, Map.of("answer", answers[3])));
-        assertThat(call("PUT", "/assessment/answers/7", token, Map.of("answer", "x")).statusCode()).isEqualTo(400);
+        // Index 7 may now hold a dynamic follow-up; 12 is past the 12-question cap.
+        assertThat(call("PUT", "/assessment/answers/12", token, Map.of("answer", "x")).statusCode()).isEqualTo(400);
         var inferred = data(call("POST", "/assessment/infer", token, null)).path("inference");
         // Offline test context: keyword rules, every quote taken from the answers.
         assertThat(inferred.path("source").asText()).isEqualTo("rule");
