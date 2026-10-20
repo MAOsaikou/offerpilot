@@ -357,13 +357,18 @@ class ChatHttpIntegrationTest {
         var second = request("POST", "/agent/chat", token, json.writeValueAsString(java.util.Map.of("conversationId", conv, "content", "适合哪些岗位？")));
         assertThat(second.body()).contains("run.completed");
         var prompt = json.readTree(requestBody.get()).path("messages");
-        assertThat(prompt.size()).isEqualTo(4);
+        // AG-02: planner keeps the raw user text (shared SC-01 screen) and sends selection state as a separate system message.
+        assertThat(prompt.size()).isBetween(4, 5);
+        assertThat(prompt.get(prompt.size() - 1).path("content").asText()).isEqualTo("适合哪些岗位？");
         assertThat(prompt.get(1).path("content").asText()).isEqualTo("我的专业是物理");
         assertThat(prompt.get(2).path("role").asText()).isEqualTo("assistant");
         var restored = request("GET", "/conversations/" + conv + "/messages", token, null);
         assertThat(json.readTree(restored.body()).path("data").path("items").size()).isEqualTo(4);
         request("POST", "/agent/chat", token, "{\"content\":\"新的对话\"}");
-        assertThat(json.readTree(requestBody.get()).path("messages").size()).isEqualTo(2);
+        var fresh = json.readTree(requestBody.get()).path("messages");
+        // Planner/reply prompts now run concurrently; the last captured one has 2 or 3 messages (optional selection-state system message).
+        assertThat(fresh.size()).isBetween(2, 3);
+        assertThat(fresh.toString()).doesNotContain("我的专业是物理");
         assertThat(conversations.list(owner(token), 1, 20).items()).hasSize(2);
     }
 
