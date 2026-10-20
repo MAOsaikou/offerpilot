@@ -39,10 +39,14 @@ class MatchJobExecutionTest {
                 .delayElement(Duration.ofSeconds(125))).when(experts).execute(org.mockito.ArgumentMatchers.eq("owner"),
                 org.mockito.ArgumentMatchers.anyMap(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyMap(),org.mockito.ArgumentMatchers.eq(ModelTier.PRO));
+        var approvals=new com.offerpilot.agent.application.ApprovalService(mock(com.offerpilot.conversation.application.ConversationService.class));
+        experts.setAnalysisApprovals(approvals);
         var orchestrator = new Orchestrator(new IntentPlanner(gateway, json, experts, new ByteArrayResource("{experts}".getBytes())), experts);
         var context = Map.<String,Object>of("jobAction", "match", "jobId", "job_1", "resumeId", "res_1", "resumeVersionId", "ver_1");
         reactor.test.StepVerifier.withVirtualTime(() -> orchestrator.run(AgentMode.JOB, "匹配", List.of(), ModelTier.PRO,
-                "run_slow",new AtomicInteger(),reply,usage -> {},"owner",context).collectList())
+                "run_slow",new AtomicInteger(),reply,usage -> {},"owner",context).doOnNext(event -> {
+                    if(event instanceof AgentEvent.ApprovalRequired a) approvals.resolve("owner","run_slow",a.approvalId(),new com.offerpilot.agent.application.ApprovalService.Decision("APPROVE",null,null));
+                }).collectList())
                 .expectSubscription().expectNoEvent(Duration.ofSeconds(121)).thenAwait(Duration.ofSeconds(4))
                 .assertNext(events -> {
                     assertThat(events).extracting(AgentEvent::type).contains("ui.card").doesNotContain("error");

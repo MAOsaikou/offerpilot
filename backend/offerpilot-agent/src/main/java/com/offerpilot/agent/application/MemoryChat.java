@@ -81,7 +81,11 @@ public class MemoryChat {
         return candidate;
     }
     public Flux<AgentEvent> write(String owner, String runId, AtomicInteger seq, MemoryCandidate.Candidate candidate) {
-        return Mono.fromCallable(() -> {
+        return Flux.deferContextual(context -> {
+            var budget=context.getOrDefault(com.offerpilot.agent.tools.RunToolBudget.KEY,new com.offerpilot.agent.tools.RunToolBudget(8));
+            if(!budget.acquire()) return Flux.just(new AgentEvent.TextDelta("text.delta",seq.incrementAndGet(),runId,Instant.now(),null,
+                    "本轮工具调用已达上限，未保存记忆；可以在下一轮重新发起。"));
+            return Mono.fromCallable(() -> {
             // OFF while response was streaming suppresses the suggestion; OFF during approval is checked again at save.
             if (!enabled(owner) || candidate.source() == UserMemoryService.Source.SUGGESTED_ACCEPTED
                     && memories.contains(owner, candidate.fact())) return null;
@@ -118,6 +122,7 @@ public class MemoryChat {
                                 ? Flux.just(event, new AgentEvent.TextDelta("text.delta", seq.incrementAndGet(), runId,
                                     Instant.now(), null, "\n\n" + result.resultPreview())) : Flux.just(event));
             }));
+        });
         });
     }
 }

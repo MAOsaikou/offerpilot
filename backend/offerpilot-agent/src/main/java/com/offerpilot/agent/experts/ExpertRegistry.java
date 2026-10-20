@@ -60,6 +60,21 @@ public class ExpertRegistry {
             return null;
         }
     }
+    private ApprovalService analysisApprovals;
+    @Autowired
+    public void setAnalysisApprovals(ApprovalService approvals) { this.analysisApprovals=approvals; }
+    public boolean persistingAnalysis(PlanStep step,Map<String,Object> context) {
+        return matching(step,context) && matches!=null
+                || diagnosing(step,context) && !context.containsKey("diagnosisReportId")
+                || optimizing(step,context) && !"read_optimization".equals(step.inputs().get("action"));
+    }
+    public ApprovalService.Ticket requestAnalysis(String owner,String runId,PlanStep step,Map<String,Object> context) {
+        if(analysisApprovals==null) throw new BusinessException(ErrorCode.TOOL_FAILED,"分析保存审批暂不可用，未执行");
+        var resources=new java.util.LinkedHashMap<String,Object>();
+        for(String key:java.util.List.of("jobId","resumeId","resumeVersionId"))
+            if(context.get(key) instanceof String value) resources.put(key,value);
+        return analysisApprovals.request(owner,runId,"generateAnalysis",Map.of("expert",step.agent().name(),"inputs",step.inputs(),"resources",resources));
+    }
     private final JobMatchForChat matches;
     private com.offerpilot.resume.application.ResumeDiagnosisForChat diagnoses;
     private JobSearchForChat searches;
@@ -303,6 +318,9 @@ public class ExpertRegistry {
         return LABELS.get(type);
     }
 
+    public java.util.Collection<com.offerpilot.agent.tools.ToolContracts.Contract> registeredTools() {
+        return com.offerpilot.agent.tools.ToolContracts.all();
+    }
     public String capabilities() {
         return java.util.Arrays.stream(ExpertType.values())
                 .map(type -> type.name() + ": " + label(type)).collect(java.util.stream.Collectors.joining("\n"));

@@ -329,6 +329,7 @@ class DemoJourneyIntegrationTest {
         assertThatThrownBy(() -> quotas.policy(owner)).isInstanceOf(com.offerpilot.common.error.BusinessException.class);
         jdbc.update("UPDATE users SET status='DISABLED' WHERE id=?",owner);
         sandboxes.cleanupExpired();
+        cleanup.retryPending();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE id=?", Integer.class,owner)).isZero();
         for (String table : jdbc.queryForList("SELECT table_name FROM information_schema.columns WHERE table_schema='public' AND column_name='user_id'",String.class))
             assertThat(jdbc.queryForObject("SELECT count(*) FROM "+table+" WHERE user_id=?",Integer.class,owner)).as(table).isZero();

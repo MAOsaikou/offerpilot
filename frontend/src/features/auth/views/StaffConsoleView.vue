@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import OpsStatus from '../components/OpsStatus.vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { listStaffUsers, setUserStatus, verifyToken, type StaffUserRow } from '@/shared/api/auth'
 import { useAuthStore } from '@/shared/stores/auth'
@@ -129,6 +130,8 @@ onMounted(async () => {
         <button class="btn ghost" type="button" @click="logout">退出登录</button>
       </div>
     </header>
+
+    <OpsStatus v-if="staffName" />
 
     <div class="toolbar">
       <input

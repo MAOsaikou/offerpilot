@@ -30,10 +30,12 @@ class JobSearchExecutionTest {
     final List<Message> reply = new ArrayList<>();
     final Map<String, Object> context = Map.of("jobId", "job_1", "resumeId", "res_1", "resumeVersionId", "ver_1", "optimizationReportId", "old_optimization");
 
+    final com.offerpilot.agent.application.ApprovalService approvals = new com.offerpilot.agent.application.ApprovalService(mock(com.offerpilot.conversation.application.ConversationService.class));
     Orchestrator orchestrator() throws Exception {
         var beans = new StaticListableBeanFactory();
         beans.addBean("matches", matches);
         var experts = new ExpertRegistry(beans.getBeanProvider(JobMatchForChat.class), beans.getBeanProvider(ResumeDiagnosisForChat.class), searches);
+        experts.setAnalysisApprovals(approvals);
         var parser = new JobIntentParser(gateway, json, new ByteArrayResource("extract".getBytes()));
         return new Orchestrator(new IntentPlanner(gateway, json, experts, new ByteArrayResource("{experts}".getBytes()), parser), experts);
     }
@@ -44,7 +46,9 @@ class JobSearchExecutionTest {
 
     List<AgentEvent> run(AgentMode mode, Map<String,Object> selected) throws Exception {
         return orchestrator().run(mode, "换成北京的 Java 校招", List.of(new UserMessage("找上海Java校招")), ModelTier.FLASH,
-                "run", new AtomicInteger(), reply, ignored -> {}, "owner", selected).collectList().block(Duration.ofSeconds(5));
+                "run", new AtomicInteger(), reply, ignored -> {}, "owner", selected).doOnNext(event -> {
+                    if(event instanceof AgentEvent.ApprovalRequired a) approvals.resolve("owner","run",a.approvalId(),new com.offerpilot.agent.application.ApprovalService.Decision("APPROVE",null,null));
+                }).collectList().block(Duration.ofSeconds(5));
     }
 
     @Test void localSnapshotResultReportsLocalSourceAndStructuredJson() throws Exception {

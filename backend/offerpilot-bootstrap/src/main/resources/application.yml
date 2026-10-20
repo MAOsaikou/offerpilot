@@ -10,6 +10,10 @@ spring:
     default: dev
   application:
     name: offerpilot
+  task:
+    scheduling:
+      pool:
+        size: 4
   threads:
     virtual:
       enabled: false
@@ -19,6 +23,8 @@ spring:
     password: ${POSTGRES_PASSWORD:change-me-postgres}
     hikari:
       maximum-pool-size: 10
+      connection-timeout: 2000
+      validation-timeout: 1000
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -102,7 +108,14 @@ springdoc:
     path: /v3/api-docs
 
 offerpilot:
+  ops:
+    check-delay-ms: ${OPS_CHECK_DELAY_MS:60000}
+    min-requests: ${OPS_MIN_REQUESTS:20}
+    error-rate-threshold: ${OPS_ERROR_RATE_THRESHOLD:0.05}
+    hourly-token-threshold: ${OPS_HOURLY_TOKEN_THRESHOLD:1000000}
+    external-push-enabled: ${OPS_EXTERNAL_PUSH_ENABLED:false}
   agent:
+    max-tool-iterations: ${AGENT_MAX_TOOL_ITERATIONS:8}
     # Overlap SC-01 with generation, releasing results/effects only after its verdict.
     parallel-safety-screen: ${AGENT_PARALLEL_SAFETY_SCREEN:true}
     early-expert-handoff: ${AGENT_EARLY_EXPERT_HANDOFF:true}

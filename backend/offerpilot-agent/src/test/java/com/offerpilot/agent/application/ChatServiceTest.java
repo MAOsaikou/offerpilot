@@ -38,6 +38,7 @@ import static org.mockito.Mockito.*;
 class ChatServiceTest {
     private final ModelGateway gateway = mock(ModelGateway.class);
     private final com.offerpilot.conversation.application.ConversationService conversations = mock(com.offerpilot.conversation.application.ConversationService.class);
+    private final ApprovalService approvals=new ApprovalService(conversations);
     private ChatService service;
     private Orchestrator orchestrator;
 
@@ -59,6 +60,9 @@ class ChatServiceTest {
         when(gateway.modelName(any())).thenReturn("deepseek-v4-flash");
     }
 
+    private void approveAnalysis(AgentEvent event) {
+        if(event instanceof AgentEvent.ApprovalRequired a) approvals.resolve("owner","run",a.approvalId(),new ApprovalService.Decision("APPROVE",null,null));
+    }
     private ChatRequest request() {
         return new ChatRequest(null, "你好", null, null, new ChatRequest.Options(null, null, null));
     }
@@ -103,6 +107,7 @@ class ChatServiceTest {
         when(matches.match(eq("owner"), eq("job_selected"), eq("resume_selected"), eq("version_selected"), anyString()))
                 .thenReturn(JobMatchCards.fromReport(report));
         var experts = new ExpertRegistry(matches);
+        experts.setAnalysisApprovals(approvals);
         var parser = new com.offerpilot.agent.orchestrator.JobIntentParser(gateway, json, new ByteArrayResource("job actions".getBytes()));
         var planner = new IntentPlanner(gateway, json, experts, new ByteArrayResource("planner".getBytes()), parser);
         var local = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()), new Orchestrator(planner, experts), json);
@@ -120,7 +125,7 @@ class ChatServiceTest {
                     var context = java.util.Map.<String, Object>of("jobAction", "match", "jobId", "job_selected",
                             "resumeId", "resume_selected", "resumeVersionId", "version_selected");
                     var events = local.chat("owner", new ChatRequest(null, "请匹配这个岗位与我的简历", null, mode,
-                            new ChatRequest.Options(tier.name(), null, context))).collectList().block(Duration.ofSeconds(5));
+                            new ChatRequest.Options(tier.name(), null, context))).doOnNext(this::approveAnalysis).collectList().block(Duration.ofSeconds(5));
                     assertThat(events.stream().filter(AgentEvent.UiCard.class::isInstance).map(AgentEvent.UiCard.class::cast))
                             .extracting(AgentEvent.UiCard::cardType).containsExactly("job_match", "job_eval_report");
                     var prompt = org.mockito.ArgumentCaptor.forClass(List.class);
@@ -130,7 +135,7 @@ class ChatServiceTest {
                     assertThat(narrationData).contains("\"cardType\":\"岗位匹配\"", "\"cardType\":\"岗位评估\"", "\"requirementsCount\":3", "\"metCount\":1,\"partialCount\":1,\"missingCount\":1",
                             "\"grade\":", "Docker", "SQL", "后端工程师", "示例公司")
                             .doesNotContain("s1：", "match_selected", "job_selected", "四周", "STAR反馈", "[]；");
-                    assertThat(events).extracting(AgentEvent::type).contains("run.completed").doesNotContain("error", "approval.required");
+                    assertThat(events).extracting(AgentEvent::type).contains("run.completed").contains("approval.required").doesNotContain("error");
                     verify(gateway, never()).stream(any(), anyList(), eq(0.1));
                     verify(matches).match("owner", "job_selected", "resume_selected", "version_selected", ExpertRegistry.requestId("run", "s1"), tier);
                     verify(matches).match("owner", "job_selected", "resume_selected", "version_selected", ExpertRegistry.requestId("run", "s1"));
@@ -170,7 +175,7 @@ class ChatServiceTest {
                         new com.offerpilot.conversation.application.ConversationService.Turn("owner", "conv", "run", "msg", mode, java.time.Instant.now(), List.of()));
                 var context = java.util.Map.<String, Object>of("jobId", "job1", "resumeId", "resume1", "resumeVersionId", "version1");
                 var events = local.chat("owner", new ChatRequest(null, "请匹配这个岗位与我的简历", null, mode,
-                        new ChatRequest.Options("PRO", null, context))).collectList().block(Duration.ofSeconds(5));
+                        new ChatRequest.Options("PRO", null, context))).doOnNext(this::approveAnalysis).collectList().block(Duration.ofSeconds(5));
                 assertThat(events).extracting(AgentEvent::type).containsExactly("run.started", "error");
                 assertThat(((AgentEvent.ErrorEvent) events.get(1)).message()).contains("未执行任务", "在聊天中匹配");
             }
@@ -188,7 +193,7 @@ class ChatServiceTest {
                 java.util.Map.<String, Object>of("jobAction", "match", "boardAction", "createApplication"),
                 java.util.Map.<String, Object>of("jobAction", "match_job"))) {
             var events = service.chat("owner", new ChatRequest(null, "匹配", null, null,
-                    new ChatRequest.Options("FLASH", null, context))).collectList().block(Duration.ofSeconds(5));
+                    new ChatRequest.Options("FLASH", null, context))).doOnNext(this::approveAnalysis).collectList().block(Duration.ofSeconds(5));
             assertThat(events).extracting(AgentEvent::type).containsExactly("run.started", "error");
             assertThat(((AgentEvent.ErrorEvent) events.get(1)).message()).contains("匹配");
         }
@@ -202,11 +207,12 @@ class ChatServiceTest {
             throw new BusinessException(ErrorCode.RESUME_NOT_FOUND, "简历版本不可用");
         });
         for (var experts : List.of(new ExpertRegistry(), denied)) {
+            experts.setAnalysisApprovals(approvals);
             var local = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()),
                     new Orchestrator(new IntentPlanner(gateway, new ObjectMapper(), experts, new ByteArrayResource("planner".getBytes())), experts), new ObjectMapper());
             var context = java.util.Map.<String, Object>of("jobAction", "match", "jobId", "job1", "resumeId", "resume1", "resumeVersionId", "version1");
             var events = local.chat("owner", new ChatRequest(null, "请匹配", null, null,
-                    new ChatRequest.Options("PRO", null, context))).collectList().block(Duration.ofSeconds(5));
+                    new ChatRequest.Options("PRO", null, context))).doOnNext(this::approveAnalysis).collectList().block(Duration.ofSeconds(5));
             assertThat(events).extracting(AgentEvent::type).contains("error").doesNotContain("run.completed", "ui.card", "text.delta");
             assertThat(events).filteredOn(AgentEvent.ToolResult.class::isInstance).singleElement()
                     .isInstanceOfSatisfying(AgentEvent.ToolResult.class, result -> assertThat(result.ok()).isFalse());
@@ -216,11 +222,12 @@ class ChatServiceTest {
         var retryable = new ExpertRegistry((owner, jobId, resumeId, versionId, requestId) -> {
             throw new BusinessException(ErrorCode.STRUCTURED_OUTPUT_INVALID, "匹配报告没有可核实的条目，未保存报告；请重试", true);
         });
+        retryable.setAnalysisApprovals(approvals);
         var local = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()),
                 new Orchestrator(new IntentPlanner(gateway, new ObjectMapper(), retryable, new ByteArrayResource("planner".getBytes())), retryable), new ObjectMapper());
         var context = java.util.Map.<String, Object>of("jobAction", "match", "jobId", "job1", "resumeId", "resume1", "resumeVersionId", "version1");
         var events = local.chat("owner", new ChatRequest(null, "请匹配", null, null,
-                new ChatRequest.Options("FLASH", null, context))).collectList().block(Duration.ofSeconds(5));
+                new ChatRequest.Options("FLASH", null, context))).doOnNext(this::approveAnalysis).collectList().block(Duration.ofSeconds(5));
         assertThat(events).filteredOn(AgentEvent.ErrorEvent.class::isInstance).singleElement()
                 .isInstanceOfSatisfying(AgentEvent.ErrorEvent.class, error -> {
                     assertThat(error.code()).isEqualTo(40003);

@@ -98,6 +98,8 @@ class JobContextTest {
         registry.setArtifacts(artifacts);
         var planner = new IntentPlanner(gateway, json, registry, resource("planner"));
         var conversations = mock(ConversationService.class);
+        var approvals=new com.offerpilot.agent.application.ApprovalService(conversations);
+        registry.setAnalysisApprovals(approvals);
         var service = new ChatService(gateway, conversations, resource("system"), new Orchestrator(planner, registry), json);
         when(gateway.defaultTier()).thenReturn(ModelTier.FLASH);
         when(gateway.modelName(any())).thenReturn("stub");
@@ -115,7 +117,9 @@ class JobContextTest {
             var context = Map.<String,Object>of("jobAction", "match", "jobId", "job", "resumeId", "rs", "resumeVersionId", "rv",
                     "applicationId", "foreign-application");
             var events = service.chat("owner", new ChatRequest(null, "匹配所选岗位和简历", null, mode,
-                    new ChatRequest.Options("FLASH", false, context))).collectList().block(Duration.ofSeconds(5));
+                    new ChatRequest.Options("FLASH", false, context))).doOnNext(event -> {
+                        if(event instanceof AgentEvent.ApprovalRequired a) approvals.resolve("owner","run",a.approvalId(),new com.offerpilot.agent.application.ApprovalService.Decision("APPROVE",null,null));
+                    }).collectList().block(Duration.ofSeconds(5));
             assertThat(events).noneMatch(AgentEvent.ErrorEvent.class::isInstance)
                     .anyMatch(e -> e instanceof AgentEvent.UiCard card && card.cardType().equals("job_match"))
                     .anyMatch(AgentEvent.RunCompleted.class::isInstance);

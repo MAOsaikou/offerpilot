@@ -79,7 +79,7 @@ class PiiGatewayTransportTest {
             // The echo stub repeats the key back, as an injected or confused model might.
             var prompt = new Prompt(List.of(new UserMessage("你好，配置是 provider-secret-sentinel 吗")));
             String streamed = gateway.stream(ModelTier.FLASH, prompt.getInstructions()).map(r -> r.getResult().getOutput().getText()).reduce("",String::concat).block(Duration.ofSeconds(15));
-            assertThat(streamed).doesNotContain("provider-secret-sentinel").endsWith(com.offerpilot.llm.safety.OutputModeration.FALLBACK).startsWith("你好，配置是 ");
+            assertThat(streamed).doesNotContain("provider-secret-sentinel").isEqualTo(com.offerpilot.llm.safety.OutputModeration.FALLBACK);
             assertThatThrownBy(() -> gateway.chatModel(ModelTier.FLASH).call(prompt))
                     .isInstanceOfSatisfying(com.offerpilot.common.error.BusinessException.class,
                             e -> assertThat(e.errorCode()).isEqualTo(com.offerpilot.common.error.ErrorCode.CONTENT_BLOCKED));

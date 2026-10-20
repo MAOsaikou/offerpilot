@@ -53,7 +53,7 @@ public class ApprovalService {
         private Decision resolved;
 
         private Ticket(String owner, String action, Map<String, Object> args, Duration window) {
-            this.durable = store != null && durable(action);
+            this.durable = store != null && (durable(action) || "generateAnalysis".equals(action));
             this.owner = owner;
             this.action = action;
             this.args = freeze(args);
@@ -65,7 +65,7 @@ public class ApprovalService {
         public Mono<Decision> await() {
             Duration remaining = Duration.between(Instant.now(), expiresAt);
             return signal.asMono().timeout(remaining.isNegative() ? Duration.ZERO : remaining, Mono.fromSupplier(this::expire))
-                    .doOnCancel(() -> { if (durable) detach(); else expire(); });
+                    .doOnCancel(() -> { if (durable && !"generateAnalysis".equals(action)) detach(); else expire(); });
         }
         /** The stream is gone; leave the stored approval pending for a later decision from the board. */
         private synchronized void detach() {
@@ -202,6 +202,20 @@ public class ApprovalService {
     }
 
     private static void validate(String action, Map<String, Object> args) {
+        if("generateAnalysis".equals(action)) {
+            if(!args.keySet().equals(java.util.Set.of("expert","inputs","resources"))
+                    || !(args.get("expert") instanceof String e) || !(args.get("inputs") instanceof Map<?,?> inputs)
+                    || !(args.get("resources") instanceof Map<?,?> resources)
+                    || !java.util.Set.of("jobId","resumeId","resumeVersionId").containsAll(resources.keySet()))
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED,"分析审批参数无效");
+            try {
+                @SuppressWarnings("unchecked") var values=(Map<String,Object>)inputs;
+                com.offerpilot.agent.tools.ToolContracts.validate(new com.offerpilot.agent.domain.PlanStep("analysis","analysis",
+                        com.offerpilot.agent.domain.ExpertType.valueOf(e),values,java.util.List.of()));
+            } catch(IllegalArgumentException ex) { throw new BusinessException(ErrorCode.VALIDATION_FAILED,"分析审批参数无效"); }
+            return;
+        }
+        if (MemoryChat.action(action)) com.offerpilot.agent.tools.ToolContracts.validateMemory(args);
         if (CareerWriteTools.action(action)) CareerWriteTools.validate(action, args);
         else if (InterviewWriteTools.action(action)) InterviewWriteTools.validate(action, args);
         else if (CoachWriteTools.action(action)) CoachWriteTools.validate(args);
@@ -209,5 +223,6 @@ public class ApprovalService {
         else if (MemoryChat.action(action)) MemoryChat.validate(args);
         else if (StarStoryWriteTools.action(action)) StarStoryWriteTools.validate(args);
         else BoardWriteTools.validate(action, args);
+        com.offerpilot.agent.tools.ToolContracts.validateApproved(action,args);
     }
 }
