@@ -102,7 +102,7 @@ public class IntentPlanner {
                                   Consumer<Usage> onUsage, Map<String, Object> context) {
         return Mono.defer(() -> {
             long started = System.nanoTime();
-            return prepareDecision(mode, content, history, tier, onUsage, context)
+            return com.offerpilot.llm.ChatLatency.mono("planner", prepareDecision(mode, content, history, tier, onUsage, context))
                     .doFinally(signal -> org.slf4j.LoggerFactory.getLogger(IntentPlanner.class)
                             .debug("AG02 phase=planner elapsedMs={} signal={}", (System.nanoTime() - started) / 1_000_000, signal));
         });
@@ -169,7 +169,11 @@ public class IntentPlanner {
         messages.add(new SystemMessage(prompt.replace("{experts}", experts.capabilities())
                 + (jointJobSearchPlanning && jobs != null && !jobSearchPrompt.isBlank() ? "\n" + jobSearchPrompt : "")));
         messages.addAll(history.subList(Math.max(0, history.size() - 12), history.size()));
-        messages.add(new UserMessage(SelectedResources.describe(safeContext) + "\n本轮请求：" + content));
+        // Only fixed field names and booleans enter this trusted message, never caller IDs/values.
+        // Keep the actual user fragment byte-for-byte identical to the turn input so SC-01's
+        // request-local session can share its verdict with planning and the ordinary reply.
+        messages.add(new SystemMessage(SelectedResources.describe(safeContext)));
+        messages.add(new UserMessage(content));
         return Mono.deferContextual(reactorContext -> {
             var early = new EarlyHandoff(content, history, tier, safeContext,
                     reactorContext.getOrDefault(ON_EXPERT_ROUTE, (Runnable) () -> {}), reactorContext);
@@ -219,7 +223,7 @@ public class IntentPlanner {
                                    Consumer<Usage> onUsage, int retry, Map<String, Object> context, EarlyHandoff early) {
         return Mono.defer(() -> {
             AtomicReference<Usage> usage = new AtomicReference<>();
-            return gateway.stream(tier, messages, 0.1).doOnNext(chunk -> {
+            return com.offerpilot.llm.ChatLatency.flux("intent-model", gateway.stream(tier, messages, 0.1)).doOnNext(chunk -> {
                 var current = chunk.getMetadata().getUsage();
                 if (current != null && current.getTotalTokens() != null && current.getTotalTokens() > 0) usage.set(current);
             }).map(chunk -> chunk.getResult() == null || chunk.getResult().getOutput() == null || chunk.getResult().getOutput().getText() == null

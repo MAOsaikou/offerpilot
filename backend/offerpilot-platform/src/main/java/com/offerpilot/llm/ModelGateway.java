@@ -52,8 +52,8 @@ public class ModelGateway {
             String owner = context.getOrDefault(LlmUserContext.KEY, LlmUserContext.current());
             var session = new com.offerpilot.llm.safety.InputScreeningSession();
             var ready = reactor.core.publisher.Sinks.<Void>empty();
-            var connection = UsageJournal.callable(() -> inputBoundary(owner, new Prompt(messages), session)).contextWrite(context)
-                    .subscribeOn(Schedulers.boundedElastic())
+            var connection = ChatLatency.mono("input-safety", UsageJournal.callable(() -> inputBoundary(owner, new Prompt(messages), session))
+                    .subscribeOn(Schedulers.boundedElastic())).contextWrite(context)
                     .subscribe(ignored -> ready.tryEmitEmpty(), ready::tryEmitError);
             return work.contextWrite(c -> c.put(SCREEN_SESSION, session).put(EFFECTS_GATE, ready.asMono()))
                     .doFinally(signal -> { connection.dispose(); session.close(); });
@@ -105,8 +105,8 @@ public class ModelGateway {
                                 () -> inputBoundary(owner, prompt, context.getOrDefault(SCREEN_SESSION, null)))));
             // Rules and the fixed policy are always installed before speculative provider IO.
             Prompt rules = com.offerpilot.llm.privacy.ModelInputBoundary.apply(prompt);
-            var verdict = UsageJournal.callable(() -> inputBoundary(owner, prompt, context.getOrDefault(SCREEN_SESSION, null))).contextWrite(context)
-                    .subscribeOn(Schedulers.boundedElastic());
+            var verdict = ChatLatency.mono("prompt-safety", UsageJournal.callable(() -> inputBoundary(owner, prompt, context.getOrDefault(SCREEN_SESSION, null))).contextWrite(context)
+                    .subscribeOn(Schedulers.boundedElastic()));
             return com.offerpilot.llm.safety.ScreenedGeneration.release(verdict, generate.apply(rules),
                     screened -> screened.getInstructions().equals(rules.getInstructions()), generate);
         }).contextWrite(c -> capturedScope == null || c.hasKey(UsageJournal.KEY) ? c : c.put(UsageJournal.KEY, capturedScope))
@@ -316,9 +316,17 @@ public class ModelGateway {
             String owner = context.getOrDefault(LlmUserContext.KEY, capturedOwner);
             // Validate configuration before consuming a request; quotas always run before provider IO.
             requireAvailable(tier, false);
-            var admission = admit(owner, tier);
+            ChatLatency timing = context.getOrDefault(ChatLatency.KEY, null);
+            var admission = timing == null ? admit(owner, tier) : timing.measure("model-admission", () -> admit(owner, tier));
             AtomicLong usage = new AtomicLong();
-            Flux<ChatResponse> responses = provider.apply(owner).timeout(configuration(tier).timeout())
+            Flux<ChatResponse> providerResponses = timing == null ? provider.apply(owner)
+                    : timing.measure("provider-setup", () -> provider.apply(owner));
+            var first = new java.util.concurrent.atomic.AtomicBoolean();
+            Flux<ChatResponse> responses = ChatLatency.flux("provider-stream", providerResponses.doOnNext(chunk -> {
+                if (timing != null && chunk.getResult() != null && chunk.getResult().getOutput() != null
+                        && chunk.getResult().getOutput().getText() != null && !chunk.getResult().getOutput().getText().isEmpty()
+                        && first.compareAndSet(false, true)) timing.mark("provider-first");
+            })).timeout(configuration(tier).timeout())
                     .publishOn(Schedulers.boundedElastic());
             UsageJournal.Scope scope = context.getOrDefault(UsageJournal.KEY, null);
             if (usageJournal != null && scope != null) responses = usageJournal.observe(scope, tier, modelName(tier), responses);
