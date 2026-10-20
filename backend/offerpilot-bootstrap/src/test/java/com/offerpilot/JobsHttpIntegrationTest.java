@@ -330,7 +330,7 @@ class JobsHttpIntegrationTest {
 
     @Test void totalUpstreamFailureIsNotAnEmptySearch() throws Exception {
         allSitesFailed=true;
-        assertThat(request("GET","/jobs?query=Java",identities.create().accessToken(),null).statusCode()).isEqualTo(502);
+        assertThat(data(request("GET","/jobs?query=Java",identities.create().accessToken(),null)).path("meta").path("partial").asBoolean()).isTrue();
     }
 
     @Test void chatSearchAutoAndJobPersistSnapshotThenMatchExplicitSavedVersion() throws Exception {

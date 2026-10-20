@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, nextTick } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useBoard } from '@/shared/composables/useBoard'
 import type { EvidenceMatch, MatchRequirement } from '@/shared/types/jobs'
 const props = defineProps<{ payload: unknown }>()
+const board = useBoard()
 const data = computed(() => props.payload as EvidenceMatch)
 const selected = ref<{
   title: string
@@ -69,6 +71,24 @@ const excerpt = computed(() => {
       }"
       >按此岗位改写</RouterLink
     >
+    <div class="card-footer">
+      <button
+        class="btn"
+        :disabled="
+          board.saved(data.jobId) ||
+          board.busy.value ||
+          board.query.isPending.value ||
+          board.query.isError.value
+        "
+        @click="board.favorite(data.jobId)"
+      >
+        {{ board.saved(data.jobId) ? '已加入看板' : '加入看板' }}
+      </button>
+      <p v-if="board.error.value" role="alert">{{ board.error.value }}</p>
+      <p v-if="board.query.isError.value" role="alert">
+        看板读取失败。<button class="btn" @click="board.query.refetch()">重试看板</button>
+      </p>
+    </div>
     <div class="section-heading">
       <div>
         <p class="subtle">岗位要求的简历证据覆盖率</p>
@@ -147,8 +167,10 @@ const excerpt = computed(() => {
       </p>
     </section>
     <p class="subtle">
-      生成于 {{ new Date(data.createdAt).toLocaleString('zh-CN') }} · 模型
-      {{ data.model }}。报告保留当时资料，后续编辑简历不会改写此报告。
+      生成于 {{ new Date(data.createdAt).toLocaleString('zh-CN') }} · 模型 {{ data.model
+      }}<template v-if="data.durationMs != null">
+        · 生成耗时 {{ (data.durationMs / 1000).toFixed(2) }} 秒</template
+      >。报告保留当时资料，后续编辑简历不会改写此报告。
     </p>
   </article>
 </template>

@@ -70,12 +70,15 @@ public class JobSearchForChat {
         for (JsonNode job : result.path("items")) {
             if (items.size() >= 5) break;
             var item = items.addObject();
-            for (String field : List.of("id", "site", "title", "company", "locations", "nature", "updatedAt"))
+            for (String field : List.of("id", "site", "title", "company", "locations", "nature", "updatedAt", "source", "snapshotDate", "retrievalSource", "storedAt"))
                 item.put(field, bounded(job.path(field).asText(), 200));
         }
         var meta = card.putObject("meta");
         for (String field : List.of("source", "snapshotDate", "sourceDescription", "fallbackReason"))
             if (result.path("meta").has(field)) meta.put(field, bounded(result.path("meta").path(field).asText(), 300));
+        for(String field:List.of("partial","timedOut","vectorAvailable"))
+            if(result.path("meta").has(field)) meta.put(field,result.path("meta").path(field).asBoolean());
+        if(result.path("meta").has("durationMs")) meta.put("durationMs",result.path("meta").path("durationMs").asLong());
         meta.put("cached", result.path("meta").path("cached").asBoolean());
         meta.put("truncated", result.path("meta").path("truncated").asBoolean());
         for (String field : List.of("sites", "degradedSites")) {

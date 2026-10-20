@@ -293,23 +293,39 @@ async function restoreTask(taskId: string) {
           虚构体验岗位，仅供练习匹配与求职流程，不接受实际投递。
         </p>
         <p v-if="refreshError" class="error-banner" role="alert">{{ refreshError }}</p>
+        <dl class="job-facts">
+          <div>
+            <dt>城市</dt>
+            <dd>{{ job.data.value.locations || '未提供' }}</dd>
+          </div>
+          <div>
+            <dt>部门</dt>
+            <dd>{{ job.data.value.department || '未提供' }}</dd>
+          </div>
+          <div>
+            <dt>截止日</dt>
+            <dd>{{ job.data.value.deadline || '未提供' }}</dd>
+          </div>
+          <div>
+            <dt>官网链接</dt>
+            <dd>
+              <a
+                v-if="officialJobUrl(job.data.value.url)"
+                :href="officialJobUrl(job.data.value.url)"
+                target="_blank"
+                rel="noopener noreferrer"
+                >查看官网原岗位 ↗</a
+              ><span v-else>未提供</span>
+            </dd>
+          </div>
+        </dl>
         <h2>工作职责</h2>
         <p class="prose-content">
-          {{
-            job.data.value.description ||
-            (job.data.value.source === 'USER_IMPORT'
-              ? '导入时未填写职责。'
-              : '搜索结果未包含完整职责，请获取详情。')
-          }}
+          {{ job.data.value.description || '未提供' }}
         </p>
         <h2>任职要求</h2>
         <p class="prose-content">
-          {{
-            job.data.value.requirement ||
-            (job.data.value.source === 'USER_IMPORT'
-              ? '导入时未填写任职要求。'
-              : '企业未提供独立要求字段，请结合工作职责和官网查看。')
-          }}
+          {{ job.data.value.requirement || '未提供' }}
         </p>
         <p class="helper-note">
           岗位可能调整或关闭，以企业官网为准。收藏与看板状态保存在服务端，不会代你投递。
@@ -526,6 +542,15 @@ async function restoreTask(taskId: string) {
   </section>
 </template>
 <style scoped>
+.job-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  overflow-wrap: anywhere;
+}
+.job-facts dd {
+  margin: 4px 0 0;
+}
 .match-selectors {
   display: grid;
   grid-template-columns: 1fr 1fr;

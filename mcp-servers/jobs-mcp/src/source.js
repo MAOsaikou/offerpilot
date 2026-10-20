@@ -54,7 +54,7 @@ export function createSearchHandler({ mode = process.env.JOBS_SOURCE_MODE ?? 'AU
   const budget = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10000;
   return async ({ query = '', site, sites, nature, location = '', category = '', limit }) => {
     const keyword = String(query).trim();
-    if (!keyword || keyword.length > 100) throw new SearchInputError('搜索关键词须为 1–100 字符');
+    if (keyword.length > 100 || (!keyword && !site && !sites?.length && !location && !(nature && normalizeNature(nature) !== 'all'))) throw new SearchInputError('请提供关键词、企业或城市筛选条件');
     const targets = sites?.length ? sites : site ? [site] : resolvedMode === 'LOCAL' ? dataset.sites.map(s => s.id) : DEFAULT_SITES;
     if (targets.some(id => !hasSite(id))) throw new SearchInputError('未知站点，可用站点见 list_sites 工具');
     const options = { query: keyword, targets, nature: normalizeNature(nature), location, category,

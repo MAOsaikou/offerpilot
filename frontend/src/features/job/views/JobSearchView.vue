@@ -4,6 +4,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import JobSourceBadge from '@/shared/components/JobSourceBadge.vue'
 import JobImportPanel from '../components/JobImportPanel.vue'
+import DailyJobFeed from '../components/DailyJobFeed.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import { listJobSites, searchJobs } from '@/shared/api/jobs'
 import { useBoard } from '@/shared/composables/useBoard'
@@ -12,12 +13,12 @@ const route = useRoute(),
   board = useBoard()
 const query = ref(String(route.query.q || '')),
   site = ref(String(route.query.site || ''))
-const nature = ref(String(route.query.nature || 'campus')),
+const nature = ref(String(route.query.nature || 'all')),
   location = ref(String(route.query.location || ''))
 const criteria = computed(() => ({
   query: String(route.query.q || ''),
   site: String(route.query.site || ''),
-  nature: String(route.query.nature || 'campus'),
+  nature: String(route.query.nature || 'all'),
   location: String(route.query.location || ''),
 }))
 const sites = useQuery({
@@ -82,17 +83,17 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
     </p>
     <PageHeading
       title="发现适合你的下一站"
-      description="搜索企业官网岗位；离线时使用明确标注的示例快照。"
+      description="用自然语言查找岗位，合并本地记录与企业官网结果。"
       ><RouterLink to="/board" class="btn">求职看板</RouterLink></PageHeading
     >
     <form class="panel form-stack" @submit.prevent="submit">
       <div class="job-filters">
         <label class="field"
-          >岗位关键词<input
+          >自然语言或岗位关键词<input
             v-model="query"
             required
             maxlength="100"
-            placeholder="例如：Java、前端、产品经理"
+            placeholder="例如：找上海的腾讯 Java 实习岗位"
         /></label>
         <label class="field"
           >企业<select v-model="site">
@@ -137,18 +138,43 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
       </div>
     </form>
     <JobImportPanel />
+    <DailyJobFeed v-if="!criteria.query" />
     <div v-if="!criteria.query" class="panel empty-state">
-      <h2>从一个岗位关键词开始</h2>
-      <p>输入方向，选择企业与招聘类型。找到岗位后可以用已解析简历生成匹配报告。</p>
+      <h2>描述你想找的岗位</h2>
+      <p>
+        可输入公司、城市、招聘类型和关键词；显式筛选优先。找到岗位后可以用已解析简历生成匹配报告。
+      </p>
     </div>
     <div v-else-if="search.isFetching.value" class="panel" role="status">
-      正在查询岗位，部分企业响应可能需要十几秒…
+      正在解析并合并岗位，超出时间预算时会展示已取得的结果…
     </div>
     <div v-else-if="search.isError.value" class="error-banner" role="alert">
       <p>{{ search.error.value?.message }}</p>
       <button class="btn" @click="search.refetch()">重新查询</button>
     </div>
     <template v-else-if="search.data.value">
+      <p v-if="search.data.value.meta.partial" class="helper-note" role="status">
+        {{
+          search.data.value.meta.timedOut
+            ? '查询超时，已返回部分结果。'
+            : '部分来源暂不可用，已返回可用结果。'
+        }}
+        可稍后重新查询。
+      </p>
+      <p v-if="search.data.value.criteria" class="subtle">
+        解析：{{
+          search.data.value.criteria.company || search.data.value.criteria.site || '不限公司'
+        }}
+        · {{ search.data.value.criteria.location || '不限城市' }} ·
+        {{
+          { campus: '校招', intern: '实习', social: '社招', all: '全部类型' }[
+            search.data.value.criteria.nature
+          ] || '全部类型'
+        }}
+        ·
+        {{ search.data.value.criteria.query || '不限关键词' }}
+        （{{ search.data.value.criteria.parser === 'FLASH' ? '智能解析' : '规则解析' }}）
+      </p>
       <div class="section-heading">
         <span>本次返回 {{ search.data.value.items.length }} 个岗位</span
         ><JobSourceBadge
@@ -191,6 +217,21 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
           <RouterLink :to="'/jobs/' + job.id"
             ><h2>{{ job.title }}</h2></RouterLink
           >
+          <JobSourceBadge
+            :source="job.source"
+            :snapshot-date="job.snapshotDate"
+            :cached="job.retrievalSource === 'LOCAL_DB'"
+          />
+          <p class="subtle">
+            {{
+              job.retrievalSources?.includes('LOCAL_DB') &&
+              job.retrievalSources?.includes('JOBS_MCP')
+                ? '本地库 + MCP'
+                : job.retrievalSource === 'LOCAL_DB'
+                  ? '本地库'
+                  : '岗位源'
+            }}
+          </p>
           <p class="subtle">
             {{ job.locations || '地点未提供' }} · {{ job.category || '分类未提供' }}
           </p>
@@ -198,6 +239,9 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
             {{ job.source === 'LOCAL_SNAPSHOT' ? '快照日期' : '企业更新时间' }}：{{
               job.source === 'LOCAL_SNAPSHOT' ? job.snapshotDate : job.updatedAt || '未提供'
             }}
+          </p>
+          <p v-if="job.storedAt" class="subtle">
+            本地同步：{{ new Date(job.storedAt).toLocaleString('zh-CN') }}
           </p>
           <div class="card-footer">
             <RouterLink :to="'/jobs/' + job.id" class="btn">查看详情与匹配</RouterLink

@@ -3,6 +3,7 @@ import { apiRequest, apiUrl, authenticatedHeaders, fetchWithIdentity, toApiError
 import { downloadText } from '@/shared/utils/download'
 import type { ModelTier } from '@/shared/types/model-tier'
 import type {
+  DailyJobRecommendations,
   EvidenceMatch,
   JobImportFields,
   JobImportParse,
@@ -59,3 +60,6 @@ export async function exportJobEvalMarkdown(
   if (!response.ok) throw await toApiError(response)
   downloadText(filename, await response.text())
 }
+
+export const getJobRecommendations = (signal?: AbortSignal) =>
+  apiRequest<DailyJobRecommendations>('/jobs/recommendations', { signal })

@@ -90,3 +90,13 @@ test('MCP search_jobs actually routes LOCAL without fetch', async t => {
     assert.equal(calls, 0);
   } finally { await client.close(); await server.close(); delete process.env.JOBS_SOURCE_MODE; }
 });
+
+test('filter-only natural searches allow an empty keyword without broadening the company', async () => {
+  const handler = createSearchHandler({ mode: 'LOCAL' });
+  const result = await handler({ query: '', site: 'bytedance', nature: 'all', location: '上海' });
+  assert.ok(result.jobs.length);
+  assert.ok(result.jobs.every(job => job.site === 'bytedance' && job.locations.includes('上海')));
+  const interns = await handler({ query: '', nature: 'intern' });
+  assert.ok(interns.jobs.length && interns.jobs.every(job => job.nature === 'intern'));
+  await assert.rejects(handler({ query: '' }), /筛选条件/);
+});
