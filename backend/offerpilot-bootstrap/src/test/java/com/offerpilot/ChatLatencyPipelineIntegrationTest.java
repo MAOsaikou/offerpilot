@@ -243,6 +243,28 @@ class ChatLatencyPipelineIntegrationTest {
         }
     }
 
+    @Test void ruleSearchThatFailsBeforeNarrationIsReportedAsAFailedStepNotARunError() throws Exception {
+        // Live 2026-10-21: all job sources unavailable made the early rule search abort the whole run (40005).
+        try(var fixture=new Fixture(true)) {
+            fixture.completeCandidate.set(true);
+            fixture.sourcesUnavailable.set(true);
+            var done=fixture.service().chat("alice",new ChatRequest(null,"找上海Java实习岗位",null,AgentMode.AUTO,null))
+                    .collectList().toFuture();
+            try {
+                assertThat(fixture.searchStarted.await(2,TimeUnit.SECONDS)).isTrue();
+                fixture.gateway.inputVerdict.tryEmitValue("{\"injection\":false,\"categories\":[]}");
+                fixture.gateway.evidenceVerdict.tryEmitValue("{\"injection\":false,\"categories\":[]}");
+                var result=done.get(3,TimeUnit.SECONDS);
+                assertThat(result).noneMatch(AgentEvent.ErrorEvent.class::isInstance);
+                assertThat(result).filteredOn(AgentEvent.ToolResult.class::isInstance).singleElement()
+                        .satisfies(e -> assertThat(((AgentEvent.ToolResult)e).ok()).isFalse());
+                assertThat(result).anyMatch(AgentEvent.TextDelta.class::isInstance);
+                assertThat(fixture.snapshotWrites).hasValue(0);
+                assertThat(fixture.finalPrompts.get(fixture.finalPrompts.size()-1).getContents()).contains("岗位来源均不可用");
+            } finally { done.cancel(true); }
+        }
+    }
+
     private static void reportSearchPromptSize(Prompt after,Object payload) throws Exception {
         // Reconstruct 16ba37b's data message with the same real five-job card and shipped rules.
         String legacy="报告摘要：企业官网岗位搜索结果（仅含本次返回结果，不是全站总数）："
@@ -296,6 +318,7 @@ class ChatLatencyPipelineIntegrationTest {
 
     private static final class Fixture implements AutoCloseable {
         final AtomicBoolean failSnapshotWrite=new AtomicBoolean();
+        final AtomicBoolean sourcesUnavailable=new AtomicBoolean();
         final AtomicInteger snapshotWrites=new AtomicInteger();
         final CountDownLatch searchStarted=new CountDownLatch(1);
         final KnowledgeNotesForChat notes = mock(KnowledgeNotesForChat.class);
@@ -377,6 +400,7 @@ class ChatLatencyPipelineIntegrationTest {
                 searchStarted.countDown();
                 var out=json.createObjectNode();
                 var items=out.putArray("jobs");
+                if(sourcesUnavailable.get()) { out.putObject("_meta").put("partial",true); return out; }
                 for(int i=0;i<5;i++) items.addObject().put("id","external-job-"+i).put("site","company")
                         .put("title","Java开发工程师").put("company","证据企业").put("locations","上海").put("nature","intern")
                         .put("deadline","2026-11-30").put("updatedAt","2026-10-20")

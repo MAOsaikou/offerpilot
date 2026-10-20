@@ -142,6 +142,8 @@ public class Orchestrator {
                 }
                 Instant started = Instant.now();
                 String callId = runId + ":" + step.id();
+                // Set once the early rule-search narration has been handed to ChatService; only then must a failure abort the run.
+                var ruleNarrationStarted = new java.util.concurrent.atomic.AtomicBoolean();
                 boolean coachStep = step.agent() == ExpertType.COACH;
                 boolean patchWrite = experts.writingPatches(step);
                 boolean coachWrite = experts.writingCoach(step);
@@ -204,6 +206,7 @@ public class Orchestrator {
                                                 "报告摘要："+CardNarrationDigest.summary(prepared.preview())+"；已展示卡片的结构化明细："
                                                         +CardNarrationDigest.of(prepared.preview().cards()));
                                         java.util.function.Consumer<List<Message>> start=reactorContext.get(START_RULE_SEARCH_REPLY);
+                                        ruleNarrationStarted.set(true);
                                         start.accept(List.copyOf(narration));
                                         return com.offerpilot.llm.ChatLatency.mono("effects-gate",com.offerpilot.llm.ModelGateway.beforeEffects())
                                                 .then(com.offerpilot.llm.ModelGateway.inputSafetyPassed())
@@ -246,7 +249,9 @@ public class Orchestrator {
                                             .concatWith(Flux.defer(() -> finish.apply(patchWrite ? experts.executePatch(owner, runId, step, decisionResult) : coachWrite ? experts.executeCoach(owner, step, decisionResult) : starWrite ? experts.executeStarStory(owner, runId, step, decisionResult) : interviewWrite ? experts.executeInterview(owner, runId, step, decisionResult) : careerWrite ? experts.executeCareer(owner, step, decisionResult) : experts.executeBoard(owner, runId, step, decisionResult)))))));
                         }).onErrorResume(ex -> {
                             // A failed snapshot commit must never adopt the already started success narration.
-                            if (earlyRuleSearch(decision,reactorContext)) return Flux.error(ex);
+                            // A search that failed before narration started (e.g. all sources unavailable) is reported like the
+                            // ordinary path; only a failure after the success narration started must abort the run.
+                            if (earlyRuleSearch(decision,reactorContext) && ruleNarrationStarted.get()) return Flux.error(ex);
                             failed.add(step.id());
                             if (willMatch && ex instanceof BusinessException business) matchFailure.set(business);
                             if (interviewStep && !(ex instanceof BusinessException b && b.errorCode() == ErrorCode.APPROVAL_REJECTED))
