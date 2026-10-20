@@ -32,9 +32,11 @@ class ResumeOptimizationExecutionTest {
     final AtomicReference<String> action = new AtomicReference<>("optimize");
     final List<Message> reply = new ArrayList<>();
     String plan = "{\"kind\":\"single\",\"expert\":\"RESUME\",\"confidence\":1}";
+    final com.offerpilot.agent.application.ApprovalService approvals = new com.offerpilot.agent.application.ApprovalService(mock(com.offerpilot.conversation.application.ConversationService.class));
     Orchestrator orchestrator() throws Exception {
         var beans = new StaticListableBeanFactory(); beans.addBean("matches", matches); beans.addBean("diagnoses", diagnoses);
         var experts = new ExpertRegistry(beans.getBeanProvider(JobMatchForChat.class), beans.getBeanProvider(ResumeDiagnosisForChat.class), searches, optimizations, descriptions);
+        experts.setAnalysisApprovals(approvals);
         when(gateway.stream(any(), anyList(), eq(0.1))).thenAnswer(call -> {
             List<Message> messages = call.getArgument(1);
             String value = messages.get(0).getText().equals("plan") ? plan : "{\"action\":\"" + action.get() + "\"}";
@@ -50,9 +52,11 @@ class ResumeOptimizationExecutionTest {
     }
     ByteArrayResource resource(String text) { return new ByteArrayResource(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
     Flux<AgentEvent> run(Orchestrator orchestrator, AgentMode mode, Map<String,Object> context) {
-        return orchestrator.run(mode, "针对岗位改写", List.of(), ModelTier.FLASH, "run_123", new AtomicInteger(), reply, ignored -> {}, "owner", context);
+        return orchestrator.run(mode, "针对岗位改写", List.of(), ModelTier.FLASH, "run_123", new AtomicInteger(), reply, ignored -> {}, "owner", context).doOnNext(event -> {
+            if(event instanceof AgentEvent.ApprovalRequired a) approvals.resolve("owner","run_123",a.approvalId(),new com.offerpilot.agent.application.ApprovalService.Decision("APPROVE",null,null));
+        });
     }
-    @Test void autoResumeAndJobModesGenerateReadOnlyCardsWithExplicitSelection() throws Exception {
+    @Test void autoResumeAndJobModesGenerateCardsAfterApprovalWithExplicitSelection() throws Exception {
         var orchestrator = orchestrator();
         for (var mode : List.of(AgentMode.AUTO, AgentMode.RESUME, AgentMode.JOB)) {
             var events = run(orchestrator, mode, selected).collectList().block(Duration.ofSeconds(5));
@@ -62,7 +66,7 @@ class ResumeOptimizationExecutionTest {
             });
             assertThat(events).filteredOn(AgentEvent.ToolCall.class::isInstance).singleElement().satisfies(e -> {
                 assertThat(((AgentEvent.ToolCall)e).name()).isEqualTo("optimizeResumeForJob");
-                assertThat(((AgentEvent.ToolCall)e).access()).isEqualTo(AgentEvent.ToolAccess.READ);
+                assertThat(((AgentEvent.ToolCall)e).access()).isEqualTo(AgentEvent.ToolAccess.WRITE);
             });
             assertThat(reply.get(reply.size()-2)).isInstanceOfSatisfying(SystemMessage.class,
                     message -> assertThat(message.getText()).contains("只读动作未执行采纳", "逐条核对"));

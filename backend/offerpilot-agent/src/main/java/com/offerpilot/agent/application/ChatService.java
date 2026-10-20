@@ -41,6 +41,8 @@ import org.springframework.ai.chat.model.ChatResponse;
 /** Persistent multi-turn chat. Blocking database work stays off provider event loops. */
 @Service
 public class ChatService {
+    @org.springframework.beans.factory.annotation.Value("${offerpilot.agent.max-tool-iterations:8}")
+    private int maxToolIterations=8;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.offerpilot.llm.UsageJournal journal;
     private final ModelGateway gateway;
@@ -286,6 +288,7 @@ public class ChatService {
                         }
                     }
                 }).contextWrite(quotaContext -> com.offerpilot.llm.quota.LlmUserContext.withUser(quotaContext, owner)
+                        .put(com.offerpilot.agent.tools.RunToolBudget.KEY,new com.offerpilot.agent.tools.RunToolBudget(maxToolIterations))
                         .put(com.offerpilot.llm.UsageJournal.KEY, new com.offerpilot.llm.UsageJournal.Scope(owner, turn.runId(), turn.messageId())));
     }
 

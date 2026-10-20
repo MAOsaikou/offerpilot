@@ -66,6 +66,24 @@ class UserMemoryChatIntegrationTest {
     HttpResponse<String> request(String method,String path,String token,String body) throws Exception {
         return HttpClient.newHttpClient().send(req(method,path,token,body),HttpResponse.BodyHandlers.ofString());
     }
+    /** SC-02: approve the analysis-save ticket mid-stream; memory approvals must never appear. */
+    String approvedAnalysisChat(String token,String body) throws Exception {
+        var response=HttpClient.newHttpClient().send(req("POST","/agent/chat",token,body),HttpResponse.BodyHandlers.ofInputStream());
+        var out=new StringBuilder();
+        try(var reader=new BufferedReader(new InputStreamReader(response.body(),StandardCharsets.UTF_8))) {
+            for(String line;(line=reader.readLine())!=null;) {
+                out.append(line).append('\n');
+                if(!line.startsWith("data:")) continue;
+                var event=json.readTree(line.substring(5).strip());
+                if(event.path("type").asText().equals("approval.required")) {
+                    assertThat(event.path("name").asText()).isNotEqualTo("saveUserFact");
+                    assertThat(request("POST","/agent/runs/"+event.path("runId").asText()+"/approvals/"+event.path("approvalId").asText(),token,
+                            "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(200);
+                }
+            }
+        }
+        return out.toString();
+    }
     List<JsonNode> approveChat(String token,String content,String decision,boolean disableDuringWait) throws Exception {
         List<JsonNode> events=new ArrayList<>();
         var response=HttpClient.newHttpClient().send(req("POST","/agent/chat",token,json.writeValueAsString(Map.of("content",content))),HttpResponse.BodyHandlers.ofInputStream());
@@ -260,18 +278,18 @@ class UserMemoryChatIntegrationTest {
                 .thenReturn(reactor.core.publisher.Mono.just(diagnosis));
         MODEL.reply=body -> body.toString().contains("简历动作解析 v1") ? "{\"action\":\"diagnose\",\"question\":\"\"}"
                 : "建议检查原文依据";
-        var resumeResponse=request("POST","/agent/chat",token,json.writeValueAsString(Map.of("content","请诊断所选简历","mode","RESUME",
+        var resumeBody=approvedAnalysisChat(token,json.writeValueAsString(Map.of("content","请诊断所选简历","mode","RESUME",
                 "options",Map.of("context",Map.of("resumeId","rs","resumeVersionId","rv")))));
-        assertThat(resumeResponse.body()).contains("resume_diagnosis","run.completed").doesNotContain("approval.required","saveUserFact");
+        assertThat(resumeBody).contains("resume_diagnosis","run.completed").doesNotContain("saveUserFact");
         assertThat(MODEL.requests.get(MODEL.requests.size()-1).toString()).contains(attack);
         var report=json.createObjectNode().put("id","match_memory_injection").put("score",0).put("summary",attack);
         report.putArray("requirements");
         org.mockito.Mockito.when(matches.match(org.mockito.ArgumentMatchers.eq(owner),org.mockito.ArgumentMatchers.eq("job"),
                 org.mockito.ArgumentMatchers.eq("rs"),org.mockito.ArgumentMatchers.eq("rv"),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any()))
                 .thenReturn(com.offerpilot.job.application.JobMatchCards.fromReport(report));
-        var jdResponse=request("POST","/agent/chat",token,json.writeValueAsString(Map.of("content","匹配所选岗位和简历","mode","JOB",
+        var jdBody=approvedAnalysisChat(token,json.writeValueAsString(Map.of("content","匹配所选岗位和简历","mode","JOB",
                 "options",Map.of("context",Map.of("jobId","job","resumeId","rs","resumeVersionId","rv","jobAction","match")))));
-        assertThat(jdResponse.body()).contains("job_match","run.completed").doesNotContain("approval.required","saveUserFact");
+        assertThat(jdBody).contains("job_match","run.completed").doesNotContain("saveUserFact");
         assertThat(MODEL.requests.get(MODEL.requests.size()-1).toString()).contains(attack);
         assertThat(memories.list(owner).items()).isEmpty();
     }

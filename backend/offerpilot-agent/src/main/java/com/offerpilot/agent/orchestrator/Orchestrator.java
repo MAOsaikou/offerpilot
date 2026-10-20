@@ -24,6 +24,9 @@ import java.util.function.Function;
 public class Orchestrator {
     private final IntentPlanner planner;
     private final ExpertRegistry experts;
+    @org.springframework.beans.factory.annotation.Value("${offerpilot.agent.max-tool-iterations:8}")
+    private int maxToolIterations = 8;
+    public void setMaxToolIterations(int limit) { maxToolIterations = Math.max(1, Math.min(8, limit)); }
 
     public Orchestrator(IntentPlanner planner, ExpertRegistry experts) {
         this.planner = planner;
@@ -56,7 +59,10 @@ public class Orchestrator {
         AtomicBoolean interviewFailed = new AtomicBoolean();
         AtomicBoolean producedCoachOutcome = new AtomicBoolean();
         AtomicBoolean producedCareerOutcome = new AtomicBoolean();
-        return planner.prepare(mode, content, history, tier, onUsage, safeContext).flatMapMany(decision ->
+        return Flux.deferContextual(reactorContext -> {
+            var budget=reactorContext.getOrDefault(com.offerpilot.agent.tools.RunToolBudget.KEY,
+                    new com.offerpilot.agent.tools.RunToolBudget(maxToolIterations));
+            return planner.prepare(mode, content, history, tier, onUsage, safeContext).flatMapMany(decision ->
                 com.offerpilot.llm.ModelGateway.beforeEffects().thenMany(Flux.defer(() -> {
             if (decision.plan() == null) {
                 if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.JOB)
@@ -92,6 +98,13 @@ public class Orchestrator {
                     return Flux.just(new AgentEvent.StepUpdated("step.updated", seq.incrementAndGet(), runId, Instant.now(),
                             step.id(), AgentEvent.StepStatus.SKIPPED, "上游步骤失败，已跳过", 0));
                 }
+                if (!budget.acquire()) {
+                    failed.add(step.id());
+                    outputs.put(step.id(),"工具调用已达本轮上限，剩余任务未执行。可在下一轮继续。");
+                    addReplyData(replyPrompt,"本轮已到工具调用上限。说明已完成和未执行的任务，不再调用工具。",outputs.get(step.id()));
+                    return Flux.just(new AgentEvent.StepUpdated("step.updated",seq.incrementAndGet(),runId,Instant.now(),
+                            step.id(),AgentEvent.StepStatus.SKIPPED,outputs.get(step.id()),0));
+                }
                 Instant started = Instant.now();
                 String callId = runId + ":" + step.id();
                 boolean coachStep = step.agent() == ExpertType.COACH;
@@ -110,6 +123,7 @@ public class Orchestrator {
                 boolean willOptimize = experts.optimizing(step, safeContext);
                 boolean willAdvise = step.agent() == ExpertType.RESUME && "advice".equals(step.inputs().get("action"));
                 if (willWrite || willMatch || willDiagnose || willSearch || willOptimize || willRecommend || interviewStep || coachStep) attemptedBusiness.set(true);
+                boolean analysisWrite = experts.persistingAnalysis(step,safeContext);
                 String name = willWrite ? (String) step.inputs().get("action") : willSearch ? "search_jobs" : willMatch ? "matchJobToResume" : willOptimize ? "optimizeResumeForJob" : willDiagnose ? "diagnoseResume" : willAdvise ? "resumeGuidance" : interviewStep ? ("completedInterview".equals(step.inputs().get("action")) ? "interviewGuidance" : "scoreInterview") : careerStep ? "recommendCareers" : coachStep ? "planLearning" : "placeholder." + step.agent().name();
                 String running = willWrite ? (patchWrite ? "等待用户批准采纳简历改写" : coachWrite ? "等待用户批准同步成长任务" : starWrite ? "等待用户批准保存 STAR 故事" : interviewWrite ? "正在准备模拟面试，等待用户批准面试写入" : careerWrite && "rerankCareers".equals(name) ? "等待用户批准保存推荐重排" : careerWrite ? "等待用户批准设置目标职业" : "等待用户批准看板写入") : willSearch ? "正在查询企业官网岗位" : willMatch ? (tier == ModelTier.PRO ? "深度模式较慢，正在分析原文证据（最多3分钟）" : "正在对照岗位要求与简历") : willOptimize ? "正在读取或生成改写建议，未修改简历" : willDiagnose ? "正在读取或生成简历诊断" : willAdvise ? "正在整理简历文字建议" : interviewStep ? ("completedInterview".equals(step.inputs().get("action")) ? "正在整理已完成面试的后续选项" : "正在生成面试评分卡") : careerStep ? "正在根据兴趣推荐职业" : coachStep ? "正在分析技能差距与学习路线" : "正在运行占位专家";
                 Map<String, String> upstream = new LinkedHashMap<>();
@@ -137,10 +151,33 @@ public class Orchestrator {
                 return Flux.<AgentEvent>just(new AgentEvent.StepUpdated("step.updated", seq.incrementAndGet(), runId, started,
                                 step.id(), AgentEvent.StepStatus.RUNNING, running, null),
                         new AgentEvent.ToolCall("tool.call", seq.incrementAndGet(), runId, Instant.now(), step.id(), callId,
-                                name, Map.of("inputs", step.inputs(), "upstreamOutputs", upstream), willSearch ? "mcp:jobs-mcp" : "local", willWrite ? AgentEvent.ToolAccess.WRITE : AgentEvent.ToolAccess.READ))
+                                name, Map.of("inputs", step.inputs(), "upstreamOutputs", upstream), willSearch ? "mcp:jobs-mcp" : "local", willWrite || analysisWrite ? AgentEvent.ToolAccess.WRITE : AgentEvent.ToolAccess.READ))
                         .concatWith(Flux.defer(() -> {
-                            if (!willWrite) return finish.apply(willMatch ? experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream), tier)
-                                    : experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream)));
+                            com.offerpilot.agent.tools.ToolContracts.validate(step);
+                            var contract = com.offerpilot.agent.tools.ToolContracts.contract(step);
+                            boolean analysisTool = java.util.Set.of("match","diagnose","diagnosis","optimize").contains(contract.action());
+                            if (contract.access() != AgentEvent.ToolAccess.READ && !willWrite && !analysisTool)
+                                return Flux.error(new BusinessException(ErrorCode.TOOL_FAILED,"写入工具未接入审批，已拒绝执行"));
+                            if (!willWrite) {
+                                Mono<ExpertResult> work = Mono.defer(() -> willMatch ? experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream), tier)
+                                        : experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream)));
+                                if(!analysisWrite) return finish.apply(work);
+                                return Mono.fromCallable(() -> experts.requestAnalysis(owner,runId,step,safeContext))
+                                    .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic()).flatMapMany(ticket -> Flux.<AgentEvent>just(
+                                        new AgentEvent.ApprovalRequired("approval.required",seq.incrementAndGet(),runId,Instant.now(),step.id(),ticket.id(),
+                                            callId,name,ticket.args(),"此操作将生成并保存分析报告；原简历和投递状态不会改变，请核对所选资源后批准。断线后需重新发起。",
+                                            ticket.expiresAt(),List.of()))
+                                        .concatWith(ticket.await().flatMapMany(result -> Flux.<AgentEvent>just(
+                                            new AgentEvent.ApprovalResolved("approval.resolved",seq.incrementAndGet(),runId,Instant.now(),ticket.id(),result.decision()))
+                                            .concatWith(Flux.defer(() -> {
+                                                if(!"APPROVE".equals(result.decision())) {
+                                                    declined.put(step.id(),"TIMEOUT".equals(result.decision())?"分析审批已超时，未保存报告。":"你已拒绝，未生成或保存报告。");
+                                                    alternatives.put(step.id(),"可以先讨论分析目标，确认后重新发起。");
+                                                    return Flux.error(new BusinessException(ErrorCode.APPROVAL_REJECTED,declined.get(step.id())));
+                                                }
+                                                return finish.apply(work);
+                                            })))));
+                            }
                             return Mono.fromCallable(() -> patchWrite ? experts.requestPatch(owner, runId, step) : coachWrite ? experts.requestCoach(owner, runId, step) : starWrite ? experts.requestStarStory(owner, runId, step) : interviewWrite ? experts.requestInterview(owner, runId, step) : careerWrite ? experts.requestCareer(owner, runId, step) : experts.requestBoard(owner, runId, step))
                                     .subscribeOn(careerWrite || interviewWrite || starWrite || coachWrite || patchWrite ? reactor.core.scheduler.Schedulers.boundedElastic() : reactor.core.scheduler.Schedulers.immediate()).flatMapMany(ticket -> Flux.<AgentEvent>just(new AgentEvent.ApprovalRequired("approval.required", seq.incrementAndGet(), runId,
                                     Instant.now(), step.id(), ticket.id(), callId, name, ticket.args(),
@@ -213,6 +250,7 @@ public class Orchestrator {
                 return Flux.empty();
             }));
         })));
+        });
     }
 
     private static String approvalSummary(String action, String decision) {

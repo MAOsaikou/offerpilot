@@ -187,6 +187,8 @@ public class ModelGateway {
         return injectionModel;
     }
 
+    @Autowired(required = false)
+    private io.micrometer.core.instrument.MeterRegistry meters;
     private volatile com.offerpilot.llm.safety.OutputModeration moderation;
     /** Built lazily from the configured provider keys and JWT secret; their values are never logged. */
     com.offerpilot.llm.safety.OutputModeration moderation() {
@@ -197,7 +199,9 @@ public class ModelGateway {
                     "offerpilot.llm.providers.custom.api-key", "offerpilot.mcp.search-api-key",
                     "offerpilot.mcp.github-token", "offerpilot.mcp.server-api-key"))
                 secrets.add(environment.getProperty(key, ""));
-            moderation = new com.offerpilot.llm.safety.OutputModeration(secrets);
+            moderation = new com.offerpilot.llm.safety.OutputModeration(secrets, category -> {
+                if(meters!=null) meters.counter("offerpilot.output.blocked", "category",category).increment();
+            });
         }
         return moderation;
     }

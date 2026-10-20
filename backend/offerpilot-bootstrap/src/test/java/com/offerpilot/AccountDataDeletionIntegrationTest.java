@@ -56,7 +56,7 @@ class AccountDataDeletionIntegrationTest {
     @SpyBean ResumeObjectStore storage;
     @LocalServerPort int port;
     static final ObjectMapper JSON = new ObjectMapper();
-    static final Set<String> DIRECT = Set.of("memory_candidates","career_questionnaires","llm_usage_logs","notifications","career_target_plans","career_profile_suggestions","github_evidence","job_daily_recommendations","generation_tasks","user_memories","user_preferences","refresh_tokens","user_integrations","user_mcp_servers","guest_sessions","conversations","messages","agent_runs","approvals","files","resumes","resume_versions","resume_model_preferences","resume_diagnoses","resume_patch_batches","resume_optimizations","job_matches","applications","interview_sessions","interview_learning_plans","star_stories","career_profiles","career_recommendation_revisions","career_assessments","growth_task_completions","knowledge_notes","knowledge_note_imports","jobs");
+    static final Set<String> DIRECT = com.offerpilot.privacy.UserDataInventory.CASCADE_TABLES;
     static final Map<String,String> INDIRECT = Map.of("application_events","application_id IN (SELECT id FROM applications WHERE user_id=?)", "agent_steps","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "tool_calls","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "agent_events","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "interview_answers","session_id IN (SELECT id FROM interview_sessions WHERE user_id=?)");
     HttpResponse<String> request(String path, String token, String body) throws Exception {
         var b = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1"+path)).timeout(Duration.ofSeconds(30));
@@ -133,17 +133,21 @@ class AccountDataDeletionIntegrationTest {
             childIds.put(table,jdbc.queryForList("SELECT "+column+" FROM "+table+" WHERE "+INDIRECT.get(table),String.class,a));
         }
         String jwt=tokens.issue(a,List.of("USER"),"fixture");
+        long deletionStarted=System.nanoTime();
         assertThat(request("/users/me/data",jwt,"{\"confirm\":\"DELETE\"}").statusCode()).isEqualTo(200);
+        assertThat(Duration.ofNanos(System.nanoTime()-deletionStarted)).isLessThan(Duration.ofSeconds(30));
         for (String table:tables) { assertThat(rows(table,a)).as(table+" A deleted").isEmpty(); assertThat(rows(table,b)).as(table+" B preserved").isEqualTo(before.get(table)); }
         for (String table:INDIRECT.keySet()) {
             String column=table.equals("interview_answers")?"session_id":table.equals("agent_events")?"run_id":"id";
             for(String id:childIds.get(table)) assertThat(jdbc.queryForObject("SELECT count(*) FROM "+table+" WHERE "+column+"=?",Integer.class,id)).isZero();
         }
+        cleanup.retryPending();
         for(String purpose:List.of("RESUME","EXPORT","KB_DOCUMENT")) {
             assertThatThrownBy(() -> storage.get(storage.bucket(),"resumes/"+a+"/"+purpose)).isInstanceOf(RuntimeException.class);
             assertThat(storage.get(storage.bucket(),"resumes/"+b+"/"+purpose)).isEqualTo("fictional resume".getBytes());
         }
         assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE id=?",Integer.class,a)).isZero();
+        cleanup.retryPending();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup",Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM jobs WHERE id=?",Integer.class,a+"job")).isEqualTo(1);
         assertThat(request("/auth/verify",jwt,null).statusCode()).isEqualTo(401);
@@ -175,6 +179,7 @@ class AccountDataDeletionIntegrationTest {
             assertThat(conversations.finish(turn,"late private","COMPLETED",null,null)).isEqualTo("CANCELLED");
             assertThat(jdbc.queryForObject("SELECT count(*) FROM resume_versions WHERE user_id=?",Integer.class,o)).isZero();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM messages WHERE user_id=?",Integer.class,o)).isZero();
+            cleanup.retryPending();
             assertThat(jdbc.queryForObject("SELECT attempts FROM account_data_cleanup WHERE object_key=?",Integer.class,job.key())).isEqualTo(1);
             assertThat(storage.get(job.bucket(),job.key())).isNotEmpty();
         } finally { doCallRealMethod().when(storage).remove(job.bucket(),job.key()); }
@@ -207,6 +212,7 @@ class AccountDataDeletionIntegrationTest {
             release.countDown();upload.get(15,TimeUnit.SECONDS);
             assertThat(deletion.get(15,TimeUnit.SECONDS).statusCode()).isEqualTo(200);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM files WHERE user_id=?",Integer.class,o)).isZero();
+            cleanup.retryPending();
             assertThatThrownBy(() -> storage.get(storage.bucket(),key.get())).isInstanceOf(RuntimeException.class);
             // A request that passed auth before deletion cannot upload another object afterward.
             assertThatThrownBy(() -> resumes.upload(o,"late.txt",null,"fictional".getBytes())).isInstanceOf(RuntimeException.class);
@@ -238,9 +244,32 @@ class AccountDataDeletionIntegrationTest {
             assertThat(result.statusCode()).as(result.body()).isEqualTo(200);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE id=?",Integer.class,o)).isZero();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM resume_versions WHERE user_id=?",Integer.class,o)).isZero();
+            cleanup.retryPending();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup WHERE object_key=? OR object_key LIKE ?",Integer.class,o,"resumes/"+o+"/%")).isZero();
         } finally { release.countDown();executor.shutdownNow(); }
     }
+    @Test void adminOpsShowsAggregatedUsageAndPrivateCleanupProgress() throws Exception {
+        String guest=guests.create().accessToken(),o=guests.require("Bearer "+guest);seed(o);
+        for(String path:List.of("/admin/ops/status","/admin/ops/cleanup")) {
+            assertThat(request(path,null,null).statusCode()).isEqualTo(401);
+            // Guest tokens are not staff JWTs: rejected as unauthenticated before any role check.
+            assertThat(request(path,guest,null).statusCode()).isEqualTo(401);
+        }
+        String staffOwner=owner();jdbc.update("UPDATE users SET roles='{STAFF}' WHERE id=?",staffOwner);
+        String staff=tokens.issue(staffOwner,List.of("STAFF"),"fixture");
+        assertThat(request("/users/me/data",guest,"{\"confirm\":\"DELETE\"}").statusCode()).isEqualTo(200);
+        var receipts=request("/admin/ops/cleanup",staff,null);
+        assertThat(receipts.statusCode()).isEqualTo(200);
+        assertThat(receipts.body()).contains("OBJECT","QUOTA").doesNotContain("object_key","bucket",o,"private");
+        assertThat(receipts.headers().firstValue("Cache-Control")).contains("no-store");
+        var status=request("/admin/ops/status",staff,null);
+        assertThat(status.statusCode()).isEqualTo(200);
+        assertThat(JSON.readTree(status.body()).path("data").path("uptimeSeconds").asLong()).isGreaterThanOrEqualTo(0);
+        cleanup.retryPending();
+        var completed=request("/admin/ops/cleanup",staff,null);
+        assertThat(JSON.readTree(completed.body()).path("data")).isEmpty();
+    }
+
     @Test void inventoryRequiresCoverageForEveryOwnerColumnAndCascadeDescendant() {
         var owned=jdbc.queryForList("SELECT DISTINCT table_name FROM information_schema.columns WHERE table_schema='public' AND column_name IN ('user_id','owner_id')",String.class);
         assertThat(new HashSet<>(owned)).isEqualTo(DIRECT);

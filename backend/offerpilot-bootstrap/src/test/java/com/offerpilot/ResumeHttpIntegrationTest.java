@@ -439,6 +439,29 @@ class ResumeHttpIntegrationTest {
         jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES (?,'fixture',?,'intern',?::jsonb)", id, id, payload.toString());
         return id;
     }
+    /** SC-02: persisting analysis asks for approval mid-stream; approve it and return the full SSE body. */
+    String approvedChat(String token, String body) throws Exception {
+        var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/chat")).timeout(Duration.ofSeconds(60))
+                .header("Authorization", "Bearer " + token).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body));
+        var response = HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+        var out = new StringBuilder();
+        try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+            for (String line; (line = reader.readLine()) != null; ) {
+                out.append(line).append('\n');
+                if (!line.startsWith("data:")) continue;
+                var event = JSON.readTree(line.substring(5).strip());
+                if ("approval.required".equals(event.path("type").asText()))
+                    assertThat(request("POST", "/agent/runs/" + event.path("runId").asText() + "/approvals/" + event.path("approvalId").asText(),
+                            token, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(200);
+            }
+        }
+        return out.toString();
+    }
+    List<JsonNode> events(String body) {
+        return body.lines().filter(line -> line.startsWith("data:")).map(line -> {
+            try { return JSON.readTree(line.substring(5).strip()); } catch (Exception ex) { throw new IllegalStateException(ex); }
+        }).toList();
+    }
     List<JsonNode> events(HttpResponse<String> response) {
         return response.body().lines().filter(line -> line.startsWith("data:")).map(line -> {
             try { return JSON.readTree(line.substring(5).strip()); } catch (Exception ex) { throw new IllegalStateException(ex); }
@@ -454,9 +477,7 @@ class ResumeHttpIntegrationTest {
         String token = identities.create().accessToken(), stranger = identities.create().accessToken();
         var resume = patchFixture(token); String jobId = chatJob(OPTIMIZE_JD); output.set(optimizationWithTrivialPatch());
         var selected = Map.of("jobId", jobId, "resumeId", resume.id(), "resumeVersionId", resume.currentVersionId());
-        var response = request("POST", "/agent/chat", token, chatBody("AUTO", null, "针对岗位生成改写建议", selected));
-        assertThat(response.statusCode()).isEqualTo(200);
-        var stream = events(response);
+        var stream = events(approvedChat(token, chatBody("AUTO", null, "针对岗位生成改写建议", selected)));
         var card = stream.stream().filter(e -> "ui.card".equals(e.path("type").asText())).findFirst().orElseThrow();
         assertThat(card.path("cardType").asText()).isEqualTo("resume_diff");
         assertThat(card.path("cardId").asText()).isEqualTo(card.path("payload").path("reportId").asText());
@@ -490,8 +511,7 @@ class ResumeHttpIntegrationTest {
     @Test void chatRewriteMissingJobContentsFailsWithoutModelOrVersionWrites() throws Exception {
         String token = identities.create().accessToken(); var resume = patchFixture(token);
         var selected = Map.of("jobId", chatJob(""), "resumeId", resume.id(), "resumeVersionId", resume.currentVersionId());
-        var response = request("POST", "/agent/chat", token, chatBody("RESUME", null, "针对岗位生成改写建议", selected));
-        assertThat(response.body()).contains("岗位缺少职责与要求", "FAILED").doesNotContain("event:ui.card");
+        assertThat(approvedChat(token, chatBody("RESUME", null, "针对岗位生成改写建议", selected))).contains("岗位缺少职责与要求", "FAILED").doesNotContain("event:ui.card");
         assertThat(rewriteCalls.get()).isZero();
         assertThat(optimizations.list(owner(token), resume.id())).isEmpty();
         assertThat(resumes.versions(owner(token), resume.id())).hasSize(1);
