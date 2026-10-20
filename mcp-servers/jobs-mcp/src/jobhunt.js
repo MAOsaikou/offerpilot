@@ -75,6 +75,7 @@ export function toJobCard(siteId, job) {
     nature: job.nature_code ?? '',
     locations: job.location_names ?? '',
     department: job.department_name ?? '',
+    deadline: job.deadline ?? job.end_date ?? '',
     updatedAt: job.updated_at ?? '',
     url: job.url ?? '',
     ...(job.description ? { description: job.description } : {}),

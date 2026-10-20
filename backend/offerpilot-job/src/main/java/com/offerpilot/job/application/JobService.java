@@ -16,11 +16,17 @@ public class JobService implements JobDescriptionForChat {
     private final JobSource source;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
+    private JobSearchPipeline pipeline;
+    @org.springframework.beans.factory.annotation.Autowired
+    public JobService(JobSource source, JdbcTemplate jdbc, ObjectMapper json, JobSearchPipeline pipeline) {
+        this(source,jdbc,json); this.pipeline=pipeline;
+    }
     public JobService(JobSource source, JdbcTemplate jdbc, ObjectMapper json) { this.source=source; this.jdbc=jdbc; this.json=json; }
     public JsonNode sites() { return source.sites(); }
     public JsonNode search(String query, String site, String nature, String location) {
         if (query == null || query.isBlank() || query.length()>100 || site.length()>60 || location.length()>60
                 || !Set.of("campus","intern","social","all").contains(nature)) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        if (pipeline != null) return pipeline.search(com.offerpilot.llm.quota.LlmUserContext.current(),query,site,nature,location,this::save);
         Map<String,Object> args = new LinkedHashMap<>();
         args.put("query",query.strip()); args.put("nature",nature); args.put("limit",30);
         if (!site.isBlank()) args.put("site",site);
@@ -77,14 +83,14 @@ public class JobService implements JobDescriptionForChat {
         var raw=(ObjectNode)result.deepCopy();
         raw.put("id",existing.path("externalId").asText()); raw.put("site",existing.path("site").asText());
         var data=normalize(raw,existing.path("nature").asText());
-        for(String field:List.of("title","company","locations","category","department","url","updatedAt"))
+        for(String field:List.of("title","company","locations","category","department","deadline","url","updatedAt"))
             if(data.path(field).asText().isBlank()) data.set(field,existing.path(field));
         jdbc.update("UPDATE jobs SET payload=?::jsonb,detail_fetched_at=now(),updated_at=now() WHERE id=?",data.toString(),id);
         return get(owner,id);
     }
     private ObjectNode normalize(JsonNode raw,String nature) {
         var data=json.createObjectNode();
-        for(String field:List.of("site","company","title","locations","category","department","updatedAt","description","requirement")) {
+        for(String field:List.of("site","company","title","locations","category","department","deadline","updatedAt","description","requirement")) {
             String value=raw.path(field).asText("").replaceAll("(?is)<[^>]*>"," ").replace("&nbsp;"," ").replace("&amp;","&").strip();
             if(value.length()>30000) value=com.offerpilot.common.text.TextBounds.truncate(value,30000);
             data.put(field,value);

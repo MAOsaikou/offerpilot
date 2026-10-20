@@ -62,6 +62,8 @@ public class JobSearchForChat {
             resolvedSite = selected.path("id").asText();
         }
         JsonNode result = jobs.search(query.strip(), resolvedSite, nature, location.strip());
+        if (result.path("items").isEmpty() && result.path("meta").path("partial").asBoolean())
+            throw new BusinessException(ErrorCode.TOOL_FAILED, "本次查询的岗位来源均不可用，请稍后重试或选择其他企业");
         ObjectNode card = json.createObjectNode().put("schemaVersion", 2).put("returnedCount", result.path("items").size());
         card.set("criteria", json.valueToTree(java.util.Map.of("query", query.strip(), "site", resolvedSite,
                 "nature", nature, "location", location.strip())));
@@ -70,12 +72,15 @@ public class JobSearchForChat {
         for (JsonNode job : result.path("items")) {
             if (items.size() >= 5) break;
             var item = items.addObject();
-            for (String field : List.of("id", "site", "title", "company", "locations", "nature", "updatedAt"))
+            for (String field : List.of("id", "site", "title", "company", "locations", "nature", "updatedAt", "source", "snapshotDate", "retrievalSource", "storedAt"))
                 item.put(field, bounded(job.path(field).asText(), 200));
         }
         var meta = card.putObject("meta");
         for (String field : List.of("source", "snapshotDate", "sourceDescription", "fallbackReason"))
             if (result.path("meta").has(field)) meta.put(field, bounded(result.path("meta").path(field).asText(), 300));
+        for(String field:List.of("partial","timedOut","vectorAvailable"))
+            if(result.path("meta").has(field)) meta.put(field,result.path("meta").path(field).asBoolean());
+        if(result.path("meta").has("durationMs")) meta.put("durationMs",result.path("meta").path("durationMs").asLong());
         meta.put("cached", result.path("meta").path("cached").asBoolean());
         meta.put("truncated", result.path("meta").path("truncated").asBoolean());
         for (String field : List.of("sites", "degradedSites")) {

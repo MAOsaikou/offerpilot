@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useBoard } from '@/shared/composables/useBoard'
 import JobSourceBadge from '@/shared/components/JobSourceBadge.vue'
 import { RouterLink } from 'vue-router'
 import type { ChatJobSearch } from '@/shared/types/jobs'
 import type { JobCardItem } from '@/shared/types/cards'
 
 const props = defineProps<{ payload: ChatJobSearch | JobCardItem }>()
+const board = useBoard()
 const search = computed(() => ('schemaVersion' in props.payload ? props.payload : null))
 const legacy = computed(() => ('id' in props.payload ? props.payload : null))
 const more = computed(() => ({
@@ -41,6 +43,13 @@ const natureLabel = (value: string) =>
       查询时间：{{ new Date(search.fetchedAt).toLocaleString('zh-CN') }} · 本次返回
       {{ search.returnedCount }} 条，展示 {{ search.items.length }} 条。此数量不是全部在招岗位总数。
     </p>
+    <p v-if="search.meta.partial" role="status" class="helper-note">
+      {{ search.meta.timedOut ? '查询超时，已返回部分结果。' : '部分来源暂不可用，展示可用结果。' }}
+    </p>
+    <p v-if="board.error.value" role="alert">{{ board.error.value }}</p>
+    <p v-if="board.query.isError.value" role="alert">
+      看板读取失败。<button class="btn" @click="board.query.refetch()">重试</button>
+    </p>
     <p v-if="search.meta.source === 'LOCAL_SNAPSHOT'" class="subtle">
       人工整理的示例岗位快照，非实时数据；当前是否开放请到企业官网核实。
     </p>
@@ -60,6 +69,14 @@ const natureLabel = (value: string) =>
     </p>
     <article v-for="job in search.items" :key="job.id" class="search-item">
       <h4>{{ job.title }}</h4>
+      <JobSourceBadge
+        :source="job.source || search.meta.source"
+        :snapshot-date="job.snapshotDate || search.meta.snapshotDate"
+        :cached="job.retrievalSource === 'LOCAL_DB' || search.meta.cached"
+      />
+      <p v-if="job.retrievalSource === 'LOCAL_DB'" class="subtle">
+        本地库记录 · {{ job.storedAt || '同步时间未提供' }}
+      </p>
       <p>
         {{ job.company || job.site }} · {{ job.locations || '地点未提供' }} ·
         {{ natureLabel(job.nature) }}
@@ -74,6 +91,19 @@ const natureLabel = (value: string) =>
       <RouterLink :to="'/jobs/' + encodeURIComponent(job.id)" class="btn"
         >查看详情与选择简历匹配</RouterLink
       >
+      <button
+        v-if="job.id.startsWith('job_')"
+        class="btn"
+        :disabled="
+          board.saved(job.id) ||
+          board.busy.value ||
+          board.query.isPending.value ||
+          board.query.isError.value
+        "
+        @click="board.favorite(job.id)"
+      >
+        {{ board.saved(job.id) ? '已加入看板' : '加入看板' }}
+      </button>
     </article>
     <div class="card-footer">
       <RouterLink :to="more" class="btn">按这些条件继续搜索</RouterLink>

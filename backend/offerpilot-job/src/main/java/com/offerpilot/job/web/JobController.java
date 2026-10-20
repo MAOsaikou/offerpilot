@@ -19,9 +19,11 @@ public class JobController {
     private final JobEvalMarkdownExporter evalExports;
     private final CurrentUser users;
     private final JobImportService imports;
+    private final JobRecommendationService recommendations;
 
     public JobController(JobService jobs, JobMatchService matches, JobEvalMarkdownExporter evalExports, CurrentUser users,
-                         JobImportService imports) {
+                         JobImportService imports, JobRecommendationService recommendations) {
+        this.recommendations=recommendations;
         this.imports = imports;
         this.jobs = jobs;
         this.matches = matches;
@@ -50,8 +52,8 @@ public class JobController {
             @RequestParam(defaultValue = "campus") String nature,
             @RequestParam(defaultValue = "") String location,
             HttpServletRequest r) {
-        owner(r);
-        return ok(jobs.search(query, site, nature, location), r);
+        String user=owner(r);
+        return ok(com.offerpilot.llm.quota.LlmUserContext.asUser(user, () -> jobs.search(query, site, nature, location)), r);
     }
 
     public record ImportParseRequest(@Size(max = 20000) String text, @Size(max = 2000) String url) {}
@@ -79,6 +81,9 @@ public class JobController {
     public ApiResponse<?> imported(HttpServletRequest r) {
         return ok(imports.list(owner(r)), r);
     }
+
+    @GetMapping("/recommendations")
+    public ApiResponse<?> recommendations(HttpServletRequest r) { return ok(recommendations.daily(owner(r)), r); }
 
     @GetMapping("/{id}")
     public ApiResponse<?> get(@PathVariable String id, HttpServletRequest r) {

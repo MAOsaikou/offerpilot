@@ -56,7 +56,7 @@ class AccountDataDeletionIntegrationTest {
     @SpyBean ResumeObjectStore storage;
     @LocalServerPort int port;
     static final ObjectMapper JSON = new ObjectMapper();
-    static final Set<String> DIRECT = Set.of("generation_tasks","user_memories","user_preferences","refresh_tokens","user_integrations","guest_sessions","conversations","messages","agent_runs","approvals","files","resumes","resume_versions","resume_model_preferences","resume_diagnoses","resume_patch_batches","resume_optimizations","job_matches","applications","interview_sessions","interview_learning_plans","star_stories","career_profiles","career_recommendation_revisions","career_assessments","growth_task_completions","knowledge_notes","knowledge_note_imports","jobs");
+    static final Set<String> DIRECT = Set.of("job_daily_recommendations","generation_tasks","user_memories","user_preferences","refresh_tokens","user_integrations","guest_sessions","conversations","messages","agent_runs","approvals","files","resumes","resume_versions","resume_model_preferences","resume_diagnoses","resume_patch_batches","resume_optimizations","job_matches","applications","interview_sessions","interview_learning_plans","star_stories","career_profiles","career_recommendation_revisions","career_assessments","growth_task_completions","knowledge_notes","knowledge_note_imports","jobs");
     static final Map<String,String> INDIRECT = Map.of("application_events","application_id IN (SELECT id FROM applications WHERE user_id=?)", "agent_steps","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "tool_calls","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "agent_events","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "interview_answers","session_id IN (SELECT id FROM interview_sessions WHERE user_id=?)");
     HttpResponse<String> request(String path, String token, String body) throws Exception {
         var b = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1"+path)).timeout(Duration.ofSeconds(30));
@@ -90,6 +90,7 @@ class AccountDataDeletionIntegrationTest {
         jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload,user_id) VALUES (?,'imported',?,'campus','{}',?)",o+"imported",o,o);
         jdbc.update("INSERT INTO applications(id,user_id,job_id,note) VALUES (?,?,?,'private import')",o+"app-imported",o,o+"imported");
         jdbc.update("UPDATE resume_optimizations SET job_id=? WHERE id=?",o+"job",o+"opt");
+        jdbc.update("INSERT INTO job_daily_recommendations(user_id,day,context_hash,snapshot) VALUES (?,current_date,'fixture','{\"items\":[]}'::jsonb)",o);
         jdbc.update("INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status) VALUES (?,?,?,?,'match','RUNNING')",o+"match",o,o+"job",o+"v");
         jdbc.update("INSERT INTO applications(id,user_id,job_id,note) VALUES (?,?,?,'private')",o+"app",o,o+"job");
         jdbc.update("INSERT INTO application_events(id,application_id,kind,to_status,detail,actor) VALUES (?,?,'CREATED','TODO','private','USER')",o+"event",o+"app");

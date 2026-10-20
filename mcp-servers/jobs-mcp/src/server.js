@@ -35,7 +35,7 @@ const CACHE_TTL_MS = Number(process.env.CACHE_TTL_SECONDS || 600) * 1000;
 const SOURCE = 'company-career-site';
 
 const SEARCH_INPUT = {
-  query: z.string().min(1).describe('搜索关键词，例如「后端」「Java」「算法」「产品经理」'),
+  query: z.string().max(100).describe('搜索关键词；仅筛选企业/城市/招聘类型时可为空'),
   site: z.string().optional().describe('只查单个站点，如 tencent、bytedance。不传则并发查询多个站点'),
   sites: z.array(z.string()).optional().describe('查询多个指定站点；优先级高于 site'),
   nature: z.string().optional().describe('招聘类型：campus（校招，默认）/ intern（实习）/ social（社招）/ all（全部）'),
