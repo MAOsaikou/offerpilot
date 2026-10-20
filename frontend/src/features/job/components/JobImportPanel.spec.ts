@@ -5,7 +5,13 @@ import { createApp, nextTick, type App } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { listImportedJobs, parseJobImport, saveJobImport } from '@/shared/api/jobs'
+import {
+  listImportedJobs,
+  parseJobImport,
+  saveJobImport,
+  uploadJobScreenshot,
+  validateJobScreenshot,
+} from '@/shared/api/jobs'
 import type { RealJob } from '@/shared/types/jobs'
 import JobImportPanel from './JobImportPanel.vue'
 
@@ -13,12 +19,26 @@ vi.mock('@/shared/api/jobs', () => ({
   listImportedJobs: vi.fn(),
   parseJobImport: vi.fn(),
   saveJobImport: vi.fn(),
+  uploadJobScreenshot: vi.fn(),
+  validateJobScreenshot: vi.fn(),
+  readJobScreenshot: vi.fn(),
 }))
 
 let app: App | undefined
 let root: HTMLDivElement
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.stubGlobal(
+    'URL',
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:preview'), revokeObjectURL: vi.fn() }),
+  )
+  vi.mocked(validateJobScreenshot).mockReturnValue(undefined)
+  vi.mocked(uploadJobScreenshot).mockResolvedValue({
+    fileId: 'file_page',
+    name: 'page.png',
+    mime: 'image/png',
+    size: 100,
+  })
   vi.mocked(listImportedJobs).mockResolvedValue([])
   vi.mocked(parseJobImport).mockResolvedValue({
     draft: {
@@ -94,4 +114,61 @@ it('parses pasted text, lets the user correct the draft, saves and opens the job
     skills: ['SQL'],
     url: '',
   })
+})
+
+it('selects or pastes screenshots, validates count, shows progress and retries upload before review', async () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/jobs', component: JobImportPanel }],
+  })
+  await router.push('/jobs')
+  root = document.createElement('div')
+  document.body.append(root)
+  app = createApp(JobImportPanel)
+    .use(router)
+    .use(VueQueryPlugin, { queryClient: new QueryClient() })
+  app.mount(root)
+  button('粘贴 JD').click()
+  await nextTick()
+  const radio = root.querySelector<HTMLInputElement>('input[value="screenshot"]')!
+  radio.checked = true
+  radio.dispatchEvent(new Event('change'))
+  await nextTick()
+  expect(root.textContent).toContain('尚未选择截图')
+  const file = new File(['pixels'], 'page.png', { type: 'image/png' })
+  const paste = new Event('paste', { bubbles: true, cancelable: true })
+  Object.defineProperty(paste, 'clipboardData', { value: { files: [file] } })
+  root.querySelector('section')!.dispatchEvent(paste)
+  await nextTick()
+  expect(root.querySelectorAll('img')).toHaveLength(1)
+  button('删除').click()
+  await nextTick()
+  expect(root.querySelectorAll('img')).toHaveLength(0)
+  const selector = root.querySelector<HTMLInputElement>('input[type="file"]')!
+  Object.defineProperty(selector, 'files', { configurable: true, value: [file, file, file, file] })
+  selector.dispatchEvent(new Event('change'))
+  await nextTick()
+  expect(root.textContent).toContain('最多选择')
+  Object.defineProperty(selector, 'files', { configurable: true, value: [file] })
+  selector.dispatchEvent(new Event('change'))
+  await nextTick()
+  vi.mocked(uploadJobScreenshot).mockRejectedValueOnce(new Error('上传失败，请重试'))
+  button('解析岗位').click()
+  await vi.waitFor(() => expect(root.textContent).toContain('上传失败'))
+  expect(root.querySelectorAll('img')).toHaveLength(1)
+  let finish: ((value: Awaited<ReturnType<typeof uploadJobScreenshot>>) => void) | undefined
+  vi.mocked(uploadJobScreenshot).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      }),
+  )
+  button('解析岗位').click()
+  await nextTick()
+  expect(root.querySelector('progress')).not.toBeNull()
+  expect(root.querySelector<HTMLInputElement>('input[type="file"]')!.disabled).toBe(true)
+  finish!({ fileId: 'file_page', name: 'page.png', mime: 'image/png', size: 100 })
+  await vi.waitFor(() => expect(parseJobImport).toHaveBeenCalledWith({ fileIds: ['file_page'] }))
+  await vi.waitFor(() => expect(root.querySelector('form')).not.toBeNull())
+  expect(saveJobImport).not.toHaveBeenCalled()
 })
