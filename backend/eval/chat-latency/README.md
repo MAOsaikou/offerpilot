@@ -89,3 +89,61 @@ bash mvnw -o -B -pl offerpilot-bootstrap -am \
 ```
 
 `ChatLatencyPipelineIntegrationTest` 用实际 Spring 装配、发布提示词、ChatService/Orchestrator/ModelGateway 安全链路，只桩化模型端口与存储端口，不需要 socket/Docker；覆盖检索在规划/分类未完成时启动、原文筛查仅一次、新证据单独筛查与候选丢弃、取消清理、输出泄漏截断。真实 HTTP/持久化与连接复用测试需要本地端口和 Docker，不以源码编译代替通过。
+
+
+## 2026-10-21：规则先行与只读专家提前生成（待 live 实测）
+
+两个开关均默认 true，设 false 并重启分别恢复本切片之前的对应行为：
+
+| Spring 配置 / 环境变量 | true | false |
+| --- | --- | --- |
+| `offerpilot.agent.early-readonly-expert` / `AGENT_EARLY_READONLY_EXPERT` | 整个计划均为已审计本地只读动作时，不等待 effects-gate，完整读取后立即开始最终叙述 | 所有计划仍先等待 effects-gate |
+| `offerpilot.agent.rule-first-routing` / `AGENT_RULE_FIRST_ROUTING` | 无历史、无所选资源、无图片的 AUTO（含未指定 mode）整句职业探索/简单岗位搜索跳过规划及动作模型，并省去必然丢弃的普通回复预取 | 恢复原模型规划/联合岗位参数解析及普通回复预取；既有简历/教练规则保持 |
+
+规则采用完整匹配、100字上限；不是关键词包含。职业语法包括想/希望探索或了解职业、适合什么职业、明确的“不知道自己适合什么职业”，可接固定的探索起步问题或简短回答要求；“不知道”是该语法的一部分，不接受拒绝推荐等动作否定。岗位语法包括请/帮我 + 找/寻找/搜/搜索/推荐 + 可选白名单城市 + 已知技能/岗位方向 + 可选实习/校招/社招 + 岗位/职位/工作。城市、query、nature、空 site 产生与 JobIntentParser 同一参数契约，复用原 search 工具、卡片、证据及最终提示词；不生成岗位结果。
+
+正例：`我希望了解适合自己的职业方向？`、`我还不知道自己适合哪种职业？`、`寻找杭州的用户研究实习职位`、`请搜索北京市Python数据分析校招职位`、`搜C++嵌入式开发工程师社招工作！`。反例：`我不想探索职业方向`、`我想探索职业方向并保存推荐`、`找上海的腾讯Java实习岗位`、`找火星的Java岗位`、`找上海北京的Java岗位`、`找Java和Python岗位`、`帮我找工作`、`找上海的Java岗位，月薪30k`、追加换行/注入/写操作。未知城市、企业、额外条件、复合域、历史或资源选择均回落。`全职` 不等于 `social`，既有搜索枚举无法准确表达该限制，故不走规则，不丢掉限制扩大搜索。
+
+### ExpertRegistry 逐动作审计
+
+| 动作 | 提前执行 | 依据 / 保留 gate 的原因 |
+| --- | --- | --- |
+| RESUME advice | 是 | 固定文字指导；KnowledgeNoteContext 按 owner 只读原文及可选查询向量，不生成/保存诊断或改写 |
+| COACH planLearning | 是（无所选岗位/投递/匹配） | DefaultCoachPlanForChat 读取 profiles.get、职业技能、所属简历和已完成匹配/面试材料，规则计算卡片；附加 owner 隔离笔记及已入库 STAR，不同步任务 |
+| CAREER_DISCOVERY recommend | 是 | DefaultCareerRecommendForChat 读取 profiles.get（不调用会导入记忆的 load）、测评与职业库，保留完整混合检索/本地向量及来源，不调用创建推荐修订/档案保存 |
+| JOB search | **否** | ToolAccess.READ 仅为用户工具权限；JobSearchForChat → JobService.search 会访问 MCP，并 INSERT/UPDATE jobs 快照。不能根据 READ 标签绕过 gate；本轮只省规划模型 |
+| JOB getApplicationDetail；RESUME read_optimization / 已有诊断报告读取 | 否 | 保守保留所选资源解析及现有 gate，不因读取报告路径与生成路径共用而放行 |
+| INTERVIEWER scoreInterview / generateReport / completedInterview / recallStarStories | 否 | 保留会话准备及原 gate，不把整个专家或 READ 标签当纯读取授权 |
+| match、diagnose/diagnosis、optimize | 否 | 分析/匹配落库和审批保持 |
+| createApplication / updateApplicationStatus、setCareerTarget / adoptTargetCareer / rerankCareers、adoptGrowthPlan、applyPatches、start/continue/answer/completeInterview、saveStarStory、saveUserFact | 否 | 写入或审批；仍先等 beforeEffects，记忆入口单独保留 gate |
+| clarify / default / 未知动作、混合计划、所选 jobId/applicationId/matchId/jobMatchId | 否 | 默认拒绝提前执行；必须整个计划全部命中只读白名单 |
+
+提前读取本身不创建业务记录。usage/配额及运行/事件日志仍照常记录，不冒充业务写入；推测生成已发生的调用仍按网关计入额度与 UsageJournal（供应商未报告 token 的局限保持）。最终叙述唯一入口仍是 ChatService → ModelGateway.stream → screenedStream → ScreenedGeneration.release：原文/新增证据未完成 SC-01 时扣留正文，命中取消候选并按既有类别告警 Prompt 重生成；未放行 token 不进入 text.delta/checkpoint/最终消息。SC-03 仍为尾部滑动窗口流式审核，没有整段缓冲。只读 plan/tool/card/citation 事件现在可以早于输入筛查完成，事件类型、相对顺序及单调 seq 保持；它们不计首 token。
+
+新增日志 `rule-route`（规则生成计划）、`early-expert`（跳过业务副作用等待的阶段标记）；实际专家读取继续看 `expert-类型`，最终模型与放行看 `provider-first` / `expert-reply` / `first-text`。不记录原文、证据或凭据。
+
+对照使用**相同本轮构建**和两个隔离同配置实例，SC-01 分类器与 SC-03 始终开启，保留既有笔记并行/简历快速路由/联合岗位规划等开关相同：
+
+1. 整体组合：18082 两项 true；18083 两项 false。
+2. 归因只读提前：两侧 rule-first-routing=true，只切 early-readonly-expert。
+3. 归因规则规划：两侧 early-readonly-expert=true，只切 rule-first-routing。
+
+每组重新启动后运行上文 `measure.py --runs 100 --mode AUTO --question-set acceptance --control-base ...` 的交错命令，保留失败/各类别及整体 P95；验收仅认真实模型首个 text.delta。岗位仍有 SC-01 → MCP/快照 → 最终叙述串行段，未宣称所有类别都变成 max(SC-01, 叙述首块)。无 live 数字写入，AG-02 保持进行中。
+
+可选 `offerpilot.agent.speculative-expert` 本轮未实现：避免增加未经完整规划验证的专家读取、额外模型流及取消/额度复杂度；规则未命中继续原规划路径。
+
+新增离线定向测试（仍在 backend）：
+
+```bash
+bash mvnw -o -B -pl offerpilot-agent -am \
+  -Dtest=ReadOnlyRuleRouteTest,EarlyReadonlyExpertTest,ChatParallelEffectsTest,JointJobSearchPlanningTest,ResumeAdviceFastPathTest \
+  -Dsurefire.failIfNoSpecifiedTests=false test
+bash mvnw -o -B -pl offerpilot-bootstrap -am \
+  -Dtest=ChatLatencyPipelineIntegrationTest,JointJobSearchConfigurationTest \
+  -Dsurefire.failIfNoSpecifiedTests=false test
+```
+
+完整必跑项仍为上文未过滤的 agent reactor 与 bootstrap 定向命令；socket/Docker 受限时单独记录阻塞，不将编译通过称为 IT 通过。新增安全流水线用可控制的原输入/证据判定，覆盖提前执行与叙述、干净放行/原输入命中重生成、证据命中、关闭恢复、取消及 SC-03 泄漏截断。
+
+
+2026-10-21 本沙箱结果：未过滤 agent / bootstrap 命令均已尝试，受本地端口权限阻塞；单独 HTTP/持久化 IT 又确认端口/Docker 不可用。预加载本地 Byte Buddy agent、设置 headless 并明确排除7类 socket 测试后，agent reactor **578项通过**；上面两类 bootstrap 无 socket 定向测试 **7项通过**。完整命令、排除清单和断言覆盖见 [docs/10](../../../docs/10-测试与评估方案.md)，真实 IT 留 CI、P95 留 live，不把排除集称为完整验证通过。

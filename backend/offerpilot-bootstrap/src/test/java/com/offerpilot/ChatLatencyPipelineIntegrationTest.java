@@ -120,6 +120,64 @@ class ChatLatencyPipelineIntegrationTest {
         }
     }
 
+    @Test void readonlyExpertAndNarrationStartBeforeRawVerdictButNoCandidateTextIsPersisted() throws Exception {
+        var requests = List.of(new ChatRequest(null, QUESTION, null, AgentMode.COACH, null),
+                new ChatRequest(null, "我想探索职业方向", null, AgentMode.AUTO, null),
+                new ChatRequest(null, "简历里的项目经历怎么写", null, AgentMode.AUTO, null));
+        for (var request : requests) for (boolean flagged : List.of(false, true)) try (var fixture = new Fixture(true)) {
+            fixture.completeCandidate.set(true);
+            var events = new CopyOnWriteArrayList<AgentEvent>();
+            var done = fixture.service().chat("alice", request)
+                    .doOnNext(events::add).collectList().toFuture();
+            try {
+                assertThat(fixture.gateway.screenStarted.await(2, TimeUnit.SECONDS)).isTrue();
+                fixture.releaseNotes.countDown();
+                assertThat(fixture.replyStarted.await(2, TimeUnit.SECONDS)).isTrue();
+                assertThat(fixture.gateway.evidenceStarted.await(2, TimeUnit.SECONDS)).isTrue();
+                fixture.gateway.evidenceVerdict.tryEmitValue("{\"injection\":false,\"categories\":[]}");
+                assertThat(events).noneMatch(AgentEvent.TextDelta.class::isInstance);
+                verify(fixture.conversations, never()).checkpoint(any(), anyString());
+                fixture.gateway.inputVerdict.tryEmitValue(flagged
+                        ? "{\"injection\":true,\"categories\":[\"OVERRIDE\"]}"
+                        : "{\"injection\":false,\"categories\":[]}");
+                String expected = flagged ? "已筛查的学习建议" : "不得放行的候选";
+                assertThat(done.get(3, TimeUnit.SECONDS)).filteredOn(AgentEvent.TextDelta.class::isInstance)
+                        .singleElement().satisfies(e -> assertThat(((AgentEvent.TextDelta) e).text()).isEqualTo(expected));
+                assertThat(fixture.finalPrompts).hasSize(flagged ? 2 : 1);
+                assertThat(fixture.gateway.rawScreens).hasValue(1);
+                if (flagged) assertThat(fixture.finalPrompts.get(1).getContents()).contains("疑似提示注入", "OVERRIDE");
+                verify(fixture.conversations).finish(any(), eq(expected), eq("COMPLETED"), any(), isNull(), any());
+                if (flagged) verify(fixture.conversations, never()).checkpoint(any(), contains("不得放行的候选"));
+            } finally { done.cancel(true); }
+        }
+    }
+
+    @Test void disabledReadonlySwitchWaitsForEffectsAndCancellationDisposesPendingNarration() throws Exception {
+        for (boolean early : List.of(false, true)) try (var fixture = new Fixture(true, early)) {
+            var events = new CopyOnWriteArrayList<AgentEvent>();
+            var subscription = fixture.service().chat("alice", new ChatRequest(null, QUESTION, null, AgentMode.COACH, null))
+                    .subscribe(events::add);
+            try {
+                assertThat(fixture.gateway.screenStarted.await(2, TimeUnit.SECONDS)).isTrue();
+                fixture.releaseNotes.countDown();
+                if (early) {
+                    assertThat(fixture.replyStarted.await(2, TimeUnit.SECONDS)).isTrue();
+                } else {
+                    assertThat(fixture.coachStarted.getCount()).isEqualTo(1);
+                    assertThat(fixture.replyStarted.getCount()).isEqualTo(1);
+                    fixture.gateway.inputVerdict.tryEmitValue("{\"injection\":false,\"categories\":[]}");
+                    assertThat(fixture.replyStarted.await(2, TimeUnit.SECONDS)).isTrue();
+                }
+                subscription.dispose();
+                verify(fixture.conversations, timeout(2000)).finish(any(), eq(""), eq("CANCELLED"), any(), any(), any());
+                assertThat(fixture.candidateCancelled).isTrue();
+                if (early) assertThat(fixture.gateway.inputCancelled.await(2, TimeUnit.SECONDS)).isTrue();
+                assertThat(events).noneMatch(AgentEvent.TextDelta.class::isInstance);
+                verify(fixture.conversations, never()).checkpoint(any(), anyString());
+            } finally { subscription.dispose(); }
+        }
+    }
+
     private ChatRequest request() { return new ChatRequest(null, QUESTION, null, AgentMode.AUTO, null); }
     private static ChatResponse response(String text) {
         return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
@@ -134,16 +192,20 @@ class ChatLatencyPipelineIntegrationTest {
                 plannerCancelled = new CountDownLatch(1), replyStarted = new CountDownLatch(1);
         final AtomicBoolean candidateCancelled = new AtomicBoolean();
         final AtomicBoolean leakOutput = new AtomicBoolean();
+        final AtomicBoolean completeCandidate = new AtomicBoolean();
+        final CountDownLatch coachStarted = new CountDownLatch(1);
         final Sinks.Empty<Void> plannerEnd = Sinks.empty();
         final List<Prompt> finalPrompts = new CopyOnWriteArrayList<>();
         final AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
 
-        @SuppressWarnings("unchecked") Fixture(boolean parallel) {
-            when(conversations.begin(anyString(), any(), anyString(), any(), anyString())).thenReturn(
-                    new ConversationService.Turn("alice", "conv", "run", "msg", AgentMode.AUTO, Instant.now(), List.of()));
+        Fixture(boolean parallel) { this(parallel, true); }
+
+        @SuppressWarnings("unchecked") Fixture(boolean parallel, boolean early) {
+            when(conversations.begin(anyString(), any(), anyString(), any(), anyString())).thenAnswer(call ->
+                    new ConversationService.Turn("alice", "conv", "run", "msg", call.getArgument(3), Instant.now(), List.of()));
             when(conversations.checkpoint(any(), anyString())).thenReturn(true);
             when(conversations.finish(any(), anyString(), anyString(), any(), any(), any())).thenAnswer(call -> call.getArgument(2));
-            when(notes.retrieve("alice", QUESTION)).thenAnswer(call -> {
+            when(notes.retrieve(eq("alice"), anyString())).thenAnswer(call -> {
                 notesStarted.countDown();
                 try { if (!releaseNotes.await(4, TimeUnit.SECONDS)) throw new IllegalStateException("test latch timeout"); }
                 catch (InterruptedException ex) { notesInterrupted.countDown(); Thread.currentThread().interrupt(); return List.of(); }
@@ -163,14 +225,20 @@ class ChatLatencyPipelineIntegrationTest {
                 if (prompt.getContents().contains("疑似提示注入")) return Flux.just(response("已筛查的学习建议"));
                 return Flux.defer(() -> {
                     replyStarted.countDown();
-                    if (leakOutput.get()) return Flux.just(response("公开建议"), response("OfferPilot 安全边界"), response("不得继续"));
-                    return Flux.concat(Flux.just(response("不得放行的候选")), Flux.<ChatResponse>never());
+                    // Fill the existing 156-character SC-03 suffix so a genuine safe prefix is released first.
+                    if (leakOutput.get()) return Flux.just(response("公开建议" + "。".repeat(156)),
+                            response("OfferPilot 安全边界"), response("不得继续"));
+                    return completeCandidate.get() ? Flux.just(response("不得放行的候选"))
+                            : Flux.concat(Flux.just(response("不得放行的候选")), Flux.<ChatResponse>never());
                 }).doOnCancel(() -> candidateCancelled.set(true));
             });
             ((Map<ModelTier, ChatModel>) ReflectionTestUtils.getField(gateway, "models")).put(ModelTier.FLASH, provider);
             context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of(
                     "offerpilot.agent.parallel-note-retrieval", parallel,
+                    "offerpilot.agent.early-readonly-expert", early,
                     "offerpilot.agent.speculative-reply", false)));
+            context.registerBean(com.offerpilot.agent.application.ApprovalService.class,
+                    () -> mock(com.offerpilot.agent.application.ApprovalService.class));
             context.registerBean(ObjectMapper.class, () -> new ObjectMapper());
             context.registerBean(ModelGateway.class, () -> gateway);
             context.registerBean(ConversationService.class, () -> conversations);
@@ -179,11 +247,17 @@ class ChatLatencyPipelineIntegrationTest {
             context.registerBean(MemoryChat.class, () -> memory);
             context.registerBean(KnowledgeNotesForChat.class, () -> notes);
             var coach = mock(com.offerpilot.career.application.CoachPlanForChat.class);
-            when(coach.plan(anyString(), any(), any(), anyString())).thenReturn(
-                    new com.offerpilot.career.application.CoachPlanForChat.Result("独立读取的技能与目标", null, null));
+            when(coach.plan(anyString(), any(), any(), anyString())).thenAnswer(call -> {
+                coachStarted.countDown();
+                return new com.offerpilot.career.application.CoachPlanForChat.Result("独立读取的技能与目标", null, null);
+            });
+            var careers = mock(com.offerpilot.career.application.CareerRecommendForChat.class);
+            when(careers.recommend(eq("alice"), anyString())).thenReturn(
+                    new com.offerpilot.career.application.CareerRecommendForChat.Result("职业方向探索指导", null));
             context.registerBean(ExpertRegistry.class, () -> {
                 var registry = new ExpertRegistry();
                 ReflectionTestUtils.setField(registry, "coach", coach);
+                ReflectionTestUtils.setField(registry, "careers", careers);
                 return registry;
             });
             context.register(KnowledgeNoteContext.class, IntentPlanner.class, JobIntentParser.class, ResumeIntentParser.class,

@@ -343,6 +343,22 @@ class ChatServiceTest {
     }
 
     @Test
+    void ruleRoutesSkipOrdinarySpeculationAndOnlyUseTheFinalReplyGateway() {
+        service.setSpeculativeReply(true);
+        for (String question : List.of("我想探索职业方向", "找上海Java实习岗位")) {
+            clearInvocations(gateway, conversations);
+            when(gateway.stream(eq(ModelTier.PRO), anyList())).thenReturn(Flux.just(reply("按实际专家结果回答。")));
+            var result = service.chat("owner", new ChatRequest(null, question, null, AgentMode.AUTO,
+                    new ChatRequest.Options("PRO", null, null))).collectList().block(Duration.ofSeconds(5));
+            assertThat(result).last().isInstanceOf(AgentEvent.RunCompleted.class);
+            verify(gateway, never()).stream(any(), anyList(), anyDouble());
+            verify(gateway).stream(eq(ModelTier.PRO), argThat(prompt ->
+                    prompt.toString().contains("<orchestrator-data>")));
+            verify(gateway).checkQuota("owner", ModelTier.PRO);
+        }
+    }
+
+    @Test
     void cancellingFastAdviceCancelsItsOnlyProviderAndReleasesTheRun() {
         service.setSpeculativeReply(true);
         var cancelled = new AtomicBoolean();
@@ -370,7 +386,7 @@ class ChatServiceTest {
     }
 
     @Test
-    void autoImageTurnNeverStartsPlainSpeculation() {
+    void autoImageTurnSkipsRuleRoutingAndNeverStartsPlainSpeculation() {
         service.setSpeculativeReply(true);
         var attachments = mock(com.offerpilot.conversation.application.ChatAttachments.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "attachments", attachments);
@@ -390,7 +406,7 @@ class ChatServiceTest {
                     .anySatisfy(message -> assertThat(((org.springframework.ai.chat.messages.UserMessage) message).getMedia()).hasSize(1));
             return Flux.just(reply("截图建议"));
         });
-        var result = service.chat("owner", new ChatRequest(null, "看看这张截图", List.of(new ChatRequest.Attachment("file1", "image")),
+        var result = service.chat("owner", new ChatRequest(null, "找上海Java实习岗位", List.of(new ChatRequest.Attachment("file1", "image")),
                 AgentMode.AUTO, null)).collectList().block(Duration.ofSeconds(5));
         assertThat(result).last().isInstanceOf(AgentEvent.RunCompleted.class);
         verify(gateway).stream(any(), anyList());

@@ -1,5 +1,7 @@
 # 后端本地启动（DeepSeek + PostgreSQL）
 
+AG-02：`AGENT_EARLY_READONLY_EXPERT` / `offerpilot.agent.early-readonly-expert` 与 `AGENT_RULE_FIRST_ROUTING` / `offerpilot.agent.rule-first-routing` 均默认 true；分别关闭恢复只读专家等待输入 gate、职业/岗位模型规划。SC-01/SC-03、配额与审批保持；岗位搜索含 MCP 与快照写入，仍等待 gate。边界、逐项只读审计和交错对照方法见 [聊天延迟评测](eval/chat-latency/README.md)。
+
 当前实现包括账号/访客认证、持久化聊天与专家编排、简历解析/诊断/岗位定向改写/采纳/PDF、岗位搜索与匹配、投递工作区、面试/STAR/复盘、职业推荐与成长路线、私有知识笔记和长期事实记忆。公开体验默认创建有期限和额度的独立访客沙箱。启动执行 V1–V26 迁移；旧分支迁移先按 [升级说明](../deploy/migrations/README.md) 对齐历史。职业与笔记支持全文及可选向量检索，未配置百炼 embedding 时降级；真实向量效果、真人评分与公网部署仍待验收。默认集成测试使用隔离 PostgreSQL/S3Mock 和本地模型协议桩，不调用真实模型。
 
 ## 最新主线真实模型验收

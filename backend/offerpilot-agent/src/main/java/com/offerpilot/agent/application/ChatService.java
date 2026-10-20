@@ -142,7 +142,8 @@ public class ChatService {
         // Only plain AUTO turns: modes, selected resources, images, memory writes and safety paths change the reply.
         boolean speculate = speculativeReply && (turn.mode() == null || turn.mode() == AgentMode.AUTO) && images.isEmpty()
                 && context.isEmpty() && !refuse && !crisis && !explicitMemory
-                && !orchestrator.usesResumeAdviceFastPath(turn.mode(), request.content(), turn.history(), context);
+                && !orchestrator.usesResumeAdviceFastPath(turn.mode(), request.content(), turn.history(), context)
+                && !orchestrator.usesRuleFirstRoute(turn.mode(), request.content(), turn.history(), context);
         int basePromptSize = prompt.size();
         AtomicReference<Flux<ChatResponse>> early = new AtomicReference<>();
         AtomicReference<reactor.core.Disposable> earlyConnection = new AtomicReference<>();
@@ -204,7 +205,8 @@ public class ChatService {
                             planningCompletionTokens.addAndGet(u.getCompletionTokens());
                         }, owner, context)))
                 .concatWith(response)
-                .contextWrite(c -> c.put(com.offerpilot.agent.orchestrator.IntentPlanner.ON_EXPERT_ROUTE, dropEarly));
+                .contextWrite(c -> c.put(com.offerpilot.agent.orchestrator.IntentPlanner.ON_EXPERT_ROUTE, dropEarly)
+                        .put(com.offerpilot.agent.orchestrator.IntentPlanner.RULE_ROUTING_ALLOWED, images.isEmpty()));
         if (refuse || crisis) {
             String fixed = com.offerpilot.llm.safety.InputSafety.refusal(concern);
             Flux<AgentEvent> lead = Flux.defer(() -> {

@@ -222,6 +222,17 @@ public class ExpertRegistry {
         this(matches, diagnoses, searches, optimizations, descriptions, boards, careers, careerWrites, interviews, interviewWrites, coach, coachWrites);
         this.patchWrites = patchWrites.getIfAvailable();
     }
+    /** Audited local reads only; never infer this from ToolAccess.READ or an absent write adapter. */
+    public boolean earlyReadOnly(PlanStep step, Map<String, Object> context) {
+        // Selected job provenance is resolved behind the gate; keep those paths conservative.
+        if (context != null && java.util.List.of("jobId", "applicationId", "matchId", "jobMatchId")
+                .stream().anyMatch(context::containsKey)) return false;
+        Object action = step.inputs().get("action");
+        return step.agent() == ExpertType.RESUME && "advice".equals(action)
+                || step.agent() == ExpertType.COACH && "planLearning".equals(action)
+                || step.agent() == ExpertType.CAREER_DISCOVERY && "recommend".equals(action);
+    }
+
     public boolean writingPatches(PlanStep step) { return ResumePatchWriteTools.recognizes(step); }
     public ApprovalService.Ticket requestPatch(String owner, String runId, PlanStep step) {
         if (patchWrites == null) throw new IllegalStateException("简历补丁工具暂不可用");

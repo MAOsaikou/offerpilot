@@ -27,6 +27,10 @@ public class Orchestrator {
     @org.springframework.beans.factory.annotation.Value("${offerpilot.agent.max-tool-iterations:8}")
     private int maxToolIterations = 8;
     public void setMaxToolIterations(int limit) { maxToolIterations = Math.max(1, Math.min(8, limit)); }
+    private boolean earlyReadonlyExpert = true;
+    @org.springframework.beans.factory.annotation.Value("${offerpilot.agent.early-readonly-expert:true}")
+    void setEarlyReadonlyExpert(boolean enabled) { earlyReadonlyExpert = enabled; }
+
     private com.offerpilot.agent.experts.KnowledgeNoteContext noteContext;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -40,6 +44,20 @@ public class Orchestrator {
     public boolean usesResumeAdviceFastPath(AgentMode mode, String content, List<Message> history,
                                            Map<String, Object> context) {
         return planner.usesResumeAdviceFastPath(mode, content, history, context);
+    }
+
+    public boolean usesRuleFirstRoute(AgentMode mode, String content, List<Message> history,
+                                     Map<String, Object> context) {
+        return planner.usesRuleFirstRoute(mode, content, history, context);
+    }
+
+    private Mono<Void> beforePlan(IntentPlanner.Decision decision, Map<String, Object> context) {
+        // A closed allowlist, independent of the display-level READ contract (search can write snapshots).
+        // Mixed plans stay behind the original gate, including preparation and approval creation.
+        if (earlyReadonlyExpert && decision.plan() != null && !decision.plan().steps().isEmpty()
+                && decision.plan().steps().stream().allMatch(step -> experts.earlyReadOnly(step, context)))
+            return com.offerpilot.llm.ChatLatency.mono("early-expert", Mono.empty());
+        return com.offerpilot.llm.ChatLatency.mono("effects-gate", com.offerpilot.llm.ModelGateway.beforeEffects());
     }
 
     public Flux<AgentEvent> run(AgentMode mode, String content, List<Message> history, ModelTier tier,
@@ -77,7 +95,7 @@ public class Orchestrator {
             var budget=reactorContext.getOrDefault(com.offerpilot.agent.tools.RunToolBudget.KEY,
                     new com.offerpilot.agent.tools.RunToolBudget(maxToolIterations));
             return planner.prepare(mode, content, history, tier, onUsage, safeContext).flatMapMany(decision ->
-                com.offerpilot.llm.ChatLatency.mono("effects-gate", com.offerpilot.llm.ModelGateway.beforeEffects()).thenMany(Flux.defer(() -> {
+                beforePlan(decision, safeContext).thenMany(Flux.defer(() -> {
             if (decision.plan() == null) {
                 if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.JOB)
                         && SelectedResources.matchReady(safeContext)
