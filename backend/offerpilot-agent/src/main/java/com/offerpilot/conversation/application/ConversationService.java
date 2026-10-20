@@ -28,6 +28,8 @@ import java.util.Map;
 @Service
 public class ConversationService {
     private static final Logger log = LoggerFactory.getLogger(ConversationService.class);
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.offerpilot.llm.UsageJournal journal;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     public ConversationService(JdbcTemplate jdbc, ObjectMapper json) { this.jdbc = jdbc; this.json = json; }
@@ -292,9 +294,17 @@ public class ConversationService {
                 rs.getTimestamp("created_at").toInstant(), rs.getTimestamp("updated_at").toInstant());
     }
     private StoredMessage message(ResultSet rs, int row) throws SQLException {
+        var parts = decode(rs.getString("parts"));
+        if ("ASSISTANT".equals(rs.getString("role")) && parts instanceof com.fasterxml.jackson.databind.node.ArrayNode array) {
+            var citations = jdbc.queryForList("SELECT payload::text FROM agent_events WHERE run_id=? AND type='citation' ORDER BY seq",String.class,rs.getString("run_id"));
+            for (String citation : citations) { var part = array.addObject(); part.put("type","citation"); part.set("sources",decode(citation).path("sources")); }
+        }
+        var logged = journal == null || !"ASSISTANT".equals(rs.getString("role")) ? null : journal.summary(rs.getString("user_id"), rs.getString("id"));
+        var usage = logged == null ? decode(rs.getString("usage")) : json.valueToTree(logged);
+        if (usage instanceof com.fasterxml.jackson.databind.node.ObjectNode object) object.put("source", logged == null ? "legacy_message" : "llm_usage_logs");
         return new StoredMessage(rs.getString("id"), rs.getString("conversation_id"), rs.getString("role"), rs.getString("plain_text"),
                 rs.getString("run_id"), rs.getString("model"), rs.getString("status"), rs.getTimestamp("created_at").toInstant(),
-                decode(rs.getString("parts")), decode(rs.getString("usage")));
+                parts, usage);
     }
     private com.fasterxml.jackson.databind.JsonNode decode(String value) {
         if (value == null) return null;

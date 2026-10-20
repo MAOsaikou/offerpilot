@@ -126,6 +126,11 @@ public class IntentPlanner {
                     PlanValidator.validate(new Plan(content, List.of(new PlanStep("s1", "岗位与简历匹配",
                             ExpertType.JOB, Map.of("action", "match"), List.of()))))));
         }
+        if (mode != null && mode != AgentMode.AUTO) {
+            ExpertType expert = ExpertType.valueOf(mode.name());
+            return resolveActions(new Decision("single", expert, 1.0, false, null, single(content, expert, safeContext)),
+                    content, history, tier, onUsage, safeContext);
+        }
         if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.JOB) && BoardIntent.matches(content, safeContext)) {
             return resolveActions(new Decision("single", ExpertType.JOB, 1.0, false, null,
                     single(content, ExpertType.JOB, safeContext)), content, history, tier, onUsage, safeContext);
@@ -150,11 +155,6 @@ public class IntentPlanner {
                 && (safeContext.containsKey("coachAction") || CoachIntentParser.matches(content))) {
             return resolveActions(new Decision("single", ExpertType.COACH, 1.0, false, null,
                     single(content, ExpertType.COACH, safeContext)), content, history, tier, onUsage, safeContext);
-        }
-        if (mode != null && mode != AgentMode.AUTO) {
-            ExpertType expert = ExpertType.valueOf(mode.name());
-            return resolveActions(new Decision("single", expert, 1.0, false, null, single(content, expert, safeContext)),
-                    content, history, tier, onUsage, safeContext);
         }
         if (usesResumeAdviceFastPath(mode, content, history, safeContext)) {
             // Both routing and action are certain. Keep normal expert execution (including note retrieval)

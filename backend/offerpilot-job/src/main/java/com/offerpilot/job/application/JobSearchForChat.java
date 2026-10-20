@@ -72,7 +72,7 @@ public class JobSearchForChat {
         for (JsonNode job : result.path("items")) {
             if (items.size() >= 5) break;
             var item = items.addObject();
-            for (String field : List.of("id", "site", "title", "company", "locations", "nature", "updatedAt", "source", "snapshotDate", "retrievalSource", "storedAt"))
+            for (String field : List.of("id", "site", "title", "company", "locations", "nature", "updatedAt", "deadline", "url", "source", "snapshotDate", "retrievalSource", "storedAt"))
                 item.put(field, bounded(job.path(field).asText(), 200));
         }
         var meta = card.putObject("meta");

@@ -502,7 +502,7 @@ class ChatHttpIntegrationTest {
                 "step.updated", "tool.call", "tool.result", "step.updated", "text.delta", "text.delta", "usage", "run.completed");
         assertThat(events.stream().map(e -> e.path("id").asInt()).toList())
                 .containsExactlyElementsOf(java.util.stream.IntStream.rangeClosed(1, events.size()).boxed().toList());
-        assertThat(response.body()).contains("你好", "，同学。", "event:usage", "\"promptTokens\":24", "\"completionTokens\":12");
+        assertThat(response.body()).contains("你好", "，同学。", "event:usage", "\"promptTokens\":36", "\"completionTokens\":18");
         assertThat(response.body().indexOf("event:usage")).isLessThan(response.body().indexOf("event:run.completed"));
         String conv = events.get(0).path("conversationId").asText();
         var messages = conversations.messages(owner(token), conv, null, 30).items();
@@ -753,14 +753,14 @@ class ChatHttpIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(200);
         var events = sseEvents(response.body());
         var cards = events.stream().filter(e -> e.path("type").asText().equals("ui.card")).toList();
-        assertThat(cards).extracting(e -> e.path("cardType").asText()).containsExactly("skill_gap", "roadmap");
+        assertThat(cards).extracting(e -> e.path("cardType").asText()).containsExactly("skill_gap", "roadmap", "skill_radar");
         assertThat(cards.get(0).path("payload").path("skills").get(0).path("name").asText()).isEqualTo("Java");
         assertThat(cards.get(0).path("payload").path("skills").get(1).path("current").asInt()).isEqualTo(3);
         assertThat(cards.get(0).path("payload").path("citations")).isEmpty();
         assertThat(response.body()).doesNotContain("private-phone-fixture", "占位", "approval.required", "placeholder.COACH");
         var persisted = json.readTree(jdbc.queryForObject("SELECT parts::text FROM messages WHERE conversation_id=? AND role='ASSISTANT'",
                 String.class, events.get(0).path("conversationId").asText()));
-        assertThat(persisted).hasSize(3);
+        assertThat(persisted).hasSize(4);
         assertThat(persisted.get(1).path("payload")).isEqualTo(cards.get(0).path("payload"));
         assertThat(persisted.get(2).path("payload")).isEqualTo(cards.get(1).path("payload"));
         var restored = json.readTree(request("GET", "/conversations/" + events.get(0).path("conversationId").asText() + "/messages", token, null).body());
@@ -813,7 +813,7 @@ class ChatHttpIntegrationTest {
                 "content", "技能差距和成长计划", "mode", "COACH", "options", java.util.Map.of("context",
                 java.util.Map.of("applicationId", applicationId, "jobId", "unrelated-caller-job")))));
         var loopCards = sseEvents(loopResponse.body()).stream().filter(e -> e.path("type").asText().equals("ui.card")).toList();
-        assertThat(loopCards).extracting(e -> e.path("cardType").asText()).containsExactly("skill_gap", "roadmap");
+        assertThat(loopCards).extracting(e -> e.path("cardType").asText()).containsExactly("skill_gap", "roadmap", "skill_radar");
         var loopSkills = loopCards.get(0).path("payload").path("skills");
         assertThat(loopSkills).hasSizeLessThanOrEqualTo(8);
         assertThat(loopSkills.get(0).path("name").asText()).isEqualTo("Docker");

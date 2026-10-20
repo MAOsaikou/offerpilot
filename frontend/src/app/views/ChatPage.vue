@@ -5,7 +5,7 @@ import CardRenderer from '@/widgets/CardRenderer/CardRenderer.vue'
 </script>
 <template>
   <ChatView>
-    <template #agent="{ run }"><AgentPanel :run="run" /></template>
+    <template #agent="{ run, readonly }"><AgentPanel :run="run" :readonly="readonly" /></template>
     <template #cards="{ cards, adoptTarget, adoptGrowth, applyPatches, disabled }">
       <CardRenderer
         v-for="card in cards"

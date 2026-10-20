@@ -40,7 +40,7 @@ public class ExpertRegistry {
     public Mono<Map<String,Object>> withJobContext(String owner,Map<String,Object> context) {
         // A selected job is a tool input. Optional artifact visibility must not rewrite it.
         if (artifacts==null || text(context.get("jobId"))!=null) return Mono.just(context);
-        return Mono.fromCallable(() -> resolveJobContext(owner,context)).subscribeOn(Schedulers.boundedElastic());
+        return com.offerpilot.llm.UsageJournal.callable(() -> resolveJobContext(owner,context)).subscribeOn(Schedulers.boundedElastic());
     }
     private Map<String,Object> resolveJobContext(String owner,Map<String,Object> context) {
         var selected=new java.util.LinkedHashMap<String,Object>(context);
@@ -322,7 +322,7 @@ public class ExpertRegistry {
     public Mono<PlanStep> prepareInterview(String owner, PlanStep step) {
         if (interviews == null || step.agent() != ExpertType.INTERVIEWER
                 || !"continueInterview".equals(step.inputs().get("action"))) return Mono.just(step);
-        return Mono.fromCallable(() -> {
+        return com.offerpilot.llm.UsageJournal.callable(() -> {
             String id = interviews.resolveSession(owner, text(step.inputs().get("sessionId")), false);
             var session = interviews.session(owner, id);
             var inputs = new java.util.LinkedHashMap<>(step.inputs());
@@ -350,7 +350,7 @@ public class ExpertRegistry {
                                          Map<String, String> upstreamOutputs, com.offerpilot.llm.ModelTier tier) {
         if (step.agent() == ExpertType.COACH) {
             if (coach == null) return Mono.just(ExpertResult.text("成长教练服务暂不可用，请稍后重试。"));
-            return Mono.fromCallable(() -> {
+            return com.offerpilot.llm.UsageJournal.callable(() -> {
                 String resumeId = context == null ? null : text(context.get("resumeId"));
                 String versionId = context == null ? null : text(context.get("resumeVersionId"));
                 String jobId = context == null ? null : text(context.get("jobId"));
@@ -368,7 +368,7 @@ public class ExpertRegistry {
             if ("completedInterview".equals(step.inputs().get("action")))
                 return Mono.just(ExpertResult.text("这场面试已完成，本轮没有保存或推进答案。你可以请求评分、复盘，或开始一场新面试。"));
             if ("recallStarStories".equals(step.inputs().get("action"))) {
-                return Mono.fromCallable(() -> {
+                return com.offerpilot.llm.UsageJournal.callable(() -> {
                     String id = interviews.resolveSession(owner, text(step.inputs().get("sessionId")), false);
                     var session = interviews.session(owner, id);
                     var answer = session.answers().get(session.questionIndex());
@@ -379,7 +379,7 @@ public class ExpertRegistry {
             }
             if (!java.util.Set.of("scoreInterview", "generateReport").contains(String.valueOf(step.inputs().get("action"))))
                 return Mono.just(ExpertResult.text("请开始文字模拟面试，或请求面试评分卡。"));
-            return Mono.fromCallable(() -> {
+            return com.offerpilot.llm.UsageJournal.callable(() -> {
                 String id = interviews.resolveSession(owner, (String) step.inputs().get("sessionId"), false);
                 var report = interviews.scoreSession(owner, id);
                 if (starStories == null) {
@@ -398,7 +398,7 @@ public class ExpertRegistry {
         }
         if (step.agent() == ExpertType.CAREER_DISCOVERY) {
             if (careers == null) return Mono.just(ExpertResult.text("职业推荐服务暂不可用，请稍后重试。未修改职业档案。"));
-            return Mono.fromCallable(() -> {
+            return com.offerpilot.llm.UsageJournal.callable(() -> {
                 var result = careers.recommend(owner, text(step.inputs().get("request")));
                 return result.payload() == null ? ExpertResult.text(result.guidance())
                         : ExpertResult.card("根据已保存兴趣生成的规则推荐，本轮未修改职业档案。"
@@ -411,7 +411,7 @@ public class ExpertRegistry {
             return boards.detail(owner, text(step.inputs().get("applicationId")));
         }
         if (searching(step)) {
-            return Mono.fromCallable(() -> {
+            return com.offerpilot.llm.UsageJournal.callable(() -> {
                 var inputs = step.inputs();
                 var card = searches.search((String) inputs.get("query"), (String) inputs.get("site"),
                         (String) inputs.get("nature"), (String) inputs.get("location"));
@@ -426,7 +426,7 @@ public class ExpertRegistry {
             String resumeId = text(context.get("resumeId")), versionId = text(context.get("resumeVersionId"));
             Mono<com.fasterxml.jackson.databind.JsonNode> result = "read_optimization".equals(step.inputs().get("action"))
                     ? optimizations.report(owner, resumeId, versionId, text(context.get("optimizationReportId")))
-                    : Mono.fromCallable(() -> descriptions.description(owner, text(context.get("jobId"))))
+                    : com.offerpilot.llm.UsageJournal.callable(() -> descriptions.description(owner, text(context.get("jobId"))))
                         .subscribeOn(Schedulers.boundedElastic()).flatMap(jd -> optimizations.generate(owner, resumeId, versionId, jd,
                             requestId(runId, step.id()), optionalJob(owner,text(context.get("jobId")),null,null)));
             return result.map(report -> ExpertResult.card("已保存的改写建议（本轮未执行采纳，采纳状态请在简历页查看）：" + jsonSummary(report),
@@ -451,7 +451,7 @@ public class ExpertRegistry {
         Target target = matching(step, context) ? read(context) : null;
         if (target != null && matches != null) {
             String requestId = requestId(runId, step.id());
-            return Mono.fromCallable(() -> {
+            return com.offerpilot.llm.UsageJournal.callable(() -> {
                 JobMatchCards.Card card = tier == null
                         ? matches.match(owner, target.jobId(), target.resumeId(), target.resumeVersionId(), requestId)
                         : matches.match(owner, target.jobId(), target.resumeId(), target.resumeVersionId(), requestId, tier);

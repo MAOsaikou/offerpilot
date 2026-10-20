@@ -164,7 +164,7 @@ export interface CampusCalendarPayload {
     positions: string[]
     deadline: string
     url: string
-    daysLeft: number
+    daysLeft?: number
   }>
 }
 
@@ -200,7 +200,7 @@ export interface InterviewerStatePayload {
 
 export interface InterviewTurnScorePayload {
   turnIndex: number
-  score: number
+  score: number | null
   star: { situation: boolean; task: boolean; action: boolean; result: boolean }
   brief: string
 }

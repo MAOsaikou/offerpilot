@@ -71,7 +71,7 @@ class JointJobSearchPlanningTest {
                 assertThat(tool.access()).isEqualTo(AgentEvent.ToolAccess.READ);
                 assertThat(tool.args().toString()).doesNotContain("old-job", "old-resume", "old-version");
             });
-            assertThat(events).filteredOn(AgentEvent.UiCard.class::isInstance).hasSize(1);
+            assertThat(events).filteredOn(AgentEvent.UiCard.class::isInstance).extracting(e -> ((AgentEvent.UiCard) e).cardType()).containsExactly("job_card", "campus_calendar");
             assertThat(events).noneMatch(AgentEvent.TextDelta.class::isInstance);
             assertThat(reply).isNotEmpty();
             assertThat(usage).hasValue(12);

@@ -7,6 +7,7 @@ const props = defineProps<{
   text: string
   /** 流式输出中：补全未闭合代码块并显示光标 */
   streaming?: boolean
+  citationIndexes?: number[]
 }>()
 
 const emit = defineEmits<{ cite: [reference: string] }>()
@@ -14,7 +15,10 @@ const emit = defineEmits<{ cite: [reference: string] }>()
 const html = computed(() => {
   // 语法高亮异步就绪后重新渲染
   void highlightRevision.value
-  return renderMarkdown(props.text, { streaming: props.streaming })
+  return renderMarkdown(props.text, {
+    streaming: props.streaming,
+    citationIndexes: props.citationIndexes,
+  })
 })
 async function copyCode(button: HTMLElement) {
   const code = button.closest('.code-block')?.querySelector('pre')?.textContent ?? ''
@@ -35,6 +39,8 @@ function onClick(event: MouseEvent) {
     void copyCode(copy)
     return
   }
+  const numeric = element?.closest<HTMLElement>('button[data-citation-index]')
+  if (numeric?.dataset.citationIndex) emit('cite', numeric.dataset.citationIndex)
   const target = element?.closest<HTMLElement>('[data-kb-reference]')
   if (target?.dataset.kbReference) emit('cite', target.dataset.kbReference)
 }

@@ -32,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 按档位选择模型，在供应商入口执行用户配额并累计已报告用量；回退与持久化审计日志待接入。
+ * 按档位选择模型，在供应商入口执行用户配额并累计已报告用量；聊天关联调用写入持久化用量审计。
  */
 @Component
 public class ModelGateway {
@@ -52,7 +52,7 @@ public class ModelGateway {
             String owner = context.getOrDefault(LlmUserContext.KEY, LlmUserContext.current());
             var session = new com.offerpilot.llm.safety.InputScreeningSession();
             var ready = reactor.core.publisher.Sinks.<Void>empty();
-            var connection = reactor.core.publisher.Mono.fromCallable(() -> inputBoundary(owner, new Prompt(messages), session))
+            var connection = UsageJournal.callable(() -> inputBoundary(owner, new Prompt(messages), session)).contextWrite(context)
                     .subscribeOn(Schedulers.boundedElastic())
                     .subscribe(ignored -> ready.tryEmitEmpty(), ready::tryEmitError);
             return work.contextWrite(c -> c.put(SCREEN_SESSION, session).put(EFFECTS_GATE, ready.asMono()))
@@ -61,6 +61,9 @@ public class ModelGateway {
     }
 
     private static final Logger log = LoggerFactory.getLogger(ModelGateway.class);
+
+    @Autowired(required = false)
+    private UsageJournal usageJournal;
 
     private final OfferPilotProperties properties;
     private final Map<ModelTier, ChatModel> models = new ConcurrentHashMap<>();
@@ -82,6 +85,7 @@ public class ModelGateway {
     }
     private Flux<ChatResponse> screenedStream(ModelTier tier, String capturedOwner, Prompt prompt,
             java.util.function.Function<Prompt, Flux<ChatResponse>> provider) {
+        var capturedScope = UsageJournal.current();
         return Flux.deferContextual(context -> {
             String owner = context.getOrDefault(LlmUserContext.KEY, capturedOwner);
             requireAvailable(tier, false);
@@ -97,14 +101,16 @@ public class ModelGateway {
                     || !environment.getProperty("offerpilot.llm.injection-classifier-enabled", Boolean.class, true))
                 // Preserve serial admission ordering: reserve the generation request before classifying.
                 return guardedStream(tier, owner, ignored -> outbound.apply(
-                        inputBoundary(owner, prompt, context.getOrDefault(SCREEN_SESSION, null))));
+                        UsageJournal.asScope(context.getOrDefault(UsageJournal.KEY, null),
+                                () -> inputBoundary(owner, prompt, context.getOrDefault(SCREEN_SESSION, null)))));
             // Rules and the fixed policy are always installed before speculative provider IO.
             Prompt rules = com.offerpilot.llm.privacy.ModelInputBoundary.apply(prompt);
-            var verdict = reactor.core.publisher.Mono.fromCallable(() -> inputBoundary(owner, prompt, context.getOrDefault(SCREEN_SESSION, null)))
+            var verdict = UsageJournal.callable(() -> inputBoundary(owner, prompt, context.getOrDefault(SCREEN_SESSION, null))).contextWrite(context)
                     .subscribeOn(Schedulers.boundedElastic());
             return com.offerpilot.llm.safety.ScreenedGeneration.release(verdict, generate.apply(rules),
                     screened -> screened.getInstructions().equals(rules.getInstructions()), generate);
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).contextWrite(c -> capturedScope == null || c.hasKey(UsageJournal.KEY) ? c : c.put(UsageJournal.KEY, capturedScope))
+          .subscribeOn(Schedulers.boundedElastic());
     }
 
     private final com.offerpilot.llm.safety.PromptInjectionClassifier injectionClassifier =
@@ -149,7 +155,11 @@ public class ModelGateway {
         var session = masking(LlmUserContext.current(), prompt);
         var outbound = session == null ? prompt : session.mask(prompt);
         AtomicLong usage = new AtomicLong();
-        return injectionModel().stream(outbound)
+        var responses = injectionModel().stream(outbound);
+        if (usageJournal != null && UsageJournal.current() != null)
+            responses = usageJournal.observe(UsageJournal.current(), ModelTier.FLASH, modelName(ModelTier.FLASH),
+                    responses.publishOn(Schedulers.boundedElastic()));
+        return responses
                 .doOnNext(response -> usage.accumulateAndGet(tokens(response), Math::max))
                 .map(response -> response.getResult() == null || response.getResult().getOutput().getText() == null
                         ? "" : response.getResult().getOutput().getText())
@@ -243,7 +253,10 @@ public class ModelGateway {
                 var admission = admit(owner, tier);
                 prompt = inputBoundary(owner, prompt);
                 var session = masking(owner, prompt);
-                ChatResponse response = delegate.call(session == null ? prompt : session.mask(prompt));
+                Prompt outbound = session == null ? prompt : session.mask(prompt);
+                ChatResponse response = usageJournal == null || UsageJournal.current() == null ? delegate.call(outbound)
+                        : usageJournal.observe(UsageJournal.current(),tier,modelName(tier),
+                                Flux.defer(() -> Flux.just(delegate.call(outbound)))).blockLast();
                 if (session != null) response = session.restore(response);
                 record(admission, tokens(response));
                 return moderation().check(response);
@@ -298,18 +311,23 @@ public class ModelGateway {
 
     private Flux<ChatResponse> guardedStream(ModelTier tier, String capturedOwner,
             java.util.function.Function<String, Flux<ChatResponse>> provider) {
+        var capturedScope = UsageJournal.current();
         return Flux.deferContextual(context -> {
             String owner = context.getOrDefault(LlmUserContext.KEY, capturedOwner);
             // Validate configuration before consuming a request; quotas always run before provider IO.
             requireAvailable(tier, false);
             var admission = admit(owner, tier);
             AtomicLong usage = new AtomicLong();
-            return provider.apply(owner).timeout(configuration(tier).timeout())
-                    .publishOn(Schedulers.boundedElastic())
+            Flux<ChatResponse> responses = provider.apply(owner).timeout(configuration(tier).timeout())
+                    .publishOn(Schedulers.boundedElastic());
+            UsageJournal.Scope scope = context.getOrDefault(UsageJournal.KEY, null);
+            if (usageJournal != null && scope != null) responses = usageJournal.observe(scope, tier, modelName(tier), responses);
+            return responses
                     // Stream usage is cumulative; repeated metadata must not be counted twice.
                     .doOnNext(response -> usage.accumulateAndGet(tokens(response), Math::max))
                     .doFinally(signal -> record(admission, usage.get()));
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).contextWrite(c -> capturedScope == null || c.hasKey(UsageJournal.KEY) ? c : c.put(UsageJournal.KEY, capturedScope))
+          .subscribeOn(Schedulers.boundedElastic());
     }
 
     private static long tokens(ChatResponse response) {

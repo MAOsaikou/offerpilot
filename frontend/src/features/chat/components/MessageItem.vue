@@ -1,21 +1,28 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import MarkdownView from '@/shared/components/MarkdownView.vue'
+import MessageUsage from '@/shared/components/MessageUsage.vue'
+import CitationPanel from '@/shared/components/CitationPanel.vue'
 import ChatImageThumb from './ChatImageThumb.vue'
 import type { ChatMessageView } from '../types'
 
-defineProps<{ message: ChatMessageView }>()
+defineProps<{ message: ChatMessageView; replayDisabled?: boolean }>()
+const emit = defineEmits<{ replay: [runId: string] }>()
 const root = ref<HTMLElement | null>(null)
 const missingSource = ref('')
 /** AG-05: a [KB-…] reference in the reply jumps to the matching note in this turn's source card. */
 function locate(reference: string) {
-  if (!/^KB-[0-9a-f]{12}$/.test(reference)) return
-  const source = root.value?.querySelector<HTMLElement>(
-    `[data-kb-reference="${reference}"]:not(.md-citation)`,
-  )
+  if (!/^(KB-[0-9a-f]{12}|[0-9]+)$/.test(reference)) return
+  const selector = reference.startsWith('KB-')
+    ? `[data-kb-reference="${reference}"]:not(.md-citation)`
+    : `article[data-citation-index="${reference}"]`
+  const source = root.value?.querySelector<HTMLElement>(selector)
   missingSource.value = source ? '' : reference
   if (!source) return
-  source.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  source.scrollIntoView({
+    behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    block: 'center',
+  })
   source.classList.remove('cite-flash')
   void source.offsetWidth
   source.classList.add('cite-flash')
@@ -47,6 +54,7 @@ function locate(reference: string) {
     <MarkdownView
       v-if="message.text"
       :text="message.text"
+      :citation-indexes="message.citations?.map((source) => source.index)"
       :streaming="message.streaming === true"
       @cite="locate"
     />
@@ -61,7 +69,7 @@ function locate(reference: string) {
       }}
     </p>
     <p v-if="missingSource" class="run-note" role="status">
-      本轮没有找到 {{ missingSource }} 对应的笔记来源，可能是模型写错了编号。
+      本轮没有找到 {{ missingSource }} 对应的引用来源，可能是模型写错了编号。
     </p>
     <p v-if="message.status === 'FAILED' || message.status === 'CANCELLED'" class="run-note">
       {{
@@ -71,6 +79,17 @@ function locate(reference: string) {
       }}
     </p>
 
+    <CitationPanel :sources="message.citations ?? []" />
+    <MessageUsage :usage="message.usage" :model="message.model" :duration-ms="message.durationMs" />
+    <button
+      v-if="message.runId && message.status !== 'RUNNING'"
+      class="btn mt-2"
+      type="button"
+      :disabled="replayDisabled"
+      @click="emit('replay', message.runId)"
+    >
+      回放本轮运行
+    </button>
     <div v-if="message.cards?.length" class="assistant-cards">
       <slot name="cards" :cards="message.cards ?? []" />
     </div>

@@ -250,9 +250,19 @@ public sealed interface AgentEvent permits
             String model,
             int promptTokens,
             int completionTokens,
-            double costEstimate,
-            boolean fallbackUsed
+            Double costEstimate,
+            boolean fallbackUsed,
+            Long durationMs,
+            Boolean usageReported
     ) implements AgentEvent {
+        public Usage(String type, int id, String runId, Instant ts, String model, int promptTokens, int completionTokens,
+                     double costEstimate, boolean fallbackUsed) {
+            this(type,id,runId,ts,model,promptTokens,completionTokens,Double.valueOf(costEstimate),fallbackUsed,null,true);
+        }
+        public Usage(String type, int id, String runId, Instant ts, String model, int promptTokens, int completionTokens,
+                     Double costEstimate, boolean fallbackUsed, Long durationMs) {
+            this(type,id,runId,ts,model,promptTokens,completionTokens,costEstimate,fallbackUsed,durationMs,true);
+        }
         public Usage {
             type = "usage";
         }
@@ -297,7 +307,7 @@ public sealed interface AgentEvent permits
             String docId,
             String title,
             String snippet,
-            double score,
+            Double score,
             String url,
             String collection,
             int index

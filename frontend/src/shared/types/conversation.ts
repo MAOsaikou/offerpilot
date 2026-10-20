@@ -16,6 +16,7 @@ export interface MessagePart {
   cardId?: string
   cardType?: string
   payload?: unknown
+  sources?: import('./agent-events').CitationSource[]
   /** type=image：用户随消息发送的图片 */
   fileId?: string
   name?: string
@@ -27,6 +28,7 @@ export interface StoredMessage {
   parts?: MessagePart[]
   plainText: string
   runId: string
+  usage?: import('@/shared/stores/agentRun').UsageView | null
   model: string
   status: MessageStatus
   createdAt: string

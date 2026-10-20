@@ -17,7 +17,9 @@ watch(
   },
   { immediate: true },
 )
-const hasItems = computed(() => props.payload.weeks.some((week) => week.items.length > 0))
+const hasItems = computed(
+  () => valid.value && props.payload.weeks.some((week) => week.items.length > 0),
+)
 function weekRange(index: number) {
   if (!props.startDate) return ''
   const start = new Date(props.startDate + 'T00:00:00Z')
@@ -26,10 +28,20 @@ function weekRange(index: number) {
   end.setUTCDate(end.getUTCDate() + 6)
   return `${start.toISOString().slice(0, 10)} — ${end.toISOString().slice(0, 10)}`
 }
+const valid = computed(
+  () =>
+    Array.isArray(props.payload?.weeks) &&
+    props.payload.weeks.every((week) => Array.isArray(week.items)) &&
+    Array.isArray(props.payload?.milestones),
+)
 </script>
 
 <template>
-  <section class="min-w-0 rounded-xl border border-border bg-card p-4" aria-label="学习路线图">
+  <section
+    v-if="valid"
+    class="min-w-0 rounded-xl border border-border bg-card p-4"
+    aria-label="学习路线图"
+  >
     <h3 class="font-semibold">四周学习路线图</h3>
     <p class="mt-2 text-sm text-muted-foreground">
       按自己的节奏调整投入时间。路线图仅为建议。<template v-if="interactive"
@@ -97,4 +109,5 @@ function weekRange(index: number) {
       同步到成长任务
     </button>
   </section>
+  <p v-else role="alert">路线图数据不可用，请重新查询。</p>
 </template>

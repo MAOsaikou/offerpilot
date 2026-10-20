@@ -62,7 +62,7 @@ class JobSearchExecutionTest {
         });
     }
 
-    @Test void autoAndExplicitSearchIgnoreStaleMatchIdsAndEmitOneMcpCard() throws Exception {
+    @Test void autoAndExplicitSearchIgnoreStaleMatchIdsAndEmitJobAndCalendarCards() throws Exception {
         String extract = "{\"action\":\"search\",\"query\":\"Java\",\"site\":\"\",\"nature\":\"campus\",\"location\":\"北京\"}";
         when(searches.search("Java", "", "campus", "北京")).thenReturn(json.createObjectNode().put("schemaVersion", 2).put("returnedCount", 0));
         for (var mode : List.of(AgentMode.AUTO, AgentMode.JOB)) {
@@ -70,7 +70,8 @@ class JobSearchExecutionTest {
                     response("{\"kind\":\"single\",\"expert\":\"JOB\",\"confidence\":1}"), response(extract));
             else when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(response(extract));
             var events = run(mode, context);
-            assertThat(events).filteredOn(AgentEvent.UiCard.class::isInstance).hasSize(1);
+            assertThat(events.stream().filter(AgentEvent.UiCard.class::isInstance).map(AgentEvent.UiCard.class::cast))
+                    .extracting(AgentEvent.UiCard::cardType).containsExactly("job_card", "campus_calendar");
             assertThat(events).filteredOn(AgentEvent.ToolCall.class::isInstance).singleElement().satisfies(event -> {
                 var call = (AgentEvent.ToolCall)event;
                 assertThat(call.name()).isEqualTo("search_jobs");
@@ -90,7 +91,8 @@ class JobSearchExecutionTest {
         card.putObject("meta").put("source", "LOCAL_SNAPSHOT").put("snapshotDate", "2026-10-10");
         when(searches.search(anyString(), anyString(), anyString(), anyString())).thenReturn(card);
         var events = run(AgentMode.JOB, Map.of());
-        assertThat(events).filteredOn(AgentEvent.UiCard.class::isInstance).hasSize(1);
+        assertThat(events.stream().filter(AgentEvent.UiCard.class::isInstance).map(AgentEvent.UiCard.class::cast))
+                    .extracting(AgentEvent.UiCard::cardType).containsExactly("job_card", "campus_calendar");
         assertThat(reply.stream().map(Message::getText).toList().toString())
                 .contains("离线示例岗位快照", "非实时数据", "不能声称是官网当前在招岗位")
                 .doesNotContain("真实岗位搜索快照");

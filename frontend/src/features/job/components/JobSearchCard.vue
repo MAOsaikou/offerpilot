@@ -8,8 +8,22 @@ import type { JobCardItem } from '@/shared/types/cards'
 
 const props = defineProps<{ payload: ChatJobSearch | JobCardItem }>()
 const board = useBoard()
-const search = computed(() => ('schemaVersion' in props.payload ? props.payload : null))
-const legacy = computed(() => ('id' in props.payload ? props.payload : null))
+const search = computed(() =>
+  props.payload &&
+  'schemaVersion' in props.payload &&
+  props.payload.criteria &&
+  props.payload.meta &&
+  Array.isArray(props.payload.items) &&
+  Array.isArray(props.payload.meta.skipped) &&
+  Array.isArray(props.payload.meta.degradedSites)
+    ? props.payload
+    : null,
+)
+const legacy = computed(() =>
+  props.payload && 'id' in props.payload && Array.isArray(props.payload.cities)
+    ? props.payload
+    : null,
+)
 const more = computed(() => ({
   path: '/jobs',
   query: {
@@ -115,6 +129,7 @@ const natureLabel = (value: string) =>
     <p>{{ legacy.company }} · {{ legacy.cities.join('、') }}</p>
     <RouterLink :to="'/jobs/' + encodeURIComponent(legacy.id)" class="btn">查看岗位详情</RouterLink>
   </section>
+  <p v-else role="alert">岗位卡片数据不可用，请重新查询。</p>
 </template>
 
 <style scoped>

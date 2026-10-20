@@ -41,6 +41,8 @@ import org.springframework.ai.chat.model.ChatResponse;
 /** Persistent multi-turn chat. Blocking database work stays off provider event loops. */
 @Service
 public class ChatService {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.offerpilot.llm.UsageJournal journal;
     private final ModelGateway gateway;
     private final ConversationService conversations;
     private final Orchestrator orchestrator;
@@ -225,10 +227,14 @@ public class ChatService {
             int promptTokens = planningPromptTokens.get() + (u == null ? 0 : u.getPromptTokens());
             int completionTokens = planningCompletionTokens.get() + (u == null ? 0 : u.getCompletionTokens());
             boolean hasUsage = u != null || promptTokens + completionTokens > 0;
-            Map<String, Object> savedUsage = !hasUsage ? null : Map.of("promptTokens", promptTokens, "completionTokens", completionTokens);
+            var logged = journal == null ? null : journal.summary(owner, turn.messageId());
+            Map<String, Object> savedUsage = logged != null ? json.convertValue(logged, new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>() {})
+                    : !hasUsage ? null : Map.of("promptTokens", promptTokens, "completionTokens", completionTokens);
+            if (logged != null) { promptTokens = logged.promptTokens(); completionTokens = logged.completionTokens(); hasUsage = true; }
             String status = conversations.finish(turn, answer.toString(), "COMPLETED", savedUsage, null, cards.snapshot());
             Flux<AgentEvent> tokens = !hasUsage ? Flux.empty() : Flux.just(new AgentEvent.Usage("usage", seq.incrementAndGet(),
-                    turn.runId(), Instant.now(), model, promptTokens, completionTokens, 0, false));
+                    turn.runId(), Instant.now(), logged == null ? model : logged.model(), promptTokens, completionTokens,
+                    logged == null ? null : logged.costEstimate(), false, logged == null ? null : logged.durationMs(), logged == null || logged.usageReported()));
             return tokens.concatWith(Flux.defer(() -> Flux.just(new AgentEvent.RunCompleted("run.completed", seq.incrementAndGet(),
                     turn.runId(), Instant.now(), turn.messageId(), status, (int) Duration.between(turn.startedAt(), Instant.now()).toMillis()))));
         });
@@ -245,17 +251,27 @@ public class ChatService {
                 .takeUntilOther(reactor.core.publisher.Mono.delay(Duration.ofMinutes(100)).flatMap(ignored ->
                         reactor.core.publisher.Mono.error(new TimeoutException())))
                 .onErrorResume(ex -> {
+                    dropEarly.run();
                     ErrorCode code = ex instanceof TimeoutException ? ErrorCode.MODEL_TIMEOUT : ErrorCode.MODEL_UNAVAILABLE;
                     String message = ex instanceof BusinessException business ? business.getMessage() : code.message();
                     if (ex instanceof BusinessException business) code = business.errorCode();
                     try { conversations.finish(turn, answer.toString(), "FAILED", null, message, cards.snapshot()); }
                     catch (RuntimeException persistenceFailure) { code = ErrorCode.DATABASE_UNAVAILABLE; message = code.message(); }
+                    Flux<AgentEvent> failedUsage = Flux.empty();
+                    if (journal != null) {
+                        try {
+                            var logged = journal.summary(owner, turn.messageId());
+                            if (logged != null) failedUsage = Flux.just(new AgentEvent.Usage("usage", seq.incrementAndGet(),
+                                    turn.runId(), Instant.now(), logged.model(), logged.promptTokens(), logged.completionTokens(),
+                                    logged.costEstimate(), false, logged.durationMs(), logged.usageReported()));
+                        } catch (RuntimeException unavailable) { code = ErrorCode.DATABASE_UNAVAILABLE; message = code.message(); }
+                    }
                     boolean recoverable = ex instanceof BusinessException business && business.recoverable() && code != ErrorCode.DATABASE_UNAVAILABLE;
                     var error = new AgentEvent.ErrorEvent("error", seq.incrementAndGet(), turn.runId(), Instant.now(), code.code(), message, recoverable);
                     // Retryable means a fresh turn can retry. This turn is still finished, so consumers
                     // receive their existing terminal event and do not mistake EOF for transport loss.
-                    return recoverable ? Flux.just(error, new AgentEvent.RunCompleted("run.completed", seq.incrementAndGet(),
-                            turn.runId(), Instant.now(), turn.messageId(), "FAILED", (int) Duration.between(turn.startedAt(), Instant.now()).toMillis())) : Flux.just(error);
+                    return failedUsage.concatWith(recoverable ? Flux.just(error, new AgentEvent.RunCompleted("run.completed", seq.incrementAndGet(),
+                            turn.runId(), Instant.now(), turn.messageId(), "FAILED", (int) Duration.between(turn.startedAt(), Instant.now()).toMillis())) : Flux.just(error));
                 })
                 // Remove before terminal delivery or upstream cancellation; doFinally runs afterwards.
                 .doOnTerminate(() -> cancellations.remove(turn.runId()))
@@ -268,7 +284,8 @@ public class ChatService {
                             org.slf4j.LoggerFactory.getLogger(ChatService.class).warn("Unable to save interrupted run {}", turn.runId());
                         }
                     }
-                }).contextWrite(quotaContext -> com.offerpilot.llm.quota.LlmUserContext.withUser(quotaContext, owner));
+                }).contextWrite(quotaContext -> com.offerpilot.llm.quota.LlmUserContext.withUser(quotaContext, owner)
+                        .put(com.offerpilot.llm.UsageJournal.KEY, new com.offerpilot.llm.UsageJournal.Scope(owner, turn.runId(), turn.messageId())));
     }
 
     private Flux<ChatResponse> timedReply(Flux<ChatResponse> source, String phase, String runId) {

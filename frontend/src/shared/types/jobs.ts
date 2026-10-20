@@ -66,7 +66,9 @@ export interface ChatJobSearch {
     RealJob,
     'id' | 'site' | 'title' | 'company' | 'locations' | 'nature' | 'updatedAt'
   > &
-    Partial<Pick<RealJob, 'source' | 'snapshotDate' | 'retrievalSource' | 'storedAt'>>)[]
+    Partial<
+      Pick<RealJob, 'source' | 'snapshotDate' | 'retrievalSource' | 'storedAt' | 'deadline' | 'url'>
+    >)[]
   returnedCount: number
   fetchedAt: string
   meta: JobSearchResult['meta']

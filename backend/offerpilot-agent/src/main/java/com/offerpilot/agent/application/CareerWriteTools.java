@@ -99,7 +99,7 @@ public class CareerWriteTools {
     public Mono<ExpertResult> execute(String owner, PlanStep step, ApprovalService.Decision decision) {
         if (!"APPROVE".equals(decision.decision())) return Mono.error(new BusinessException(ErrorCode.APPROVAL_REJECTED,
                 "TIMEOUT".equals(decision.decision()) ? "审批已超时" : "用户拒绝了该操作"));
-        return Mono.fromCallable(() -> {
+        return com.offerpilot.llm.UsageJournal.callable(() -> {
             if ("rerankCareers".equals(step.inputs().get("action"))) {
                 var saved = reranks.rerank(owner, (String) decision.args().get("revisionId"), constraints(decision.args()));
                 var items = saved.items().stream().map(item -> Map.of(
