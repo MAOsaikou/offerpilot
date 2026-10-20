@@ -12,6 +12,7 @@ export interface CareerProfileFields {
 }
 
 export interface CareerProfile extends CareerProfileFields {
+  evidence?: Array<{ sourceType: string; sourceId: string; facts: string[]; confirmedAt: string }>
   assessment: AssessmentConfirmed | null
   completedTasks: string[]
   updatedAt: string | null

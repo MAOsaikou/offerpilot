@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import GenerationProgressDock from '@/shared/components/GenerationProgressDock.vue'
@@ -8,12 +8,23 @@ import DemoBanner from '@/shared/components/DemoBanner.vue'
 import PageBoundary from './PageBoundary.vue'
 import { useWorkspace } from '@/shared/stores/workspace'
 import { useAuthStore } from '@/shared/stores/auth'
+import { useNotifications } from '@/shared/stores/notifications'
 const route = useRoute()
 const router = useRouter()
 const workspace = useWorkspace()
 const auth = useAuthStore()
 const mobileOpen = ref(false)
-const unread = computed(() => workspace.state.notices.filter((n) => !n.read).length)
+const notices = useNotifications()
+const unread = computed(() => notices.unread)
+watch(
+  () => [auth.identityKey, route.fullPath],
+  () => void notices.refresh(),
+  { immediate: true },
+)
+const noticeTimer = setInterval(() => {
+  if (navigator.onLine) void notices.refresh()
+}, 60000)
+onBeforeUnmount(() => clearInterval(noticeTimer))
 const displayName = computed(() => auth.user?.nickname || workspace.state.name)
 
 function onLogout() {

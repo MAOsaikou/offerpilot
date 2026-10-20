@@ -16,6 +16,9 @@ public class JobRecommendationService {
     public JobRecommendationService(JdbcTemplate jdbc,ObjectMapper json,JobRecommendationContext context,JobLocalSearch local,JobService jobs) {
         this.jdbc=jdbc; this.json=json; this.context=context; this.local=local; this.jobs=jobs;
     }
+    private com.offerpilot.common.notification.NotificationSink notices;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setNotifications(com.offerpilot.common.notification.NotificationSink notices) { this.notices=notices; }
     @Transactional
     public JsonNode daily(String owner) {
         if(jdbc.queryForList("SELECT id FROM users WHERE id=? FOR UPDATE",String.class,owner).isEmpty()) throw new BusinessException(ErrorCode.UNAUTHENTICATED);
@@ -38,7 +41,10 @@ public class JobRecommendationService {
             if(expired(job) || Set.of("demo","LOCAL_SNAPSHOT").contains(job.path("source").asText())) continue;
             var entry=(ObjectNode)item.deepCopy(); entry.set("job",job); visible.add(entry);
         } catch(BusinessException ex) { if(ex.errorCode()!=ErrorCode.JOB_NOT_FOUND) throw ex; }
-        result.set("items",visible); return result;
+        result.set("items",visible);
+        if(notices!=null) for(var item:visible) notices.send(owner,"NEW_JOB","recommended-job:"+item.path("jobId").asText(),
+            "发现匹配你画像的岗位",item.path("job").path("title").asText()+" · "+item.path("job").path("company").asText(),"/jobs/"+item.path("jobId").asText());
+        return result;
     }
     static List<ObjectNode> rank(JobRecommendationContext.Context context,List<JsonNode> jobs) {
         var json=new ObjectMapper(); var ranked=new ArrayList<ObjectNode>();

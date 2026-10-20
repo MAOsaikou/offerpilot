@@ -21,6 +21,9 @@ public class CareerWriteTools {
         this.careers = careers;
         this.approvals = approvals;
     }
+    private com.offerpilot.career.application.CareerTargetPlans targetPlans;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setTargetPlans(com.offerpilot.career.application.CareerTargetPlans targetPlans) { this.targetPlans=targetPlans; }
     private com.offerpilot.career.application.CareerRerankForChat reranks;
     @org.springframework.beans.factory.annotation.Autowired
     public void setReranks(com.offerpilot.career.application.CareerRerankForChat reranks) { this.reranks = reranks; }
@@ -71,6 +74,28 @@ public class CareerWriteTools {
         return approvals.request(owner, runId, (String) step.inputs().get("action"),
                 Map.of("occupationId", occupation.id(), "name", occupation.name()));
     }
+    /** Read-only follow-up runs only after the approved target write. The durable worker recovers interruption. */
+    private ExpertResult followUp(String owner, String target) {
+        String saved="已按用户批准的参数将职业档案目标设为："+target+"。";
+        String pending="岗位搜索、技能差距与学习建议已排队；完成后发送站内通知，请到成长路线页查看并确认后续建议。";
+        if(targetPlans==null) return ExpertResult.text(saved+pending);
+        try {
+            targetPlans.generate(owner);
+            var plan=targetPlans.get(owner);
+            if(plan==null || !target.equals(plan.target()) || plan.result()==null
+                    || !java.util.Set.of("SUGGESTED","CONFIRMED","FAILED").contains(plan.status())) return ExpertResult.text(saved+pending);
+            var cards=new java.util.ArrayList<ExpertResult.Card>();
+            var learning=plan.result().path("learning");
+            if(learning.path("skillGap").isObject()) cards.add(new ExpertResult.Card(plan.revision()+":gap","skill_gap",learning.path("skillGap")));
+            if(learning.path("roadmap").isObject()) cards.add(new ExpertResult.Card(plan.revision()+":roadmap","roadmap",learning.path("roadmap")));
+            String search=plan.result().has("jobs") ? "本次目标岗位搜索返回"+plan.result().path("jobs").path("items").size()+"条结果，请在成长路线页查看岗位和来源。" : "本次岗位搜索未完成。";
+            return ExpertResult.cards(saved+search+plan.notice()+" 后续技能差距与学习路线仅为建议，是否按这些建议继续？请到成长路线页预览并确认采用；未修改投递记录或任务完成状态。",cards);
+        } catch(RuntimeException ex) {
+            org.slf4j.LoggerFactory.getLogger(getClass()).warn("Approved career target follow-up deferred: {}",ex.getClass().getSimpleName());
+            // Target write has already committed; do not misreport it as failed when a read/reconciliation fails.
+            return ExpertResult.text(saved+pending);
+        }
+    }
     public Mono<ExpertResult> execute(String owner, PlanStep step, ApprovalService.Decision decision) {
         if (!"APPROVE".equals(decision.decision())) return Mono.error(new BusinessException(ErrorCode.APPROVAL_REJECTED,
                 "TIMEOUT".equals(decision.decision()) ? "审批已超时" : "用户拒绝了该操作"));
@@ -88,7 +113,7 @@ public class CareerWriteTools {
             }
             validate(decision.args());
             var saved = careers.adopt(owner, (String) decision.args().get("occupationId"), (String) decision.args().get("name"));
-            return ExpertResult.text("已按用户批准的参数将职业档案目标设为：" + saved.target());
+            return followUp(owner, saved.target());
         }).subscribeOn(Schedulers.boundedElastic());
     }
 }

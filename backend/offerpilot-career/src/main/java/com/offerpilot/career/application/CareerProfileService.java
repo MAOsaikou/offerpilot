@@ -30,9 +30,14 @@ public class CareerProfileService {
         this.memory = memory;
     }
 
+    public record Evidence(String sourceType, String sourceId, List<String> facts, String confirmedAt) {}
     public record Profile(String target, String city, String skills, List<String> interests,
                           List<String> completedTasks, String updatedAt, String major, String courses,
-                          String valuesText, CareerAssessmentService.Confirmed assessment) {
+                          String valuesText, CareerAssessmentService.Confirmed assessment, List<Evidence> evidence) {
+        public Profile(String target, String city, String skills, List<String> interests, List<String> completedTasks,
+                       String updatedAt, String major, String courses, String valuesText, CareerAssessmentService.Confirmed assessment) {
+            this(target,city,skills,interests,completedTasks,updatedAt,major,courses,valuesText,assessment,List.of());
+        }
         public Profile(String target, String city, String skills, List<String> interests,
                        List<String> completedTasks, String updatedAt) {
             this(target, city, skills, interests, completedTasks, updatedAt, "", "", "", null);
@@ -63,7 +68,12 @@ public class CareerProfileService {
     public Profile get(String owner) {
         // One statement reads the profile and checklist from the same database snapshot.
         var rows = jdbc.query("""
-                SELECT p.*, a.confirmed, COALESCE((SELECT jsonb_agg(task_title) FROM growth_task_completions
+                SELECT p.*, a.confirmed,
+                  COALESCE((SELECT jsonb_agg(jsonb_build_object('sourceType',s.source_type,'sourceId',s.source_id,
+                    'facts',s.facts,'confirmedAt',s.decided_at)) FROM
+                    (SELECT source_type,source_id,facts,decided_at FROM career_profile_suggestions
+                     WHERE user_id=p.user_id AND status='CONFIRMED' ORDER BY decided_at DESC,id DESC LIMIT 20) s), '[]'::jsonb) AS evidence,
+                  COALESCE((SELECT jsonb_agg(task_title) FROM growth_task_completions
                     WHERE user_id=p.user_id), '[]'::jsonb) AS completed
                 FROM career_profiles p LEFT JOIN career_assessments a ON a.user_id=p.user_id WHERE p.user_id=?
                 """, (rs, row) -> {
@@ -72,7 +82,7 @@ public class CareerProfileService {
                     strings(rs.getString("interests")),
                     GrowthTaskCatalog.TITLES.stream().filter(completed::contains).toList(),
                     rs.getTimestamp("updated_at").toInstant().toString(), rs.getString("major"), rs.getString("courses"),
-                    rs.getString("values_text"), assessment(rs.getString("confirmed")));
+                    rs.getString("values_text"), assessment(rs.getString("confirmed")), evidence(rs.getString("evidence")));
         }, owner);
         if (!rows.isEmpty()) return rows.get(0);
         var confirmed = jdbc.query("SELECT confirmed FROM career_assessments WHERE user_id=?",
@@ -110,7 +120,14 @@ public class CareerProfileService {
         jdbc.update("INSERT INTO career_profiles(user_id) VALUES (?) ON CONFLICT(user_id) DO NOTHING", owner);
         jdbc.queryForObject("SELECT user_id FROM career_profiles WHERE user_id=? FOR UPDATE", String.class, owner);
         var current = get(owner);
-        return save(owner, target, current.city(), current.skills(), current.interests());
+        var saved = save(owner, target, current.city(), current.skills(), current.interests());
+        // An explicit adoption of a pre-V47 unchanged target still needs its first follow-up.
+        jdbc.update("""
+                INSERT INTO career_target_plans(user_id,revision,target,city)
+                SELECT user_id,gen_random_uuid()::text,target,city FROM career_profiles
+                WHERE user_id=? AND target<>'' ON CONFLICT(user_id) DO NOTHING
+                """, owner);
+        return saved;
     }
 
     @Transactional
@@ -181,6 +198,11 @@ public class CareerProfileService {
     private void lockOwner(String owner) {
         if (jdbc.queryForList("SELECT id FROM users WHERE id=? AND status='ACTIVE' FOR UPDATE", String.class, owner).isEmpty())
             throw new BusinessException(ErrorCode.UNAUTHENTICATED);
+    }
+
+    private List<Evidence> evidence(String raw) {
+        try { return raw==null ? List.of() : json.readValue(raw,new TypeReference<List<Evidence>>(){}); }
+        catch(JsonProcessingException ex) { throw new IllegalStateException("Invalid profile evidence",ex); }
     }
 
     private CareerAssessmentService.Confirmed assessment(String raw) {

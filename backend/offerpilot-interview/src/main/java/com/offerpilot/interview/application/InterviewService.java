@@ -14,6 +14,9 @@ import java.util.Set;
 
 @Service
 public class InterviewService {
+    private com.offerpilot.common.notification.NotificationSink notices;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setNotifications(com.offerpilot.common.notification.NotificationSink notices) { this.notices=notices; }
     public static final List<String> QUESTIONS = List.of(
             "请用两分钟介绍你自己，以及你为什么选择这个岗位。",
             "分享一个你最有代表性的项目：你负责什么，解决了什么问题？",
@@ -144,6 +147,8 @@ public class InterviewService {
                 "UPDATE interview_answers SET question_type=?,difficulty=?,question_source='rule' WHERE session_id=? AND question_index=?",
                 options.questionTypes().get(index),options.difficulty(),id,index);
         artifacts.linkJob(owner,jobId);
+        if(notices!=null) notices.send(owner,"INTERVIEW_PLAN","interview-created:"+id,"面试练习计划已创建",
+            "面向「"+role.strip()+"」的练习已保存，可继续作答。","/interviews/"+id);
         return get(owner, id);
     }
 
