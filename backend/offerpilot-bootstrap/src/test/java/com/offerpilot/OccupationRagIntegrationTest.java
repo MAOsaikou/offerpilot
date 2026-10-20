@@ -63,7 +63,7 @@ class OccupationRagIntegrationTest extends OccupationRecommendationTest {
     @Test void switchingEmbeddingModelDropsIncomparableVectorsAndReindexes() {
         int total = jdbc.queryForObject("SELECT count(*) FROM occupations", Integer.class);
         assertThat(jdbc.queryForObject("SELECT fingerprint FROM embedding_index_state", String.class)).isEqualTo(embeddings.fingerprint());
-        jdbc.update("UPDATE embedding_index_state SET fingerprint='bge-m3@local'");
+        jdbc.update("UPDATE embedding_index_state SET fingerprint='legacy-embedding@other'");
         assertThat(job.reindex(false).embedded()).isEqualTo(total);
         assertThat(jdbc.queryForObject("SELECT fingerprint FROM embedding_index_state", String.class)).isEqualTo(embeddings.fingerprint());
         assertThat(job.reindex(false).embedded()).isZero();

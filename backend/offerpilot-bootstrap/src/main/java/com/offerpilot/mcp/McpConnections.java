@@ -38,7 +38,7 @@ public class McpConnections implements McpAccessPolicy {
         try {
             var uri = URI.create(url);
             // Fixed addresses use the same trust boundary as JobsMcpClient. Never follow redirects.
-            valid = Set.of("http", "https").contains(uri.getScheme()) && uri.getHost() != null
+            valid = ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme())) && uri.getHost() != null
                     && uri.getRawUserInfo() == null && uri.getRawQuery() == null && uri.getRawFragment() == null;
         } catch (IllegalArgumentException ignored) { }
         return new Destination(url, token, valid && (!provider.equals("github") || !token.isBlank()));
