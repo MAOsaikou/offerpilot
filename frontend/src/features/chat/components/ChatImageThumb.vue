@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { chatImageUrl } from '@/shared/api/attachments'
 
@@ -33,7 +35,7 @@ onBeforeUnmount(() => {
 <template>
   <img v-if="url" class="chat-image" :src="url" :alt="name" />
   <span v-else class="chat-image placeholder" :title="name">{{
-    failed ? '图片不可用' : '加载中'
+    failed ? uiText('Image unavailable') : uiText('Loading')
   }}</span>
 </template>
 

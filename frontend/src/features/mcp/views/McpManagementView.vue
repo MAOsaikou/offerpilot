@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { localizedText, language, translate as uiText } from '@/shared/utils/language'
+
 import { onMounted, ref } from 'vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import {
@@ -14,12 +16,12 @@ import { identitySignal } from '@/shared/utils/authSession'
 const session = identitySignal()
 const servers = ref<McpConnection[]>([])
 const busy = ref(false)
-const error = ref('')
+const error = localizedText()
 const notice = ref('')
 const selected = ref('')
 const argumentsText = ref('{}')
 const preview = ref('')
-const callStatus = ref('')
+const callStatus = localizedText()
 async function load() {
   busy.value = true
   error.value = ''
@@ -28,7 +30,8 @@ async function load() {
     session.throwIfAborted()
     servers.value = value
   } catch {
-    if (!session.aborted) error.value = '无法加载 MCP 连接，请检查网络后重试。'
+    if (!session.aborted)
+      error.value = () => uiText('Could not load MCP connections. Check your connection and retry.')
   } finally {
     busy.value = false
   }
@@ -52,7 +55,9 @@ async function change(server: McpConnection, action: 'add' | 'toggle' | 'refresh
     callStatus.value = ''
     notice.value = `${value.name}：${mcpStatus(value.status)}`
   } catch {
-    if (!session.aborted) error.value = '操作失败，设置未确认保存，请重试。'
+    if (!session.aborted)
+      error.value = () =>
+        uiText('Operation failed. Settings were not confirmed saved. Please retry.')
   } finally {
     busy.value = false
   }
@@ -73,22 +78,23 @@ async function call() {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error()
     args = value as Record<string, unknown>
   } catch {
-    error.value = '参数须为 JSON 对象。'
+    error.value = () => uiText('Parameters must be a JSON object.')
     return
   }
   const [provider, tool] = selected.value.split(':')
   if (!provider || !tool) return
   busy.value = true
-  callStatus.value = '调用中'
+  callStatus.value = () => uiText('Calling')
   try {
     const value = await callMcpTool(provider, tool, args)
     session.throwIfAborted()
     preview.value = value.preview
-    callStatus.value = '调用成功'
+    callStatus.value = () => uiText('Call succeeded')
   } catch {
     if (!session.aborted) {
-      error.value = '工具调用失败，请检查连接和参数后重试。'
-      callStatus.value = '调用失败'
+      error.value = () =>
+        uiText('Tool call failed. Check the connection and parameters, then retry.')
+      callStatus.value = () => uiText('Call failed')
     }
   } finally {
     busy.value = false
@@ -99,47 +105,65 @@ onMounted(load)
 <template>
   <section class="page-stack">
     <PageHeading
-      title="MCP 工具连接"
-      description="添加部署已登记的服务，管理当前用户的连接与只读工具。"
+      :title="uiText('MCP connections')"
+      :description="
+        uiText('Add registered services and manage your connections and read-only tools.')
+      "
     />
     <p class="helper-note">
-      服务地址与密钥由服务器环境配置。GitHub 未配置 token 时显示未配置；不会在浏览器收集或展示密钥。
+      {{
+        uiText(
+          'Service addresses and secrets are configured on the server. GitHub appears unconfigured without a token. Secrets are not collected or displayed in the browser.',
+        )
+      }}
     </p>
     <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
-    <button class="btn" :disabled="busy" @click="load">{{ busy ? '处理中…' : '重新加载' }}</button>
-    <p v-if="!busy && !servers.length && !error">暂无连接。</p>
+    <button class="btn" :disabled="busy" @click="load">
+      {{ busy ? uiText('Processing…') : uiText('Reload #2') }}
+    </button>
+    <p v-if="!busy && !servers.length && !error">{{ uiText('No connections yet.') }}</p>
     <article v-for="server in servers" :key="server.provider" class="panel form-stack">
       <h2>{{ server.name }} · {{ mcpStatus(server.status) }}</h2>
       <p v-if="server.refreshedAt" class="subtle">
-        上次刷新：{{ new Date(server.refreshedAt).toLocaleString() }}
+        {{ uiText('Last refreshed: {0}', [new Date(server.refreshedAt).toLocaleString(language)]) }}
       </p>
       <div class="filter-bar">
         <button v-if="!server.added" class="btn" :disabled="busy" @click="change(server, 'add')">
-          添加连接
+          {{ uiText('Add connection') }}
         </button>
         <button v-else class="btn" :disabled="busy" @click="change(server, 'toggle')">
-          {{ server.enabled ? '停用' : '启用' }}
+          {{ server.enabled ? uiText('Disable #2') : uiText('Enable') }}
         </button>
         <button
           class="btn"
           :disabled="busy || !server.added || !server.enabled || !server.configured"
           @click="change(server, 'refresh')"
         >
-          刷新工具
+          {{ uiText('Refresh tools') }}
         </button>
       </div>
-      <p v-if="!server.configured" class="subtle">请联系部署管理员配置此服务。</p>
+      <p v-if="!server.configured" class="subtle">
+        {{ uiText('Ask your deployment administrator to configure this service.') }}
+      </p>
       <p v-else-if="!server.tools.length" class="subtle">
-        {{ server.status === 'READY' ? '服务未返回工具。' : '启用后刷新以发现工具。' }}
+        {{
+          server.status === 'READY'
+            ? uiText('The service returned no tools.')
+            : uiText('Enable and refresh to discover tools.')
+        }}
       </p>
       <ul class="form-stack">
         <li v-for="tool in server.tools" :key="tool.name" class="min-w-0 break-words">
           <strong>{{ tool.name }}</strong> ·
-          {{ tool.callable ? '允许只读调用' : '仅展示，未开放调用' }}
+          {{
+            tool.callable
+              ? uiText('Read-only calls allowed')
+              : uiText('Display only; calls unavailable')
+          }}
           <p class="subtle">{{ tool.description }}</p>
           <details>
-            <summary>参数格式</summary>
+            <summary>{{ uiText('Parameter schema') }}</summary>
             <pre class="overflow-auto whitespace-pre-wrap break-all text-xs">{{
               JSON.stringify(tool.inputSchema, null, 2)
             }}</pre>
@@ -150,15 +174,16 @@ onMounted(load)
             :disabled="busy"
             @click="selectTool(server.provider, tool.name)"
           >
-            选择工具
+            {{ uiText('Select tool') }}
           </button>
         </li>
       </ul>
     </article>
     <form v-if="selected" class="panel form-stack" @submit.prevent="call">
-      <h2>只读调用 · {{ selected }}</h2>
+      <h2>{{ uiText('Read-only call · {0}', [selected]) }}</h2>
       <label class="field"
-        >JSON 参数<textarea
+        >{{ uiText('JSON parameters')
+        }}<textarea
           v-model="argumentsText"
           rows="6"
           maxlength="20000"
@@ -167,9 +192,15 @@ onMounted(load)
         />
       </label>
       <p class="helper-note">
-        只发送你在此输入的内容；GitHub 工具可能返回已授权账号可见的私有仓库内容。
+        {{
+          uiText(
+            'Only the content entered here is sent. GitHub tools may return private repository content visible to the authorized account.',
+          )
+        }}
       </p>
-      <button class="btn primary" :disabled="busy">{{ busy ? '调用中…' : '调用工具' }}</button>
+      <button class="btn primary" :disabled="busy">
+        {{ busy ? uiText('Calling…') : uiText('Call tool') }}
+      </button>
       <p role="status">{{ callStatus }}</p>
       <pre v-if="preview" class="max-h-96 overflow-auto whitespace-pre-wrap break-all text-xs">{{
         preview

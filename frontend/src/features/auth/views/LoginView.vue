@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
+import { localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { RouterLink } from 'vue-router'
@@ -15,15 +19,15 @@ const email = ref('')
 const password = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
-const error = ref('')
+const error = localizedText()
 const demoLoading = ref(false)
 
-const features = [
-  { icon: 'chat', label: 'AI 求职对话' },
-  { icon: 'resumes', label: '简历整理' },
-  { icon: 'jobs', label: '岗位匹配' },
-  { icon: 'board', label: '投递看板' },
-]
+const features = computed(() => [
+  { icon: 'chat', label: uiText('AI career chat') },
+  { icon: 'resumes', label: uiText('Resume preparation') },
+  { icon: 'jobs', label: uiText('Job matching') },
+  { icon: 'board', label: uiText('Application tracking') },
+])
 
 function returnToWorkspace() {
   const redirect = route.query.redirect
@@ -40,9 +44,14 @@ async function continueGuest() {
   error.value = ''
   try {
     if (await auth.enterGuest()) returnToWorkspace()
-    else error.value = '原访客身份已失效，访问凭据仍保留。请联系管理员恢复历史数据。'
+    else
+      error.value = () =>
+        uiText(
+          'Your guest session has expired. Access credentials are retained. Contact an administrator to recover your history.',
+        )
   } catch (ex) {
-    error.value = ex instanceof Error ? ex.message : '无法进入访客体验，请重试'
+    error.value = () =>
+      ex instanceof Error ? ex.message : uiText('Could not start guest mode. Please retry.')
   } finally {
     loading.value = false
   }
@@ -57,7 +66,8 @@ async function enterDemo() {
     await auth.demoLogin()
     returnToWorkspace()
   } catch (ex) {
-    error.value = ex instanceof Error ? ex.message : '无法进入体验账号，请重试'
+    error.value = () =>
+      ex instanceof Error ? ex.message : uiText('Could not open the demo account. Please retry.')
   } finally {
     loading.value = false
     demoLoading.value = false
@@ -76,7 +86,8 @@ async function submit() {
     }
     returnToWorkspace()
   } catch (ex) {
-    error.value = ex instanceof Error ? ex.message : '操作失败，请稍后重试'
+    error.value = () =>
+      ex instanceof Error ? ex.message : uiText('Something went wrong. Please try again later.')
   } finally {
     loading.value = false
   }
@@ -94,14 +105,18 @@ function switchMode() {
         <div class="brand-row">
           <BrandMark :size="32" />
           <span class="brand-name">OfferPilot</span>
-          <span class="brand-caption">职航</span>
+          <span class="brand-caption">{{ uiText('OfferPilot') }}</span>
         </div>
 
         <h1 class="hero-title">
-          让每一次投递<br />
-          都有迹可循
+          {{ uiText('Keep track of') }}<br />
+          {{ uiText('every application') }}
         </h1>
-        <p class="hero-sub">整理简历、找到合适的岗位，记录每一步求职进展。</p>
+        <p class="hero-sub">
+          {{
+            uiText('Organize resumes, find suitable jobs and track each step of your job search.')
+          }}
+        </p>
 
         <ul class="feature-list">
           <li v-for="f in features" :key="f.label">
@@ -113,18 +128,26 @@ function switchMode() {
 
       <div class="auth-panel">
         <header class="panel-head">
-          <h2>{{ mode === 'register' ? '创建你的账号' : '登录 OfferPilot' }}</h2>
+          <h2>
+            {{
+              mode === 'register' ? uiText('Create your account') : uiText('Sign in to OfferPilot')
+            }}
+          </h2>
           <p class="panel-sub">
             {{
               mode === 'register'
-                ? '只需一个邮箱和密码，马上开始你的求职旅程。'
-                : '从了解自己，到找到下一站。'
+                ? uiText('Start your job search with just an email and password.')
+                : uiText('Get to know yourself and find your next opportunity.')
             }}
           </p>
         </header>
 
         <p v-if="route.query.deleted === '1'" class="success-banner" role="status">
-          账号和服务端数据已删除，文件清理失败时会自动重试；当前浏览器工作区已清除。
+          {{
+            uiText(
+              "Your account and server data have been deleted. Failed file cleanup will retry automatically. This browser's workspace has been cleared.",
+            )
+          }}
         </p>
         <div v-if="mode === 'login'" class="demo-entry">
           <button
@@ -135,16 +158,20 @@ function switchMode() {
             @click="enterDemo"
           >
             <span v-if="demoLoading" class="spinner" aria-hidden="true" />
-            {{ demoLoading ? '正在进入体验账号…' : '体验账号一键登录' }}
+            {{ demoLoading ? uiText('Opening demo account…') : uiText('Try the demo account') }}
           </button>
           <p class="subtle">
-            虚构求职旅程已备好简历、投递与面试记录。公网体验沙箱限时保留，请勿填写个人信息。
+            {{
+              uiText(
+                'Explore a fictional job search with prepared resumes, applications and interview records. This public demo is temporary. Please do not enter personal information.',
+              )
+            }}
           </p>
         </div>
 
         <form class="auth-form" :aria-busy="loading" novalidate @submit.prevent="submit">
           <label class="field">
-            <span class="field-label">邮箱</span>
+            <span class="field-label">{{ uiText('Email') }}</span>
             <input
               v-model="email"
               type="email"
@@ -156,7 +183,9 @@ function switchMode() {
           </label>
 
           <label class="field">
-            <span class="field-label">{{ mode === 'register' ? '设置密码' : '密码' }}</span>
+            <span class="field-label">{{
+              mode === 'register' ? uiText('Create password') : uiText('Password')
+            }}</span>
             <span class="field-control">
               <input
                 v-model="password"
@@ -165,12 +194,16 @@ function switchMode() {
                 :autocomplete="mode === 'register' ? 'new-password' : 'current-password'"
                 required
                 :minlength="mode === 'register' ? 6 : undefined"
-                :placeholder="mode === 'register' ? '至少 6 位' : '请输入密码'"
+                :placeholder="
+                  mode === 'register'
+                    ? uiText('At least 6 characters')
+                    : uiText('Enter your password')
+                "
               />
               <button
                 type="button"
                 class="eye-toggle"
-                :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+                :aria-label="showPassword ? uiText('Hide password') : uiText('Show password')"
                 @click="showPassword = !showPassword"
               >
                 <AppIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
@@ -185,26 +218,30 @@ function switchMode() {
             {{
               loading && !demoLoading
                 ? mode === 'register'
-                  ? '注册中…'
-                  : '登录中…'
+                  ? uiText('Creating account…')
+                  : uiText('Signing in…')
                 : mode === 'register'
-                  ? '注册'
-                  : '登录'
+                  ? uiText('Create account')
+                  : uiText('Sign in')
             }}
           </button>
         </form>
 
         <p class="mode-switch">
-          <template v-if="mode === 'register'">已有账号？</template>
-          <template v-else>还没有账号？</template>
+          <template v-if="mode === 'register'">{{ uiText('Already have an account?') }}</template>
+          <template v-else>{{ uiText('New to OfferPilot?') }}</template>
           <button type="button" class="text-control" :disabled="loading" @click="switchMode">
-            {{ mode === 'register' ? '直接登录' : '立即注册' }}
+            {{ mode === 'register' ? uiText('Sign in instead') : uiText('Create an account') }}
           </button>
         </p>
 
         <footer class="panel-foot">
           <p v-if="auth.requiresLogin" class="subtle" role="status">
-            登录已结束或身份失效，请重新登录。原访客数据仍保留。
+            {{
+              uiText(
+                'Your session has ended or expired. Please sign in again. Guest data is retained.',
+              )
+            }}
           </p>
           <button
             v-if="auth.hasGuest"
@@ -213,7 +250,7 @@ function switchMode() {
             :disabled="loading"
             @click="continueGuest"
           >
-            继续使用原访客身份
+            {{ uiText('Resume guest session') }}
           </button>
           <button
             v-else-if="!auth.hasStoredGuest"
@@ -222,18 +259,24 @@ function switchMode() {
             :disabled="loading"
             @click="continueGuest"
           >
-            以访客身份体验
+            {{ uiText('Continue as guest') }}
           </button>
           <p v-else class="subtle" role="status">
-            原访客身份已失效，访问凭据仍保留。请联系管理员恢复历史数据。
+            {{
+              uiText(
+                'Your guest session has expired. Access credentials are retained. Contact an administrator to recover your history.',
+              )
+            }}
           </p>
           <p class="subtle">
-            访客身份有效期为 30
-            天。注册账号不会自动迁移访客数据；清除浏览器数据后无法找回访客访问凭据。
+            {{
+              uiText(
+                'Guest access lasts 30 days. Creating an account does not migrate guest data. Clearing browser data permanently removes guest access credentials.',
+              )
+            }}
           </p>
           <RouterLink to="/staff/login" class="secondary-link">
-            <AppIcon name="headset" :size="16" />
-            客服人员入口
+            <AppIcon name="headset" :size="16" /> {{ uiText('Staff sign-in #2') }}
           </RouterLink>
         </footer>
       </div>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, translateLabel, translate as uiText } from '@/shared/utils/language'
+
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import CareerRecommendations from '../components/CareerRecommendations.vue'
@@ -13,70 +15,87 @@ const progress = computed(() =>
 </script>
 <template>
   <section class="page-stack">
-    <PageHeading title="把远方，拆成每一步" description="明确目标，持续练习，留下可回顾的成长轨迹。"
-      ><RouterLink to="/discover" class="btn">调整职业目标</RouterLink></PageHeading
+    <PageHeading
+      :title="uiText('Turn your goals into steps')"
+      :description="uiText('Set a direction, keep practicing and build a record of your progress.')"
+      ><RouterLink to="/discover" class="btn">{{
+        uiText('Adjust career goal')
+      }}</RouterLink></PageHeading
     >
-    <p v-if="loading" role="status" class="subtle">正在读取职业档案…</p>
+    <p v-if="loading" role="status" class="subtle">{{ uiText('Loading career profile…') }}</p>
     <div v-if="error" role="alert" class="error-banner">
-      {{ error }} <button class="btn text" @click="retry">重试</button>
+      {{ error }} <button class="btn text" @click="retry">{{ uiText('Retry') }}</button>
     </div>
     <p v-if="ready" role="status" class="subtle">
-      {{ pending ? '成长行动尚未保存' : '成长行动已与服务器同步' }}
+      {{
+        pending
+          ? uiText('Growth actions are not yet saved')
+          : uiText('Growth actions synced with the server')
+      }}
     </p>
     <div class="split-content">
       <section class="panel">
         <div class="section-heading">
-          <h2>本轮成长行动</h2>
-          <span class="tag">通用行动清单</span>
+          <h2>{{ uiText('This round of growth actions') }}</h2>
+          <span class="tag">{{ uiText('General action checklist') }}</span>
         </div>
         <label
           v-for="(task, index) in learningTasks"
           :key="task"
           class="check-row"
           :class="{ done: profile.completedTasks.includes(task) }"
-          ><span class="step-number">{{ String(index + 1).padStart(2, '0') }}</span
+          ><span class="step-number">{{ formatDisplay(String(index + 1).padStart(2, '0')) }}</span
           ><input
             v-model="profile.completedTasks"
             type="checkbox"
             :value="task"
             :disabled="!ready"
             @change="saveTasks"
-          /><span>{{ task }}</span></label
+          /><span>{{ translateLabel(task) }}</span></label
         >
       </section>
       <aside class="form-stack">
         <section class="panel form-stack">
-          <p class="eyebrow">目标方向</p>
-          <h2>{{ profile.target || '先确定一个目标' }}</h2>
-          <p class="subtle">意向城市：{{ profile.city || '不限' }}</p>
-          <div class="large-number">{{ progress }}<span style="font-size: 1rem"> %</span></div>
+          <p class="eyebrow">{{ uiText('Target career') }}</p>
+          <h2>{{ profile.target || uiText('Choose a goal first') }}</h2>
+          <p class="subtle">{{ uiText('Preferred city: {0}', [profile.city || uiText('Any')]) }}</p>
+          <div class="large-number">
+            {{ formatDisplay(progress) }}<span style="font-size: 1rem"> %</span>
+          </div>
           <div class="focus-progress"><div :style="{ width: progress + '%' }" /></div>
           <p class="subtle">
-            {{ profile.completedTasks.length }} / {{ learningTasks.length }} 个行动已完成
+            {{
+              uiText('{0} of {1} actions completed', [
+                profile.completedTasks.length,
+                learningTasks.length,
+              ])
+            }}
           </p>
           <RouterLink
             :to="{
               path: '/chat',
               query: {
                 mode: 'COACH',
-                prompt:
-                  '我的目标是' +
-                  profile.target +
-                  '，已有技能：' +
-                  profile.skills +
-                  '。请帮我制定可执行的学习计划。',
+                prompt: uiText(
+                  'My career goal is {0}. My current skills are {1}. Please help me create an actionable learning plan.',
+                  [profile.target, profile.skills],
+                ),
               },
             }"
             class="btn primary"
-            >和 AI 讨论下一步</RouterLink
+            >{{ uiText('Discuss next steps with AI') }}</RouterLink
           >
         </section>
         <section class="panel form-stack">
-          <h2>让学习有真实产出</h2>
+          <h2>{{ uiText('Make learning count') }}</h2>
           <p class="subtle">
-            选一个小问题，做出一个能展示的项目。每周留下一段复盘：做了什么、卡在哪里、下次怎么改。
+            {{
+              uiText(
+                'Choose a small problem and build a project you can show. Reflect each week: what you did, where you got stuck and what to change next time.',
+              )
+            }}
           </p>
-          <RouterLink to="/kb" class="btn text">记录一次复盘</RouterLink>
+          <RouterLink to="/kb" class="btn text">{{ uiText('Write a reflection') }}</RouterLink>
         </section>
       </aside>
     </div>

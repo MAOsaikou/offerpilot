@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import {
+  formatNumber,
+  formatDateTime,
+  localizedText,
+  translate as uiText,
+} from '@/shared/utils/language'
+
 import { onBeforeUnmount, ref } from 'vue'
 import {
   getOpsStatus,
@@ -11,7 +18,7 @@ import { identitySignal } from '@/shared/utils/authSession'
 const status = ref<OpsStatus>()
 const receipts = ref<CleanupReceipt[]>([])
 const loading = ref(false)
-const error = ref('')
+const error = localizedText()
 const session = identitySignal()
 let mounted = true
 async function load() {
@@ -25,7 +32,8 @@ async function load() {
     receipts.value = cleanup
   } catch (ex) {
     if (mounted && !session.aborted)
-      error.value = ex instanceof Error ? ex.message : '状态读取失败，请重试'
+      error.value = () =>
+        ex instanceof Error ? ex.message : uiText('Could not load status. Please retry.')
   } finally {
     loading.value = false
   }
@@ -36,49 +44,84 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="ops" aria-label="运行状态" :aria-busy="loading">
-    <h2>运行状态</h2>
+  <section class="ops" :aria-label="uiText('Service status')" :aria-busy="loading">
+    <h2>{{ uiText('Service status') }}</h2>
     <button class="btn" :disabled="loading" @click="load">
-      {{ loading ? '读取中…' : '刷新运行状态' }}
+      {{ loading ? uiText('Loading…') : uiText('Refresh service status') }}
     </button>
     <p v-if="error" role="alert">{{ error }}</p>
     <template v-if="status">
-      <p role="status">{{ status.state }} · 已运行 {{ status.uptimeSeconds }} 秒</p>
+      <p role="status">
+        {{ uiText('{0} · Uptime: {1} seconds', [status.state, status.uptimeSeconds]) }}
+      </p>
       <p>
-        最近 5 分钟：{{ status.http.requests }} 次请求，{{ status.http.errors }} 次服务错误（{{
-          (status.http.errorRate * 100).toFixed(1)
-        }}%）
+        {{
+          uiText('Last 5 minutes: {0} requests, {1} server errors ({2}%)', [
+            status.http.requests,
+            status.http.errors,
+            formatNumber(status.http.errorRate * 100, {
+              minimumFractionDigits: 1,
+              maximumFractionDigits: 1,
+            }),
+          ])
+        }}
       </p>
       <p v-if="status.usage">
-        最近 1 小时：{{ status.usage.calls }} 次模型调用，{{
-          status.usage.promptTokens + status.usage.completionTokens
+        {{
+          uiText(
+            'Last hour: {0} model calls, {1} tokens, {2} failures, {3} calls without usage data',
+            [
+              status.usage.calls,
+              status.usage.promptTokens + status.usage.completionTokens,
+              status.usage.failed,
+              status.usage.unreported,
+            ],
+          )
         }}
-        tokens，{{ status.usage.failed }} 次失败，{{ status.usage.unreported }} 次用量未上报
       </p>
-      <p v-else>模型用量暂不可用</p>
+      <p v-else>{{ uiText('Model usage is currently unavailable') }}</p>
       <p>
-        告警：{{ status.alerts.length ? status.alerts.join('、') : '无' }} · 外部推送{{
-          status.externalPushEnabled ? '开启' : '关闭'
+        {{
+          uiText('Alerts: {0} · External notifications: {1}', [
+            status.alerts.length ? status.alerts.join('、') : uiText('None'),
+            status.externalPushEnabled ? uiText('On') : uiText('Off'),
+          ])
         }}
       </p>
-      <p class="subtle">检查时间：{{ status.checkedAt }}。状态按服务端检查周期更新。</p>
+      <p class="subtle">
+        {{
+          uiText("Checked: {0}. Status follows the server's check schedule.", [
+            formatDateTime(status.checkedAt),
+          ])
+        }}
+      </p>
       <p>
-        输出审核命中：{{
-          Object.entries(status.moderationHits ?? {})
-            .map(([category, count]) => `${category} ${count}`)
-            .join('、') || '0'
+        {{
+          uiText('Output moderation matches: {0}', [
+            Object.entries(status.moderationHits ?? {})
+              .map(([category, count]) => `${category} ${count}`)
+              .join('、') || '0',
+          ])
         }}
       </p>
-      <h3>后台清理回执</h3>
-      <p v-if="!receipts.length">没有待处理清理回执。</p>
+      <h3>{{ uiText('Background cleanup receipts') }}</h3>
+      <p v-if="!receipts.length">{{ uiText('No pending cleanup receipts.') }}</p>
       <ul v-else>
         <li v-for="receipt in receipts" :key="receipt.id">
-          {{ receipt.id }} · {{ receipt.kind }} · 已重试 {{ receipt.attempts }} 次 · 下次
-          {{ receipt.next_attempt_at }}
+          {{
+            uiText('{0} · {1} · {2} retries · Next: {3}', [
+              receipt.id,
+              receipt.kind,
+              receipt.attempts,
+              receipt.next_attempt_at,
+            ])
+          }}
         </li>
       </ul>
     </template>
-    <p v-else-if="!loading && !error" class="subtle">点击刷新查看运行状态与后台清理进度。</p>
+    <p v-else-if="!loading && !error" class="subtle">
+      {{ uiText('Refresh to view service status and background cleanup progress.') }}
+    </p>
   </section>
 </template>
 

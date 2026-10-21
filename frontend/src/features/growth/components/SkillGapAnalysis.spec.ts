@@ -95,7 +95,9 @@ it('analyzes the saved target and displays three grades with evidence and fetch 
     'SQL · 缺失',
     'GitHub · fixture/project',
     '画像自述',
-    '2026-10-20',
+    new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'medium' }).format(
+      new Date('2026-10-20'),
+    ),
     '未提及不代表没有能力',
   ])
     expect(host.textContent).toContain(text)

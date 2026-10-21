@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
+import { localizedText, language, translate as uiText } from '@/shared/utils/language'
+
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useAuthStore } from '@/shared/stores/auth'
 import {
@@ -14,10 +18,19 @@ const items = ref<ProfileSuggestion[]>([]),
   selected = ref<Record<string, string[]>>({})
 const loading = ref(false),
   busy = ref(false),
-  error = ref(''),
+  error = localizedText(),
   online = ref(navigator.onLine)
-const labels = { RESUME: '简历技能', GITHUB: 'GitHub 实证', INTERVIEW: '面试报告' }
-const statuses = { PENDING: '待确认', CONFIRMED: '已确认', REJECTED: '已忽略', STALE: '来源已变化' }
+const labels = computed(() => ({
+  RESUME: uiText('Resume skills'),
+  GITHUB: uiText('GitHub evidence'),
+  INTERVIEW: uiText('Interview report'),
+}))
+const statuses = computed(() => ({
+  PENDING: uiText('Pending confirmation'),
+  CONFIRMED: uiText('Confirmed'),
+  REJECTED: uiText('Ignored'),
+  STALE: uiText('Source changed'),
+}))
 let generation = 0
 async function load() {
   const current = generation
@@ -30,7 +43,8 @@ async function load() {
     selected.value = Object.fromEntries(data.map((item) => [item.id, []]))
   } catch (cause) {
     if (current === generation)
-      error.value = cause instanceof Error ? cause.message : '画像建议读取失败'
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Could not load profile suggestions')
   } finally {
     if (current === generation) loading.value = false
   }
@@ -50,7 +64,8 @@ async function decide(item: ProfileSuggestion, accept: boolean) {
     await load()
   } catch (cause) {
     if (current === generation)
-      error.value = cause instanceof Error ? cause.message : '确认失败，请重试'
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Confirmation failed. Please retry.')
   } finally {
     if (current === generation) {
       busy.value = false
@@ -82,22 +97,43 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <section id="profile-updates" class="panel form-stack" aria-label="画像更新建议">
-    <h2>材料带来的画像更新建议</h2>
+  <section
+    id="profile-updates"
+    class="panel form-stack"
+    :aria-label="uiText('Profile update suggestions')"
+  >
+    <h2>{{ uiText('Profile suggestions from your materials') }}</h2>
     <p>
-      自动整理已有材料，确认后才加入画像。请勾选你认可的技能；仓库语言和面试评价不能证明熟练程度。
+      {{
+        uiText(
+          'Existing materials are organized automatically but enter your profile only after confirmation. Select skills you agree with. Repository languages and interview feedback do not establish proficiency.',
+        )
+      }}
     </p>
-    <p v-if="!online" role="status">当前离线，恢复连接后可读取和确认建议。</p>
-    <button class="btn" :disabled="loading || busy || !online" @click="load">刷新材料建议</button>
-    <p v-if="loading" role="status">正在读取材料建议…</p>
+    <p v-if="!online" role="status">
+      {{ uiText('You are offline. Load and confirm suggestions when connected.') }}
+    </p>
+    <button class="btn" :disabled="loading || busy || !online" @click="load">
+      {{ uiText('Refresh material suggestions') }}
+    </button>
+    <p v-if="loading" role="status">{{ uiText('Loading material suggestions…') }}</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="!loading && !error && !items.length">
-      暂无材料建议。上传并保存简历、完成面试报告或刷新 GitHub 实证后再来查看。
+      {{
+        uiText(
+          'No suggestions yet. Save a resume, complete an interview report or refresh GitHub evidence, then check again.',
+        )
+      }}
     </p>
     <article v-for="item in items" :key="item.id" class="form-stack profile-suggestion">
       <h3>{{ labels[item.sourceType] }} · {{ statuses[item.status] }}</h3>
       <p class="subtle">
-        来源：{{ item.sourceId }} · {{ new Date(item.createdAt).toLocaleString() }}
+        {{
+          uiText('Source: {0} · {1} #2', [
+            item.sourceId,
+            new Date(item.createdAt).toLocaleString(language),
+          ])
+        }}
       </p>
       <ul>
         <li v-for="fact in item.facts" :key="fact">{{ fact }}</li>
@@ -110,13 +146,13 @@ onBeforeUnmount(() => {
             :value="skill"
             :disabled="busy || !online"
           />
-          加入画像技能：{{ skill }}</label
+          {{ uiText('Add profile skill: {0}', [skill]) }}</label
         >
         <div class="actions">
           <button class="btn primary" :disabled="busy || !online" @click="decide(item, true)">
-            确认材料依据与所选技能</button
+            {{ uiText('Confirm evidence and selected skills') }}</button
           ><button class="btn" :disabled="busy || !online" @click="decide(item, false)">
-            忽略这次建议
+            {{ uiText('Ignore this suggestion') }}
           </button>
         </div>
       </template>

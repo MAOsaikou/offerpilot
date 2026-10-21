@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import {
+  localizedText,
+  formatDateTime,
+  translateLabel,
+  sourceText,
+  translate as uiText,
+} from '@/shared/utils/language'
+
 import { computed, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
@@ -8,28 +16,28 @@ import { downloadText } from '@/shared/utils/download'
 const workspace = useWorkspace()
 const route = useRoute()
 const resume = computed(() => workspace.state.resumes.find((r) => r.id === route.params.id))
-const tab = ref('编辑')
-const message = ref('')
+const tab = ref<string>(sourceText('Edit #2'))
+const message = localizedText()
 function saveVersion() {
   if (!resume.value) return
   resume.value.versions.unshift({
     content: resume.value.content,
-    date: new Date().toLocaleString('zh-CN'),
+    date: new Date().toISOString(),
   })
-  resume.value.updated = new Date().toLocaleString('zh-CN')
-  message.value = '已保存当前版本'
-  workspace.notify('保存了简历版本：' + resume.value.title)
+  resume.value.updated = new Date().toISOString()
+  message.value = () => uiText('Current version saved')
+  workspace.notify(uiText('Saved resume version:') + resume.value.title)
 }
 function touched() {
-  if (resume.value) resume.value.updated = new Date().toLocaleString('zh-CN')
+  if (resume.value) resume.value.updated = new Date().toISOString()
   message.value = ''
 }
 function restore(content: string) {
   if (!resume.value) return
   saveVersion()
   resume.value.content = content
-  message.value = '已恢复所选版本，恢复前内容也已保存。'
-  tab.value = '编辑'
+  message.value = () => uiText('Selected version restored. Previous content was also saved.')
+  tab.value = sourceText('Edit #2')
 }
 function printResume() {
   window.print()
@@ -37,58 +45,64 @@ function printResume() {
 </script>
 <template>
   <section v-if="resume" class="page-stack">
-    <PageHeading :title="resume.title" description="每一次修改，都让你的优势更清晰。"
-      ><RouterLink to="/resumes" class="btn">返回</RouterLink
+    <PageHeading
+      :title="resume.title"
+      :description="uiText('Make your strengths clearer with every edit.')"
+      ><RouterLink to="/resumes" class="btn">{{ uiText('Back') }}</RouterLink
       ><button class="btn" @click="downloadText(resume.title + '.md', resume.content)">
-        导出 Markdown</button
-      ><button class="btn primary" @click="printResume">打印 / PDF</button></PageHeading
+        {{ uiText('Export Markdown') }}</button
+      ><button class="btn primary" @click="printResume">
+        {{ uiText('Print / PDF') }}
+      </button></PageHeading
     >
     <div class="split-content">
       <section class="panel form-stack no-print">
         <div class="tabs">
           <button
-            v-for="t in ['编辑', '版本']"
+            v-for="t in [sourceText('Edit #2'), sourceText('Versions')]"
             :key="t"
             :class="{ selected: tab === t }"
             @click="tab = t"
           >
-            {{ t }}
+            {{ translateLabel(t) }}
           </button>
         </div>
         <p v-if="message" class="success-banner" role="status">{{ message }}</p>
-        <template v-if="tab === '编辑'"
+        <template v-if="tab === sourceText('Edit #2')"
           ><label class="field"
-            >简历名称<input v-model="resume.title" maxlength="100" @input="touched" /></label
+            >{{ uiText('Resume name')
+            }}<input v-model="resume.title" maxlength="100" @input="touched" /></label
           ><label class="field"
-            >正文（Markdown）<textarea
-              v-model="resume.content"
-              rows="20"
-              maxlength="100000"
-              @input="touched"
-            />
+            >{{ uiText('Body (Markdown)')
+            }}<textarea v-model="resume.content" rows="20" maxlength="100000" @input="touched" />
           </label>
           <div class="card-footer">
-            <span class="subtle">草稿自动保存在本机</span
-            ><button class="btn primary" @click="saveVersion">保存版本</button>
+            <span class="subtle">{{ uiText('Drafts save automatically in this browser') }}</span
+            ><button class="btn primary" @click="saveVersion">{{ uiText('Saved version') }}</button>
           </div>
           <RouterLink
             :to="{
               path: '/chat',
-              query: { mode: 'RESUME', prompt: '请指导我如何优化简历的项目经历表达，不编造事实。' },
+              query: {
+                mode: 'RESUME',
+                prompt: uiText(
+                  'Help me improve how I describe project experience on my resume without inventing facts.',
+                ),
+              },
             }"
             class="btn"
-            >向 AI 请教简历写法</RouterLink
+            >{{ uiText('Ask AI about resume writing') }}</RouterLink
           ></template
         ><template v-else
           ><p v-if="!resume.versions.length" class="subtle">
-            还没有版本。编辑后点击「保存版本」留下一份快照。
+            {{ uiText('No versions yet. Edit and click Save version to keep a snapshot.') }}
           </p>
           <div v-for="(version, index) in resume.versions" :key="index" class="list-row">
             <div>
-              <h3>版本 {{ resume.versions.length - index }}</h3>
-              <small>{{ version.date }}</small>
+              <h3>{{ uiText('Version {0}', [resume.versions.length - index]) }}</h3>
+              <small>{{ formatDateTime(version.date) }}</small>
             </div>
-            <button class="btn" @click="restore(version.content)">恢复</button>
+            <button class="btn" @click="restore(version.content)">{{ uiText('Restore') }}</button>
           </div></template
         >
       </section>
@@ -99,7 +113,7 @@ function printResume() {
     </div>
   </section>
   <div v-else class="panel empty-state">
-    <h2>未找到这份简历</h2>
-    <RouterLink to="/resumes" class="btn">返回简历中心</RouterLink>
+    <h2>{{ uiText('Resume not found') }}</h2>
+    <RouterLink to="/resumes" class="btn">{{ uiText('Back to resumes') }}</RouterLink>
   </div>
 </template>

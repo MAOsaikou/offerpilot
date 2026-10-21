@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 import AppIcon from '@/shared/components/AppIcon.vue'
 
 defineProps<{ title: string; status: string; historyOpen: boolean; panelOpen: boolean }>()
@@ -9,7 +11,7 @@ const emit = defineEmits<{ 'toggle-history': []; 'toggle-panel': [] }>()
     <button
       class="icon-button history-toggle"
       :aria-expanded="historyOpen"
-      aria-label="历史会话"
+      :aria-label="uiText('Conversation history')"
       @click="emit('toggle-history')"
     >
       <AppIcon name="history" :size="18" />
@@ -20,8 +22,8 @@ const emit = defineEmits<{ 'toggle-history': []; 'toggle-panel': [] }>()
       class="icon-button"
       :class="{ 'is-on': panelOpen }"
       :aria-expanded="panelOpen"
-      aria-label="执行过程"
-      title="执行过程"
+      :aria-label="uiText('Execution details')"
+      :title="uiText('Execution details')"
       @click="emit('toggle-panel')"
     >
       <AppIcon name="panel" :size="18" />

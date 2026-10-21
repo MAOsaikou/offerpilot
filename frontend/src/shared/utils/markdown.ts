@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import DOMPurify from 'dompurify'
 import MarkdownIt from 'markdown-it'
 import { highlightCode, normalizeLanguage } from './codeHighlight'
@@ -23,8 +24,8 @@ md.renderer.rules.fence = (tokens, idx, options, env, self) => {
   const body =
     highlightCode(token.content, language) ?? defaultFence(tokens, idx, options, env, self)
   const raw = token.info.trim().split(/\s+/)[0] ?? ''
-  const label = raw ? md.utils.escapeHtml(raw) : '代码'
-  return `<div class="code-block"><div class="code-head"><span class="code-lang">${label}</span><button type="button" class="code-copy" data-copy-code>复制</button></div>${body}</div>`
+  const label = raw ? md.utils.escapeHtml(raw) : uiText('Code')
+  return `<div class="code-block"><div class="code-head"><span class="code-lang">${label}</span><button type="button" class="code-copy" data-copy-code>${uiText('Copy')}</button></div>${body}</div>`
 }
 
 /** 统计未闭合的围栏代码块，缺一个就补一个 */
@@ -47,7 +48,7 @@ function renderCitations(html: string): string {
         ? part
         : part.replace(
             /\[(KB-[0-9a-f]{12})\]/g,
-            '<button type="button" class="md-citation" data-kb-reference="$1" title="查看引用的笔记">$1</button>',
+            `<button type="button" class="md-citation" data-kb-reference="$1" title="${uiText('View cited note')}">$1</button>`,
           ),
     )
     .join('')

@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import type { RealJob } from '@/shared/types/jobs'
 import type { Job } from '@/shared/types/workspace'
 export function localJobSnapshot(job: RealJob): Job {
@@ -5,10 +6,16 @@ export function localJobSnapshot(job: RealJob): Job {
     id: job.id,
     title: job.title,
     company: job.company,
-    city: job.locations || '地点未提供',
-    salary: '薪资以官网为准',
+    city: job.locations || uiText('Location not provided'),
+    salary: uiText('Check company website for salary'),
     category: job.category,
-    tags: [job.nature === 'campus' ? '校招' : job.nature === 'intern' ? '实习' : '企业招聘'],
+    tags: [
+      job.nature === 'campus'
+        ? uiText('Graduate')
+        : job.nature === 'intern'
+          ? uiText('Internship')
+          : uiText('Company recruitment'),
+    ],
     description: job.description,
     color: '#3f67eb',
   }

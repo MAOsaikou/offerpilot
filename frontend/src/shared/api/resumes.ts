@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import {
   apiRequest,
   assertResponseIdentity,
@@ -16,10 +17,10 @@ import type {
 } from '@/shared/types/resume'
 
 export function validateResumeFile(file: File): string | undefined {
-  if (!file.size) return '文件为空，请选择包含简历内容的文件。'
-  if (file.size > 10 * 1024 * 1024) return '请选择 10MB 以内的简历文件。'
+  if (!file.size) return uiText('The file is empty. Choose a file containing your resume.')
+  if (file.size > 10 * 1024 * 1024) return uiText('Choose a resume file no larger than 10 MB.')
   if (!/\.(pdf|docx|png|jpe?g|txt|md)$/i.test(file.name))
-    return '支持 PDF、DOCX、PNG、JPG 和 UTF-8 TXT / Markdown 文件。'
+    return uiText('Supports PDF, DOCX, PNG, JPG and UTF-8 TXT / Markdown files.')
 }
 export async function uploadResume(file: File): Promise<ServerResume> {
   const error = validateResumeFile(file)
@@ -72,10 +73,10 @@ export async function exportResumePdf(id: string, template = 'classic'): Promise
   const blob = await response.blob()
   assertResponseIdentity(response)
   if (!response.headers.get('Content-Type')?.toLowerCase().startsWith('application/pdf'))
-    throw new Error('PDF 导出响应格式错误，请重试。')
+    throw new Error(uiText('Invalid PDF export response. Please retry.'))
   const disposition = response.headers.get('Content-Disposition') ?? ''
   const utf8Name = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]
-  let filename = /filename="([^";]+)"/i.exec(disposition)?.[1] ?? '简历.pdf'
+  let filename = /filename="([^";]+)"/i.exec(disposition)?.[1] ?? uiText('resume.pdf')
   if (utf8Name) {
     try {
       filename = decodeURIComponent(utf8Name)

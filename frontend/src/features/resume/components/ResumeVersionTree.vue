@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { language, translate as uiText } from '@/shared/utils/language'
+
 import { computed, ref, watch } from 'vue'
 import { resumeVersionSource, type ResumeVersion } from '@/shared/types/resume'
 import { diffLines, resumeLines } from '@/shared/utils/lineDiff'
@@ -38,9 +40,9 @@ const rows = computed(() => {
 const no = (id: string | null | undefined) => (id ? byId.value.get(id)?.versionNo : undefined)
 function origin(v: ResumeVersion) {
   const restored = v.parseMeta?.restoredFromNo
-  if (typeof restored === 'number') return `回滚自版本 ${restored}`
+  if (typeof restored === 'number') return uiText('Restored from version {0}', [restored])
   const parent = no(v.parentVersionId)
-  return parent ? `基于版本 ${parent}` : ''
+  return parent ? uiText('Based on version {0}', [parent]) : ''
 }
 
 const left = ref('')
@@ -70,7 +72,7 @@ function compareWith(v: ResumeVersion) {
 }
 </script>
 <template>
-  <ol class="version-tree" aria-label="版本树">
+  <ol class="version-tree" :aria-label="uiText('Version tree')">
     <li
       v-for="{ version, depth } in rows"
       :key="version.id"
@@ -79,27 +81,29 @@ function compareWith(v: ResumeVersion) {
     >
       <div>
         <h3>
-          版本 {{ version.versionNo }}
-          <span v-if="version.id === currentVersionId" class="tag">当前</span>
+          {{ uiText('Version {0}', [version.versionNo]) }}
+          <span v-if="version.id === currentVersionId" class="tag">{{ uiText('Current') }}</span>
         </h3>
         <small
-          >{{ new Date(version.createdAt).toLocaleString('zh-CN') }} ·
-          {{ resumeVersionSource[version.source] ?? '其他来源'
+          >{{ new Date(version.createdAt).toLocaleString(language) }} ·
+          {{ resumeVersionSource[version.source] ?? uiText('Other source')
           }}<template v-if="origin(version)"> · {{ origin(version) }}</template></small
         >
       </div>
       <div class="resume-actions">
-        <button class="btn" type="button" @click="emit('view', version)">查看</button>
+        <button class="btn" type="button" @click="emit('view', version)">
+          {{ uiText('View') }}
+        </button>
         <button
           v-if="version.id !== currentVersionId"
           class="btn"
           type="button"
           @click="compareWith(version)"
         >
-          与当前对比
+          {{ uiText('Compare with current') }}
         </button>
         <button class="btn" type="button" :disabled="busy" @click="emit('load', version)">
-          载入编辑
+          {{ uiText('Load for editing') }}
         </button>
         <button
           v-if="version.id !== currentVersionId"
@@ -108,31 +112,48 @@ function compareWith(v: ResumeVersion) {
           :disabled="busy"
           @click="emit('restore', version)"
         >
-          回滚到此版本
+          {{ uiText('Restore this version') }}
         </button>
       </div>
     </li>
   </ol>
-  <section v-if="versions.length > 1" class="form-stack version-compare" aria-label="版本对比">
-    <h2>版本对比</h2>
+  <section
+    v-if="versions.length > 1"
+    class="form-stack version-compare"
+    :aria-label="uiText('Version comparison')"
+  >
+    <h2>{{ uiText('Version comparison') }}</h2>
     <div class="compare-pickers">
       <label
-        >旧版本
+        >{{ uiText('Older version') }}
         <select v-model="left">
-          <option v-for="v in versions" :key="v.id" :value="v.id">版本 {{ v.versionNo }}</option>
+          <option v-for="v in versions" :key="v.id" :value="v.id">
+            {{ uiText('Version {0}', [v.versionNo]) }}
+          </option>
         </select></label
       >
       <label
-        >新版本
+        >{{ uiText('Newer version') }}
         <select v-model="right">
-          <option v-for="v in versions" :key="v.id" :value="v.id">版本 {{ v.versionNo }}</option>
+          <option v-for="v in versions" :key="v.id" :value="v.id">
+            {{ uiText('Version {0}', [v.versionNo]) }}
+          </option>
         </select></label
       >
     </div>
-    <p v-if="left === right" class="subtle">请选择两个不同的版本。</p>
-    <p v-else-if="!changed" class="subtle">两个版本的内容相同。</p>
+    <p v-if="left === right" class="subtle">{{ uiText('Select two different versions.') }}</p>
+    <p v-else-if="!changed" class="subtle">
+      {{ uiText('These versions have identical content.') }}
+    </p>
     <template v-else>
-      <p class="subtle">{{ changed }} 行有变化（红色为旧版本删除，绿色为新版本新增）。</p>
+      <p class="subtle">
+        {{
+          uiText(
+            '{0} changed lines (red: removed from older version; green: added in newer version).',
+            [changed],
+          )
+        }}
+      </p>
       <pre class="resume-text diff"><span
         v-for="(line, index) in diff"
         :key="index"

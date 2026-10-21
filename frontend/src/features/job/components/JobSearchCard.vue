@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import {
+  formatDisplay,
+  formatDate,
+  formatDateTime,
+  language,
+  translate as uiText,
+} from '@/shared/utils/language'
+
 import { computed } from 'vue'
 import { useBoard } from '@/shared/composables/useBoard'
 import JobSourceBadge from '@/shared/components/JobSourceBadge.vue'
@@ -34,14 +42,22 @@ const more = computed(() => ({
   },
 }))
 const natureLabel = (value: string) =>
-  ({ campus: '校招', intern: '实习', social: '社招', all: '全部类型' })[value.toLowerCase()] ||
-  '企业招聘'
+  ({
+    campus: uiText('Graduate'),
+    intern: uiText('Internship'),
+    social: uiText('Experienced hire'),
+    all: uiText('All types'),
+  })[value.toLowerCase()] || uiText('Company recruitment')
 </script>
 
 <template>
-  <section v-if="search" class="panel form-stack search-card" aria-label="岗位搜索结果">
+  <section
+    v-if="search"
+    class="panel form-stack search-card"
+    :aria-label="uiText('Job search results')"
+  >
     <div class="section-heading">
-      <h3>找到的岗位</h3>
+      <h3>{{ uiText('Jobs found') }}</h3>
       <JobSourceBadge
         :source="search.meta.source"
         :snapshot-date="search.meta.snapshotDate"
@@ -49,37 +65,64 @@ const natureLabel = (value: string) =>
       />
     </div>
     <p class="subtle">
-      {{ search.criteria.query }} · {{ search.criteria.location || '不限城市' }} ·
+      {{ search.criteria.query }} · {{ search.criteria.location || uiText('Any city') }} ·
       {{ natureLabel(search.criteria.nature)
       }}<span v-if="search.criteria.site"> · {{ search.criteria.site }}</span>
     </p>
     <p class="subtle">
-      查询时间：{{ new Date(search.fetchedAt).toLocaleString('zh-CN') }} · 本次返回
-      {{ search.returnedCount }} 条，展示 {{ search.items.length }} 条。此数量不是全部在招岗位总数。
+      {{
+        uiText(
+          'Queried {0} · {1} returned, {2} displayed. This is not the total number of open jobs.',
+          [
+            new Date(search.fetchedAt).toLocaleString(language),
+            search.returnedCount,
+            search.items.length,
+          ],
+        )
+      }}
     </p>
     <p v-if="search.meta.partial" role="status" class="helper-note">
-      {{ search.meta.timedOut ? '查询超时，已返回部分结果。' : '部分来源暂不可用，展示可用结果。' }}
+      {{
+        search.meta.timedOut
+          ? uiText('Query timed out. Partial results are shown.')
+          : uiText('Some sources are unavailable. Available results are shown.')
+      }}
     </p>
-    <p v-if="board.error.value" role="alert">{{ board.error.value }}</p>
+    <p v-if="board.error.value" role="alert">{{ formatDisplay(board.error.value) }}</p>
     <p v-if="board.query.isError.value" role="alert">
-      看板读取失败。<button class="btn" @click="board.query.refetch()">重试</button>
+      {{ uiText('Could not load board.')
+      }}<button class="btn" @click="board.query.refetch()">{{ uiText('Retry') }}</button>
     </p>
     <p v-if="search.meta.source === 'LOCAL_SNAPSHOT'" class="subtle">
-      人工整理的示例岗位快照，非实时数据；当前是否开放请到企业官网核实。
+      {{
+        uiText(
+          'Manually curated sample snapshot, not live data. Check the company website for current openings.',
+        )
+      }}
     </p>
     <p v-if="search.meta.skipped.length" class="helper-note" role="status">
-      部分企业暂不可用：{{
-        search.meta.skipped.map((s) => s.site).join('、')
-      }}。本次结果不包含这些企业。
+      {{
+        uiText('Some companies are unavailable: {0}. They are excluded from these results.', [
+          search.meta.skipped.map((s) => s.site).join('、'),
+        ])
+      }}
     </p>
     <p v-if="search.meta.degradedSites.length" class="helper-note">
-      {{ search.meta.degradedSites.join('、') }} 使用降级过滤，可能未覆盖全部岗位。
+      {{
+        uiText('{0} used fallback filtering and may not cover all jobs.', [
+          search.meta.degradedSites.join('、'),
+        ])
+      }}
     </p>
     <p v-if="search.meta.truncated" class="helper-note">
-      上游结果已截断，请缩小关键词或选择具体企业。
+      {{ uiText('Upstream results were truncated. Narrow your keywords or choose a company.') }}
     </p>
     <p v-if="!search.items.length" role="status">
-      本次没有找到岗位。可以调整关键词、企业或招聘类型；空结果不代表企业没有在招岗位。
+      {{
+        uiText(
+          'No jobs found in this query. Adjust keywords, company or recruitment type. Empty results do not mean there are no open jobs.',
+        )
+      }}
     </p>
     <article v-for="job in search.items" :key="job.id" class="search-item">
       <h4>{{ job.title }}</h4>
@@ -89,22 +132,30 @@ const natureLabel = (value: string) =>
         :cached="job.retrievalSource === 'LOCAL_DB' || search.meta.cached"
       />
       <p v-if="job.retrievalSource === 'LOCAL_DB'" class="subtle">
-        本地库记录 · {{ job.storedAt || '同步时间未提供' }}
+        {{
+          uiText('Local record · {0}', [
+            (job.storedAt && formatDateTime(job.storedAt)) || uiText('Sync time not provided'),
+          ])
+        }}
       </p>
       <p>
-        {{ job.company || job.site }} · {{ job.locations || '地点未提供' }} ·
+        {{ job.company || job.site }} · {{ job.locations || uiText('Location not provided') }} ·
         {{ natureLabel(job.nature) }}
       </p>
       <p class="subtle">
-        {{ search.meta.source === 'LOCAL_SNAPSHOT' ? '快照日期' : '企业更新时间' }}：{{
+        {{
+          search.meta.source === 'LOCAL_SNAPSHOT'
+            ? uiText('Snapshot date')
+            : uiText('Company update time')
+        }}：{{
           search.meta.source === 'LOCAL_SNAPSHOT'
             ? search.meta.snapshotDate
-            : job.updatedAt || '未提供'
+            : (job.updatedAt && formatDate(job.updatedAt)) || uiText('Not provided #2')
         }}
       </p>
-      <RouterLink :to="'/jobs/' + encodeURIComponent(job.id)" class="btn"
-        >查看详情与选择简历匹配</RouterLink
-      >
+      <RouterLink :to="'/jobs/' + encodeURIComponent(job.id)" class="btn">{{
+        uiText('View details and select a resume to match')
+      }}</RouterLink>
       <button
         v-if="job.id.startsWith('job_')"
         class="btn"
@@ -116,20 +167,30 @@ const natureLabel = (value: string) =>
         "
         @click="board.favorite(job.id)"
       >
-        {{ board.saved(job.id) ? '已加入看板' : '加入看板' }}
+        {{ board.saved(job.id) ? uiText('On your board') : uiText('Add to board') }}
       </button>
     </article>
     <div class="card-footer">
-      <RouterLink :to="more" class="btn">按这些条件继续搜索</RouterLink>
+      <RouterLink :to="more" class="btn">{{
+        uiText('Search again with these filters')
+      }}</RouterLink>
     </div>
-    <p class="subtle">继续搜索会重新查询，结果可能变化。岗位是否开放以企业官网为准。</p>
+    <p class="subtle">
+      {{
+        uiText(
+          'A new search may return different results. Check the company website for availability.',
+        )
+      }}
+    </p>
   </section>
   <section v-else-if="legacy" class="panel form-stack search-card">
     <h3>{{ legacy.title }}</h3>
     <p>{{ legacy.company }} · {{ legacy.cities.join('、') }}</p>
-    <RouterLink :to="'/jobs/' + encodeURIComponent(legacy.id)" class="btn">查看岗位详情</RouterLink>
+    <RouterLink :to="'/jobs/' + encodeURIComponent(legacy.id)" class="btn">{{
+      uiText('View job details')
+    }}</RouterLink>
   </section>
-  <p v-else role="alert">岗位卡片数据不可用，请重新查询。</p>
+  <p v-else role="alert">{{ uiText('Job card data is unavailable. Please search again.') }}</p>
 </template>
 
 <style scoped>
