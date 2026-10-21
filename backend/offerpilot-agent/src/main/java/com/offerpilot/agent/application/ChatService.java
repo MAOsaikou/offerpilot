@@ -46,6 +46,8 @@ public class ChatService {
     private int maxToolIterations=8;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.offerpilot.llm.UsageJournal journal;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.offerpilot.llm.ChatLanguagePreference languagePreference;
     private final ModelGateway gateway;
     private final ConversationService conversations;
     private final Orchestrator orchestrator;
@@ -129,6 +131,7 @@ public class ChatService {
         long[] lastSaved = {0};
         ArrayList<Message> prompt = new ArrayList<>();
         prompt.add(new SystemMessage(crisis ? systemPromptToday() + "\n" + com.offerpilot.llm.safety.InputSafety.CRISIS_GUIDANCE : systemPromptToday()));
+        if (languagePreference != null) prompt.add(new SystemMessage(languagePreference.instruction(owner)));
         prompt.addAll(memoryPrompt);
         prompt.addAll(turn.history());
         prompt.add(images.isEmpty() ? new UserMessage(request.content()) : UserMessage.builder().text(request.content())

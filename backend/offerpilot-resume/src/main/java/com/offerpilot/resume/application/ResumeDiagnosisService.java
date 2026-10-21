@@ -43,7 +43,7 @@ public class ResumeDiagnosisService {
                 var row=previous.get(0);
                 if (!versionId.equals(row.get("version_id"))) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请求标识不能用于不同简历版本");
                 if ("CANCELLED".equals(row.get("status"))) throw new BusinessException(ErrorCode.GENERATION_CANCELLED);
-                if ("SUCCEEDED".equals(row.get("status"))) return new Work(row.get("id").toString(), owner, resumeId, version, tier, parse(row.get("report").toString()));
+                if ("SUCCEEDED".equals(row.get("status"))) return new Work(row.get("id").toString(), owner, resumeId, version, tier, ResumeDiagnosisValidator.verifiedReport(parse(row.get("report").toString()), version.structured()));
                 throw new BusinessException(ErrorCode.CONCURRENT_RUN_LIMIT, "本次请求正在处理或已结束，请刷新报告；重试需使用新的请求标识");
             }
             if (jdbc.queryForObject("SELECT count(*) FROM resume_diagnoses WHERE user_id=? AND status='RUNNING'", Integer.class, owner) > 0)
@@ -64,7 +64,8 @@ public class ResumeDiagnosisService {
                 if (!"RUNNING".equals(get(work.owner(), work.id()).path("status").asText())) return Mono.error(cancelled(work));
                 return diagnoser.diagnose(work.version().structured(), work.tier());
             }).takeUntilOther(cancellation.asMono()).switchIfEmpty(Mono.defer(() -> Mono.error(cancelled(work))))
-                .publishOn(Schedulers.boundedElastic()).<JsonNode>map(report -> {
+                .publishOn(Schedulers.boundedElastic()).<JsonNode>map(candidate -> {
+                    var report = ResumeDiagnosisValidator.verifiedReport(candidate, work.version().structured());
                     report.put("reportId", work.id()).put("resumeId", work.resumeId()).put("versionId", work.version().id())
                         .put("versionNo", work.version().versionNo()).put("createdAt", Instant.now().toString());
                     if (report.toString().length() > 30000) throw ResumeDiagnosisValidator.invalid();
@@ -97,7 +98,12 @@ public class ResumeDiagnosisService {
             ObjectNode row=json.createObjectNode().put("id", rs.getString("id")).put("resumeId", rs.getString("resume_id"))
                 .put("versionId", rs.getString("version_id")).put("requestId", rs.getString("request_id")).put("status", rs.getString("status"))
                 .put("error", rs.getString("error")).put("createdAt", rs.getTimestamp("created_at").toInstant().toString());
-            String report=rs.getString("report"); if (report != null) row.set("report", parse(report));
+            String report=rs.getString("report"); if (report != null) {
+                var stored = parse(report);
+                var version = resumes.version(owner, row.path("resumeId").asText(), row.path("versionId").asText());
+                row.set("report", stored.path("schemaVersion").asInt() == 2
+                        ? ResumeDiagnosisValidator.verifiedReport(stored, version.structured()) : stored);
+            }
             return (JsonNode)row;
         }, id, owner);
         if (rows.isEmpty()) throw notFound();

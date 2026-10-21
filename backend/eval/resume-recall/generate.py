@@ -6,14 +6,22 @@ two-column table layouts exercise the same text-extraction order problems real P
 
     python3 generate.py [out_dir]
 """
-import json, random, subprocess, sys
+import argparse, hashlib, io, json, random, subprocess, sys, uuid, zipfile
 from pathlib import Path
 from docx import Document
 from docx.shared import Pt
 from docx.oxml.ns import qn
 
-OUT = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).parent / "out")
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('out_dir', nargs='?', default=str(Path(__file__).parent / 'out'))
+parser.add_argument('--image-variants', action='store_true', help='also generate raster PNG/JPG/scanned PDF variants; requires Pillow and pdftoppm')
+parser.add_argument('--pdf-engine', choices=['libreoffice', 'reportlab'], default='libreoffice')
+args = parser.parse_args()
+OUT = Path(args.out_dir)
 OUT.mkdir(parents=True, exist_ok=True)
+# Isolate LibreOffice's lock/profile from any interactive session; retain artifacts for inspection.
+lo_profile = Path('/tmp') / ('offerpilot-recall-lo-' + uuid.uuid4().hex)
+lo_profile.mkdir()
 rnd = random.Random(1016)
 
 SURNAMES = "林陈王赵周吴郑孙沈韩杨许何吕施张孔曹严华金魏陶姜"
@@ -191,11 +199,21 @@ for i in range(24):
         doc = {"classic": classic, "two_column": two_column, "pipe_header": pipe_header, "combined_sections": classic,
                "english_headings": lambda q: classic(q, english=True)}[p["layout"]](p)
         docx = OUT / f"{p['id']}.docx"
-        doc.save(docx)
+        raw = io.BytesIO(); doc.save(raw)
+        # ZIP timestamps would otherwise make identical synthetic sources hash differently on rerun.
+        with zipfile.ZipFile(raw) as source, zipfile.ZipFile(docx, 'w', compression=zipfile.ZIP_DEFLATED) as target:
+            for name in sorted(source.namelist()):
+                entry = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+                entry.compress_type = zipfile.ZIP_DEFLATED
+                target.writestr(entry, source.read(name))
         if fmt == "pdf":
-            subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", str(OUT), str(docx)],
-                           check=True, capture_output=True)
-            docx.unlink()
+            if args.pdf_engine == 'reportlab':
+                from render_pdf import render
+                render(path, p, sections, contact_lines)
+            else:
+                subprocess.run(["soffice", "-env:UserInstallation=" + lo_profile.as_uri(), "--headless", "--convert-to", "pdf", "--outdir", str(OUT), str(docx)],
+                               check=True, capture_output=True)
+            # Keep intermediate DOCX files for audit/reproduction; never delete source artifacts.
     p["file"] = path.name
     if fmt == "pdf":
         # Every stated fact must survive into the PDF text layer, or the truth would be unfair.
@@ -208,5 +226,33 @@ for i in range(24):
         lost = [f for f in facts if not present(f)]
         assert not lost, f"{path.name} lost {lost}"
     truth.append(p)
+if args.image_variants:
+    from PIL import Image, ImageOps
+    # Derivatives never increase the number of independent people in the gate.
+    for original in [p for p in truth if p['file'].endswith('.pdf')][:4]:
+        prefix = OUT / (original['id'] + '-page')
+        subprocess.run(['pdftoppm', '-png', '-scale-to', '1600', str(OUT / original['file']), str(prefix)], check=True, capture_output=True)
+        pages = [Image.open(path).convert('RGB') for path in sorted(OUT.glob(prefix.name + '-*.png'))]
+        canvas = Image.new('RGB', (max(page.width for page in pages), sum(page.height for page in pages)), 'white')
+        y = 0
+        for page in pages:
+            canvas.paste(page, (0, y)); y += page.height
+        variants = {
+            'png': (canvas, {}),
+            # Synthetic scan-like stress input, not an actual phone photograph.
+            'jpg': (ImageOps.expand(canvas, border=24, fill='#dddddd').rotate(1.5, expand=True, fillcolor='white'), {'quality': 58}),
+            'pdf': (pages[0], {'save_all': True, 'append_images': pages[1:], 'resolution': 100.0, 'creationDate': None, 'modDate': None}),
+        }
+        for fmt, (picture, options) in variants.items():
+            sample = json.loads(json.dumps(original)); sample['sourceId'] = original['id']
+            sample['id'] += '-' + ('scan' if fmt == 'pdf' else fmt)
+            sample['file'] = sample['id'] + '.' + fmt
+            sample['layout'] += '-synthetic-' + fmt
+            picture.save(OUT / sample['file'], **options)
+            truth.append(sample)
+manifest = {'provenance': 'generated_synthetic', 'seed': 1016, 'pdfEngine': args.pdf_engine, 'independentResumes': 24,
+            'samples': [{'id': p['id'], 'sourceId': p.get('sourceId', p['id']), 'file': p['file'],
+                         'sha256': hashlib.sha256((OUT / p['file']).read_bytes()).hexdigest()} for p in truth]}
+(OUT / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
 (OUT / "truth.json").write_text(json.dumps(truth, ensure_ascii=False, indent=1), encoding="utf-8")
 print(f"wrote {len(truth)} resumes to {OUT}")

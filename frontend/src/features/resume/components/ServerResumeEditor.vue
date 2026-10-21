@@ -354,12 +354,17 @@ const basics = [
           ><span class="subtle">{{ resume.fileName }}</span>
         </div>
         <template v-if="resume.parseStatus === 'QUEUED' || resume.parseStatus === 'PARSING'">
-          <h2>
+          <h2 aria-live="polite" role="status">
             {{
-              resume.parseStatus === 'QUEUED' ? '文件已保存，等待解析' : '正在识别与整理简历内容'
+              resume.parseStatus === 'QUEUED'
+                ? '文件已保存，排队等待解析'
+                : resume.parseProgress < 50
+                  ? '正在读取原文与页面图片'
+                  : '正在提取和校验结构化字段'
             }}
           </h2>
           <progress :value="resume.parseProgress" max="100" aria-label="简历解析进度" />
+          <p class="subtle">进度表示处理阶段，不代表剩余时间。</p>
           <p>解析会在后台继续，你可以离开页面，稍后返回查看。图片与扫描件可能需要更长时间。</p>
         </template>
         <template v-if="resume.parseStatus === 'FAILED'">

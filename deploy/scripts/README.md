@@ -2,6 +2,17 @@
 
 全部从已配置好的宿主机运行；公网步骤见 [部署文档](../../docs/09-部署与运维.md)。
 
+## 本地 Compose 离线检查
+
+无需 Docker 或网络，也不读取真实环境文件：
+
+```bash
+python3 deploy/scripts/check_compose.py
+python3 -m unittest discover -s deploy/scripts -p test_check_compose.py
+```
+
+检查服务/依赖/健康检查/回环端口、Ollama bge-m3 权重准备及持久卷、示例环境和 README 的 full 启动命令。仅静态源配置检查；完整 YAML 展开与运行仍按根 README 执行 Compose config/启动/外部 healthcheck。首次下载需要网络或预载模型，不能据此宣称新机器10分钟已通过。
+
 ## 发布前配置检查
 
 Node.js 22+与Docker Compose 2.24.4+；从仓库根执行：

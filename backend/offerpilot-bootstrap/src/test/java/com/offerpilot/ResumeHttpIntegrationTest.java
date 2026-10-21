@@ -157,6 +157,20 @@ class ResumeHttpIntegrationTest {
         structure.put("summary","新版内容");
         var updated=resumes.save(owner(token),id,version,structure);
         assertThat(diagnoses.report(owner(token),id,version,reportId)).isEqualTo(report);
+        int callsBeforeHistory = providerCalls.get();
+        var mixedHistory = report.deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)mixedHistory).withArray("strengths")
+                .addObject().put("message","误引当前版本").putArray("evidence")
+                .addObject().put("path","/summary").put("quote","新版内容");
+        jdbc.update("UPDATE resume_diagnoses SET report=?::jsonb WHERE id=?", mixedHistory.toString(), reportId);
+        var historical = diagnoses.get(owner(token), reportId).path("report");
+        assertThat(historical.path("strengths")).isEmpty();
+        assertThat(historical.path("findings")).isEqualTo(report.path("findings"));
+        assertThat(historical.path("versionId").asText()).isEqualTo(version);
+        assertThat(new ResumeDiagnosisForChat(diagnoses).execute(owner(token),id,version,reportId,"unused")
+                .block(Duration.ofSeconds(5))).isEqualTo(historical);
+        assertThat(providerCalls.get()).isEqualTo(callsBeforeHistory);
+        jdbc.update("UPDATE resume_diagnoses SET report=?::jsonb WHERE id=?", report.toString(), reportId);
         assertThatThrownBy(() -> diagnoses.report(owner(token),id,updated.currentVersionId(),reportId)).hasMessageContaining("不存在");
         assertThat(request("POST","/resumes/"+id+"/versions/"+updated.currentVersionId()+"/analyze",token,body).statusCode()).isEqualTo(400);
     }
