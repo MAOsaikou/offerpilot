@@ -1,3 +1,4 @@
+import { setLanguage } from '@/shared/utils/language'
 import { createApp, nextTick, type App } from 'vue'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -137,4 +138,21 @@ it('keeps unread count and reports a failed read mutation', async () => {
   await flush()
   expect(store.unread).toBe(1)
   expect(host.querySelector('[role=alert]')?.textContent).toContain('标记失败')
+})
+
+afterEach(() => setLanguage('zh-CN'))
+
+it('switches notification controls live while preserving server titles and bodies', async () => {
+  await mount()
+  expect(host.textContent).toContain('通知中心')
+  setLanguage('en-US')
+  await nextTick()
+  expect(host.textContent).toContain('Notification center')
+  expect(host.textContent).toContain('Mark all as read')
+  expect(host.textContent).toContain('Deadline reminder')
+  expect(host.textContent).toContain('截止还有3天')
+  expect(host.textContent).toContain('真实来源岗位')
+  setLanguage('zh-CN')
+  await nextTick()
+  expect(host.textContent).toContain('通知中心')
 })

@@ -1,3 +1,4 @@
+import { translate as uiText, sourceText } from '@/shared/utils/language'
 import {
   apiRequest,
   apiUrl,
@@ -8,7 +9,12 @@ import {
   toApiError,
 } from './client'
 
-export const noteCategories = ['面试复盘', '技术积累', '项目经历', '求职心得'] as const
+export const noteCategories = [
+  sourceText('Interview review'),
+  sourceText('Technical learning'),
+  sourceText('Projects'),
+  sourceText('Job search insights'),
+] as const
 export type NoteCategory = (typeof noteCategories)[number]
 export interface KnowledgeDraft {
   title: string
@@ -17,10 +23,18 @@ export interface KnowledgeDraft {
 }
 export type IndexStatus = 'QUEUED' | 'INDEXING' | 'READY' | 'FAILED'
 export const indexStatusLabels: Record<IndexStatus, string> = {
-  QUEUED: '排队',
-  INDEXING: '索引中',
-  READY: '完成',
-  FAILED: '失败',
+  get QUEUED() {
+    return uiText('Queued')
+  },
+  get INDEXING() {
+    return uiText('Indexing')
+  },
+  get READY() {
+    return uiText('Done')
+  },
+  get FAILED() {
+    return uiText('Failed')
+  },
 }
 interface DocumentStatus {
   indexStatus?: IndexStatus
@@ -83,9 +97,11 @@ export const importKnowledgeNotes = (notes: KnowledgeImport[]) =>
   })
 
 export function validateKnowledgeFile(file: File): void {
-  if (!file.size) throw new Error('文件为空，请选择包含正文的文件')
-  if (file.size > 10 * 1024 * 1024) throw new Error('资料文件不能超过 10MB')
-  if (!/\.(pdf|md|txt)$/i.test(file.name)) throw new Error('仅支持 PDF、MD、TXT 文件')
+  if (!file.size) throw new Error(uiText('The file is empty. Choose a file containing text.'))
+  if (file.size > 10 * 1024 * 1024)
+    throw new Error(uiText('Resource files must be 10 MB or smaller'))
+  if (!/\.(pdf|md|txt)$/i.test(file.name))
+    throw new Error(uiText('Only PDF, MD and TXT files are supported'))
 }
 export async function uploadKnowledgeDocument(
   file: File,

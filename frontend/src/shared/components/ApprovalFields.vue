@@ -1,25 +1,29 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
+import { translate as uiText } from '@/shared/utils/language'
+
 import { watch, ref } from 'vue'
 const props = defineProps<{ fields: string[]; args: unknown; disabled?: boolean }>()
 const emit = defineEmits<{ change: [Record<string, unknown>, string] }>()
 const values = ref<Record<string, string>>({})
-const labels: Record<string, string> = {
-  name: '目标职业名称',
-  taskTitles: '已完成任务（JSON 数组）',
-  accepted: '采纳补丁（JSON 数组）',
-  edited: '编辑补丁（JSON 对象）',
-  confirmed: '已核实补丁（JSON 数组）',
-  questionIndex: '面试题号（从 0 开始）',
-  role: '面试岗位',
-  kind: '面试类型',
-  answer: '面试答案',
-  nextQuestion: '进入下一题（true / false）',
-  fact: '记忆内容（仅可截取原话）',
-  status: '状态',
-  note: '备注',
-  nextAction: '下一步行动',
-  nextActionAt: '行动日期',
-}
+const labels = computed<Record<string, string>>(() => ({
+  name: uiText('Target career name'),
+  taskTitles: uiText('Completed tasks (JSON array)'),
+  accepted: uiText('Accepted patches (JSON array)'),
+  edited: uiText('Edited patches (JSON object)'),
+  confirmed: uiText('Verified patches (JSON array)'),
+  questionIndex: uiText('Question index (starts at 0)'),
+  role: uiText('Interview role'),
+  kind: uiText('Interview type'),
+  answer: uiText('Interview answer'),
+  nextQuestion: uiText('Next question (true / false)'),
+  fact: uiText('Memory content (original quotes only)'),
+  status: uiText('Status'),
+  note: uiText('Notes'),
+  nextAction: uiText('Next action'),
+  nextActionAt: uiText('Action date'),
+}))
 const jsonFields = new Set([
   'taskTitles',
   'accepted',
@@ -55,7 +59,7 @@ function change() {
     }
     emit('change', args, '')
   } catch {
-    emit('change', {}, '请填写有效的 JSON 参数')
+    emit('change', {}, uiText('Enter valid JSON parameters'))
   }
 }
 </script>

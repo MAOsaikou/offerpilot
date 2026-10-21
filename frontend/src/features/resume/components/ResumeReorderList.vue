@@ -1,4 +1,6 @@
 <script setup lang="ts" generic="T">
+import { formatDisplay, localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { nextTick, ref, useId, watch } from 'vue'
 import { moveEntry } from '../reorder'
 
@@ -8,7 +10,7 @@ const root = ref<HTMLElement>()
 const hintId = useId()
 const dragging = ref<number>()
 const target = ref<number>()
-const announcement = ref('')
+const announcement = localizedText()
 
 function cancelDrag() {
   dragging.value = target.value = undefined
@@ -22,7 +24,13 @@ async function move(from: number, to: number, action: 'up' | 'down' | 'drag') {
   if (updated === entries.value) return
   cancelDrag()
   entries.value = updated
-  announcement.value = `${props.title}第 ${from + 1} 项已移至第 ${to + 1} 项，共 ${updated.length} 项。`
+  announcement.value = () =>
+    uiText('{0} item {1} moved to position {2} of {3}.', [
+      props.title,
+      from + 1,
+      to + 1,
+      updated.length,
+    ])
   await nextTick()
   const row = root.value?.querySelectorAll('fieldset')[to]
   const preferred = row?.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)
@@ -58,7 +66,11 @@ function drop(index: number, event: DragEvent) {
 <template>
   <div ref="root" class="form-stack reorder-list">
     <p v-if="entries.length > 1" :id="hintId" class="subtle">
-      拖动手柄调整顺序，也可使用上移、下移按钮。保存后生成新版本。
+      {{
+        uiText(
+          'Drag the handle or use Move up and Move down to reorder. Saving creates a new version.',
+        )
+      }}
     </p>
     <fieldset
       v-for="(entry, index) in entries"
@@ -70,40 +82,44 @@ function drop(index: number, event: DragEvent) {
       @dragleave="target === index && (target = undefined)"
       @drop="drop(index, $event)"
     >
-      <legend>{{ title }} {{ index + 1 }}</legend>
-      <div class="reorder-controls" role="group" :aria-label="`${title}第 ${index + 1} 项排序`">
+      <legend>{{ title }} {{ formatDisplay(index + 1) }}</legend>
+      <div
+        class="reorder-controls"
+        role="group"
+        :aria-label="uiText('Order of {0} item {1}', [title, index + 1])"
+      >
         <button
           type="button"
           class="btn drag-handle"
           data-action="drag"
           :draggable="!disabled && entries.length > 1"
           :disabled="disabled || entries.length < 2"
-          :aria-label="`拖动${title}第 ${index + 1} 项排序`"
+          :aria-label="uiText('Drag to reorder {0} item {1}', [title, index + 1])"
           :aria-describedby="entries.length > 1 ? hintId : undefined"
           @dragstart="startDrag(index, $event)"
           @dragend="cancelDrag"
         >
-          <span aria-hidden="true">⠿</span> 拖动
+          <span aria-hidden="true">⠿</span> {{ uiText('Drag') }}
         </button>
         <button
           type="button"
           class="btn"
           data-action="up"
           :disabled="disabled || index === 0"
-          :aria-label="`上移${title}第 ${index + 1} 项`"
+          :aria-label="uiText('Move {0} item {1} up', [title, index + 1])"
           @click="move(index, index - 1, 'up')"
         >
-          上移
+          {{ uiText('Move up') }}
         </button>
         <button
           type="button"
           class="btn"
           data-action="down"
           :disabled="disabled || index === entries.length - 1"
-          :aria-label="`下移${title}第 ${index + 1} 项`"
+          :aria-label="uiText('Move {0} item {1} down', [title, index + 1])"
           @click="move(index, index + 1, 'down')"
         >
-          下移
+          {{ uiText('Move down') }}
         </button>
       </div>
       <slot :entry="entry" :index="index" />

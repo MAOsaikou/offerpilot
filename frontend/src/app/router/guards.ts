@@ -1,3 +1,5 @@
+import { watch } from 'vue'
+import { language, translateLabel } from '@/shared/utils/language'
 import type { Router } from 'vue-router'
 import { useAuthStore } from '@/shared/stores/auth'
 
@@ -22,7 +24,11 @@ export function registerGuards(router: Router): void {
     return true
   })
 
+  watch(language, () => {
+    const title = router.currentRoute.value.meta.title
+    document.title = title ? `${translateLabel(title)} · ${APP_NAME}` : APP_NAME
+  })
   router.afterEach((to) => {
-    document.title = to.meta.title ? `${to.meta.title} · ${APP_NAME}` : APP_NAME
+    document.title = to.meta.title ? `${translateLabel(to.meta.title)} · ${APP_NAME}` : APP_NAME
   })
 }

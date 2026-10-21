@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, translate as uiText } from '@/shared/utils/language'
+
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
@@ -46,29 +48,43 @@ async function confirm(proposal: LearningPlanUpdate) {
 }
 </script>
 <template>
-  <section class="form-stack plan-updates" aria-label="计划更新建议">
-    <h3>计划更新建议</h3>
+  <section class="form-stack plan-updates" :aria-label="uiText('Plan update suggestions')">
+    <h3>{{ uiText('Plan update suggestions') }}</h3>
     <p class="helper-note">
-      根据本次报告短板补充同目标岗位的已有计划。确认后才写入，新增任务均为未完成。
+      {{
+        uiText(
+          "Add tasks from this report's gaps to an existing plan for the same target job. Changes require confirmation. New tasks start incomplete.",
+        )
+      }}
     </p>
-    <p v-if="!online" role="status">当前离线，联网后可重新读取并确认建议。</p>
-    <p v-if="proposals.isPending.value" role="status">正在查找同目标岗位的学习计划…</p>
+    <p v-if="!online" role="status">
+      {{ uiText('You are offline. Reconnect to reload and confirm suggestions.') }}
+    </p>
+    <p v-if="proposals.isPending.value" role="status">
+      {{ uiText('Finding learning plans for the same target job…') }}
+    </p>
     <div v-else-if="proposals.isError.value" role="alert">
-      <p>{{ proposals.error.value?.message }}</p>
-      <button class="btn" :disabled="!online" @click="proposals.refetch()">重试更新建议</button>
+      <p>{{ formatDisplay(proposals.error.value?.message) }}</p>
+      <button class="btn" :disabled="!online" @click="proposals.refetch()">
+        {{ uiText('Retry update suggestions') }}
+      </button>
     </div>
     <p v-else-if="!proposals.data.value?.length" role="status">
-      暂无可更新的同目标岗位计划：可能尚未创建、没有新短板，或本报告建议已采纳。
+      {{
+        uiText(
+          'No matching plan can be updated: none may exist, there may be no new gaps, or these suggestions may already have been accepted.',
+        )
+      }}
     </p>
     <article v-for="proposal in proposals.data.value" :key="proposal.planId" class="form-stack">
       <RouterLink :to="{ path: '/career', query: { plan: proposal.planId } }">
-        查看已有计划 · {{ proposal.targetRole }}
+        {{ uiText('View existing plan · {0}', [proposal.targetRole]) }}
       </RouterLink>
       <template v-if="!applied.includes(proposal.planId)">
         <ul>
           <template v-for="week in proposal.additions" :key="week.index">
             <li v-for="item in week.items" :key="item.id">
-              第 {{ week.index }} 周：{{ item.title }} · {{ item.hours }} 小时
+              {{ uiText('Week {0}: {1} · {2} hours', [week.index, item.title, item.hours]) }}
               <p v-for="resource in item.resources" :key="resource" class="helper-note">
                 {{ resource }}
               </p>
@@ -76,15 +92,23 @@ async function confirm(proposal: LearningPlanUpdate) {
           </template>
         </ul>
         <button class="btn primary" :disabled="Boolean(busy) || !online" @click="confirm(proposal)">
-          {{ busy === proposal.planId ? '正在更新…' : '确认更新此计划' }}
+          {{
+            busy === proposal.planId ? uiText('Updating…') : uiText('Confirm update to this plan')
+          }}
         </button>
       </template>
-      <p v-else role="status">计划已更新，新增任务待学习。已有任务和完成记录已保留。</p>
+      <p v-else role="status">
+        {{
+          uiText(
+            'Plan updated with new tasks to study. Existing tasks and completion records are retained.',
+          )
+        }}
+      </p>
     </article>
     <div v-if="error" role="alert">
       <p>{{ error }}</p>
       <button class="btn" :disabled="Boolean(busy) || !online" @click="proposals.refetch()">
-        重新读取更新建议
+        {{ uiText('Reload update suggestions') }}
       </button>
     </div>
   </section>

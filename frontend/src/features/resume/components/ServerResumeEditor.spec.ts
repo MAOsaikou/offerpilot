@@ -1,3 +1,4 @@
+import { setLanguage } from '@/shared/utils/language'
 import { createApp, h, nextTick, type App } from 'vue'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
@@ -403,4 +404,21 @@ it('进度展示排队、读取和模型字段阶段，完成后移除进度条'
   cache.setQueryData(['resume', 'rs1'], fixture())
   await nextTick()
   expect(root.querySelector('progress')).toBeNull()
+})
+
+afterEach(() => setLanguage('zh-CN'))
+
+it('switches editor labels live, keeps the active tab and preserves draft values', async () => {
+  await edit('我的原文姓名')
+  setLanguage('en-US')
+  await nextTick()
+  expect(root.textContent).toContain('Personal information')
+  expect(root.textContent).toContain('Save new version')
+  expect(root.textContent).toContain('Certificates and awards')
+  expect(root.querySelector<HTMLInputElement>('.resume-basics input')!.value).toBe('我的原文姓名')
+  expect(root.querySelector('form')).not.toBeNull()
+  setLanguage('zh-CN')
+  await nextTick()
+  expect(root.textContent).toContain('个人信息')
+  expect(saveResume).not.toHaveBeenCalled()
 })

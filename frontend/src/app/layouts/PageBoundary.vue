@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 import { onErrorCaptured, ref, watch } from 'vue'
 
 const props = defineProps<{ resetKey: string }>()
@@ -19,9 +21,13 @@ watch(
 <template>
   <div class="route-page">
     <section v-if="failed" class="panel page-stack" role="alert">
-      <h1>页面暂时无法显示</h1>
-      <p>请重试，或通过导航打开其他页面。</p>
-      <div><button class="btn" type="button" @click="failed = false">重试页面</button></div>
+      <h1>{{ uiText('This page could not be displayed') }}</h1>
+      <p>{{ uiText('Try again or open another page using the navigation.') }}</p>
+      <div>
+        <button class="btn" type="button" @click="failed = false">
+          {{ uiText('Reload page') }}
+        </button>
+      </div>
     </section>
     <slot v-else />
   </div>

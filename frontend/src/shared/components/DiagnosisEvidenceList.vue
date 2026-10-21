@@ -1,23 +1,27 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
+import { translate as uiText } from '@/shared/utils/language'
+
 import type { DiagnosisEvidence } from '@/shared/types/diagnosis'
 
 defineProps<{ evidence: DiagnosisEvidence[] }>()
-const sections: Record<string, string> = {
-  summary: '个人简介',
-  education: '教育经历',
-  experience: '工作 / 实习经历',
-  projects: '项目经历',
-  skills: '技能',
-  certificates: '证书与奖项',
-}
+const sections = computed<Record<string, string>>(() => ({
+  summary: uiText('Professional summary'),
+  education: uiText('Education #2'),
+  experience: uiText('Work / Internship experience'),
+  projects: uiText('Projects'),
+  skills: uiText('Skills'),
+  certificates: uiText('Certificates and awards'),
+}))
 function location(path: string) {
   const [, section = '', index] = path.split('/')
-  const label = sections[section] || '简历原文'
-  return index && /^\d+$/.test(index) ? `${label} · 第 ${Number(index) + 1} 项` : label
+  const label = sections.value[section] || uiText('Original resume text')
+  return index && /^\d+$/.test(index) ? uiText('{0} · Item {1}', [label, Number(index) + 1]) : label
 }
 </script>
 <template>
-  <ul class="evidence-list" aria-label="报告所引用的简历原文">
+  <ul class="evidence-list" :aria-label="uiText('Original resume text cited by the report')">
     <li v-for="item in evidence" :key="item.path + item.quote">
       <span class="evidence-location">{{ location(item.path) }}</span>
       <blockquote>{{ item.quote }}</blockquote>

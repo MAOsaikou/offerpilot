@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 import { computed } from 'vue'
 import type { SkillRadarPayload } from '@/shared/types/cards'
 const props = defineProps<{ payload: SkillRadarPayload }>()
@@ -27,18 +29,28 @@ function points(required = false) {
 }
 </script>
 <template>
-  <section class="panel form-stack min-w-0 break-words" aria-label="技能雷达">
-    <h3>技能雷达</h3>
-    <p v-if="!valid" role="alert">技能雷达数据不可用，请重新分析。</p>
-    <p v-else-if="!payload.axes.length" role="status">暂无技能证据，请先补充目标与材料。</p>
+  <section class="panel form-stack min-w-0 break-words" :aria-label="uiText('Skill radar')">
+    <h3>{{ uiText('Skill radar') }}</h3>
+    <p v-if="!valid" role="alert">
+      {{ uiText('Skill radar data is unavailable. Please analyze again.') }}
+    </p>
+    <p v-else-if="!payload.axes.length" role="status">
+      {{ uiText('No skill evidence yet. Add a goal and supporting materials first.') }}
+    </p>
     <template v-else>
-      <p>当前材料证据与参考要求（0–5级），不代表能力认证。</p>
+      <p>
+        {{
+          uiText(
+            'Material evidence and reference requirements (levels 0–5), not a certification of ability.',
+          )
+        }}
+      </p>
       <svg
         v-if="payload.axes.length >= 3"
         viewBox="0 0 220 220"
         class="mx-auto w-full max-w-64"
         role="img"
-        aria-label="技能证据与参考要求雷达图"
+        :aria-label="uiText('Radar of skill evidence and reference requirements')"
       >
         <circle cx="110" cy="110" r="90" fill="none" stroke="currentColor" opacity=".2" />
         <polygon :points="points(true)" fill="none" stroke="currentColor" stroke-dasharray="4" />
@@ -46,7 +58,9 @@ function points(required = false) {
       </svg>
       <ul>
         <li v-for="axis in payload.axes" :key="axis.name">
-          {{ axis.name }}：证据 {{ axis.current }} / 要求 {{ axis.required }}
+          {{
+            uiText('{0}: Evidence {1} / Requirement {2}', [axis.name, axis.current, axis.required])
+          }}
         </li>
       </ul>
     </template>

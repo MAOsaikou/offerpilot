@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, translate as uiText } from '@/shared/utils/language'
+
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { asPayload } from '@/shared/utils/payload'
@@ -80,13 +82,15 @@ function isKept(patch: ResumePatch): boolean {
   return selected.value.has(patch.id)
 }
 function fieldLabel(path: string): string {
-  if (path === '/summary') return '个人概述'
+  if (path === '/summary') return uiText('Summary')
   const match = /^\/(experience|projects|skills)\/(\d+)\/(bullets|items)\/(\d+)$/.exec(path)
-  if (!match) return '简历内容'
-  const section = { experience: '实习与工作', projects: '项目经历', skills: '技能' }[
-    match[1] as 'experience' | 'projects' | 'skills'
-  ]
-  return `${section} ${Number(match[2]) + 1} · 第 ${Number(match[4]) + 1} 条`
+  if (!match) return uiText('Resume content')
+  const section = {
+    experience: uiText('Internships and work'),
+    projects: uiText('Projects'),
+    skills: uiText('Skills'),
+  }[match[1] as 'experience' | 'projects' | 'skills']
+  return uiText('{0} {1} · Item {2}', [section, Number(match[2]) + 1, Number(match[4]) + 1])
 }
 function confirm(id: string, checked: boolean) {
   const next = new Set(confirmed.value)
@@ -127,13 +131,17 @@ function apply() {
 <template>
   <article v-if="data" class="surface overflow-hidden rounded-[14px]">
     <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-4 py-3">
-      <h3 class="text-sm font-medium">简历改写建议</h3>
-      <span class="text-xs text-muted-foreground">共 {{ data.patches.length }} 条建议</span>
-      <span class="ml-auto text-xs text-muted-foreground">核对真实经历后逐条采纳</span>
+      <h3 class="text-sm font-medium">{{ uiText('Resume rewrite suggestions') }}</h3>
+      <span class="text-xs text-muted-foreground">{{
+        uiText('{0} suggestions', [data.patches.length])
+      }}</span>
+      <span class="ml-auto text-xs text-muted-foreground">{{
+        uiText('Check your real experience before accepting each suggestion')
+      }}</span>
     </header>
 
     <p v-if="!data.patches.length" class="px-4 py-3 text-sm" role="status">
-      没有需要采纳的改写建议，未创建简历新版本。
+      {{ uiText('No rewrite suggestions need accepting. No new resume version was created.') }}
     </p>
 
     <ul class="divide-y divide-border/60">
@@ -144,12 +152,12 @@ function apply() {
             v-if="interactive"
             type="button"
             class="btn ml-auto shrink-0"
-            :aria-label="'采纳建议 ' + (index + 1)"
+            :aria-label="uiText('Accept suggestion') + ' ' + (index + 1)"
             :aria-pressed="isKept(patch)"
             :disabled="locked || patch.op !== 'replace'"
             @click="toggle(patch.id)"
           >
-            {{ isKept(patch) ? '已选择' : '选择采纳' }}
+            {{ isKept(patch) ? uiText('Selected') : uiText('Select to accept') }}
           </button>
         </div>
 
@@ -160,12 +168,12 @@ function apply() {
           {{ patch.from }}
         </p>
         <p class="mt-1.5 rounded-lg bg-success/10 px-2.5 py-1.5 text-xs leading-relaxed">
-          {{ patch.value }}
+          {{ formatDisplay(patch.value) }}
         </p>
         <label v-if="interactive && isKept(patch)" class="field mt-2 text-xs">
-          采纳内容（可编辑）
+          {{ uiText('Accepted content (editable)') }}
           <textarea
-            :aria-label="'编辑建议 ' + (index + 1)"
+            :aria-label="uiText('Edit suggestion') + ' ' + (index + 1)"
             :value="edited[patch.id] ?? patch.value"
             :disabled="locked"
             maxlength="5000"
@@ -175,7 +183,8 @@ function apply() {
         </label>
 
         <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
-          <span class="text-foreground">理由：</span>{{ patch.reason }}
+          <span class="text-foreground">{{ uiText('Reason:') }}</span
+          >{{ patch.reason }}
         </p>
         <label
           v-if="interactive && patch.needsUserConfirmation"
@@ -187,10 +196,13 @@ function apply() {
             :disabled="locked || !isKept(patch)"
             @change="confirm(patch.id, ($event.target as HTMLInputElement).checked)"
           />
-          <span>已核对建议 {{ index + 1 }} 的事实与贡献范围</span>
+          <span>{{
+            uiText('I checked the facts and contribution boundaries of suggestion {0}', [index + 1])
+          }}</span>
         </label>
         <p v-if="patch.jdEvidence" class="mt-1 text-xs leading-relaxed text-muted-foreground">
-          <span class="text-foreground">JD 依据：</span>{{ patch.jdEvidence }}
+          <span class="text-foreground">{{ uiText('Job description evidence:') }}</span
+          >{{ patch.jdEvidence }}
         </p>
         <p
           v-if="patch.confirmationHint"
@@ -204,23 +216,35 @@ function apply() {
     <footer
       class="flex flex-wrap items-center gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground"
     >
-      <span v-if="appliedVersionId" role="status">这批建议已生成新版本，可在版本记录中查看。</span>
+      <span v-if="appliedVersionId" role="status">{{
+        uiText('These suggestions have created a new version. View it in version history.')
+      }}</span>
       <template v-else-if="interactive">
-        <span>已选择 {{ acceptedCount }} / {{ data.patches.length }} 条</span>
-        <span v-if="pendingConfirmation" role="status">请核对并确认标记的建议。</span>
-        <span v-if="noChange" role="status">选中内容与原文相同，请修改或取消选择。</span>
+        <span>{{ uiText('{0} of {1} selected', [acceptedCount, data.patches.length]) }}</span>
+        <span v-if="pendingConfirmation" role="status">{{
+          uiText('Review and confirm the marked suggestions.')
+        }}</span>
+        <span v-if="noChange" role="status">{{
+          uiText('Selected content matches the original. Edit it or deselect it.')
+        }}</span>
         <button
           class="btn primary ml-auto"
           :disabled="locked || !acceptedCount || pendingConfirmation || noChange"
           @click="apply"
         >
-          {{ applyLabel || '采纳所选并保存新版本' }}
+          {{ applyLabel || uiText('Accept selected and save new version') }}
         </button>
       </template>
       <template v-else>
-        <span>仅查看建议；可在对应简历的定向改写页核对并采纳。</span>
+        <span>{{
+          uiText(
+            "Read-only suggestions. Review and accept them in this resume's targeted rewrite tab.",
+          )
+        }}</span>
         <RouterLink v-if="reference" class="btn ml-auto" :to="reference">{{
-          data.patches.length ? '核对并采纳建议' : '查看改写记录'
+          data.patches.length
+            ? uiText('Review and accept suggestions')
+            : uiText('View rewrite history')
         }}</RouterLink>
       </template>
     </footer>

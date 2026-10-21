@@ -1,3 +1,4 @@
+import { setLanguage } from '@/shared/utils/language'
 vi.mock('@/shared/components/BackgroundTaskStatus.vue', () => ({
   default: { template: '<div />' },
 }))
@@ -358,4 +359,32 @@ it('merges a confirmed city with course edits made while confirmation is in flig
   await vi.waitFor(() => expect(profiles['career-owner']!.courses).toBe('确认期间补充的课程'))
   expect(profiles['career-owner']!.city).toBe('杭州')
   expect(profileWrites.at(-1)?.city).toBe('杭州')
+})
+
+afterEach(() => setLanguage('zh-CN'))
+
+it.each([
+  ['/discover', '我的职业画像', 'My career profile'],
+  ['/career', '把远方，拆成每一步', 'Turn your goals into steps'],
+])('switches %s live while keeping profile and task values unchanged', async (path, zh, en) => {
+  await mount(path)
+  expect(root.textContent).toContain(zh)
+  setLanguage('en-US')
+  await nextTick()
+  expect(root.textContent).toContain(en)
+  if (path === '/discover') {
+    const interest = root.querySelector<HTMLInputElement>('.chip input')!
+    expect(interest.value).toBe('技术研发')
+    expect(interest.checked).toBe(true)
+    expect(root.textContent).toContain('Technology and engineering')
+    expect(root.querySelector<HTMLInputElement>('input[maxlength="100"]')!.value).toBe('服务端目标')
+  } else {
+    expect(root.textContent).toContain('Identify core skills for your target job')
+    expect(root.textContent).toContain('服务端目标')
+  }
+  expect(profileWrites).toEqual([])
+  expect(taskWrites).toEqual([])
+  setLanguage('zh-CN')
+  await nextTick()
+  expect(root.textContent).toContain(zh)
 })

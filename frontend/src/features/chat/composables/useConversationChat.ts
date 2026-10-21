@@ -1,3 +1,4 @@
+import { localizedText, translate as uiText } from '@/shared/utils/language'
 import { normalizeModelTier, type ModelTier } from '@/shared/types/model-tier'
 import { computed, onScopeDispose, ref } from 'vue'
 import { conversationsApi } from '@/shared/api/conversations'
@@ -28,7 +29,8 @@ const storedCards = (m: StoredMessage): CardView[] =>
         ]
       : [],
   )
-const errorText = (error: unknown) => (error instanceof Error ? error.message : '请求失败，请重试')
+const errorText = (error: unknown) =>
+  error instanceof Error ? error.message : uiText('Request failed. Please retry.')
 
 export function useConversationChat() {
   const mock = import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK === 'true'
@@ -40,7 +42,7 @@ export function useConversationChat() {
   const loading = ref(false)
   const sending = ref(false)
   const listLoading = ref(false)
-  const error = ref('')
+  const error = localizedText()
   const listError = ref('')
   const needsReload = ref(false)
   const hasMoreConversations = ref(false)
@@ -69,7 +71,7 @@ export function useConversationChat() {
     if (view.role === 'user') {
       const images = (m.parts ?? []).flatMap((part) =>
         part.type === 'image' && part.fileId
-          ? [{ fileId: part.fileId, name: part.name ?? '图片' }]
+          ? [{ fileId: part.fileId, name: part.name ?? uiText('Image') }]
           : [],
       )
       if (images.length) view.images = images
@@ -213,7 +215,9 @@ export function useConversationChat() {
                 durationMs: 0,
               })
           } catch {
-            if (version === epoch) error.value = '执行过程暂时无法读取，可重新打开会话重试。'
+            if (version === epoch)
+              error.value = () =>
+                uiText('Execution details could not be loaded. Reopen the conversation to retry.')
           }
         }
         if (version !== epoch) return
@@ -267,7 +271,7 @@ export function useConversationChat() {
         const conversation = mock
           ? {
               id: 'conv_mock_01',
-              title: 'Mock 演示',
+              title: uiText('Mock demo'),
               mode,
               pinned: false,
               createdAt: '',
@@ -347,7 +351,11 @@ export function useConversationChat() {
       } catch (e) {
         if (version === epoch) {
           needsReload.value = true
-          error.value = `记录同步失败：${errorText(e)}。请重新加载会话后确认结果，避免重复发送。`
+          error.value = () =>
+            uiText(
+              'Could not sync records: {0}. Reload the conversation to confirm the result before sending again.',
+              [errorText(e)],
+            )
         }
       }
     }

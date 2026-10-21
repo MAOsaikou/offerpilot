@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import {
   apiRequest,
   apiUrl,
@@ -55,13 +56,13 @@ export async function createGuest(): Promise<string> {
   })
   if (!response.ok) throw await toApiError(response)
   const token = (await readApiData<{ accessToken: string }>(response)).accessToken
-  if (!token) throw new Error('无法建立访客身份，请重试')
+  if (!token) throw new Error(uiText('Could not establish guest identity. Please retry.'))
   return token
 }
 
 export async function verifyToken(): Promise<VerifyResult> {
   const token = getStoredToken()
-  if (!token) throw new Error('请先登录')
+  if (!token) throw new Error(uiText('Please sign in first'))
   const response = await fetchWithIdentity(apiUrl('/auth/verify'), {
     headers: authHeaders({ Authorization: `Bearer ${token}` }),
   })
@@ -96,7 +97,7 @@ export interface StaffUserListParams {
 /** 分页列出用户端账号（不含客服账号），要求 STAFF 令牌。 */
 export async function listStaffUsers(params: StaffUserListParams = {}): Promise<StaffUserPage> {
   const token = getStoredToken()
-  if (!token) throw new Error('尚未登录，请先登录客服端')
+  if (!token) throw new Error(uiText('Not signed in. Please sign in to the staff console.'))
   const query = new URLSearchParams()
   if (params.page !== undefined) query.set('page', String(params.page))
   if (params.size !== undefined) query.set('size', String(params.size))
@@ -114,7 +115,7 @@ export async function setUserStatus(
   status: 'ACTIVE' | 'DISABLED',
 ): Promise<StaffUserRow> {
   const token = getStoredToken()
-  if (!token) throw new Error('尚未登录，请先登录客服端')
+  if (!token) throw new Error(uiText('Not signed in. Please sign in to the staff console.'))
   const response = await fetchWithIdentity(
     apiUrl(`/staff/users/${encodeURIComponent(id)}/status`),
     {

@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
+import {
+  formatDateTime,
+  formatDisplay,
+  localizedText,
+  translate as uiText,
+} from '@/shared/utils/language'
+
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getCareerCatalog } from '@/shared/api/career'
@@ -13,9 +22,13 @@ const jobs = ref<Array<{ id: string; title: string }>>([])
 const report = ref<SkillGapReport>(),
   busy = ref(false),
   loading = ref(false),
-  error = ref('')
+  error = localizedText()
 let controller = new AbortController()
-const labels = { POSSESSED: '已具备', PARTIAL: '部分', MISSING: '缺失' }
+const labels = computed(() => ({
+  POSSESSED: uiText('Demonstrated'),
+  PARTIAL: uiText('Partial'),
+  MISSING: uiText('Missing'),
+}))
 async function load() {
   const signal = controller.signal
   loading.value = true
@@ -37,7 +50,10 @@ async function load() {
   jobs.value = [...saved.values()]
   if (typeof route.query.jobId === 'string') target.value = 'job:' + route.query.jobId
   if (results.some((r) => r.status === 'rejected'))
-    error.value = '部分目标未能加载，请重试；仍可分析已保存目标职业。'
+    error.value = () =>
+      uiText(
+        'Some targets could not be loaded. Please retry. You can still analyze your saved target career.',
+      )
   loading.value = false
 }
 watch(
@@ -76,27 +92,35 @@ async function analyze() {
     )
     if (!signal.aborted && target.value === selected) report.value = result
   } catch (e) {
-    if (!signal.aborted) error.value = e instanceof Error ? e.message : '分析失败，请重试'
+    if (!signal.aborted)
+      error.value = () =>
+        e instanceof Error ? e.message : uiText('Analysis failed. Please retry.')
   } finally {
     if (!signal.aborted) busy.value = false
   }
 }
 </script>
 <template>
-  <section class="panel form-stack min-w-0" aria-label="技能差距分析">
-    <h2>目标技能差距</h2>
-    <p>对照最近保存的可用简历、画像与 GitHub 实证。缺失表示材料未体现。</p>
-    <p v-if="loading" role="status">正在读取目标…</p>
+  <section class="panel form-stack min-w-0" :aria-label="uiText('Skill gap analysis')">
+    <h2>{{ uiText('Target skill gaps') }}</h2>
+    <p>
+      {{
+        uiText(
+          'Compare your latest saved usable resume, profile and GitHub evidence. Missing means the materials do not demonstrate the skill.',
+        )
+      }}
+    </p>
+    <p v-if="loading" role="status">{{ uiText('Loading targets…') }}</p>
     <label class="field"
-      >目标职业或岗位
+      >{{ uiText('Target career or job') }}
       <select v-model="target" :disabled="busy || loading">
-        <option value="">使用画像中已保存的目标职业</option>
-        <optgroup label="职业库">
+        <option value="">{{ uiText('Use the target career saved in my profile') }}</option>
+        <optgroup :label="uiText('Career catalog')">
           <option v-for="item in occupations" :key="item.occupationId" :value="item.occupationId">
             {{ item.name }}
           </option>
         </optgroup>
-        <optgroup label="收藏或导入岗位">
+        <optgroup :label="uiText('Saved or imported jobs')">
           <option v-for="job in jobs" :key="job.id" :value="'job:' + job.id">
             {{ job.title }}
           </option>
@@ -104,26 +128,32 @@ async function analyze() {
       </select>
     </label>
     <button class="btn primary" :disabled="busy || loading" @click="analyze">
-      {{ busy ? '正在分析…' : '分析技能差距' }}
+      {{ busy ? uiText('Analyzing…') : uiText('Analyze skill gaps') }}
     </button>
     <p v-if="error" role="alert">
       {{ error }}
-      <button class="btn" :disabled="busy || loading" @click="load">重试目标列表</button>
+      <button class="btn" :disabled="busy || loading" @click="load">
+        {{ uiText('Retry target list') }}
+      </button>
     </p>
     <template v-if="report">
       <h3 class="break-words">{{ report.targetTitle }}</h3>
       <p class="helper-note">{{ report.notice }}</p>
-      <p v-if="!report.skills.length" role="status">暂无可识别的目标技能。</p>
+      <p v-if="!report.skills.length" role="status">
+        {{ uiText('No identifiable target skills yet.') }}
+      </p>
       <article
         v-for="skill in report.skills"
         :key="skill.name"
         class="min-w-0 rounded-lg border border-border p-3"
       >
-        <h4 class="break-words">{{ skill.name }} · {{ labels[skill.level] }}</h4>
-        <ul aria-label="每项依据来源">
+        <h4 class="break-words">{{ skill.name }} · {{ formatDisplay(labels[skill.level]) }}</h4>
+        <ul :aria-label="uiText('Evidence for each item')">
           <li v-for="(source, index) in skill.sources" :key="index" class="break-words">
             {{ source.label }}：{{ source.excerpt
-            }}<span v-if="source.fetchedAt">（抓取于 {{ source.fetchedAt }}）</span>
+            }}<span v-if="source.fetchedAt">{{
+              uiText('(Fetched {0})', [formatDateTime(source.fetchedAt)])
+            }}</span>
           </li>
         </ul>
       </article>

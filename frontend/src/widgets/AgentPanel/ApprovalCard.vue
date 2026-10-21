@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, translate as uiText } from '@/shared/utils/language'
+
 import ApprovalFields from '@/shared/components/ApprovalFields.vue'
 import { toolArguments } from '@/shared/utils/toolPresentation'
 import { computed, onUnmounted, ref, watch } from 'vue'
@@ -6,7 +8,7 @@ import { submitApproval } from '@/shared/api/agent'
 import { memoryKinds, type MemoryKind } from '@/shared/api/memories'
 import { queryClient } from '@/shared/api/queryClient'
 import {
-  applicationStages,
+  applicationStageLabels as applicationStages,
   type ApplicationStatus,
   type ApplicationPatch,
 } from '@/shared/types/board'
@@ -52,13 +54,13 @@ watch(
   },
   { immediate: true, deep: true },
 )
-const statuses = Object.entries(applicationStages)
-const labelOf: Record<ApprovalStatus, string> = {
-  PENDING: '等待你确认',
-  APPROVED: '已批准',
-  REJECTED: '已拒绝',
-  TIMEOUT: '已超时自动拒绝',
-}
+const statuses = computed(() => Object.entries(applicationStages))
+const labelOf = computed<Record<ApprovalStatus, string>>(() => ({
+  PENDING: uiText('Awaiting your confirmation'),
+  APPROVED: uiText('Approved'),
+  REJECTED: uiText('Rejected'),
+  TIMEOUT: uiText('Automatically rejected after timeout'),
+}))
 function memoryArgs(approval: ApprovalView) {
   if (approval.name !== 'saveUserFact' || !approval.args || typeof approval.args !== 'object')
     return null
@@ -66,7 +68,7 @@ function memoryArgs(approval: ApprovalView) {
   if (typeof args.fact !== 'string') return null
   return {
     fact: args.fact,
-    kind: memoryKinds[args.kind as MemoryKind] ?? '其他',
+    kind: memoryKinds[args.kind as MemoryKind] ?? uiText('Other'),
     suggested: args.source === 'SUGGESTED_ACCEPTED',
   }
 }
@@ -114,7 +116,8 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
     submitted.value[key] = decision === 'APPROVE' ? 'APPROVED' : 'REJECTED'
     if (decision === 'APPROVE') void queryClient.invalidateQueries({ queryKey: ['applications'] })
   } catch (error) {
-    errors.value[key] = error instanceof Error ? error.message : '提交失败，请重试'
+    errors.value[key] =
+      error instanceof Error ? error.message : uiText('Could not submit. Please retry.')
   } finally {
     busy.value[key] = false
   }
@@ -123,7 +126,9 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
 
 <template>
   <section v-if="approvals.length > 0">
-    <h3 class="mb-2 text-xs font-semibold text-muted-foreground">需要确认</h3>
+    <h3 class="mb-2 text-xs font-semibold text-muted-foreground">
+      {{ uiText('Confirmation required') }}
+    </h3>
     <ul class="space-y-2">
       <li
         v-for="approval in approvals"
@@ -137,8 +142,8 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
           <span class="break-all text-xs" :class="{ 'font-mono': !memoryArgs(approval) }">{{
             memoryArgs(approval)
               ? memoryArgs(approval)?.suggested
-                ? '记忆保存建议'
-                : '保存长期记忆'
+                ? uiText('Memory suggestion')
+                : uiText('Save long-term memory')
               : approval.name
           }}</span>
           <span class="ml-auto text-xs text-muted-foreground">{{
@@ -147,17 +152,27 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
         </div>
         <p class="mt-1.5 text-xs leading-relaxed text-muted-foreground">{{ approval.reason }}</p>
         <div v-if="memoryArgs(approval)" class="mt-2 space-y-1 text-xs">
-          <p class="text-muted-foreground">{{ memoryArgs(approval)?.kind }} · 来自本轮你的原话</p>
+          <p class="text-muted-foreground">
+            {{ uiText('{0} · From your words in this exchange', [memoryArgs(approval)?.kind]) }}
+          </p>
           <p class="break-words">{{ memoryArgs(approval)?.fact }}</p>
-          <p class="text-muted-foreground">确认后用于新对话；可在设置中编辑、删除或关闭。</p>
+          <p class="text-muted-foreground">
+            {{
+              uiText(
+                'Used in new conversations after confirmation. Edit, delete or disable it in settings.',
+              )
+            }}
+          </p>
           <p v-if="statusOf(approval) === 'APPROVED'" class="text-muted-foreground">
-            已提交确认，是否保存成功请查看工具结果。
+            {{
+              uiText('Confirmation submitted. Check the tool result to see whether it was saved.')
+            }}
           </p>
         </div>
         <dl v-else class="mt-2 space-y-1 text-xs">
           <div v-for="(row, index) in toolArguments(approval.args)" :key="index">
             <dt class="text-muted-foreground">{{ row.label }}</dt>
-            <dd class="whitespace-pre-wrap break-words">{{ row.value }}</dd>
+            <dd class="whitespace-pre-wrap break-words">{{ formatDisplay(row.value) }}</dd>
           </div>
         </dl>
         <fieldset
@@ -165,21 +180,21 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
           :disabled="busy[keyOf(approval)] || !canSubmit"
           class="mt-2 min-w-0 space-y-2 text-xs"
         >
-          <p aria-live="off">剩余 {{ remaining(approval) }} 秒</p>
+          <p aria-live="off">{{ uiText('{0} seconds remaining', [remaining(approval)]) }}</p>
           <label v-if="approval.editableFields?.includes('status')" class="block">
-            状态
+            {{ uiText('Status') }}
             <select
               v-model="edits[keyOf(approval)]!.status"
               class="mt-1 block w-full rounded border bg-background p-2"
             >
-              <option value="">保持原状态</option>
+              <option value="">{{ uiText('Keep current state') }}</option>
               <option v-for="[status, label] in statuses" :key="status" :value="status">
                 {{ label }}
               </option>
             </select>
           </label>
           <label v-if="approval.editableFields?.includes('note')" class="block">
-            备注
+            {{ uiText('Notes') }}
             <textarea
               v-model="edits[keyOf(approval)]!.note"
               maxlength="2000"
@@ -188,7 +203,7 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
             />
           </label>
           <label v-if="approval.editableFields?.includes('nextAction')" class="block">
-            下一步行动
+            {{ uiText('Next action') }}
             <textarea
               v-model="edits[keyOf(approval)]!.nextAction"
               maxlength="1000"
@@ -197,7 +212,7 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
             />
           </label>
           <label v-if="approval.editableFields?.includes('nextActionAt')" class="block">
-            行动日期
+            {{ uiText('Action date') }}
             <input
               v-model="edits[keyOf(approval)]!.nextActionAt"
               type="date"
@@ -222,14 +237,20 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
               class="rounded bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50"
               @click="decide(approval, 'APPROVE')"
             >
-              {{ busy[keyOf(approval)] ? '提交中…' : memoryArgs(approval) ? '确认保存' : '批准' }}
+              {{
+                busy[keyOf(approval)]
+                  ? uiText('Submitting…')
+                  : memoryArgs(approval)
+                    ? uiText('Confirm save')
+                    : uiText('Approve')
+              }}
             </button>
             <button
               type="button"
               class="rounded border px-3 py-2 disabled:opacity-50"
               @click="decide(approval, 'REJECT')"
             >
-              {{ memoryArgs(approval) ? '不保存' : '拒绝' }}
+              {{ memoryArgs(approval) ? uiText('Do not save') : uiText('Reject') }}
             </button>
           </div>
         </fieldset>
@@ -237,7 +258,7 @@ async function decide(approval: ApprovalView, decision: 'APPROVE' | 'REJECT') {
           v-if="statusOf(approval) === 'PENDING' && !running"
           class="mt-2 text-xs text-muted-foreground"
         >
-          运行已结束，无法提交审批
+          {{ uiText('The run has ended. Approval cannot be submitted.') }}
         </p>
         <p v-if="errors[keyOf(approval)]" role="alert" class="mt-2 text-xs text-danger">
           {{ errors[keyOf(approval)] }}

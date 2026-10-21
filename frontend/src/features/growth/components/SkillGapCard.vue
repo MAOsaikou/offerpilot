@@ -1,15 +1,22 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 import GrowthEvidenceChips from './GrowthEvidenceChips.vue'
 import type { SkillGapPayload } from '@/shared/types/cards'
 defineProps<{ payload: SkillGapPayload }>()
 </script>
 
 <template>
-  <section class="min-w-0 rounded-xl border border-border bg-card p-4" aria-label="技能差距">
-    <h3 class="break-words font-semibold">技能差距 · {{ payload.target.title }}</h3>
+  <section
+    class="min-w-0 rounded-xl border border-border bg-card p-4"
+    :aria-label="uiText('Skill gaps')"
+  >
+    <h3 class="break-words font-semibold">
+      {{ uiText('Skill gaps · {0}', [payload.target.title]) }}
+    </h3>
     <p class="mt-2 break-words text-sm text-muted-foreground">{{ payload.summary }}</p>
     <p v-if="!payload.skills.length" class="mt-3 text-sm" role="status">
-      暂无核心技能数据，请先梳理目标岗位要求。
+      {{ uiText('No core skill data yet. Review the target job requirements first.') }}
     </p>
     <ul v-else class="mt-3 space-y-3">
       <li
@@ -19,19 +26,22 @@ defineProps<{ payload: SkillGapPayload }>()
       >
         <div class="flex flex-wrap items-center gap-2">
           <h4 class="break-words font-medium">{{ skill.name }}</h4>
-          <span v-if="skill.learnFirst" class="rounded bg-primary/10 px-2 text-xs text-primary"
-            >优先补齐</span
-          >
-          <span class="text-xs text-muted-foreground"
-            >证据等级 {{ skill.current }} / 5 · 参考要求 {{ skill.required }} · 差距
-            {{ skill.gap }}</span
-          >
+          <span v-if="skill.learnFirst" class="rounded bg-primary/10 px-2 text-xs text-primary">{{
+            uiText('Priority gaps')
+          }}</span>
+          <span class="text-xs text-muted-foreground">{{
+            uiText('Evidence level {0} / 5 · Reference requirement {1} · Gap {2}', [
+              skill.current,
+              skill.required,
+              skill.gap,
+            ])
+          }}</span>
         </div>
         <progress
           class="mt-2 w-full accent-primary"
           :value="skill.current"
           :max="5"
-          :aria-label="`${skill.name}证据等级`"
+          :aria-label="uiText('{0} evidence level', [skill.name])"
         />
         <GrowthEvidenceChips
           v-if="skill.evidenceSources?.length"
@@ -43,14 +53,14 @@ defineProps<{ payload: SkillGapPayload }>()
           </li>
         </ul>
         <p v-else class="mt-1 text-sm text-muted-foreground">
-          尚无已保存技能证据，不代表没有能力。
+          {{ uiText('No saved skill evidence yet. This does not mean you lack the ability.') }}
         </p>
       </li>
     </ul>
     <ul
       v-if="payload.citations.length"
       class="mt-3 text-xs text-muted-foreground"
-      aria-label="参考资料"
+      :aria-label="uiText('References')"
     >
       <li v-for="citation in payload.citations" :key="citation.docId">{{ citation.title }}</li>
     </ul>

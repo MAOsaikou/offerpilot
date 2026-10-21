@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 import { ref } from 'vue'
 import MarkdownView from '@/shared/components/MarkdownView.vue'
 import MessageUsage from '@/shared/components/MessageUsage.vue'
@@ -33,7 +35,11 @@ function locate(reference: string) {
 <template>
   <div v-if="message.role === 'user'" class="message-in flex justify-end">
     <div class="user-turn">
-      <div v-if="message.images?.length" class="user-images" aria-label="随消息发送的图片">
+      <div
+        v-if="message.images?.length"
+        class="user-images"
+        :aria-label="uiText('Image sent with this message')"
+      >
         <ChatImageThumb
           v-for="image in message.images"
           :key="image.fileId"
@@ -47,7 +53,7 @@ function locate(reference: string) {
 
   <div v-else ref="root" class="message-in assistant" :class="{ 'is-live': message.streaming }">
     <details v-if="message.reasoning" class="reasoning">
-      <summary>思考摘要</summary>
+      <summary>{{ uiText('Reasoning summary') }}</summary>
       <p>{{ message.reasoning }}</p>
     </details>
 
@@ -62,20 +68,29 @@ function locate(reference: string) {
       <span v-if="!message.status || message.status === 'RUNNING'" class="live-dot pending-dot" />
       {{
         message.status === 'FAILED'
-          ? '本轮未能完成回复'
+          ? uiText('This response could not be completed')
           : message.status === 'CANCELLED'
-            ? '本轮已停止'
-            : '正在思考'
+            ? uiText('This response was stopped')
+            : uiText('Thinking')
       }}
     </p>
     <p v-if="missingSource" class="run-note" role="status">
-      本轮没有找到 {{ missingSource }} 对应的引用来源，可能是模型写错了编号。
+      {{
+        uiText(
+          'No source was found for citation {0} in this response. The model may have used an incorrect reference number.',
+          [missingSource],
+        )
+      }}
     </p>
     <p v-if="message.status === 'FAILED' || message.status === 'CANCELLED'" class="run-note">
       {{
         message.status === 'FAILED'
-          ? '可检查模型配置或网络后重新发送。此轮不计入后续上下文。'
-          : '已停止生成，保留已收到的内容。此轮不计入后续上下文。'
+          ? uiText(
+              'Check model settings or your connection, then resend. This exchange is excluded from future context.',
+            )
+          : uiText(
+              'Generation stopped. Received content is retained. This exchange is excluded from future context.',
+            )
       }}
     </p>
 
@@ -88,7 +103,7 @@ function locate(reference: string) {
       :disabled="replayDisabled"
       @click="emit('replay', message.runId)"
     >
-      回放本轮运行
+      {{ uiText('Replay this run') }}
     </button>
     <div v-if="message.cards?.length" class="assistant-cards">
       <slot name="cards" :cards="message.cards ?? []" />
