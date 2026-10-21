@@ -1,3 +1,4 @@
+import { setLanguage } from '@/shared/utils/language'
 import { createApp, nextTick, type App } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import CareerQuestionnaire from './CareerQuestionnaire.vue'
@@ -129,4 +130,24 @@ it('shows an undifferentiated result without inventing an interest code', async 
   mount()
   await flush()
   expect(root.textContent).toContain('已写入画像，兴趣码 未分化')
+})
+
+afterEach(() => setLanguage('zh-CN'))
+
+it('translates by stable ID on a resumed card and preserves its saved rating', async () => {
+  mount()
+  await flush()
+  setLanguage('en-US')
+  await nextTick()
+  expect(root.textContent).toContain('Design a small experiment to test an idea')
+  button('Strongly like').click()
+  await flush()
+  expect(api.saveQuestionnaireAnswer).toHaveBeenLastCalledWith('I1', 5)
+  button('Previous question').click()
+  await flush()
+  expect(button('Strongly like').getAttribute('aria-pressed')).toBe('true')
+  setLanguage('zh-CN')
+  await nextTick()
+  expect(root.textContent).toContain('研究事物原理')
+  expect(button('非常喜欢').getAttribute('aria-pressed')).toBe('true')
 })

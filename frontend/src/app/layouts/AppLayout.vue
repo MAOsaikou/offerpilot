@@ -27,7 +27,7 @@ const noticeTimer = setInterval(() => {
   if (navigator.onLine) void notices.refresh()
 }, 60000)
 onBeforeUnmount(() => clearInterval(noticeTimer))
-const displayName = computed(() => auth.user?.nickname || workspace.state.name)
+const displayName = computed(() => auth.user?.nickname || workspace.displayName)
 
 function onLogout() {
   auth.logout()

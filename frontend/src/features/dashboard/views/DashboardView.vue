@@ -101,7 +101,7 @@ function send() {
 <template>
   <section class="page-stack dashboard">
     <header class="greeting">
-      <h1>{{ uiText('Hello, {0}', [workspace.state.name]) }}</h1>
+      <h1>{{ uiText('Hello, {0}', [workspace.displayName]) }}</h1>
       <p class="date-label">{{ today }}</p>
     </header>
 

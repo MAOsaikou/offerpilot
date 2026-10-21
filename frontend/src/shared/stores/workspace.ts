@@ -1,5 +1,5 @@
 import { localizedText, translate as uiText } from '@/shared/utils/language'
-import { onScopeDispose, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { Job, Workspace, Stage } from '@/shared/types/workspace'
 import {
@@ -154,6 +154,13 @@ export function createWorkspace(): Workspace {
 export const useWorkspace = defineStore('workspace', () => {
   const storageError = localizedText()
   const state = ref<Workspace>(createWorkspace())
+  const displayName = computed({
+    get: () =>
+      !state.value.name || state.value.name === '求职者' ? uiText('Job seeker') : state.value.name,
+    set: (name: string) => {
+      state.value.name = name
+    },
+  })
   let boundIdentity: string | undefined
   let boundKey = ''
   let stopPersistence: (() => void) | undefined
@@ -255,7 +262,7 @@ export const useWorkspace = defineStore('workspace', () => {
     )
   }
   // Existing applications remain a readable/exportable archive. Active board writes use the API.
-  return { state, storageError, notify, jobFor, clearIdentityData }
+  return { state, displayName, storageError, notify, jobFor, clearIdentityData }
 })
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object'

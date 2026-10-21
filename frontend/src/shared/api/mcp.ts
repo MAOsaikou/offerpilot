@@ -17,6 +17,12 @@ export interface McpConnection {
   tools: McpTool[]
   refreshedAt: string | null
 }
+// Display by stable provider ID; keep server.name intact for tool-event matching.
+export const mcpProviderName = (server: Pick<McpConnection, 'provider' | 'name'>) =>
+  ({ jobs: uiText('Jobs MCP'), search: uiText('Search MCP'), github: uiText('GitHub MCP') })[
+    server.provider
+  ] ?? server.name
+
 export const mcpStatus = (status: string) =>
   ({
     READY: uiText('Available'),

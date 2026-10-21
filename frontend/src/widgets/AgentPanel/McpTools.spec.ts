@@ -1,3 +1,4 @@
+import { setLanguage } from '@/shared/utils/language'
 import { createApp, nextTick, reactive } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -21,6 +22,7 @@ afterEach(() => {
   app?.unmount()
   host?.remove()
   vi.clearAllMocks()
+  setLanguage('zh-CN')
 })
 it('shows discovered tools, unconfigured providers and live run status changes', async () => {
   vi.mocked(listMcpServers).mockResolvedValue([
@@ -70,6 +72,11 @@ it('shows discovered tools, unconfigured providers and live run status changes',
   expect(host.textContent).toContain('search_jobs · 调用中')
   expect(host.textContent).toContain('GitHub MCP · 未配置')
   expect(host.querySelector('a')?.getAttribute('href')).toBe('/integrations/mcp')
+  setLanguage('en-US')
+  await nextTick()
+  expect(host.textContent).toContain('Jobs MCP')
+  expect(host.textContent).toContain('search_jobs · Calling')
+  setLanguage('zh-CN')
   props.toolCalls[0]!.status = 'FAILED'
   await nextTick()
   expect(host.textContent).toContain('search_jobs · 失败')

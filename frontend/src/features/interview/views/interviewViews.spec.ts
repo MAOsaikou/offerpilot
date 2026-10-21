@@ -899,6 +899,7 @@ it('switches interview form labels live and keeps the transport kind unchanged',
   setLanguage('en-US')
   await nextTick()
   expect(root.textContent).toContain('Create a mock interview')
+  expect(root.querySelector('.page-stack')?.classList.contains('overflow-safe')).toBe(true)
   expect(root.textContent).toContain('Behavioral')
   expect(root.textContent).toContain('Question mix')
   expect(root.textContent).toContain('服务端工程师')

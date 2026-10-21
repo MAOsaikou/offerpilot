@@ -191,7 +191,13 @@ function adopt() {
       <fieldset :disabled="busy" class="form-stack min-w-0">
         <label class="field"
           >{{ uiText('Public GitHub username')
-          }}<input v-model="username" maxlength="39" required autocomplete="off"
+          }}<input
+            v-model="username"
+            :placeholder="uiText('Enter your public GitHub username. A token is optional.')"
+            aria-describedby="github-username-help"
+            maxlength="39"
+            required
+            autocomplete="off"
         /></label>
         <label class="field"
           >{{
@@ -248,7 +254,13 @@ function adopt() {
     <p v-if="settingsDirty" class="helper-note">
       {{ uiText('Save GitHub settings before fetching or accepting project suggestions.') }}
     </p>
-    <p v-if="data" class="helper-note" role="status">{{ data.notice }}</p>
+    <p v-if="data" id="github-username-help" class="helper-note" role="status">
+      {{
+        data.status === 'NOT_CONFIGURED'
+          ? uiText('Enter your public GitHub username. A token is optional.')
+          : data.notice
+      }}
+    </p>
     <template v-if="data?.snapshot">
       <p>
         {{

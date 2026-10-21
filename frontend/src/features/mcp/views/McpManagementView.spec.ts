@@ -1,3 +1,4 @@
+import { setLanguage } from '@/shared/utils/language'
 import { createApp, nextTick } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import McpManagementView from './McpManagementView.vue'
@@ -127,4 +128,19 @@ it('supports retry after offline loading and an empty response', async () => {
   button('重新加载').click()
   await flush()
   expect(host.textContent).toContain('暂无连接')
+})
+
+afterEach(() => setLanguage('zh-CN'))
+
+it('localizes provider display by ID without changing the server name', async () => {
+  const search = connection({ provider: 'search', name: '搜索 MCP' })
+  vi.mocked(listMcpServers).mockResolvedValue([search])
+  mount()
+  await flush()
+  expect(host.querySelector('h2')?.textContent).toContain('搜索 MCP')
+  setLanguage('en-US')
+  await nextTick()
+  expect(host.querySelector('h2')?.textContent).toContain('Search MCP')
+  expect(host.querySelector('h2')?.textContent).not.toContain('搜索')
+  expect(search.name).toBe('搜索 MCP')
 })

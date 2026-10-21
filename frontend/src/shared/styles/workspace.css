@@ -1221,3 +1221,33 @@ a.job-row:hover {
 .workspace-content {
   padding-bottom: max(120px, calc(env(safe-area-inset-bottom) + 120px));
 }
+
+/* Text-heavy discovery/interview pages must shrink within their grid and flex parents. */
+.overflow-safe,
+.overflow-safe > *,
+.overflow-safe .split-content > *,
+.overflow-safe .form-grid > *,
+.overflow-safe .field,
+.overflow-safe fieldset {
+  min-width: 0;
+  max-width: 100%;
+}
+.overflow-safe {
+  overflow-wrap: anywhere;
+}
+.overflow-safe .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.overflow-safe .tag,
+.overflow-safe .btn {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .overflow-safe .form-grid,
+  .overflow-safe .split-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

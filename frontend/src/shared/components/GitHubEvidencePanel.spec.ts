@@ -1,3 +1,4 @@
+import { setLanguage } from '@/shared/utils/language'
 import { createApp, nextTick, type App } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import GitHubEvidencePanel from './GitHubEvidencePanel.vue'
@@ -211,4 +212,35 @@ it('does not claim there are no public repositories when the budget prevented al
   await flush()
   expect(host.textContent).toContain('本次未完整抓取到仓库')
   expect(host.textContent).not.toContain('该用户暂无公开仓库')
+})
+
+afterEach(() => setLanguage('zh-CN'))
+
+it('localizes the unconfigured username help while keeping fetched notices original', async () => {
+  vi.mocked(api.getGitHubEvidence).mockResolvedValue({
+    ...fixture(),
+    username: '',
+    tokenConfigured: false,
+    snapshot: null,
+    status: 'NOT_CONFIGURED',
+    notice: '请填写公开 GitHub 用户名，Token 可选。',
+  })
+  mount()
+  await flush()
+  setLanguage('en-US')
+  await nextTick()
+  const text = 'Enter your public GitHub username. A token is optional.'
+  expect(host.querySelector('input[autocomplete="off"]')?.getAttribute('placeholder')).toBe(text)
+  expect(host.querySelector('#github-username-help')?.textContent?.trim()).toBe(text)
+  expect(host.textContent).not.toContain('请填写公开')
+  setLanguage('zh-CN')
+  await nextTick()
+  expect(host.querySelector('#github-username-help')?.textContent).toContain('请填写公开')
+})
+
+it('preserves the original fetched repository notice in English', async () => {
+  setLanguage('en-US')
+  mount()
+  await flush()
+  expect(host.querySelector('#github-username-help')?.textContent).toContain(fixture().notice)
 })

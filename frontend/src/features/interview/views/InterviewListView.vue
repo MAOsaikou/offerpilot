@@ -157,7 +157,7 @@ function exportLegacy(session: Interview) {
 }
 </script>
 <template>
-  <section class="page-stack">
+  <section class="page-stack overflow-safe">
     <PageHeading
       :title="uiText('Be ready to tell your story')"
       :description="uiText('Practice explaining your experience clearly and build confidence.')"
@@ -493,6 +493,9 @@ function exportLegacy(session: Interview) {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
 }
 @media (max-width: 600px) {
   .interview-record {

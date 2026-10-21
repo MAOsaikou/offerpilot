@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { localizedText, translate as uiText } from '@/shared/utils/language'
 
+import { questionnaireQuestionText } from '@/shared/utils/assessmentText'
+
 import { computed, onBeforeUnmount, ref } from 'vue'
 import {
   getQuestionnaire,
@@ -119,7 +121,7 @@ void load()
     <template v-if="state">
       <p role="status">{{ uiText('{0} of 30 answers saved', [count]) }}</p>
       <article v-if="question" class="form-stack" :aria-label="uiText('Questionnaire answer card')">
-        <h3>{{ step + 1 }}. {{ question.text }}</h3>
+        <h3>{{ step + 1 }}. {{ questionnaireQuestionText(question.id, question.text) }}</h3>
         <div class="flex flex-wrap gap-2" role="group" :aria-label="uiText('Interest level')">
           <button
             v-for="(label, index) in choices"
