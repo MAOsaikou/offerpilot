@@ -60,6 +60,7 @@ class ChatHttpIntegrationTest {
     @Autowired com.offerpilot.llm.quota.LlmQuotaLimiter quotas;
     @Autowired org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     private static final AtomicReference<String> requestBody = new AtomicReference<>();
+    private static final java.util.List<String> requestBodies = new java.util.concurrent.CopyOnWriteArrayList<>();
     private static final java.util.concurrent.atomic.AtomicInteger providerCalls = new java.util.concurrent.atomic.AtomicInteger();
     private static final HttpServer provider = provider();
     @Autowired com.offerpilot.resume.application.ResumePatchService patchService;
@@ -73,6 +74,7 @@ class ChatHttpIntegrationTest {
                 providerCalls.incrementAndGet();
                 String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 requestBody.set(body);
+                requestBodies.add(body);
                 exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
                 exchange.sendResponseHeaders(200, 0);
                 try (var out = exchange.getResponseBody()) {
@@ -354,9 +356,12 @@ class ChatHttpIntegrationTest {
         String token = identities.create().accessToken();
         String conv = conversations.create(owner(token), null, AgentMode.AUTO).id();
         assertThat(request("POST", "/agent/chat", token, json.writeValueAsString(java.util.Map.of("conversationId", conv, "content", "我的专业是物理"))).body()).contains("run.completed");
+        requestBodies.clear();
         var second = request("POST", "/agent/chat", token, json.writeValueAsString(java.util.Map.of("conversationId", conv, "content", "适合哪些岗位？")));
         assertThat(second.body()).contains("run.completed");
-        var prompt = json.readTree(requestBody.get()).path("messages");
+        // Planner and reply calls run concurrently; assert on the planner prompt instead of whichever finished last.
+        String plannerBody = requestBodies.stream().filter(b -> b.contains("意图识别与规划 v1")).reduce((a, b) -> b).orElseThrow();
+        var prompt = json.readTree(plannerBody).path("messages");
         // AG-02: planner keeps the raw user text (shared SC-01 screen) and sends selection state as a separate system message.
         assertThat(prompt.size()).isBetween(4, 5);
         assertThat(prompt.get(prompt.size() - 1).path("content").asText()).isEqualTo("适合哪些岗位？");
