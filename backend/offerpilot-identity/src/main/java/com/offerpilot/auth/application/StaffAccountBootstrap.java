@@ -17,6 +17,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 /** Optional first-staff provisioning; existing accounts are never promoted or changed. */
 @Component
 public class StaffAccountBootstrap implements ApplicationRunner {
+    /** V11 public test staff, disabled by V12 while its published password is unchanged; it must not block bootstrap. */
+    public static final String PUBLIC_SEED_STAFF_HASH = "$2a$12$Lu9rC7PE8YSdGM16NL1Js.qNJuwG/bKQrD4izbw626GuvNJaD4bX.";
     private static final Logger log = LoggerFactory.getLogger(StaffAccountBootstrap.class);
     private final OfferPilotProperties.StaffBootstrap config;
     private final JdbcTemplate jdbc;
@@ -44,7 +46,9 @@ public class StaffAccountBootstrap implements ApplicationRunner {
         String createdEmail = transaction.execute(status -> {
             // Serialize check-and-insert across application instances, including an empty users table.
             jdbc.execute("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE");
-            if (jdbc.queryForObject("SELECT count(*) FROM users WHERE 'STAFF' = ANY(roles)", Long.class) > 0) return null;
+            if (jdbc.queryForObject("SELECT count(*) FROM users WHERE 'STAFF' = ANY(roles) AND NOT ("
+                    + "id = 'usr_test_staff001' AND email = 'staff@offerpilot.local' AND status = 'DISABLED' "
+                    + "AND password_hash = '" + PUBLIC_SEED_STAFF_HASH + "')", Long.class) > 0) return null;
             String email;
             try {
                 email = PasswordLoginService.normalizeRegistrationEmail(config.email());
