@@ -106,6 +106,12 @@ function submit() {
   filters.page = 1
   if (same) void active.value.refetch()
 }
+const UNSOURCED_SALARY = '暂无数据：尚无可信薪资来源'
+function salaryNoticeText(notice: string): string {
+  return notice === UNSOURCED_SALARY
+    ? uiText('No data yet: no trusted salary source')
+    : formatDisplay(notice)
+}
 </script>
 <template>
   <section class="page-stack builtin-catalog">
@@ -182,7 +188,7 @@ function submit() {
         </ul>
         <p v-else>{{ uiText('No skill data available') }}</p>
         <h3>{{ uiText('Salary') }}</h3>
-        <p>{{ formatDisplay(detail.data.value.salaryNotice) }}</p>
+        <p>{{ salaryNoticeText(detail.data.value.salaryNotice) }}</p>
         <pre v-if="detail.data.value.salaryRange" class="catalog-copy">{{
           formatDisplay(JSON.stringify(detail.data.value.salaryRange, null, 2))
         }}</pre>
@@ -347,7 +353,7 @@ function submit() {
             </h2>
             <p>{{ translateLabel(item.family) }} · {{ item.hollandCode }}</p>
             <p class="catalog-copy">{{ item.description }}</p>
-            <p>{{ item.salaryNotice }}</p>
+            <p>{{ salaryNoticeText(item.salaryNotice) }}</p>
             <p class="subtle">{{ item.source }} · {{ item.license }}</p>
           </article>
         </div>

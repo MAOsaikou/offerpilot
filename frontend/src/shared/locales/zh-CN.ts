@@ -2511,4 +2511,5 @@ export default {
   'GitHub MCP': 'GitHub MCP',
   'Enter your public GitHub username. A token is optional.':
     '请填写公开 GitHub 用户名，Token 可选。',
+  'No data yet: no trusted salary source': '暂无数据：尚无可信薪资来源',
 } as const

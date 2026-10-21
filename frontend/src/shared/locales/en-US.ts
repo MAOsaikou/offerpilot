@@ -2640,4 +2640,5 @@ export default {
   'GitHub MCP': 'GitHub MCP',
   'Enter your public GitHub username. A token is optional.':
     'Enter your public GitHub username. A token is optional.',
+  'No data yet: no trusted salary source': 'No data yet: no trusted salary source',
 } as const
