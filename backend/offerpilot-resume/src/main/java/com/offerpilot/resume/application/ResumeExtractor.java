@@ -92,7 +92,7 @@ public class ResumeExtractor {
             String normalized = output == null ? "" : output.strip();
             if (normalized.startsWith("```")) normalized = normalized.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "");
             var structured = splitProjectRoles(ResumeStructure.validate(json.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(normalized)));
-            var metadata = json.createObjectNode().put("channel", document.channel()).put("promptVersion", "v5")
+            var metadata = json.createObjectNode().put("channel", document.channel()).put("promptVersion", "v6")
                 .put("model", gateway.modelName(tier)).put("tier", tier.name())
                 .put("durationMs", (System.nanoTime() - started) / 1_000_000).put("imageCount", media.size());
             if (usage.get() != null) {

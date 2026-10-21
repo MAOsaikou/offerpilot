@@ -657,7 +657,7 @@ class ResumeHttpIntegrationTest {
         assertThat(JSON.readTree(lastPrompt.get()).path("model").asText()).isEqualTo("deepseek-flash");
         var meta = resumes.get(owner(token), id).currentVersion().parseMeta();
         assertThat(meta.path("model").asText()).isEqualTo("deepseek-flash");
-        assertThat(meta.path("promptVersion").asText()).isEqualTo("v5");
+        assertThat(meta.path("promptVersion").asText()).isEqualTo("v6");
         assertThat(meta.path("imageCount").asInt()).isEqualTo(1);
         assertThat(meta.path("durationMs").asLong()).isGreaterThanOrEqualTo(0);
         assertThat(meta.path("totalTokens").asInt()).isEqualTo(18);

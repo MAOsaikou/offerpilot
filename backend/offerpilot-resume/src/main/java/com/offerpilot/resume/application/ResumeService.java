@@ -201,7 +201,7 @@ public class ResumeService {
         jdbc.update("UPDATE resumes SET parse_progress=50 WHERE id=? AND parse_token=? AND parse_status='PARSING'", job.id(), job.token());
     }
     public void complete(Job job, JsonNode structured, ResumeDocumentReader.Document document) {
-        complete(job, structured, json.createObjectNode().put("channel", document.channel()).put("promptVersion", "v5"));
+        complete(job, structured, json.createObjectNode().put("channel", document.channel()).put("promptVersion", "v6"));
     }
     public void complete(Job job, JsonNode structured, JsonNode metadata) {
         ResumeStructure.validate(structured);

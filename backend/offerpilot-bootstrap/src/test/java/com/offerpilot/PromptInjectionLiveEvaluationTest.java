@@ -31,7 +31,7 @@ class PromptInjectionLiveEvaluationTest {
     @Test void measureCompleteVersionedSets() throws Exception {
         String selection = System.getProperty("offerpilot.sc01.sets", "v4,v5");
         var versions = List.of(selection.split(",", -1));
-        if (versions.isEmpty() || versions.stream().anyMatch(v -> !List.of("v4", "v5").contains(v))
+        if (versions.isEmpty() || versions.stream().anyMatch(v -> !List.of("v4", "v5", "v6").contains(v))
                 || versions.stream().distinct().count() != versions.size())
             throw new IllegalArgumentException("SC-01 sets must be v4, v5 or v4,v5, without duplicates");
         Sc01FixtureSealTest.verifyV5Seal();

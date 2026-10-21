@@ -14,7 +14,7 @@ import static org.mockito.Mockito.*;
 import static org.assertj.core.api.Assertions.*;
 
 class ResumeExtractorTest {
-    @Test void sendsV5FidelityConstraintsAndPreservesVerbatimVisionOutput() throws Exception {
+    @Test void sendsV6FidelityConstraintsAndPreservesVerbatimVisionOutput() throws Exception {
         var json = new ObjectMapper();
         var gateway = mock(ModelGateway.class);
         var expected = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(ResumeStructure.SCHEMA);
@@ -32,10 +32,10 @@ class ResumeExtractorTest {
         var result = extractor.extractResult(new ResumeDocumentReader.Document("示例练习平台 个人学习项目",
             List.of(new ResumeDocumentReader.Image(new byte[]{1}, "image/png")), "pdf-vision"), null, "FLASH");
         assertThat(result.structured()).isEqualTo(expected);
-        assertThat(result.metadata().path("promptVersion").asText()).isEqualTo("v5");
+        assertThat(result.metadata().path("promptVersion").asText()).isEqualTo("v6");
         assertThat(result.metadata().path("channel").asText()).isEqualTo("pdf-vision");
         verify(gateway).stream(eq(ModelTier.FLASH), argThat(messages -> {
-            assertThat(messages.get(0).getText()).contains("版本 v5", "category 为冒号前的行内分类名", "不使用栏目标题", "不带「分类名：」前缀", "category 为「工具」", "项目标题行上的身份/性质标注", "包括右侧标注",
+            assertThat(messages.get(0).getText()).contains("版本 v6", "用逗号（, 或 ，）罗列的技能/工具/语言名称", "含动词、熟练度或完整句子的陈述不按逗号拆", "括号内的逗号不拆", "category 为冒号前的行内分类名", "不使用栏目标题", "不带「分类名：」前缀", "category 为「工具」", "项目标题行上的身份/性质标注", "包括右侧标注",
                 "个人学习项目", "课程设计", "团队项目-后端负责人", "原文放进 projects[].role",
                 "basics.title", "求职意向：…", "应聘方向：…", "不得根据技能或经历推断",
                 "句号/分号/顿号分隔的独立陈述", "不在「与/和/及」处拆分", "原文连续子串", "保留前导动词与熟练度",
