@@ -12,6 +12,8 @@ import java.util.*;
 /** Extractive selection keeps project claims traceable; README content cannot authorize a write. */
 @Component
 public class GitHubHighlights {
+    static final int MAX_QUOTES = 3;
+    static final int MAX_QUOTE_LENGTH = 280;
     private final ModelGateway gateway;
     private final ObjectMapper json;
     public GitHubHighlights(ModelGateway gateway, ObjectMapper json) { this.gateway = gateway; this.json = json; }
@@ -39,19 +41,20 @@ public class GitHubHighlights {
             return validate(source, node);
         } catch (Exception ex) { throw new IllegalArgumentException("Invalid GitHub highlights"); }
     }
+    /** Drops each non-compliant quote (or unknown repository) individually; only a non-object payload fails closed. */
     static Map<String, List<String>> validate(GitHubClient.Snapshot source, JsonNode node) {
         if (node == null || !node.isObject()) throw new IllegalArgumentException("Invalid GitHub highlights");
         var result = new LinkedHashMap<String, List<String>>();
         node.fields().forEachRemaining(e -> {
-            var repo = source.repositories().stream().filter(r -> r.name().equals(e.getKey())).findFirst().orElseThrow();
-            if (!e.getValue().isArray() || e.getValue().size() > 3) throw new IllegalArgumentException();
+            var repo = source.repositories().stream().filter(r -> r.name().equals(e.getKey())).findFirst();
+            if (repo.isEmpty() || !e.getValue().isArray()) return;
             var quotes = new LinkedHashSet<String>();
             for (var quote : e.getValue()) {
-                if (!quote.isTextual() || quote.asText().isBlank() || quote.asText().length() > 280
-                        || !repo.readme().contains(quote.asText())) throw new IllegalArgumentException();
-                quotes.add(quote.asText());
+                if (quotes.size() >= MAX_QUOTES) break;
+                if (quote.isTextual() && !quote.asText().isBlank() && quote.asText().length() <= MAX_QUOTE_LENGTH
+                        && repo.get().readme().contains(quote.asText())) quotes.add(quote.asText());
             }
-            result.put(e.getKey(), List.copyOf(quotes));
+            if (!quotes.isEmpty()) result.put(e.getKey(), List.copyOf(quotes));
         });
         return Map.copyOf(result);
     }

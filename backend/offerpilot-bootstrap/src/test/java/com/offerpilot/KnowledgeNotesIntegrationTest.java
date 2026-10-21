@@ -297,8 +297,10 @@ class KnowledgeNotesIntegrationTest extends SharedHttpIntegrationTest {
         var forChat = new KnowledgeNotesForChat(search);
         for (String query : List.of("缓存击穿", "我笔记里记的缓存击穿解决方案有哪些？", "根据我的笔记，我上次面试缓存击穿是怎么答的？还要怎么改进？")) {
             assertThat(search.search(owner,query,3).items()).extracting(KnowledgeNoteSearch.Hit::id).containsExactly(note.id());
+            double searchScore = search.search(owner,query,3).items().get(0).score();
             assertThat(forChat.retrieve(owner,query)).singleElement().satisfies(c -> {
                 assertThat(c.noteId()).isEqualTo(note.id());
+                assertThat(c.score()).isEqualTo(searchScore);
                 assertThat(c.excerpt()).contains("SETNX", "逻辑过期");
             });
         }
