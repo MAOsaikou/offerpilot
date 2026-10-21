@@ -27,12 +27,12 @@ async function copyCode(button: HTMLElement) {
   const code = button.closest('.code-block')?.querySelector('pre')?.textContent ?? ''
   try {
     await navigator.clipboard.writeText(code)
-    button.textContent = uiText("Copied")
+    button.textContent = uiText('Copied')
   } catch {
-    button.textContent = uiText("Copy failed")
+    button.textContent = uiText('Copy failed')
   }
   window.setTimeout(() => {
-    button.textContent = uiText("Copy")
+    button.textContent = uiText('Copy')
   }, 1500)
 }
 function onClick(event: MouseEvent) {

@@ -9,7 +9,12 @@ import {
   toApiError,
 } from './client'
 
-export const noteCategories = [sourceText("Interview review"), sourceText("Technical learning"), sourceText("Projects"), sourceText("Job search insights")] as const
+export const noteCategories = [
+  sourceText('Interview review'),
+  sourceText('Technical learning'),
+  sourceText('Projects'),
+  sourceText('Job search insights'),
+] as const
 export type NoteCategory = (typeof noteCategories)[number]
 export interface KnowledgeDraft {
   title: string
@@ -18,10 +23,18 @@ export interface KnowledgeDraft {
 }
 export type IndexStatus = 'QUEUED' | 'INDEXING' | 'READY' | 'FAILED'
 export const indexStatusLabels: Record<IndexStatus, string> = {
-  get QUEUED() { return uiText("Queued") },
-  get INDEXING() { return uiText("Indexing") },
-  get READY() { return uiText("Done") },
-  get FAILED() { return uiText("Failed") },
+  get QUEUED() {
+    return uiText('Queued')
+  },
+  get INDEXING() {
+    return uiText('Indexing')
+  },
+  get READY() {
+    return uiText('Done')
+  },
+  get FAILED() {
+    return uiText('Failed')
+  },
 }
 interface DocumentStatus {
   indexStatus?: IndexStatus
@@ -84,9 +97,11 @@ export const importKnowledgeNotes = (notes: KnowledgeImport[]) =>
   })
 
 export function validateKnowledgeFile(file: File): void {
-  if (!file.size) throw new Error(uiText("The file is empty. Choose a file containing text."))
-  if (file.size > 10 * 1024 * 1024) throw new Error(uiText("Resource files must be 10 MB or smaller"))
-  if (!/\.(pdf|md|txt)$/i.test(file.name)) throw new Error(uiText("Only PDF, MD and TXT files are supported"))
+  if (!file.size) throw new Error(uiText('The file is empty. Choose a file containing text.'))
+  if (file.size > 10 * 1024 * 1024)
+    throw new Error(uiText('Resource files must be 10 MB or smaller'))
+  if (!/\.(pdf|md|txt)$/i.test(file.name))
+    throw new Error(uiText('Only PDF, MD and TXT files are supported'))
 }
 export async function uploadKnowledgeDocument(
   file: File,

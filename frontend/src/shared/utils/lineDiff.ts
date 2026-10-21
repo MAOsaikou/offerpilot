@@ -33,10 +33,10 @@ export function diffLines(before: string, after: string, cap = 1500): DiffLine[]
 }
 
 const sectionLabels = (): Record<string, string> => ({
-  education: uiText("Education section"),
-  experience: uiText("Experience section"),
-  projects: uiText("Projects"),
-  skills: uiText("Skills"),
+  education: uiText('Education section'),
+  experience: uiText('Experience section'),
+  projects: uiText('Projects'),
+  skills: uiText('Skills'),
 })
 /**
  * Stable, field-labelled text of a structured resume for comparison. Saved plain text keeps the
@@ -52,11 +52,11 @@ export function resumeLines(structure: {
   const lines: string[] = []
   const value = (v: unknown) => (Array.isArray(v) ? v.join('、') : String(v ?? ''))
   const labels: Record<string, string> = {
-    name: uiText("Name"),
-    phone: uiText("Phone"),
-    email: uiText("Email"),
-    city: uiText("City"),
-    links: uiText("Links"),
+    name: uiText('Name'),
+    phone: uiText('Phone'),
+    email: uiText('Email'),
+    city: uiText('City'),
+    links: uiText('Links'),
   }
   for (const [key, label] of Object.entries(labels)) {
     const v = value(structure.basics?.[key])
@@ -73,6 +73,7 @@ export function resumeLines(structure: {
       }
     })
   }
-  for (const cert of structure.certificates ?? []) if (cert) lines.push(uiText('Certificate: {0}', [cert]))
+  for (const cert of structure.certificates ?? [])
+    if (cert) lines.push(uiText('Certificate: {0}', [cert]))
   return lines.join('\n')
 }

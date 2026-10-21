@@ -20,11 +20,13 @@ const busy = ref(false)
 const error = localizedText()
 const restricted = computed(() =>
   auth.user?.isDemo && !auth.user?.demoExpiresAt
-    ? uiText("Shared demo accounts cannot delete all data. Staff use a dedicated reset to restore the fictional journey.")
+    ? uiText(
+        'Shared demo accounts cannot delete all data. Staff use a dedicated reset to restore the fictional journey.',
+      )
     : auth.isStaff
-      ? uiText("Staff accounts cannot use self-service deletion. Contact an administrator.")
+      ? uiText('Staff accounts cannot use self-service deletion. Contact an administrator.')
       : !auth.isAuthenticated
-        ? uiText("Sign in or enter guest mode first.")
+        ? uiText('Sign in or enter guest mode first.')
         : '',
 )
 async function open() {
@@ -76,7 +78,8 @@ async function remove() {
     await nextTick()
     await router.replace({ path: '/login', query: { deleted: '1' } })
   } catch (ex) {
-    error.value = () => (ex instanceof Error ? ex.message : uiText("Deletion failed. Please try again later."))
+    error.value = () =>
+      ex instanceof Error ? ex.message : uiText('Deletion failed. Please try again later.')
   } finally {
     busy.value = false
   }
@@ -86,11 +89,25 @@ onBeforeUnmount(() => dialog.value?.close())
 
 <template>
   <section class="danger-zone form-stack" aria-labelledby="delete-data-title">
-    <h2 id="delete-data-title">{{ uiText("Delete all my data") }}</h2>
-    <p> {{ uiText("Permanently deletes your account, original uploads and server files, resume versions and AI reports, saved jobs and applications, interview answers, career profile and growth tasks, knowledge notes and vectors, conversations, runs and approvals, preferences and usage counts. All sign-in tokens are invalidated.") }} </p>
-    <p class="subtle"> {{ uiText("Also clears local drafts, archives and notes for this identity in this browser. This cannot be undone. Export anything you need first. This cannot delete local copies in other browsers, downloaded files or content already sent to model providers. Failed server file cleanup retries automatically.") }} </p>
+    <h2 id="delete-data-title">{{ uiText('Delete all my data') }}</h2>
+    <p>
+      {{
+        uiText(
+          'Permanently deletes your account, original uploads and server files, resume versions and AI reports, saved jobs and applications, interview answers, career profile and growth tasks, knowledge notes and vectors, conversations, runs and approvals, preferences and usage counts. All sign-in tokens are invalidated.',
+        )
+      }}
+    </p>
+    <p class="subtle">
+      {{
+        uiText(
+          'Also clears local drafts, archives and notes for this identity in this browser. This cannot be undone. Export anything you need first. This cannot delete local copies in other browsers, downloaded files or content already sent to model providers. Failed server file cleanup retries automatically.',
+        )
+      }}
+    </p>
     <p v-if="restricted" class="helper-note">{{ restricted }}</p>
-    <button ref="opener" class="btn delete-button" :disabled="!!restricted" @click="open"> {{ uiText("Delete all my data") }} </button>
+    <button ref="opener" class="btn delete-button" :disabled="!!restricted" @click="open">
+      {{ uiText('Delete all my data') }}
+    </button>
     <dialog
       ref="dialog"
       role="alertdialog"
@@ -103,9 +120,17 @@ onBeforeUnmount(() => dialog.value?.close())
       @keydown="trap"
     >
       <form v-if="opened" class="form-stack" @submit.prevent="remove">
-        <h2 id="delete-confirm-title">{{ uiText("Permanently delete account and all data?") }}</h2>
-        <p id="delete-confirm-description"> {{ uiText("All server career data and this browser's local workspace will be deleted. You will be signed out immediately. Your account cannot be recovered.") }} </p>
-        <label class="field" for="delete-confirm-input"> {{ uiText("Type DELETE to confirm") }} <input
+        <h2 id="delete-confirm-title">{{ uiText('Permanently delete account and all data?') }}</h2>
+        <p id="delete-confirm-description">
+          {{
+            uiText(
+              "All server career data and this browser's local workspace will be deleted. You will be signed out immediately. Your account cannot be recovered.",
+            )
+          }}
+        </p>
+        <label class="field" for="delete-confirm-input">
+          {{ uiText('Type DELETE to confirm') }}
+          <input
             id="delete-confirm-input"
             ref="input"
             v-model="confirm"
@@ -115,11 +140,13 @@ onBeforeUnmount(() => dialog.value?.close())
           />
         </label>
         <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
-        <p v-if="busy" role="status">{{ uiText("Deleting. Please wait for the result…") }}</p>
+        <p v-if="busy" role="status">{{ uiText('Deleting. Please wait for the result…') }}</p>
         <div class="delete-actions">
-          <button type="button" class="btn" :disabled="busy" @click="close">{{ uiText("Cancel") }}</button>
+          <button type="button" class="btn" :disabled="busy" @click="close">
+            {{ uiText('Cancel') }}
+          </button>
           <button class="btn delete-button" :disabled="confirm !== 'DELETE' || busy">
-            {{ busy ? uiText("Deleting… #2") : uiText("Permanently delete") }}
+            {{ busy ? uiText('Deleting… #2') : uiText('Permanently delete') }}
           </button>
         </div>
       </form>

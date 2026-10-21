@@ -25,11 +25,11 @@ const busy = ref(false)
 const error = localizedText()
 const online = ref(navigator.onLine)
 const labels = computed(() => ({
-  DDL: uiText("Deadline reminder"),
-  NEW_JOB: uiText("New job"),
-  INTERVIEW_PLAN: uiText("Interview plan"),
-  CAREER_TARGET: uiText("Goal coordination"),
-  PROFILE_UPDATE: uiText("Profile suggestion"),
+  DDL: uiText('Deadline reminder'),
+  NEW_JOB: uiText('New job'),
+  INTERVIEW_PLAN: uiText('Interview plan'),
+  CAREER_TARGET: uiText('Goal coordination'),
+  PROFILE_UPDATE: uiText('Profile suggestion'),
 }))
 let generation = 0
 let reader = 0
@@ -46,7 +46,8 @@ async function load() {
     notices.setCount(result.unread)
   } catch (cause) {
     if (current === generation && revision === reader)
-      error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load notifications"))
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Could not load notifications')
   } finally {
     if (current === generation && revision === reader) loading.value = false
   }
@@ -65,7 +66,8 @@ async function mark(id?: string) {
     if (current === generation) await load()
   } catch (cause) {
     if (current === generation)
-      error.value = () => (cause instanceof Error ? cause.message : uiText("Could not mark as read. Please retry."))
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Could not mark as read. Please retry.')
   } finally {
     if (current === generation) busy.value = false
   }
@@ -96,19 +98,35 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <section class="page-stack">
-    <PageHeading :title="uiText('Notification center')" :description="uiText('{0} unread · Server notifications', [notices.unread])">
-      <button class="btn" :disabled="!notices.unread || busy || loading || !online" @click="mark()"> {{ uiText("Mark all as read") }} </button>
+    <PageHeading
+      :title="uiText('Notification center')"
+      :description="uiText('{0} unread · Server notifications', [notices.unread])"
+    >
+      <button class="btn" :disabled="!notices.unread || busy || loading || !online" @click="mark()">
+        {{ uiText('Mark all as read') }}
+      </button>
     </PageHeading>
-    <p v-if="!online" role="status">{{ uiText("You are offline. Reconnect to load and mark notifications.") }}</p>
-    <p v-if="loading" role="status">{{ uiText("Loading notifications…") }}</p>
+    <p v-if="!online" role="status">
+      {{ uiText('You are offline. Reconnect to load and mark notifications.') }}
+    </p>
+    <p v-if="loading" role="status">{{ uiText('Loading notifications…') }}</p>
     <div v-if="error" role="alert">
-      {{ error }} <button class="btn" :disabled="loading || !online" @click="load">{{ uiText("Reload") }}</button>
+      {{ error }}
+      <button class="btn" :disabled="loading || !online" @click="load">
+        {{ uiText('Reload') }}
+      </button>
     </div>
     <section class="panel">
       <div v-if="!loading && !error && !items.length" class="empty-state">
         <AppIcon name="bell" :size="40" />
-        <h2>{{ uiText("No notifications yet") }}</h2>
-        <p>{{ uiText("Job recommendations, board deadlines and interview plan updates will appear here.") }}</p>
+        <h2>{{ uiText('No notifications yet') }}</h2>
+        <p>
+          {{
+            uiText(
+              'Job recommendations, board deadlines and interview plan updates will appear here.',
+            )
+          }}
+        </p>
       </div>
       <article
         v-for="notice in items"
@@ -123,28 +141,33 @@ onBeforeUnmount(() => {
           <time class="subtle" :datetime="notice.createdAt">{{
             new Date(notice.createdAt).toLocaleString(language)
           }}</time>
-          <RouterLink :to="notice.link" class="btn text">{{ uiText("View details") }}</RouterLink>
+          <RouterLink :to="notice.link" class="btn text">{{ uiText('View details') }}</RouterLink>
         </div>
         <button
           v-if="!notice.readAt"
           class="btn text"
           :disabled="busy || loading || !online"
           @click="mark(notice.id)"
-        > {{ uiText("Mark as read") }}</button
-        ><span v-else class="tag">{{ uiText("Read") }}</span>
+        >
+          {{ uiText('Mark as read') }}</button
+        ><span v-else class="tag">{{ uiText('Read') }}</span>
       </article>
       <nav v-if="total > 20" :aria-label="uiText('Notification pagination')" class="notice-pages">
         <button
           class="btn"
           :disabled="page === 1 || loading || busy || !online"
           @click="changePage(-1)"
-        > {{ uiText("Previous page") }} </button>
-        <span>{{ uiText("Page {0} · {1} entries in total", [page, total]) }}</span>
+        >
+          {{ uiText('Previous page') }}
+        </button>
+        <span>{{ uiText('Page {0} · {1} entries in total', [page, total]) }}</span>
         <button
           class="btn"
           :disabled="page * 20 >= total || loading || busy || !online"
           @click="changePage(1)"
-        > {{ uiText("Next page") }} </button>
+        >
+          {{ uiText('Next page') }}
+        </button>
       </nav>
     </section>
   </section>

@@ -58,7 +58,7 @@ export const getJobMatch = (id: string, signal?: AbortSignal) =>
 /** Downloads deterministic A–F evaluation markdown for a COMPLETED match. */
 export async function exportJobEvalMarkdown(
   matchId: string,
-  filename = uiText("job-assessment.md"),
+  filename = uiText('job-assessment.md'),
 ): Promise<void> {
   const response = await fetchWithIdentity(
     apiUrl(`/jobs/matches/${encodeURIComponent(matchId)}/eval.md`),
@@ -80,9 +80,9 @@ export interface JobScreenshotFile {
   size: number
 }
 export function validateJobScreenshot(file: File): string | undefined {
-  if (!file.size) return uiText("Screenshot is empty. Please select again.")
-  if (file.size > 5 * 1024 * 1024) return uiText("Each screenshot must be 5 MB or smaller.")
-  if (!/\.(png|jpe?g|webp)$/i.test(file.name)) return uiText("Choose PNG, JPG or WebP screenshots.")
+  if (!file.size) return uiText('Screenshot is empty. Please select again.')
+  if (file.size > 5 * 1024 * 1024) return uiText('Each screenshot must be 5 MB or smaller.')
+  if (!/\.(png|jpe?g|webp)$/i.test(file.name)) return uiText('Choose PNG, JPG or WebP screenshots.')
 }
 export async function uploadJobScreenshot(file: File): Promise<JobScreenshotFile> {
   const error = validateJobScreenshot(file)

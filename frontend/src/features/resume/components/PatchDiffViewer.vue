@@ -82,13 +82,15 @@ function isKept(patch: ResumePatch): boolean {
   return selected.value.has(patch.id)
 }
 function fieldLabel(path: string): string {
-  if (path === '/summary') return uiText("Summary")
+  if (path === '/summary') return uiText('Summary')
   const match = /^\/(experience|projects|skills)\/(\d+)\/(bullets|items)\/(\d+)$/.exec(path)
-  if (!match) return uiText("Resume content")
-  const section = { experience: uiText("Internships and work"), projects: uiText("Projects"), skills: uiText("Skills") }[
-    match[1] as 'experience' | 'projects' | 'skills'
-  ]
-  return uiText("{0} {1} · Item {2}", [section, Number(match[2]) + 1, Number(match[4]) + 1])
+  if (!match) return uiText('Resume content')
+  const section = {
+    experience: uiText('Internships and work'),
+    projects: uiText('Projects'),
+    skills: uiText('Skills'),
+  }[match[1] as 'experience' | 'projects' | 'skills']
+  return uiText('{0} {1} · Item {2}', [section, Number(match[2]) + 1, Number(match[4]) + 1])
 }
 function confirm(id: string, checked: boolean) {
   const next = new Set(confirmed.value)
@@ -129,12 +131,18 @@ function apply() {
 <template>
   <article v-if="data" class="surface overflow-hidden rounded-[14px]">
     <header class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/60 px-4 py-3">
-      <h3 class="text-sm font-medium">{{ uiText("Resume rewrite suggestions") }}</h3>
-      <span class="text-xs text-muted-foreground">{{ uiText("{0} suggestions", [data.patches.length]) }}</span>
-      <span class="ml-auto text-xs text-muted-foreground">{{ uiText("Check your real experience before accepting each suggestion") }}</span>
+      <h3 class="text-sm font-medium">{{ uiText('Resume rewrite suggestions') }}</h3>
+      <span class="text-xs text-muted-foreground">{{
+        uiText('{0} suggestions', [data.patches.length])
+      }}</span>
+      <span class="ml-auto text-xs text-muted-foreground">{{
+        uiText('Check your real experience before accepting each suggestion')
+      }}</span>
     </header>
 
-    <p v-if="!data.patches.length" class="px-4 py-3 text-sm" role="status"> {{ uiText("No rewrite suggestions need accepting. No new resume version was created.") }} </p>
+    <p v-if="!data.patches.length" class="px-4 py-3 text-sm" role="status">
+      {{ uiText('No rewrite suggestions need accepting. No new resume version was created.') }}
+    </p>
 
     <ul class="divide-y divide-border/60">
       <li v-for="(patch, index) in data.patches" :key="patch.id" class="min-w-0 px-4 py-3">
@@ -149,7 +157,7 @@ function apply() {
             :disabled="locked || patch.op !== 'replace'"
             @click="toggle(patch.id)"
           >
-            {{ isKept(patch) ? uiText("Selected") : uiText("Select to accept") }}
+            {{ isKept(patch) ? uiText('Selected') : uiText('Select to accept') }}
           </button>
         </div>
 
@@ -162,7 +170,9 @@ function apply() {
         <p class="mt-1.5 rounded-lg bg-success/10 px-2.5 py-1.5 text-xs leading-relaxed">
           {{ formatDisplay(patch.value) }}
         </p>
-        <label v-if="interactive && isKept(patch)" class="field mt-2 text-xs"> {{ uiText("Accepted content (editable)") }} <textarea
+        <label v-if="interactive && isKept(patch)" class="field mt-2 text-xs">
+          {{ uiText('Accepted content (editable)') }}
+          <textarea
             :aria-label="uiText('Edit suggestion') + ' ' + (index + 1)"
             :value="edited[patch.id] ?? patch.value"
             :disabled="locked"
@@ -173,7 +183,8 @@ function apply() {
         </label>
 
         <p class="mt-2 text-xs leading-relaxed text-muted-foreground">
-          <span class="text-foreground">{{ uiText("Reason:") }}</span>{{ patch.reason }}
+          <span class="text-foreground">{{ uiText('Reason:') }}</span
+          >{{ patch.reason }}
         </p>
         <label
           v-if="interactive && patch.needsUserConfirmation"
@@ -185,10 +196,13 @@ function apply() {
             :disabled="locked || !isKept(patch)"
             @change="confirm(patch.id, ($event.target as HTMLInputElement).checked)"
           />
-          <span>{{ uiText("I checked the facts and contribution boundaries of suggestion {0}", [index + 1]) }}</span>
+          <span>{{
+            uiText('I checked the facts and contribution boundaries of suggestion {0}', [index + 1])
+          }}</span>
         </label>
         <p v-if="patch.jdEvidence" class="mt-1 text-xs leading-relaxed text-muted-foreground">
-          <span class="text-foreground">{{ uiText("Job description evidence:") }}</span>{{ patch.jdEvidence }}
+          <span class="text-foreground">{{ uiText('Job description evidence:') }}</span
+          >{{ patch.jdEvidence }}
         </p>
         <p
           v-if="patch.confirmationHint"
@@ -202,23 +216,35 @@ function apply() {
     <footer
       class="flex flex-wrap items-center gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground"
     >
-      <span v-if="appliedVersionId" role="status">{{ uiText("These suggestions have created a new version. View it in version history.") }}</span>
+      <span v-if="appliedVersionId" role="status">{{
+        uiText('These suggestions have created a new version. View it in version history.')
+      }}</span>
       <template v-else-if="interactive">
-        <span>{{ uiText("{0} of {1} selected", [acceptedCount, data.patches.length]) }}</span>
-        <span v-if="pendingConfirmation" role="status">{{ uiText("Review and confirm the marked suggestions.") }}</span>
-        <span v-if="noChange" role="status">{{ uiText("Selected content matches the original. Edit it or deselect it.") }}</span>
+        <span>{{ uiText('{0} of {1} selected', [acceptedCount, data.patches.length]) }}</span>
+        <span v-if="pendingConfirmation" role="status">{{
+          uiText('Review and confirm the marked suggestions.')
+        }}</span>
+        <span v-if="noChange" role="status">{{
+          uiText('Selected content matches the original. Edit it or deselect it.')
+        }}</span>
         <button
           class="btn primary ml-auto"
           :disabled="locked || !acceptedCount || pendingConfirmation || noChange"
           @click="apply"
         >
-          {{ applyLabel || uiText("Accept selected and save new version") }}
+          {{ applyLabel || uiText('Accept selected and save new version') }}
         </button>
       </template>
       <template v-else>
-        <span>{{ uiText("Read-only suggestions. Review and accept them in this resume's targeted rewrite tab.") }}</span>
+        <span>{{
+          uiText(
+            "Read-only suggestions. Review and accept them in this resume's targeted rewrite tab.",
+          )
+        }}</span>
         <RouterLink v-if="reference" class="btn ml-auto" :to="reference">{{
-          data.patches.length ? uiText("Review and accept suggestions") : uiText("View rewrite history")
+          data.patches.length
+            ? uiText('Review and accept suggestions')
+            : uiText('View rewrite history')
         }}</RouterLink>
       </template>
     </footer>

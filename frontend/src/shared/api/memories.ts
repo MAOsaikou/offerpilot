@@ -1,12 +1,12 @@
 import { translate as uiText } from '@/shared/utils/language'
 import { apiRequest } from './client'
 export const memoryKinds = {
-  GOAL: uiText("Target job"),
-  LOCATION: uiText("Target city"),
-  SKILL: uiText("Technology and skills"),
-  PREFERENCE: uiText("Preferences"),
-  CONSTRAINT: uiText("Constraints"),
-  OTHER: uiText("Other"),
+  GOAL: uiText('Target job'),
+  LOCATION: uiText('Target city'),
+  SKILL: uiText('Technology and skills'),
+  PREFERENCE: uiText('Preferences'),
+  CONSTRAINT: uiText('Constraints'),
+  OTHER: uiText('Other'),
 } as const
 export type MemoryKind = keyof typeof memoryKinds
 export interface MemoryDraft {

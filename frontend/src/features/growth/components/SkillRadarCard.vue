@@ -30,11 +30,21 @@ function points(required = false) {
 </script>
 <template>
   <section class="panel form-stack min-w-0 break-words" :aria-label="uiText('Skill radar')">
-    <h3>{{ uiText("Skill radar") }}</h3>
-    <p v-if="!valid" role="alert">{{ uiText("Skill radar data is unavailable. Please analyze again.") }}</p>
-    <p v-else-if="!payload.axes.length" role="status">{{ uiText("No skill evidence yet. Add a goal and supporting materials first.") }}</p>
+    <h3>{{ uiText('Skill radar') }}</h3>
+    <p v-if="!valid" role="alert">
+      {{ uiText('Skill radar data is unavailable. Please analyze again.') }}
+    </p>
+    <p v-else-if="!payload.axes.length" role="status">
+      {{ uiText('No skill evidence yet. Add a goal and supporting materials first.') }}
+    </p>
     <template v-else>
-      <p>{{ uiText("Material evidence and reference requirements (levels 0–5), not a certification of ability.") }}</p>
+      <p>
+        {{
+          uiText(
+            'Material evidence and reference requirements (levels 0–5), not a certification of ability.',
+          )
+        }}
+      </p>
       <svg
         v-if="payload.axes.length >= 3"
         viewBox="0 0 220 220"
@@ -48,7 +58,9 @@ function points(required = false) {
       </svg>
       <ul>
         <li v-for="axis in payload.axes" :key="axis.name">
-          {{ uiText("{0}: Evidence {1} / Requirement {2}", [axis.name, axis.current, axis.required]) }}
+          {{
+            uiText('{0}: Evidence {1} / Requirement {2}', [axis.name, axis.current, axis.required])
+          }}
         </li>
       </ul>
     </template>

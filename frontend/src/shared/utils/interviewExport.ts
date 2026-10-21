@@ -11,7 +11,10 @@ import {
 
 function localMarkdown(answers: InterviewAnswer[]) {
   return answers
-    .map((answer) => '## ' + answer.questionText + '\n\n' + (answer.answerText || uiText("Unanswered")))
+    .map(
+      (answer) =>
+        '## ' + answer.questionText + '\n\n' + (answer.answerText || uiText('Unanswered')),
+    )
     .join('\n\n')
 }
 
@@ -34,8 +37,8 @@ export async function exportInterview(
     const markdown = await response.text()
     assertResponseIdentity(response)
     signal?.throwIfAborted()
-    downloadText(role + uiText("-interview-review-package.md"), markdown)
+    downloadText(role + uiText('-interview-review-package.md'), markdown)
     return
   }
-  downloadText(role + uiText("-interview-review.md"), localMarkdown(answers))
+  downloadText(role + uiText('-interview-review.md'), localMarkdown(answers))
 }

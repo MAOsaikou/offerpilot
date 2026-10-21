@@ -62,13 +62,20 @@ export async function analyzeResumeStream(
     if (event.type === 'run.started' && event.reportId) started(event.reportId)
     if (event.type === 'ui.card' && event.cardType === 'resume_diagnosis') report = event.payload
     if (event.type === 'error')
-      throw new ApiError(event.message || uiText("Diagnosis failed. Please retry."), { code: event.code ?? 50000 })
+      throw new ApiError(event.message || uiText('Diagnosis failed. Please retry.'), {
+        code: event.code ?? 50000,
+      })
     if (event.type === 'run.completed') {
       complete = event.status === 'COMPLETED'
       break
     }
   }
-  if (!complete || !report) throw new Error(uiText("Connection interrupted. Refresh report history and confirm this request's result before retrying."))
+  if (!complete || !report)
+    throw new Error(
+      uiText(
+        "Connection interrupted. Refresh report history and confirm this request's result before retrying.",
+      ),
+    )
   return report
 }
 

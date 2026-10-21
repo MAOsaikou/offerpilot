@@ -34,14 +34,17 @@ function text(entry: ResumeEntry, field: Field) {
   <section class="form-stack resume-section">
     <div class="section-heading">
       <h2>{{ title }}</h2>
-      <button type="button" class="btn" :disabled="disabled || entries.length >= 50" @click="add"> {{ uiText("＋ Add {0}", [title]) }}
+      <button type="button" class="btn" :disabled="disabled || entries.length >= 50" @click="add">
+        {{ uiText('＋ Add {0}', [title]) }}
       </button>
     </div>
-    <p v-if="!entries.length" class="subtle">{{ uiText("No {0} entries yet. Add your real experience.", [title]) }}</p>
+    <p v-if="!entries.length" class="subtle">
+      {{ uiText('No {0} entries yet. Add your real experience.', [title]) }}
+    </p>
     <ResumeReorderList v-model="entries" :title="title" :disabled="disabled">
       <template #default="{ entry, index }">
         <label v-for="field in fields" :key="field.key" class="field"
-          >{{ field.label }}{{ field.array ? uiText("(one per line)") : '' }}
+          >{{ field.label }}{{ field.array ? uiText('(one per line)') : '' }}
           <textarea
             v-if="field.array || field.multiline"
             :value="text(entry, field)"
@@ -56,7 +59,8 @@ function text(entry: ResumeEntry, field: Field) {
             @input="update(index, field, $event)"
           />
         </label>
-        <button type="button" class="btn" @click="entries = entries.filter((_, i) => i !== index)"> {{ uiText("Remove this {0} entry", [title]) }}
+        <button type="button" class="btn" @click="entries = entries.filter((_, i) => i !== index)">
+          {{ uiText('Remove this {0} entry', [title]) }}
         </button>
       </template>
     </ResumeReorderList>

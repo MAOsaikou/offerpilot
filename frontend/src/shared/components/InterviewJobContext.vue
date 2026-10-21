@@ -29,8 +29,12 @@ const href = computed(() =>
 )
 </script>
 <template>
-  <p v-if="jobId" class="subtle interview-job-context"> {{ uiText("For:") }}<RouterLink :to="href">{{ formatDisplay(job.data.value?.title || fallbackTitle) }}</RouterLink>
-    <span v-if="application"> {{ uiText("· Application workspace") }}</span>
+  <p v-if="jobId" class="subtle interview-job-context">
+    {{ uiText('For:')
+    }}<RouterLink :to="href">{{
+      formatDisplay(job.data.value?.title || fallbackTitle)
+    }}</RouterLink>
+    <span v-if="application"> {{ uiText('· Application workspace') }}</span>
   </p>
 </template>
 

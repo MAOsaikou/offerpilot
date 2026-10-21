@@ -80,7 +80,7 @@ export async function exportInterviewRecap(id: string): Promise<void> {
   if (!response.ok) throw await toApiError(response)
   const text = await response.text()
   assertResponseIdentity(response)
-  downloadText(uiText("interview-review.md"), text, 'text/markdown;charset=utf-8')
+  downloadText(uiText('interview-review.md'), text, 'text/markdown;charset=utf-8')
 }
 
 export const getInterviewReport = (id: string, signal?: AbortSignal) =>

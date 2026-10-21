@@ -44,19 +44,34 @@ const valid = computed(
     class="min-w-0 rounded-xl border border-border bg-card p-4"
     :aria-label="uiText('Learning roadmap')"
   >
-    <h3 class="font-semibold">{{ uiText("Four-week learning roadmap") }}</h3>
-    <p class="mt-2 text-sm text-muted-foreground"> {{ uiText("Adjust your time commitment at your own pace. This roadmap is a suggestion.") }}<template v-if="interactive"
-        >{{ uiText("Completion is recorded only after you select completed tasks and approve syncing. Existing completed items are retained.") }}</template
-      >
+    <h3 class="font-semibold">{{ uiText('Four-week learning roadmap') }}</h3>
+    <p class="mt-2 text-sm text-muted-foreground">
+      {{ uiText('Adjust your time commitment at your own pace. This roadmap is a suggestion.')
+      }}<template v-if="interactive">{{
+        uiText(
+          'Completion is recorded only after you select completed tasks and approve syncing. Existing completed items are retained.',
+        )
+      }}</template>
     </p>
-    <p v-if="!hasItems" class="mt-3 text-sm" role="status">{{ uiText("No learning tasks yet. Add a career goal and retry.") }}</p>
-    <ol class="mt-3 space-y-4 border-l-2 border-primary pl-4" :aria-label="uiText('Weekly timeline')">
+    <p v-if="!hasItems" class="mt-3 text-sm" role="status">
+      {{ uiText('No learning tasks yet. Add a career goal and retry.') }}
+    </p>
+    <ol
+      class="mt-3 space-y-4 border-l-2 border-primary pl-4"
+      :aria-label="uiText('Weekly timeline')"
+    >
       <li v-for="week in payload.weeks" :key="week.index" class="min-w-0">
-        <h4 class="break-words font-medium">{{ uiText("Week {0} · {1}", [week.index, week.theme]) }}</h4>
+        <h4 class="break-words font-medium">
+          {{ uiText('Week {0} · {1}', [week.index, week.theme]) }}
+        </h4>
         <p v-if="startDate" class="mt-1 text-xs text-muted-foreground">
           {{ formatDisplay(weekRange(week.index)) }}
         </p>
-        <p v-if="!week.items.length" class="mt-2 text-sm text-muted-foreground"> {{ uiText("Consolidate what you have practiced this week and check milestone progress.") }} </p>
+        <p v-if="!week.items.length" class="mt-2 text-sm text-muted-foreground">
+          {{
+            uiText('Consolidate what you have practiced this week and check milestone progress.')
+          }}
+        </p>
         <GrowthEvidenceChips v-if="week.evidenceSources?.length" :sources="week.evidenceSources" />
         <ul class="mt-2 space-y-2">
           <li
@@ -77,9 +92,15 @@ const valid = computed(
               <div class="min-w-0 flex-1">
                 <p class="break-words text-sm font-medium">
                   {{ item.title }}
-                  <span v-if="item.done" class="text-xs text-muted-foreground">{{ uiText("(Completed)") }}</span>
+                  <span v-if="item.done" class="text-xs text-muted-foreground">{{
+                    uiText('(Completed)')
+                  }}</span>
                 </p>
-                <p class="mt-1 text-xs text-muted-foreground"> {{ uiText("Estimated: {0} hours", [item.hours]) }}<span v-if="item.dueAt"> {{ uiText("· Due {0}", [formatDate(item.dueAt)]) }}</span>
+                <p class="mt-1 text-xs text-muted-foreground">
+                  {{ uiText('Estimated: {0} hours', [item.hours])
+                  }}<span v-if="item.dueAt">
+                    {{ uiText('· Due {0}', [formatDate(item.dueAt)]) }}</span
+                  >
                 </p>
                 <ul class="mt-1 text-xs text-muted-foreground">
                   <li v-for="resource in item.resources" :key="resource" class="break-words">
@@ -92,7 +113,11 @@ const valid = computed(
         </ul>
       </li>
     </ol>
-    <ul v-if="payload.milestones.length" class="mt-3 space-y-1 text-sm" :aria-label="uiText('Milestone')">
+    <ul
+      v-if="payload.milestones.length"
+      class="mt-3 space-y-1 text-sm"
+      :aria-label="uiText('Milestone')"
+    >
       <li v-for="milestone in payload.milestones" :key="milestone.title" class="break-words">
         {{ milestone.at }} · {{ milestone.title }}
       </li>
@@ -103,7 +128,9 @@ const valid = computed(
       class="mt-4 min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary disabled:opacity-50"
       :disabled="disabled || !selected.length"
       @click="emit('adoptGrowth', [...new Set(selected)])"
-    > {{ uiText("Sync to growth tasks") }} </button>
+    >
+      {{ uiText('Sync to growth tasks') }}
+    </button>
   </section>
-  <p v-else role="alert">{{ uiText("Roadmap data is unavailable. Please request it again.") }}</p>
+  <p v-else role="alert">{{ uiText('Roadmap data is unavailable. Please request it again.') }}</p>
 </template>

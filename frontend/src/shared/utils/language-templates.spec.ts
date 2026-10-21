@@ -3,7 +3,9 @@ import { parse } from 'vue/compiler-sfc'
 import { dictionaries } from './language'
 
 const components = import.meta.glob<string>('/src/{features,widgets,app,shared}/**/*.vue', {
-  eager: true, query: '?raw', import: 'default',
+  eager: true,
+  query: '?raw',
+  import: 'default',
 })
 // Language autonyms are intentionally the same in both interfaces. No page-wide exemptions.
 const allowedAutonyms = ['简体中文', '中文']
@@ -23,14 +25,22 @@ it('prevents hardcoded Chinese in all app, feature, widget and shared Vue templa
 })
 
 it('detects text, attributes and expression literals while allowing comments and autonyms', () => {
-  expect(chineseInTemplate('<template><h1>标题</h1><input placeholder="请输入" />{{ busy ? "加载" : "保存" }}</template>')).toHaveLength(1)
-  expect(chineseInTemplate('<template><!-- 中文说明 --><option>简体中文</option></template>')).toEqual([])
+  expect(
+    chineseInTemplate(
+      '<template><h1>标题</h1><input placeholder="请输入" />{{ busy ? "加载" : "保存" }}</template>',
+    ),
+  ).toHaveLength(1)
+  expect(
+    chineseInTemplate('<template><!-- 中文说明 --><option>简体中文</option></template>'),
+  ).toEqual([])
 })
 
 it('resolves every literal translation key used by Vue components', () => {
   const missing: string[] = []
   for (const [path, source] of Object.entries(components)) {
-    for (const match of source.matchAll(/\b(?:uiText|sourceText)\(\s*("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g)) {
+    for (const match of source.matchAll(
+      /\b(?:uiText|sourceText)\(\s*("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g,
+    )) {
       const key = match[1]!.slice(1, -1).replace(/\\(['"\\])/g, '$1')
       if (!(key in dictionaries['en-US'])) missing.push(`${path}: ${key}`)
     }

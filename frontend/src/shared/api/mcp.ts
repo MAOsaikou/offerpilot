@@ -19,12 +19,12 @@ export interface McpConnection {
 }
 export const mcpStatus = (status: string) =>
   ({
-    READY: uiText("Available"),
-    NOT_CONFIGURED: uiText("Unconfigured"),
-    NOT_ADDED: uiText("Not added"),
-    DISABLED: uiText("Disabled"),
-    NOT_REFRESHED: uiText("Refresh needed"),
-    UNAVAILABLE: uiText("Connection failed"),
+    READY: uiText('Available'),
+    NOT_CONFIGURED: uiText('Unconfigured'),
+    NOT_ADDED: uiText('Not added'),
+    DISABLED: uiText('Disabled'),
+    NOT_REFRESHED: uiText('Refresh needed'),
+    UNAVAILABLE: uiText('Connection failed'),
   })[status] ?? status
 export const listMcpServers = () => apiRequest<McpConnection[]>('/mcp/servers')
 export const addMcpServer = (provider: string) =>

@@ -15,12 +15,19 @@ const selected = ref<{
   status: MatchRequirement['status']
 }>()
 const evidencePanel = ref<HTMLElement>()
-const labels = computed(() => ({ MET: uiText("Explicit evidence"), PARTIAL: uiText("Partially demonstrated"), MISSING: uiText("Not shown in resume") }))
-const statuses = computed(() => [
-  { status: 'MET', label: uiText("Explicit") },
-  { status: 'PARTIAL', label: uiText("Partial") },
-  { status: 'MISSING', label: uiText("Not shown") },
-] as const)
+const labels = computed(() => ({
+  MET: uiText('Explicit evidence'),
+  PARTIAL: uiText('Partially demonstrated'),
+  MISSING: uiText('Not shown in resume'),
+}))
+const statuses = computed(
+  () =>
+    [
+      { status: 'MET', label: uiText('Explicit') },
+      { status: 'PARTIAL', label: uiText('Partial') },
+      { status: 'MISSING', label: uiText('Not shown') },
+    ] as const,
+)
 const coverage = computed(() => {
   const counts = { MET: 0, PARTIAL: 0, MISSING: 0 }
   for (const item of data.value.requirements) counts[item.status]++
@@ -29,8 +36,12 @@ const coverage = computed(() => {
 function evidence(item: MatchRequirement, side: 'jd' | 'resume') {
   if (side === 'jd')
     selected.value = {
-      title: uiText("Original job text used for analysis"),
-      text: uiText("Job: {0} Responsibilities: {1} Requirements: {2}", [data.value.jobSnapshot.title, data.value.jobSnapshot.description, data.value.jobSnapshot.requirement]),
+      title: uiText('Original job text used for analysis'),
+      text: uiText('Job: {0} Responsibilities: {1} Requirements: {2}', [
+        data.value.jobSnapshot.title,
+        data.value.jobSnapshot.description,
+        data.value.jobSnapshot.requirement,
+      ]),
       quote: item.jdQuote,
       status: item.status,
     }
@@ -42,7 +53,7 @@ function evidence(item: MatchRequirement, side: 'jd' | 'resume') {
       else value = undefined
     }
     selected.value = {
-      title: uiText("Original resume text used for analysis"),
+      title: uiText('Original resume text used for analysis'),
       text: typeof value === 'string' ? value : item.resumeQuote,
       quote: item.resumeQuote,
       status: item.status,
@@ -71,7 +82,7 @@ const excerpt = computed(() => {
         path: '/resumes/' + data.resumeId,
         query: { tab: 'optimize', jobId: data.jobId, resumeVersionId: data.resumeVersionId },
       }"
-      >{{ uiText("Rewrite for this job") }}</RouterLink
+      >{{ uiText('Rewrite for this job') }}</RouterLink
     >
     <div class="card-footer">
       <button
@@ -84,25 +95,36 @@ const excerpt = computed(() => {
         "
         @click="board.favorite(data.jobId)"
       >
-        {{ board.saved(data.jobId) ? uiText("On your board") : uiText("Add to board") }}
+        {{ board.saved(data.jobId) ? uiText('On your board') : uiText('Add to board') }}
       </button>
       <p v-if="board.error.value" role="alert">{{ formatDisplay(board.error.value) }}</p>
-      <p v-if="board.query.isError.value" role="alert"> {{ uiText("Could not load board.") }}<button class="btn" @click="board.query.refetch()">{{ uiText("Retry board") }}</button>
+      <p v-if="board.query.isError.value" role="alert">
+        {{ uiText('Could not load board.')
+        }}<button class="btn" @click="board.query.refetch()">{{ uiText('Retry board') }}</button>
       </p>
     </div>
     <div class="section-heading">
       <div>
-        <p class="subtle">{{ uiText("Resume evidence coverage of job requirements") }}</p>
+        <p class="subtle">{{ uiText('Resume evidence coverage of job requirements') }}</p>
         <h2>{{ formatDisplay(data.score) }} / 100</h2>
       </div>
-      <span class="tag">{{ uiText("{0} · Version {1}", [data.resumeTitle, data.resumeVersionNo]) }}</span>
+      <span class="tag">{{
+        uiText('{0} · Version {1}', [data.resumeTitle, data.resumeVersionNo])
+      }}</span>
     </div>
     <p>{{ data.summary }}</p>
-    <p class="helper-note"> {{ uiText("This score uses extracted requirements: explicit evidence counts as 1, partial as 0.5 and missing as 0. It is not a hiring probability or proof of ability. Review the full requirements on the company's website.") }} </p>
+    <p class="helper-note">
+      {{
+        uiText(
+          "This score uses extracted requirements: explicit evidence counts as 1, partial as 0.5 and missing as 0. It is not a hiring probability or proof of ability. Review the full requirements on the company's website.",
+        )
+      }}
+    </p>
     <section class="coverage-summary" :aria-label="uiText('Job requirement evidence coverage')">
       <div class="coverage-counts">
         <span v-for="item in coverage" :key="item.status" :data-status="item.status">
-          {{ item.label }} <strong>{{ formatDisplay(item.count) }}</strong> {{ uiText("items") }} </span>
+          {{ item.label }} <strong>{{ formatDisplay(item.count) }}</strong> {{ uiText('items') }}
+        </span>
       </div>
       <div v-if="data.requirements.length" class="coverage-bar" aria-hidden="true">
         <span
@@ -112,7 +134,9 @@ const excerpt = computed(() => {
           :style="{ flexGrow: item.count }"
         ></span>
       </div>
-      <p v-else class="subtle">{{ uiText("No requirement evidence to display in this report.") }}</p>
+      <p v-else class="subtle">
+        {{ uiText('No requirement evidence to display in this report.') }}
+      </p>
     </section>
     <article
       v-for="(item, index) in data.requirements"
@@ -125,19 +149,43 @@ const excerpt = computed(() => {
         <span class="tag status-chip">{{ labels[item.status] }}</span>
       </div>
       <p>{{ item.reason }}</p>
-      <button class="evidence-link" @click="evidence(item, 'jd')"> {{ uiText("Job evidence:") }}<span class="evidence-quote">{{ item.jdQuote }}</span>
+      <button class="evidence-link" @click="evidence(item, 'jd')">
+        {{ uiText('Job evidence:') }}<span class="evidence-quote">{{ item.jdQuote }}</span>
       </button>
-      <button v-if="item.resumeQuote" class="evidence-link" @click="evidence(item, 'resume')"> {{ uiText("Resume evidence:") }}<span class="evidence-quote">{{ item.resumeQuote }}</span>
+      <button v-if="item.resumeQuote" class="evidence-link" @click="evidence(item, 'resume')">
+        {{ uiText('Resume evidence:') }}<span class="evidence-quote">{{ item.resumeQuote }}</span>
       </button>
-      <p v-else class="subtle">{{ uiText("No citable evidence was found in the selected resume.") }}</p>
-      <p><strong>{{ uiText("Preparation tips:") }}</strong>{{ item.suggestion }}</p>
+      <p v-else class="subtle">
+        {{ uiText('No citable evidence was found in the selected resume.') }}
+      </p>
+      <p>
+        <strong>{{ uiText('Preparation tips:') }}</strong
+        >{{ item.suggestion }}
+      </p>
     </article>
-    <section v-if="data.unverifiedRequirements?.length" :aria-label="uiText('Unverified requirements')" class="helper-note">
-      <h4>{{ uiText("{0} unverified items · Not scored", [data.unverifiedCount ?? data.unverifiedRequirements.length]) }}</h4>
-      <p>{{ uiText("Original evidence for these items failed validation. Coverage cannot be assessed. Check the full job and resume.") }}</p>
+    <section
+      v-if="data.unverifiedRequirements?.length"
+      :aria-label="uiText('Unverified requirements')"
+      class="helper-note"
+    >
+      <h4>
+        {{
+          uiText('{0} unverified items · Not scored', [
+            data.unverifiedCount ?? data.unverifiedRequirements.length,
+          ])
+        }}
+      </h4>
+      <p>
+        {{
+          uiText(
+            'Original evidence for these items failed validation. Coverage cannot be assessed. Check the full job and resume.',
+          )
+        }}
+      </p>
       <ul>
         <li v-for="(item, index) in data.unverifiedRequirements" :key="index">
-          {{ uiText("{0} · Unverified", [item.requirement]) }} </li>
+          {{ uiText('{0} · Unverified', [item.requirement]) }}
+        </li>
       </ul>
     </section>
     <section
@@ -150,7 +198,9 @@ const excerpt = computed(() => {
     >
       <div class="section-heading">
         <h3>{{ selected.title }}</h3>
-        <button class="btn" @click="selected = undefined">{{ uiText("Hide original text") }}</button>
+        <button class="btn" @click="selected = undefined">
+          {{ uiText('Hide original text') }}
+        </button>
       </div>
       <p class="prose-content">
         {{ excerpt.before
@@ -160,8 +210,27 @@ const excerpt = computed(() => {
         >{{ excerpt.after }}
       </p>
     </section>
-    <p class="subtle"> {{ uiText("Generated {0} · Model {1}", [new Date(data.createdAt).toLocaleString(language), data.model]) }}<template v-if="data.durationMs != null"> {{ uiText("· Generation took {0} seconds", [formatNumber((data.durationMs / 1000), { minimumFractionDigits: 2, maximumFractionDigits: 2 })]) }}</template
-      >{{ uiText(". This report keeps the materials as they were. Later resume edits do not change it.") }} </p>
+    <p class="subtle">
+      {{
+        uiText('Generated {0} · Model {1}', [
+          new Date(data.createdAt).toLocaleString(language),
+          data.model,
+        ])
+      }}<template v-if="data.durationMs != null">
+        {{
+          uiText('· Generation took {0} seconds', [
+            formatNumber(data.durationMs / 1000, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            }),
+          ])
+        }}</template
+      >{{
+        uiText(
+          '. This report keeps the materials as they were. Later resume edits do not change it.',
+        )
+      }}
+    </p>
   </article>
 </template>
 <style scoped>

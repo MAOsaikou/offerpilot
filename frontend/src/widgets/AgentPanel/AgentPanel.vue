@@ -26,15 +26,15 @@ const awaitingMemory = computed(() =>
 const statusLabel = computed(() => {
   switch (props.run?.status) {
     case 'RUNNING':
-      return awaitingMemory.value ? uiText("Waiting for memory confirmation") : uiText("Running #2")
+      return awaitingMemory.value ? uiText('Waiting for memory confirmation') : uiText('Running #2')
     case 'COMPLETED':
-      return uiText("Completed")
+      return uiText('Completed')
     case 'CANCELLED':
-      return uiText("Canceled")
+      return uiText('Canceled')
     case 'FAILED':
-      return uiText("Failed")
+      return uiText('Failed')
     default:
-      return uiText("Idle")
+      return uiText('Idle')
   }
 })
 </script>
@@ -42,7 +42,7 @@ const statusLabel = computed(() => {
 <template>
   <div class="surface flex h-full flex-col overflow-hidden rounded-[14px]">
     <header class="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-4">
-      <span class="text-sm font-semibold">{{ uiText("Execution details") }}</span>
+      <span class="text-sm font-semibold">{{ uiText('Execution details') }}</span>
       <span
         class="flex items-center gap-1.5 text-xs"
         :class="run?.status === 'FAILED' ? 'text-danger' : 'text-muted-foreground'"
@@ -69,7 +69,9 @@ const statusLabel = computed(() => {
             type="button"
             class="flex w-full items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
             @click="reasoningOpen = !reasoningOpen"
-          > {{ uiText("Reasoning summary") }} <span class="transition-transform" :class="{ 'rotate-90': reasoningOpen }">›</span>
+          >
+            {{ uiText('Reasoning summary') }}
+            <span class="transition-transform" :class="{ 'rotate-90': reasoningOpen }">›</span>
           </button>
           <p v-if="reasoningOpen" class="mt-2 text-xs leading-relaxed text-muted-foreground">
             {{ run.reasoning }}
@@ -87,7 +89,9 @@ const statusLabel = computed(() => {
         <CitationPanel :sources="run?.citations ?? []" />
 
         <section v-if="run && run.memoryFacts.length > 0">
-          <h3 class="mb-2 text-xs font-semibold text-muted-foreground">{{ uiText("Memories used") }}</h3>
+          <h3 class="mb-2 text-xs font-semibold text-muted-foreground">
+            {{ uiText('Memories used') }}
+          </h3>
           <ul class="space-y-1 text-xs text-muted-foreground">
             <li v-for="fact in run.memoryFacts" :key="fact.id">{{ fact.fact }}</li>
           </ul>
@@ -96,7 +100,9 @@ const statusLabel = computed(() => {
         <UsageBadge :usage="run?.usage ?? null" :model="run?.model ?? null" />
       </template>
 
-      <p v-else class="text-sm text-muted-foreground">{{ uiText("Send a message to see the agent's execution here.") }}</p>
+      <p v-else class="text-sm text-muted-foreground">
+        {{ uiText("Send a message to see the agent's execution here.") }}
+      </p>
     </div>
   </div>
 </template>

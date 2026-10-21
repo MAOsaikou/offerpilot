@@ -14,7 +14,8 @@ const local = computed(() => workspace.state.resumes.some((resume) => resume.id 
 </script>
 <template>
   <p v-if="route.query.piiWarning === '1'" class="helper-note" role="status">
-    {{ uiText(PII_WARNING) }} <RouterLink to="/settings/privacy">{{ uiText("Privacy settings") }}</RouterLink>
+    {{ uiText(PII_WARNING) }}
+    <RouterLink to="/settings/privacy">{{ uiText('Privacy settings') }}</RouterLink>
   </p>
   <LocalResumeEditor v-if="local" :key="'local-' + id" />
   <ServerResumeEditor v-else :id="id" :key="id">

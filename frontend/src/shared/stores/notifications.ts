@@ -21,7 +21,8 @@ export const useNotifications = defineStore('notifications', () => {
       }
     } catch (cause) {
       if (current === generation && revision === request)
-        error.value = () => (cause instanceof Error ? cause.message : uiText("Notifications unavailable"))
+        error.value = () =>
+          cause instanceof Error ? cause.message : uiText('Notifications unavailable')
     }
   }
   function setCount(count: number) {

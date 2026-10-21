@@ -40,9 +40,9 @@ const rows = computed(() => {
 const no = (id: string | null | undefined) => (id ? byId.value.get(id)?.versionNo : undefined)
 function origin(v: ResumeVersion) {
   const restored = v.parseMeta?.restoredFromNo
-  if (typeof restored === 'number') return uiText("Restored from version {0}", [restored])
+  if (typeof restored === 'number') return uiText('Restored from version {0}', [restored])
   const parent = no(v.parentVersionId)
-  return parent ? uiText("Based on version {0}", [parent]) : ''
+  return parent ? uiText('Based on version {0}', [parent]) : ''
 }
 
 const left = ref('')
@@ -80,51 +80,80 @@ function compareWith(v: ResumeVersion) {
       :style="{ paddingInlineStart: `${depth * 1.5}rem` }"
     >
       <div>
-        <h3> {{ uiText("Version {0}", [version.versionNo]) }} <span v-if="version.id === currentVersionId" class="tag">{{ uiText("Current") }}</span>
+        <h3>
+          {{ uiText('Version {0}', [version.versionNo]) }}
+          <span v-if="version.id === currentVersionId" class="tag">{{ uiText('Current') }}</span>
         </h3>
         <small
           >{{ new Date(version.createdAt).toLocaleString(language) }} ·
-          {{ resumeVersionSource[version.source] ?? uiText("Other source")
+          {{ resumeVersionSource[version.source] ?? uiText('Other source')
           }}<template v-if="origin(version)"> · {{ origin(version) }}</template></small
         >
       </div>
       <div class="resume-actions">
-        <button class="btn" type="button" @click="emit('view', version)">{{ uiText("View") }}</button>
+        <button class="btn" type="button" @click="emit('view', version)">
+          {{ uiText('View') }}
+        </button>
         <button
           v-if="version.id !== currentVersionId"
           class="btn"
           type="button"
           @click="compareWith(version)"
-        > {{ uiText("Compare with current") }} </button>
-        <button class="btn" type="button" :disabled="busy" @click="emit('load', version)"> {{ uiText("Load for editing") }} </button>
+        >
+          {{ uiText('Compare with current') }}
+        </button>
+        <button class="btn" type="button" :disabled="busy" @click="emit('load', version)">
+          {{ uiText('Load for editing') }}
+        </button>
         <button
           v-if="version.id !== currentVersionId"
           class="btn"
           type="button"
           :disabled="busy"
           @click="emit('restore', version)"
-        > {{ uiText("Restore this version") }} </button>
+        >
+          {{ uiText('Restore this version') }}
+        </button>
       </div>
     </li>
   </ol>
-  <section v-if="versions.length > 1" class="form-stack version-compare" :aria-label="uiText('Version comparison')">
-    <h2>{{ uiText("Version comparison") }}</h2>
+  <section
+    v-if="versions.length > 1"
+    class="form-stack version-compare"
+    :aria-label="uiText('Version comparison')"
+  >
+    <h2>{{ uiText('Version comparison') }}</h2>
     <div class="compare-pickers">
       <label
-        >{{ uiText("Older version") }} <select v-model="left">
-          <option v-for="v in versions" :key="v.id" :value="v.id">{{ uiText("Version {0}", [v.versionNo]) }}</option>
+        >{{ uiText('Older version') }}
+        <select v-model="left">
+          <option v-for="v in versions" :key="v.id" :value="v.id">
+            {{ uiText('Version {0}', [v.versionNo]) }}
+          </option>
         </select></label
       >
       <label
-        >{{ uiText("Newer version") }} <select v-model="right">
-          <option v-for="v in versions" :key="v.id" :value="v.id">{{ uiText("Version {0}", [v.versionNo]) }}</option>
+        >{{ uiText('Newer version') }}
+        <select v-model="right">
+          <option v-for="v in versions" :key="v.id" :value="v.id">
+            {{ uiText('Version {0}', [v.versionNo]) }}
+          </option>
         </select></label
       >
     </div>
-    <p v-if="left === right" class="subtle">{{ uiText("Select two different versions.") }}</p>
-    <p v-else-if="!changed" class="subtle">{{ uiText("These versions have identical content.") }}</p>
+    <p v-if="left === right" class="subtle">{{ uiText('Select two different versions.') }}</p>
+    <p v-else-if="!changed" class="subtle">
+      {{ uiText('These versions have identical content.') }}
+    </p>
     <template v-else>
-      <p class="subtle">{{ uiText("{0} changed lines (red: removed from older version; green: added in newer version).", [changed]) }}</p>
+      <p class="subtle">
+        {{
+          uiText(
+            '{0} changed lines (red: removed from older version; green: added in newer version).',
+            [changed],
+          )
+        }}
+      </p>
       <pre class="resume-text diff"><span
         v-for="(line, index) in diff"
         :key="index"

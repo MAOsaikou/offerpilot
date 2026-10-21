@@ -35,10 +35,12 @@ async function load() {
         servers.value = servers.value.map((server) =>
           server.provider === result.value.provider ? result.value : server,
         )
-      } else error.value = () => (uiText("Some tools could not be discovered. Check connections and retry."))
+      } else
+        error.value = () =>
+          uiText('Some tools could not be discovered. Check connections and retry.')
     }
   } catch {
-    if (!session.aborted) error.value = () => (uiText("Could not load tool list. Please retry."))
+    if (!session.aborted) error.value = () => uiText('Could not load tool list. Please retry.')
   } finally {
     loading.value = false
   }
@@ -52,21 +54,30 @@ function state(server: McpConnection, name: string) {
         (item.serverName === server.name || item.source === `mcp:${server.name}`),
     )
   return call
-    ? { RUNNING: uiText("Calling"), OK: uiText("Succeeded"), FAILED: uiText("Failed"), CANCELLED: uiText("Canceled") }[call.status]
-    : uiText("Idle")
+    ? {
+        RUNNING: uiText('Calling'),
+        OK: uiText('Succeeded'),
+        FAILED: uiText('Failed'),
+        CANCELLED: uiText('Canceled'),
+      }[call.status]
+    : uiText('Idle')
 }
 onMounted(load)
 </script>
 <template>
   <section class="space-y-2 text-xs" :aria-label="uiText('Available MCP tools')">
     <div class="flex flex-wrap items-center justify-between gap-2">
-      <h3 class="font-semibold text-muted-foreground">{{ uiText("Available MCP tools") }}</h3>
-      <RouterLink to="/integrations/mcp" class="text-primary">{{ uiText("Manage connections") }}</RouterLink>
+      <h3 class="font-semibold text-muted-foreground">{{ uiText('Available MCP tools') }}</h3>
+      <RouterLink to="/integrations/mcp" class="text-primary">{{
+        uiText('Manage connections')
+      }}</RouterLink>
     </div>
-    <p v-if="loading" role="status">{{ uiText("Loading… #2") }}</p>
+    <p v-if="loading" role="status">{{ uiText('Loading… #2') }}</p>
     <p v-if="error" role="alert">{{ error }}</p>
-    <button class="text-primary" :disabled="loading" @click="load">{{ uiText("Reload tool list") }}</button>
-    <p v-if="!loading && !error && !servers.length">{{ uiText("No connections") }}</p>
+    <button class="text-primary" :disabled="loading" @click="load">
+      {{ uiText('Reload tool list') }}
+    </button>
+    <p v-if="!loading && !error && !servers.length">{{ uiText('No connections') }}</p>
     <div
       v-for="server in servers"
       :key="server.provider"
@@ -84,7 +95,11 @@ onMounted(load)
         </li>
       </ul>
       <p v-else class="text-muted-foreground">
-        {{ server.status === 'READY' ? uiText("No available tools") : uiText("Configure, enable or refresh tools on the management page") }}
+        {{
+          server.status === 'READY'
+            ? uiText('No available tools')
+            : uiText('Configure, enable or refresh tools on the management page')
+        }}
       </p>
     </div>
   </section>

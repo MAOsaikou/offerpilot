@@ -101,7 +101,11 @@ it('requires preview and explicit confirmation before adopting and emits the sav
   mount({ onAdopted: adopted, onAdoptionBusy: busy })
   await flush()
   expect(host.textContent).toContain('≥100')
-  expect(host.textContent).toContain(new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date('2026-10-20T00:00:00Z')))
+  expect(host.textContent).toContain(
+    new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'medium' }).format(
+      new Date('2026-10-20T00:00:00Z'),
+    ),
+  )
   button('作为简历项目建议').click()
   await flush()
   expect(button('确认添加并保存新版本').disabled).toBe(true)

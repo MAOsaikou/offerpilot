@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { formatDateTime, formatDisplay, localizedText, translate as uiText } from '@/shared/utils/language'
+import {
+  formatDateTime,
+  formatDisplay,
+  localizedText,
+  translate as uiText,
+} from '@/shared/utils/language'
 
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -19,7 +24,11 @@ const report = ref<SkillGapReport>(),
   loading = ref(false),
   error = localizedText()
 let controller = new AbortController()
-const labels = computed(() => ({ POSSESSED: uiText("Demonstrated"), PARTIAL: uiText("Partial"), MISSING: uiText("Missing") }))
+const labels = computed(() => ({
+  POSSESSED: uiText('Demonstrated'),
+  PARTIAL: uiText('Partial'),
+  MISSING: uiText('Missing'),
+}))
 async function load() {
   const signal = controller.signal
   loading.value = true
@@ -41,7 +50,10 @@ async function load() {
   jobs.value = [...saved.values()]
   if (typeof route.query.jobId === 'string') target.value = 'job:' + route.query.jobId
   if (results.some((r) => r.status === 'rejected'))
-    error.value = () => (uiText("Some targets could not be loaded. Please retry. You can still analyze your saved target career."))
+    error.value = () =>
+      uiText(
+        'Some targets could not be loaded. Please retry. You can still analyze your saved target career.',
+      )
   loading.value = false
 }
 watch(
@@ -80,7 +92,9 @@ async function analyze() {
     )
     if (!signal.aborted && target.value === selected) report.value = result
   } catch (e) {
-    if (!signal.aborted) error.value = () => (e instanceof Error ? e.message : uiText("Analysis failed. Please retry."))
+    if (!signal.aborted)
+      error.value = () =>
+        e instanceof Error ? e.message : uiText('Analysis failed. Please retry.')
   } finally {
     if (!signal.aborted) busy.value = false
   }
@@ -88,12 +102,19 @@ async function analyze() {
 </script>
 <template>
   <section class="panel form-stack min-w-0" :aria-label="uiText('Skill gap analysis')">
-    <h2>{{ uiText("Target skill gaps") }}</h2>
-    <p>{{ uiText("Compare your latest saved usable resume, profile and GitHub evidence. Missing means the materials do not demonstrate the skill.") }}</p>
-    <p v-if="loading" role="status">{{ uiText("Loading targets…") }}</p>
+    <h2>{{ uiText('Target skill gaps') }}</h2>
+    <p>
+      {{
+        uiText(
+          'Compare your latest saved usable resume, profile and GitHub evidence. Missing means the materials do not demonstrate the skill.',
+        )
+      }}
+    </p>
+    <p v-if="loading" role="status">{{ uiText('Loading targets…') }}</p>
     <label class="field"
-      >{{ uiText("Target career or job") }} <select v-model="target" :disabled="busy || loading">
-        <option value="">{{ uiText("Use the target career saved in my profile") }}</option>
+      >{{ uiText('Target career or job') }}
+      <select v-model="target" :disabled="busy || loading">
+        <option value="">{{ uiText('Use the target career saved in my profile') }}</option>
         <optgroup :label="uiText('Career catalog')">
           <option v-for="item in occupations" :key="item.occupationId" :value="item.occupationId">
             {{ item.name }}
@@ -107,16 +128,20 @@ async function analyze() {
       </select>
     </label>
     <button class="btn primary" :disabled="busy || loading" @click="analyze">
-      {{ busy ? uiText("Analyzing…") : uiText("Analyze skill gaps") }}
+      {{ busy ? uiText('Analyzing…') : uiText('Analyze skill gaps') }}
     </button>
     <p v-if="error" role="alert">
       {{ error }}
-      <button class="btn" :disabled="busy || loading" @click="load">{{ uiText("Retry target list") }}</button>
+      <button class="btn" :disabled="busy || loading" @click="load">
+        {{ uiText('Retry target list') }}
+      </button>
     </p>
     <template v-if="report">
       <h3 class="break-words">{{ report.targetTitle }}</h3>
       <p class="helper-note">{{ report.notice }}</p>
-      <p v-if="!report.skills.length" role="status">{{ uiText("No identifiable target skills yet.") }}</p>
+      <p v-if="!report.skills.length" role="status">
+        {{ uiText('No identifiable target skills yet.') }}
+      </p>
       <article
         v-for="skill in report.skills"
         :key="skill.name"
@@ -126,7 +151,9 @@ async function analyze() {
         <ul :aria-label="uiText('Evidence for each item')">
           <li v-for="(source, index) in skill.sources" :key="index" class="break-words">
             {{ source.label }}：{{ source.excerpt
-            }}<span v-if="source.fetchedAt">{{ uiText("(Fetched {0})", [formatDateTime(source.fetchedAt)]) }}</span>
+            }}<span v-if="source.fetchedAt">{{
+              uiText('(Fetched {0})', [formatDateTime(source.fetchedAt)])
+            }}</span>
           </li>
         </ul>
       </article>

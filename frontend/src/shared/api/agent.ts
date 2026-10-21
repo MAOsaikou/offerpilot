@@ -88,7 +88,10 @@ async function consume(response: Response, options: AgentStreamOptions): Promise
       break
     }
   }
-  if (!completed) throw new Error(uiText("Connection ended before the response finished. Check the backend and retry."))
+  if (!completed)
+    throw new Error(
+      uiText('Connection ended before the response finished. Check the backend and retry.'),
+    )
   return runId
 }
 

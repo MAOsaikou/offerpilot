@@ -75,105 +75,199 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
 </script>
 <template>
   <section class="page-stack">
-    <p v-if="board.query.isPending.value" role="status">{{ uiText("Loading application board…") }}</p>
-    <div v-if="board.query.isError.value" class="error-banner" role="alert"> {{ uiText("Could not load saved jobs: {0}", [board.query.error.value?.message]) }} <button class="btn" @click="board.query.refetch()">{{ uiText("Retry loading") }}</button>
+    <p v-if="board.query.isPending.value" role="status">
+      {{ uiText('Loading application board…') }}
+    </p>
+    <div v-if="board.query.isError.value" class="error-banner" role="alert">
+      {{ uiText('Could not load saved jobs: {0}', [board.query.error.value?.message]) }}
+      <button class="btn" @click="board.query.refetch()">{{ uiText('Retry loading') }}</button>
     </div>
-    <p v-if="board.error.value" class="error-banner" role="alert"> {{ uiText("Could not save job: {0}. Please retry.", [board.error.value]) }} </p>
+    <p v-if="board.error.value" class="error-banner" role="alert">
+      {{ uiText('Could not save job: {0}. Please retry.', [board.error.value]) }}
+    </p>
     <PageHeading
       :title="uiText('Find your next opportunity')"
-      :description="uiText('Search jobs in natural language, combining local records with company website results.')"
-      ><RouterLink to="/board" class="btn">{{ uiText("Application board") }}</RouterLink></PageHeading
+      :description="
+        uiText(
+          'Search jobs in natural language, combining local records with company website results.',
+        )
+      "
+      ><RouterLink to="/board" class="btn">{{
+        uiText('Application board')
+      }}</RouterLink></PageHeading
     >
     <form class="panel form-stack" @submit.prevent="submit">
       <div class="job-filters">
         <label class="field"
-          >{{ uiText("Natural language or job keywords") }}<input
+          >{{ uiText('Natural language or job keywords')
+          }}<input
             v-model="query"
             required
             maxlength="100"
             :placeholder="uiText('For example: Java internships at Tencent in Shanghai')"
         /></label>
         <label class="field"
-          >{{ uiText("Company #2") }}<select v-model="site">
-            <option value="">{{ uiText("Major companies") }}</option>
+          >{{ uiText('Company #2')
+          }}<select v-model="site">
+            <option value="">{{ uiText('Major companies') }}</option>
             <option v-for="item in sites.data.value?.sites" :key="item.id" :value="item.id">
               {{ item.name }}
             </option>
           </select></label
         >
         <label class="field"
-          >{{ uiText("Recruitment type") }}<select v-model="nature">
-            <option value="campus">{{ uiText("Graduate") }}</option>
-            <option value="intern">{{ uiText("Internship") }}</option>
-            <option value="social">{{ uiText("Experienced hire") }}</option>
-            <option value="all">{{ uiText("All") }}</option>
+          >{{ uiText('Recruitment type')
+          }}<select v-model="nature">
+            <option value="campus">{{ uiText('Graduate') }}</option>
+            <option value="intern">{{ uiText('Internship') }}</option>
+            <option value="social">{{ uiText('Experienced hire') }}</option>
+            <option value="all">{{ uiText('All') }}</option>
           </select></label
         >
         <label class="field"
-          >{{ uiText("City") }}<input v-model="location" maxlength="60" :placeholder="uiText('Any city')"
+          >{{ uiText('City')
+          }}<input v-model="location" maxlength="60" :placeholder="uiText('Any city')"
         /></label>
       </div>
-      <p v-if="unsupported" class="error-banner" role="alert"> {{ uiText("This company does not list support for this recruitment type. Choose another type or company.") }} </p>
-      <p v-if="sites.isError.value" class="subtle"> {{ uiText("The company list is unavailable. You can still search major companies.") }}<button
-          type="button"
-          class="btn"
-          @click="sites.refetch()"
-        > {{ uiText("Retry company list") }} </button>
+      <p v-if="unsupported" class="error-banner" role="alert">
+        {{
+          uiText(
+            'This company does not list support for this recruitment type. Choose another type or company.',
+          )
+        }}
+      </p>
+      <p v-if="sites.isError.value" class="subtle">
+        {{ uiText('The company list is unavailable. You can still search major companies.')
+        }}<button type="button" class="btn" @click="sites.refetch()">
+          {{ uiText('Retry company list') }}
+        </button>
       </p>
       <div class="card-footer">
-        <span class="subtle">{{ uiText("Up to 30 results. Filtering support varies by company API.") }}</span
+        <span class="subtle">{{
+          uiText('Up to 30 results. Filtering support varies by company API.')
+        }}</span
         ><button
           class="btn primary"
           :disabled="!query.trim() || unsupported || search.isFetching.value"
         >
-          {{ search.isFetching.value ? uiText("Searching jobs…") : uiText("Search jobs") }}
+          {{ search.isFetching.value ? uiText('Searching jobs…') : uiText('Search jobs') }}
         </button>
       </div>
     </form>
     <JobImportPanel />
     <DailyJobFeed v-if="!criteria.query" />
     <div v-if="!criteria.query" class="panel empty-state">
-      <h2>{{ uiText("Describe the job you want") }}</h2>
-      <p> {{ uiText("Include a company, city, recruitment type and keywords. Explicit filters take priority. Match results with a parsed resume.") }} </p>
+      <h2>{{ uiText('Describe the job you want') }}</h2>
+      <p>
+        {{
+          uiText(
+            'Include a company, city, recruitment type and keywords. Explicit filters take priority. Match results with a parsed resume.',
+          )
+        }}
+      </p>
     </div>
-    <div v-else-if="search.isFetching.value" class="panel" role="status"> {{ uiText("Parsing and merging jobs. Available results will be shown if the time budget is exceeded…") }} </div>
+    <div v-else-if="search.isFetching.value" class="panel" role="status">
+      {{
+        uiText(
+          'Parsing and merging jobs. Available results will be shown if the time budget is exceeded…',
+        )
+      }}
+    </div>
     <div v-else-if="search.isError.value" class="error-banner" role="alert">
       <p>{{ formatDisplay(search.error.value?.message) }}</p>
-      <button class="btn" @click="search.refetch()">{{ uiText("Search again") }}</button>
+      <button class="btn" @click="search.refetch()">{{ uiText('Search again') }}</button>
     </div>
     <template v-else-if="search.data.value">
       <p v-if="search.data.value.meta.partial" class="helper-note" role="status">
-        {{ uiText("{0} You can search again later.", [search.data.value.meta.timedOut
-            ? uiText("Query timed out. Partial results are shown.")
-            : uiText("Some sources are unavailable. Available results have been returned.")]) }} </p>
-      <p v-if="search.data.value.criteria" class="subtle"> {{ uiText("Parsed: {0} · {1} · {2} · {3} ({4})", [search.data.value.criteria.company || search.data.value.criteria.site || uiText("Any company"), search.data.value.criteria.location || uiText("Any city"), { campus: uiText("Graduate"), intern: uiText("Internship"), social: uiText("Experienced hire"), all: uiText("All types") }[
-            search.data.value.criteria.nature
-          ] || uiText("All types"), search.data.value.criteria.query || uiText("Any keywords"), search.data.value.criteria.parser === 'FLASH' ? uiText("AI parsing") : uiText("Rule-based parsing")]) }} </p>
+        {{
+          uiText('{0} You can search again later.', [
+            search.data.value.meta.timedOut
+              ? uiText('Query timed out. Partial results are shown.')
+              : uiText('Some sources are unavailable. Available results have been returned.'),
+          ])
+        }}
+      </p>
+      <p v-if="search.data.value.criteria" class="subtle">
+        {{
+          uiText('Parsed: {0} · {1} · {2} · {3} ({4})', [
+            search.data.value.criteria.company ||
+              search.data.value.criteria.site ||
+              uiText('Any company'),
+            search.data.value.criteria.location || uiText('Any city'),
+            {
+              campus: uiText('Graduate'),
+              intern: uiText('Internship'),
+              social: uiText('Experienced hire'),
+              all: uiText('All types'),
+            }[search.data.value.criteria.nature] || uiText('All types'),
+            search.data.value.criteria.query || uiText('Any keywords'),
+            search.data.value.criteria.parser === 'FLASH'
+              ? uiText('AI parsing')
+              : uiText('Rule-based parsing'),
+          ])
+        }}
+      </p>
       <div class="section-heading">
-        <span>{{ uiText("{0} jobs returned", [search.data.value.items.length]) }}</span
+        <span>{{ uiText('{0} jobs returned', [search.data.value.items.length]) }}</span
         ><JobSourceBadge
           :source="search.data.value.meta.source"
           :snapshot-date="search.data.value.meta.snapshotDate"
           :cached="search.data.value.meta.cached"
         />
       </div>
-      <p v-if="search.data.value.meta.source === 'LOCAL_SNAPSHOT'" class="subtle"> {{ uiText("Manually curated sample snapshot, not live data. Check the company website for current openings.") }} </p>
-      <p class="subtle"> {{ uiText("Queried: {0} · Coverage: {1}", [new Date(search.data.value.fetchedAt).toLocaleString(language), search.data.value.meta.sites.map(name).join('、')]) }}
+      <p v-if="search.data.value.meta.source === 'LOCAL_SNAPSHOT'" class="subtle">
+        {{
+          uiText(
+            'Manually curated sample snapshot, not live data. Check the company website for current openings.',
+          )
+        }}
       </p>
-      <div v-if="search.data.value.meta.skipped.length" class="helper-note" role="status"> {{ uiText("Some companies returned no results: {0}. They are excluded here. Retry later.", [search.data.value.meta.skipped.map((s) => name(s.site)).join('、')]) }} </div>
+      <p class="subtle">
+        {{
+          uiText('Queried: {0} · Coverage: {1}', [
+            new Date(search.data.value.fetchedAt).toLocaleString(language),
+            search.data.value.meta.sites.map(name).join('、'),
+          ])
+        }}
+      </p>
+      <div v-if="search.data.value.meta.skipped.length" class="helper-note" role="status">
+        {{
+          uiText('Some companies returned no results: {0}. They are excluded here. Retry later.', [
+            search.data.value.meta.skipped.map((s) => name(s.site)).join('、'),
+          ])
+        }}
+      </div>
       <p v-if="search.data.value.meta.degradedSites.length" class="helper-note">
-        {{ uiText("{0} filtered keywords using the company-provided list, which may not include all jobs.", [search.data.value.meta.degradedSites.map(name).join('、')]) }} </p>
-      <p v-if="search.data.value.meta.truncated" class="helper-note"> {{ uiText("Results exceed the display limit. Narrow your keywords or choose a company.") }} </p>
+        {{
+          uiText(
+            '{0} filtered keywords using the company-provided list, which may not include all jobs.',
+            [search.data.value.meta.degradedSites.map(name).join('、')],
+          )
+        }}
+      </p>
+      <p v-if="search.data.value.meta.truncated" class="helper-note">
+        {{ uiText('Results exceed the display limit. Narrow your keywords or choose a company.') }}
+      </p>
       <div v-if="!search.data.value.items.length" class="panel empty-state">
-        <h2>{{ uiText("No matching jobs in this query") }}</h2>
-        <p>{{ uiText("Try shorter keywords, another company or another recruitment type. Empty results do not mean there are no open jobs.") }}</p>
+        <h2>{{ uiText('No matching jobs in this query') }}</h2>
+        <p>
+          {{
+            uiText(
+              'Try shorter keywords, another company or another recruitment type. Empty results do not mean there are no open jobs.',
+            )
+          }}
+        </p>
       </div>
       <div v-else class="card-grid">
         <article v-for="job in search.data.value.items" :key="job.id" class="panel job-card">
           <div class="section-heading">
             <span>{{ job.company }}</span
             ><span class="tag">{{
-              job.nature === 'campus' ? uiText("Graduate") : job.nature === 'intern' ? uiText("Internship") : uiText("Company recruitment")
+              job.nature === 'campus'
+                ? uiText('Graduate')
+                : job.nature === 'intern'
+                  ? uiText('Internship')
+                  : uiText('Company recruitment')
             }}</span>
           </div>
           <RouterLink :to="'/jobs/' + job.id"
@@ -188,24 +282,34 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
             {{
               job.retrievalSources?.includes('LOCAL_DB') &&
               job.retrievalSources?.includes('JOBS_MCP')
-                ? uiText("Local records + MCP")
+                ? uiText('Local records + MCP')
                 : job.retrievalSource === 'LOCAL_DB'
-                  ? uiText("Local records")
-                  : uiText("Job source")
+                  ? uiText('Local records')
+                  : uiText('Job source')
             }}
           </p>
           <p class="subtle">
-            {{ job.locations || uiText("Location not provided") }} · {{ job.category || uiText("Category not provided") }}
+            {{ job.locations || uiText('Location not provided') }} ·
+            {{ job.category || uiText('Category not provided') }}
           </p>
           <p class="subtle">
-            {{ job.source === 'LOCAL_SNAPSHOT' ? uiText("Snapshot date") : uiText("Company update time") }}：{{
-              job.source === 'LOCAL_SNAPSHOT' ? formatDate(job.snapshotDate) : (job.updatedAt && formatDate(job.updatedAt)) || uiText("Not provided #2")
+            {{
+              job.source === 'LOCAL_SNAPSHOT'
+                ? uiText('Snapshot date')
+                : uiText('Company update time')
+            }}：{{
+              job.source === 'LOCAL_SNAPSHOT'
+                ? formatDate(job.snapshotDate)
+                : (job.updatedAt && formatDate(job.updatedAt)) || uiText('Not provided #2')
             }}
           </p>
-          <p v-if="job.storedAt" class="subtle"> {{ uiText("Local sync: {0}", [new Date(job.storedAt).toLocaleString(language)]) }}
+          <p v-if="job.storedAt" class="subtle">
+            {{ uiText('Local sync: {0}', [new Date(job.storedAt).toLocaleString(language)]) }}
           </p>
           <div class="card-footer">
-            <RouterLink :to="'/jobs/' + job.id" class="btn">{{ uiText("View details and match") }}</RouterLink
+            <RouterLink :to="'/jobs/' + job.id" class="btn">{{
+              uiText('View details and match')
+            }}</RouterLink
             ><button
               class="btn"
               :disabled="
@@ -216,7 +320,7 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
               "
               @click="board.favorite(job.id)"
             >
-              {{ saved(job.id) ? uiText("Saved") : uiText("Save job") }}
+              {{ saved(job.id) ? uiText('Saved') : uiText('Save job') }}
             </button>
           </div>
         </article>

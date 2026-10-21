@@ -187,19 +187,27 @@ export const useWorkspace = defineStore('workspace', () => {
               localStorage.removeItem(LEGACY_KEY)
               raw = legacy
             } else {
-              storageError.value = () => uiText("Local data format is incompatible. A temporary workspace is open; original data is unchanged.")
+              storageError.value = () =>
+                uiText(
+                  'Local data format is incompatible. A temporary workspace is open; original data is unchanged.',
+                )
             }
           }
         }
         if (raw !== null) {
           const parsed: unknown = JSON.parse(raw)
           if (isWorkspace(parsed)) state.value = parsed
-          else storageError.value = () => uiText("Local data format is incompatible. A temporary workspace is open; original data is unchanged.")
+          else
+            storageError.value = () =>
+              uiText(
+                'Local data format is incompatible. A temporary workspace is open; original data is unchanged.',
+              )
         }
       } catch {
         stopPersistence?.()
         state.value = createWorkspace()
-        storageError.value = () => uiText("Could not read local data. Changes may not survive a refresh.")
+        storageError.value = () =>
+          uiText('Could not read local data. Changes may not survive a refresh.')
       }
 
       const blocked = Boolean(storageError.value)
@@ -212,7 +220,8 @@ export const useWorkspace = defineStore('workspace', () => {
             localStorage.setItem(key, JSON.stringify(value))
             storageError.value = ''
           } catch {
-            storageError.value = () => uiText("Browser storage is full or unavailable. Export important content.")
+            storageError.value = () =>
+              uiText('Browser storage is full or unavailable. Export important content.')
           }
         },
         { deep: true },

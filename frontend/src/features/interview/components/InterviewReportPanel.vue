@@ -24,7 +24,7 @@ const inProgress = computed(
 const failure = computed(
   () =>
     generationError.value ||
-    (task.value?.status === 'FAILED' ? task.value.error || uiText("Report generation failed") : ''),
+    (task.value?.status === 'FAILED' ? task.value.error || uiText('Report generation failed') : ''),
 )
 const report = useQuery({
   queryKey: computed(() => ['interview-report', props.sessionId]),
@@ -90,37 +90,54 @@ async function createPlan() {
 }
 </script>
 <template>
-  <section class="panel form-stack interview-report" :aria-label="uiText('Interview report and learning plan')">
-    <h2>{{ uiText("Interview report") }}</h2>
-    <p v-if="restoring" role="status">{{ uiText("Restoring report task…") }}</p>
+  <section
+    class="panel form-stack interview-report"
+    :aria-label="uiText('Interview report and learning plan')"
+  >
+    <h2>{{ uiText('Interview report') }}</h2>
+    <p v-if="restoring" role="status">{{ uiText('Restoring report task…') }}</p>
     <div v-else-if="restoreError" role="alert">
-      <p>{{ uiText("Could not load report task: {0}", [restoreError]) }}</p>
-      <button class="btn" @click="restore">{{ uiText("Reload task") }}</button>
+      <p>{{ uiText('Could not load report task: {0}', [restoreError]) }}</p>
+      <button class="btn" @click="restore">{{ uiText('Reload task') }}</button>
     </div>
     <div v-else-if="inProgress" role="status" aria-live="polite">
-      <h3>{{ uiText("Generating interview report") }}</h3>
+      <h3>{{ uiText('Generating interview report') }}</h3>
       <progress :aria-label="uiText('Interview report progress')" />
-      <p>{{ task?.stage || uiText("Submitting report task") }}</p>
-      <p class="helper-note">{{ uiText("You can leave this page. Generation continues in the background. The report will appear automatically and be saved to interview history.") }}</p>
+      <p>{{ task?.stage || uiText('Submitting report task') }}</p>
+      <p class="helper-note">
+        {{
+          uiText(
+            'You can leave this page. Generation continues in the background. The report will appear automatically and be saved to interview history.',
+          )
+        }}
+      </p>
     </div>
     <div v-else-if="failure" role="alert">
-      <h3>{{ uiText("Report generation failed") }}</h3>
+      <h3>{{ uiText('Report generation failed') }}</h3>
       <p>{{ failure }}</p>
-      <p class="helper-note">{{ uiText("Answers are saved. You can retry report generation.") }}</p>
-      <button v-if="canGenerate" class="btn primary" @click="generate">{{ uiText("Retry report generation") }}</button>
+      <p class="helper-note">{{ uiText('Answers are saved. You can retry report generation.') }}</p>
+      <button v-if="canGenerate" class="btn primary" @click="generate">
+        {{ uiText('Retry report generation') }}
+      </button>
     </div>
     <div v-else-if="task?.status === 'CANCELLED' && !hasReport" role="status">
-      <p>{{ uiText("Report generation was canceled. Answers are saved.") }}</p>
-      <button v-if="canGenerate" class="btn primary" @click="generate">{{ uiText("Regenerate report") }}</button>
+      <p>{{ uiText('Report generation was canceled. Answers are saved.') }}</p>
+      <button v-if="canGenerate" class="btn primary" @click="generate">
+        {{ uiText('Regenerate report') }}
+      </button>
     </div>
-    <p v-else-if="report.isPending.value" role="status">{{ uiText("Loading interview report…") }}</p>
+    <p v-else-if="report.isPending.value" role="status">
+      {{ uiText('Loading interview report…') }}
+    </p>
     <p v-else-if="report.isError.value" role="alert">
       {{ formatDisplay(report.error.value?.message) }}
-      <button class="btn" @click="report.refetch()">{{ uiText("Retry report") }}</button>
+      <button class="btn" @click="report.refetch()">{{ uiText('Retry report') }}</button>
     </p>
     <template v-else-if="report.data.value && (hasReport || !canGenerate)">
       <InterviewReportCard :payload="report.data.value" inline />
-      <p class="helper-note">{{ uiText("Your report is saved and available in interview history.") }}</p>
+      <p class="helper-note">
+        {{ uiText('Your report is saved and available in interview history.') }}
+      </p>
       <InterviewPlanUpdatePanel :key="sessionId" :report-id="sessionId" />
       <div class="report-actions">
         <button
@@ -128,20 +145,36 @@ async function createPlan() {
           :disabled="busy || !report.data.value.recommendedLearning.length"
           @click="createPlan"
         >
-          {{ busy ? uiText("Generating…") : planId ? uiText("Learning plan generated") : uiText("Generate a learning plan") }}
+          {{
+            busy
+              ? uiText('Generating…')
+              : planId
+                ? uiText('Learning plan generated')
+                : uiText('Generate a learning plan')
+          }}
         </button>
         <slot />
       </div>
-      <p class="helper-note"> {{ uiText("Save report gaps as a four-week learning plan with a link to this report. Repeated requests return the same plan.") }} </p>
-      <p v-if="!report.data.value.recommendedLearning.length" role="status"> {{ uiText("This report has no gaps that can become learning tasks.") }} </p>
-      <RouterLink v-if="planId" class="btn" :to="{ path: '/career', query: { plan: planId } }"
-        >{{ uiText("View learning plan") }}</RouterLink
-      >
+      <p class="helper-note">
+        {{
+          uiText(
+            'Save report gaps as a four-week learning plan with a link to this report. Repeated requests return the same plan.',
+          )
+        }}
+      </p>
+      <p v-if="!report.data.value.recommendedLearning.length" role="status">
+        {{ uiText('This report has no gaps that can become learning tasks.') }}
+      </p>
+      <RouterLink v-if="planId" class="btn" :to="{ path: '/career', query: { plan: planId } }">{{
+        uiText('View learning plan')
+      }}</RouterLink>
       <p v-if="error" role="alert">{{ error }}</p>
     </template>
     <div v-else>
-      <p>{{ uiText("The report has not been generated. Original answers are saved.") }}</p>
-      <button v-if="canGenerate" class="btn primary" @click="generate">{{ uiText("Generate interview report") }}</button>
+      <p>{{ uiText('The report has not been generated. Original answers are saved.') }}</p>
+      <button v-if="canGenerate" class="btn primary" @click="generate">
+        {{ uiText('Generate interview report') }}
+      </button>
     </div>
   </section>
 </template>

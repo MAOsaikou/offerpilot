@@ -24,7 +24,13 @@ async function move(from: number, to: number, action: 'up' | 'down' | 'drag') {
   if (updated === entries.value) return
   cancelDrag()
   entries.value = updated
-  announcement.value = () => (uiText("{0} item {1} moved to position {2} of {3}.", [props.title, from + 1, to + 1, updated.length]))
+  announcement.value = () =>
+    uiText('{0} item {1} moved to position {2} of {3}.', [
+      props.title,
+      from + 1,
+      to + 1,
+      updated.length,
+    ])
   await nextTick()
   const row = root.value?.querySelectorAll('fieldset')[to]
   const preferred = row?.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)
@@ -59,7 +65,13 @@ function drop(index: number, event: DragEvent) {
 </script>
 <template>
   <div ref="root" class="form-stack reorder-list">
-    <p v-if="entries.length > 1" :id="hintId" class="subtle"> {{ uiText("Drag the handle or use Move up and Move down to reorder. Saving creates a new version.") }} </p>
+    <p v-if="entries.length > 1" :id="hintId" class="subtle">
+      {{
+        uiText(
+          'Drag the handle or use Move up and Move down to reorder. Saving creates a new version.',
+        )
+      }}
+    </p>
     <fieldset
       v-for="(entry, index) in entries"
       :key="index"
@@ -71,7 +83,11 @@ function drop(index: number, event: DragEvent) {
       @drop="drop(index, $event)"
     >
       <legend>{{ title }} {{ formatDisplay(index + 1) }}</legend>
-      <div class="reorder-controls" role="group" :aria-label="uiText('Order of {0} item {1}', [title, index + 1])">
+      <div
+        class="reorder-controls"
+        role="group"
+        :aria-label="uiText('Order of {0} item {1}', [title, index + 1])"
+      >
         <button
           type="button"
           class="btn drag-handle"
@@ -83,7 +99,8 @@ function drop(index: number, event: DragEvent) {
           @dragstart="startDrag(index, $event)"
           @dragend="cancelDrag"
         >
-          <span aria-hidden="true">⠿</span> {{ uiText("Drag") }} </button>
+          <span aria-hidden="true">⠿</span> {{ uiText('Drag') }}
+        </button>
         <button
           type="button"
           class="btn"
@@ -91,7 +108,9 @@ function drop(index: number, event: DragEvent) {
           :disabled="disabled || index === 0"
           :aria-label="uiText('Move {0} item {1} up', [title, index + 1])"
           @click="move(index, index - 1, 'up')"
-        > {{ uiText("Move up") }} </button>
+        >
+          {{ uiText('Move up') }}
+        </button>
         <button
           type="button"
           class="btn"
@@ -99,7 +118,9 @@ function drop(index: number, event: DragEvent) {
           :disabled="disabled || index === entries.length - 1"
           :aria-label="uiText('Move {0} item {1} down', [title, index + 1])"
           @click="move(index, index + 1, 'down')"
-        > {{ uiText("Move down") }} </button>
+        >
+          {{ uiText('Move down') }}
+        </button>
       </div>
       <slot :entry="entry" :index="index" />
     </fieldset>

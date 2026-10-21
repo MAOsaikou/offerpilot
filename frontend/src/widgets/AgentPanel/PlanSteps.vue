@@ -14,11 +14,11 @@ defineProps<{
 }>()
 
 const labelOf = computed<Record<StepStatus, string>>(() => ({
-  PENDING: uiText("Pending"),
-  RUNNING: uiText("Running #2"),
-  DONE: uiText("Done"),
-  FAILED: uiText("Failed"),
-  SKIPPED: uiText("Skipped"),
+  PENDING: uiText('Pending'),
+  RUNNING: uiText('Running #2'),
+  DONE: uiText('Done'),
+  FAILED: uiText('Failed'),
+  SKIPPED: uiText('Skipped'),
 }))
 
 const dotOf: Record<StepStatus, string> = {
@@ -32,11 +32,15 @@ const dotOf: Record<StepStatus, string> = {
 
 <template>
   <section>
-    <h3 class="mb-2 text-xs font-semibold text-muted-foreground">{{ uiText("Plan") }}</h3>
+    <h3 class="mb-2 text-xs font-semibold text-muted-foreground">{{ uiText('Plan') }}</h3>
 
     <p v-if="goal" class="mb-3 text-sm leading-relaxed">{{ goal }}</p>
     <p v-else class="mb-3 text-sm text-muted-foreground">
-      {{ running ? uiText("Identifying the task…") : uiText("No execution plan was generated for this run") }}
+      {{
+        running
+          ? uiText('Identifying the task…')
+          : uiText('No execution plan was generated for this run')
+      }}
     </p>
 
     <ol class="space-y-2">
@@ -61,7 +65,13 @@ const dotOf: Record<StepStatus, string> = {
             {{ labelOf[step.status] }}
             <template v-if="step.summary"> · {{ step.summary }}</template>
             <template v-if="step.durationMs !== undefined">
-              · {{ formatNumber((step.durationMs / 1000), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) }}s
+              ·
+              {{
+                formatNumber(step.durationMs / 1000, {
+                  minimumFractionDigits: 1,
+                  maximumFractionDigits: 1,
+                })
+              }}s
             </template>
           </p>
         </div>

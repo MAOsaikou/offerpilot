@@ -41,12 +41,12 @@ const {
   remoteRunId,
 } = chat
 const modes = computed<{ value: AgentMode; label: string }[]>(() => [
-  { value: 'AUTO', label: uiText("AI assistant") },
-  { value: 'CAREER_DISCOVERY', label: uiText("Career discovery") },
-  { value: 'RESUME', label: uiText("Resume coach") },
-  { value: 'JOB', label: uiText("Job analysis") },
-  { value: 'INTERVIEWER', label: uiText("Interview practice") },
-  { value: 'COACH', label: uiText("Growth coach") },
+  { value: 'AUTO', label: uiText('AI assistant') },
+  { value: 'CAREER_DISCOVERY', label: uiText('Career discovery') },
+  { value: 'RESUME', label: uiText('Resume coach') },
+  { value: 'JOB', label: uiText('Job analysis') },
+  { value: 'INTERVIEWER', label: uiText('Interview practice') },
+  { value: 'COACH', label: uiText('Growth coach') },
 ])
 const displayedMessages = computed(() =>
   viewMessages.value.map((message) => {
@@ -189,8 +189,10 @@ async function onSend(content: string, images: ChatImage[] = []) {
       try {
         privacyWarning.value = (await checkPrivacyText(content)).warning ?? ''
       } catch {
-        privacyWarning.value =
-          () => (uiText("The privacy risk check is unavailable. Your masking preferences still apply when sending to the model. Check that masking is enabled in settings."))
+        privacyWarning.value = () =>
+          uiText(
+            'The privacy risk check is unavailable. Your masking preferences still apply when sending to the model. Check that masking is enabled in settings.',
+          )
       }
     }
     const submittedMode = mode.value
@@ -288,7 +290,7 @@ async function editLastQuestion() {
 async function adoptTarget(selection: CareerTargetSelection) {
   if (busy.value || missingConversation.value) return
   panelOpen.value = true
-  const content = uiText("Set “{0}” as my target career", [selection.name])
+  const content = uiText('Set “{0}” as my target career', [selection.name])
   lastAttempt.value = content
   // Reuse the chat approval flow: this starts a WRITE step, never PUTs the profile from the card.
   await chat.send(
@@ -304,7 +306,9 @@ async function adoptTarget(selection: CareerTargetSelection) {
 async function adoptGrowth(taskTitles: string[]) {
   if (busy.value || missingConversation.value || !taskTitles.length) return
   panelOpen.value = true
-  const content = uiText("Sync growth tasks: I confirm that I have completed “{0}”", [taskTitles.join('」、「')])
+  const content = uiText('Sync growth tasks: I confirm that I have completed “{0}”', [
+    taskTitles.join('」、「'),
+  ])
   lastAttempt.value = content
   await chat.send(
     content,
@@ -333,11 +337,13 @@ async function applyPatches(decision: PatchDecision, payload: unknown) {
     card.batchId !== decision.batchId ||
     !/^[A-Za-z0-9_-]{1,100}$/.test(decision.batchId)
   ) {
-    error.value = uiText("The resume, version or batch for these suggestions could not be identified. Reopen the rewrite suggestions from the resume.")
+    error.value = uiText(
+      'The resume, version or batch for these suggestions could not be identified. Reopen the rewrite suggestions from the resume.',
+    )
     return
   }
   panelOpen.value = true
-  const content = uiText("Accept the selected resume rewrite suggestions")
+  const content = uiText('Accept the selected resume rewrite suggestions')
   lastAttempt.value = content
   await chat.send(
     content,
@@ -401,18 +407,37 @@ async function remove(id: string) {
         <div ref="scrollArea" class="chat-scroll" aria-live="polite" aria-relevant="additions text">
           <div class="chat-column">
             <p v-if="privacyWarning" class="helper-note" role="status">
-              {{ privacyWarning }} <RouterLink to="/settings/privacy">{{ uiText("Privacy settings") }}</RouterLink>
+              {{ privacyWarning }}
+              <RouterLink to="/settings/privacy">{{ uiText('Privacy settings') }}</RouterLink>
             </p>
-            <p v-if="typeof route.query.jobId === 'string'" class="helper-note"> {{ uiText("The selected job and resume version are linked. Request matching or a targeted rewrite, then review each suggestion before accepting it. New job searches use the current request's conditions.") }} <RouterLink :to="'/jobs/' + encodeURIComponent(route.query.jobId)"
-                >{{ uiText("Back to job") }}</RouterLink
-              >
+            <p v-if="typeof route.query.jobId === 'string'" class="helper-note">
+              {{
+                uiText(
+                  "The selected job and resume version are linked. Request matching or a targeted rewrite, then review each suggestion before accepting it. New job searches use the current request's conditions.",
+                )
+              }}
+              <RouterLink :to="'/jobs/' + encodeURIComponent(route.query.jobId)">{{
+                uiText('Back to job')
+              }}</RouterLink>
             </p>
-            <p v-if="typeof route.query.applicationId === 'string'" class="helper-note"> {{ uiText("This application is linked. View progress or request a next-action update. Chat changes require your approval.") }} <RouterLink
+            <p v-if="typeof route.query.applicationId === 'string'" class="helper-note">
+              {{
+                uiText(
+                  'This application is linked. View progress or request a next-action update. Chat changes require your approval.',
+                )
+              }}
+              <RouterLink
                 :to="{ path: '/board', query: { application: route.query.applicationId } }"
-                >{{ uiText("Back to application") }}</RouterLink
+                >{{ uiText('Back to application') }}</RouterLink
               >
             </p>
-            <p v-if="route.query.optimizationReportId" class="helper-note"> {{ uiText("These rewrite suggestions are linked. Discussion reads saved results. A rewrite model runs only when you explicitly request regeneration. Select suggestions and approve them in chat, or confirm them on the resume page.") }} <RouterLink
+            <p v-if="route.query.optimizationReportId" class="helper-note">
+              {{
+                uiText(
+                  'These rewrite suggestions are linked. Discussion reads saved results. A rewrite model runs only when you explicitly request regeneration. Select suggestions and approve them in chat, or confirm them on the resume page.',
+                )
+              }}
+              <RouterLink
                 v-if="typeof route.query.resumeId === 'string'"
                 :to="{
                   path: '/resumes/' + encodeURIComponent(route.query.resumeId),
@@ -422,13 +447,19 @@ async function remove(id: string) {
                     optimizationReportId: route.query.optimizationReportId,
                   },
                 }"
-                >{{ uiText("View rewrite suggestions") }}</RouterLink
+                >{{ uiText('View rewrite suggestions') }}</RouterLink
               >
             </p>
-            <p v-if="route.query.diagnosisReportId" class="helper-note"> {{ uiText("The diagnosis for the selected resume version is linked. Send a message to discuss it with AI.") }} <RouterLink
+            <p v-if="route.query.diagnosisReportId" class="helper-note">
+              {{
+                uiText(
+                  'The diagnosis for the selected resume version is linked. Send a message to discuss it with AI.',
+                )
+              }}
+              <RouterLink
                 v-if="typeof route.query.resumeId === 'string'"
                 :to="'/resumes/' + encodeURIComponent(route.query.resumeId)"
-                >{{ uiText("Back to resume") }}</RouterLink
+                >{{ uiText('Back to resume') }}</RouterLink
               >
             </p>
             <button
@@ -436,49 +467,73 @@ async function remove(id: string) {
               class="btn text older"
               :disabled="loading"
               @click="older"
-            > {{ uiText("Load earlier messages") }} </button>
-            <p v-if="loading" class="subtle" role="status">{{ uiText("Loading history…") }}</p>
+            >
+              {{ uiText('Load earlier messages') }}
+            </button>
+            <p v-if="loading" class="subtle" role="status">{{ uiText('Loading history…') }}</p>
             <section
               v-if="replay.runId.value"
               class="panel form-stack mb-4"
               :aria-label="uiText('Run replay')"
               aria-live="polite"
             >
-              <h3>{{ uiText("Historical run replay") }}</h3>
-              <p v-if="replay.loading.value" role="status">{{ uiText("Loading events…") }}</p>
+              <h3>{{ uiText('Historical run replay') }}</h3>
+              <p v-if="replay.loading.value" role="status">{{ uiText('Loading events…') }}</p>
               <p v-if="replay.error.value" role="alert">{{ formatDisplay(replay.error.value) }}</p>
-              <p v-if="replay.partial.value">{{ uiText("This older run has no saved text or card events. Only recorded steps can be replayed.") }}</p>
-              <p>{{ uiText("{0} of {1} events", [replay.position.value, replay.events.value.length]) }}</p>
+              <p v-if="replay.partial.value">
+                {{
+                  uiText(
+                    'This older run has no saved text or card events. Only recorded steps can be replayed.',
+                  )
+                }}
+              </p>
+              <p>
+                {{
+                  uiText('{0} of {1} events', [replay.position.value, replay.events.value.length])
+                }}
+              </p>
               <div class="flex flex-wrap gap-2">
                 <button
                   class="btn"
                   :disabled="replay.loading.value || replay.complete.value"
                   @click="replay.play"
-                > {{ uiText("Play") }} </button>
-                <button class="btn" :disabled="!replay.playing.value" @click="replay.pause"> {{ uiText("Pause") }} </button>
+                >
+                  {{ uiText('Play') }}
+                </button>
+                <button class="btn" :disabled="!replay.playing.value" @click="replay.pause">
+                  {{ uiText('Pause') }}
+                </button>
                 <button
                   class="btn"
                   :disabled="replay.loading.value || replay.complete.value"
                   @click="replay.step"
-                > {{ uiText("Next event") }} </button>
-                <button class="btn" :disabled="replay.loading.value" @click="replay.seek(0)"> {{ uiText("Restart") }} </button>
+                >
+                  {{ uiText('Next event') }}
+                </button>
+                <button class="btn" :disabled="replay.loading.value" @click="replay.seek(0)">
+                  {{ uiText('Restart') }}
+                </button>
                 <button
                   v-if="replay.error.value"
                   class="btn"
                   @click="replay.open(replay.runId.value)"
-                > {{ uiText("Reload") }} </button>
+                >
+                  {{ uiText('Reload') }}
+                </button>
                 <label
-                  >{{ uiText("Speed") }} <select v-model="replay.speed.value">
+                  >{{ uiText('Speed') }}
+                  <select v-model="replay.speed.value">
                     <option :value="0.5">0.5×</option>
                     <option :value="1">1×</option>
                     <option :value="2">2×</option>
                     <option :value="4">4×</option>
                   </select></label
                 >
-                <button class="btn" @click="replay.close">{{ uiText("Exit replay") }}</button>
+                <button class="btn" @click="replay.close">{{ uiText('Exit replay') }}</button>
               </div>
               <label
-                >{{ uiText("Event progress") }} <input
+                >{{ uiText('Event progress') }}
+                <input
                   type="range"
                   min="0"
                   :max="replay.events.value.length"
@@ -519,9 +574,13 @@ async function remove(id: string) {
                     : undefined,
                 )
               "
-            > {{ uiText("Reload #2") }} </button>
+            >
+              {{ uiText('Reload #2') }}
+            </button>
           </div>
-          <div v-if="remoteRunId && !sending" class="helper-note"> {{ uiText("This conversation is still generating. Records update automatically.") }}<button class="btn text" @click="chat.stop()"> {{ uiText("Stop generation") }} </button>
+          <div v-if="remoteRunId && !sending" class="helper-note">
+            {{ uiText('This conversation is still generating. Records update automatically.')
+            }}<button class="btn text" @click="chat.stop()">{{ uiText('Stop generation') }}</button>
           </div>
           <button
             v-if="
@@ -531,12 +590,14 @@ async function remove(id: string) {
             "
             class="btn text"
             @click="editLastQuestion"
-          > {{ uiText("Edit previous question") }} </button>
-          <div v-if="matchingSelection" class="helper-note"> {{ uiText("This message will match the selected job and resume.") }}<button
-              class="btn text"
-              :disabled="busy"
-              @click="clearMatchAction"
-            > {{ uiText("Ask a general question instead") }} </button>
+          >
+            {{ uiText('Edit previous question') }}
+          </button>
+          <div v-if="matchingSelection" class="helper-note">
+            {{ uiText('This message will match the selected job and resume.')
+            }}<button class="btn text" :disabled="busy" @click="clearMatchAction">
+              {{ uiText('Ask a general question instead') }}
+            </button>
           </div>
           <Composer
             :key="current?.id || 'new'"
@@ -553,20 +614,36 @@ async function remove(id: string) {
             @stop="chat.stop"
           >
             <template #tools>
-              <select v-model="mode" class="tool-select" :disabled="busy" :aria-label="uiText('Chat mode')">
+              <select
+                v-model="mode"
+                class="tool-select"
+                :disabled="busy"
+                :aria-label="uiText('Chat mode')"
+              >
                 <option v-for="m in modes" :key="m.value" :value="m.value">{{ m.label }}</option>
               </select>
-              <select v-model="tier" class="tool-select" :disabled="busy" :aria-label="uiText('Model tier')">
-                <option value="FLASH" :title="uiText('DeepSeek Flash responds quickly')">{{ uiText("Fast") }}</option>
-                <option value="PRO" :title="uiText('DeepSeek Pro offers stronger reasoning')">{{ uiText("Deep") }}</option>
+              <select
+                v-model="tier"
+                class="tool-select"
+                :disabled="busy"
+                :aria-label="uiText('Model tier')"
+              >
+                <option value="FLASH" :title="uiText('DeepSeek Flash responds quickly')">
+                  {{ uiText('Fast') }}
+                </option>
+                <option value="PRO" :title="uiText('DeepSeek Pro offers stronger reasoning')">
+                  {{ uiText('Deep') }}
+                </option>
               </select>
             </template>
           </Composer>
           <p class="chat-footnote">
             {{
               mock
-                ? uiText("Mock scripted demo. Content is only visible on this page.")
-                : uiText("History is saved on the server. Context includes up to 10 recent completed exchanges. Images are sent to the model for the current exchange only.")
+                ? uiText('Mock scripted demo. Content is only visible on this page.')
+                : uiText(
+                    'History is saved on the server. Context includes up to 10 recent completed exchanges. Images are sent to the model for the current exchange only.',
+                  )
             }}
           </p>
         </div>

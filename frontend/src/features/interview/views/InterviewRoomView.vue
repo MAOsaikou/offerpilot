@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { formatDisplay, localizedText, translateLabel, translate as uiText } from '@/shared/utils/language'
+import {
+  formatDisplay,
+  localizedText,
+  translateLabel,
+  translate as uiText,
+} from '@/shared/utils/language'
 
 import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
 
@@ -148,8 +153,11 @@ const timerLabel = computed(() =>
   remainingSeconds.value === null
     ? ''
     : remainingSeconds.value === 0
-      ? uiText("Interview time is up. Save your answers and complete the review.")
-      : uiText("{0} min {1} sec remaining", [Math.floor(remainingSeconds.value / 60), remainingSeconds.value % 60]),
+      ? uiText('Interview time is up. Save your answers and complete the review.')
+      : uiText('{0} min {1} sec remaining', [
+          Math.floor(remainingSeconds.value / 60),
+          remainingSeconds.value % 60,
+        ]),
 )
 const voiceAutoPlay = ref(false)
 try {
@@ -377,7 +385,11 @@ async function submit() {
     syncDrafts()
   } catch (e) {
     if (requestRevision === revision)
-      error.value = () => (uiText("The interviewer could not ask a follow-up: {0}. Retry or skip to the next question.", [(e as Error).message]))
+      error.value = () =>
+        uiText(
+          'The interviewer could not ask a follow-up: {0}. Retry or skip to the next question.',
+          [(e as Error).message],
+        )
   } finally {
     if (requestRevision === revision) {
       askingFollowUp.value = false
@@ -420,7 +432,7 @@ async function saveCandidate(candidate: StarStoryCandidate) {
     )
     if (requestRevision !== revision) return
     candidate.alreadySaved = true
-    starMessage.value = () => (uiText("Saved to the STAR story library."))
+    starMessage.value = () => uiText('Saved to the STAR story library.')
     void cache.invalidateQueries({ queryKey: ['star-stories'] })
     await loadCandidates()
   } catch (e) {
@@ -457,17 +469,23 @@ async function restoreTask() {
       void cache.invalidateQueries({ queryKey: ['interview-report', saved.id] })
     }
   } catch (cause) {
-    if (version === revision) error.value = () => (cause instanceof Error ? cause.message : uiText("Could not restore interview"))
+    if (version === revision)
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Could not restore interview')
   }
 }
 </script>
 <template>
-  <div v-if="loading" class="panel empty-state" role="status">{{ uiText("Loading practice…") }}</div>
+  <div v-if="loading" class="panel empty-state" role="status">
+    {{ uiText('Loading practice…') }}
+  </div>
   <div v-else-if="loadError" class="panel empty-state">
-    <h2>{{ notFound ? uiText("Practice session not found") : uiText("Could not load practice") }}</h2>
+    <h2>
+      {{ notFound ? uiText('Practice session not found') : uiText('Could not load practice') }}
+    </h2>
     <p role="alert">{{ loadError }}</p>
-    <button v-if="!notFound" class="btn" @click="load">{{ uiText("Reload #2") }}</button>
-    <RouterLink to="/interviews" class="btn">{{ uiText("Back to practice list") }}</RouterLink>
+    <button v-if="!notFound" class="btn" @click="load">{{ uiText('Reload #2') }}</button>
+    <RouterLink to="/interviews" class="btn">{{ uiText('Back to practice list') }}</RouterLink>
   </div>
   <section v-else-if="session" class="page-stack">
     <BackgroundTaskStatus
@@ -483,10 +501,19 @@ async function restoreTask() {
       @completed="restoreTask"
     />
     <PageHeading
-      :title="session.completed ? uiText('Build experience through practice') : session.role + uiText('· Interview practice')"
-      :description="uiText('{0} · {1} questions, with optional follow-ups', [translateLabel(session.kind), session.answers.length])"
+      :title="
+        session.completed
+          ? uiText('Build experience through practice')
+          : session.role + uiText('· Interview practice')
+      "
+      :description="
+        uiText('{0} · {1} questions, with optional follow-ups', [
+          translateLabel(session.kind),
+          session.answers.length,
+        ])
+      "
     >
-      <RouterLink to="/interviews" class="btn">{{ uiText("Back to practice list") }}</RouterLink>
+      <RouterLink to="/interviews" class="btn">{{ uiText('Back to practice list') }}</RouterLink>
       <button
         v-if="!session.completed"
         class="btn"
@@ -494,17 +521,26 @@ async function restoreTask() {
         :aria-busy="exportBusy"
         @click="downloadRecap"
       >
-        {{ exportBusy ? uiText("Exporting…") : uiText("Export review") }}
+        {{ exportBusy ? uiText('Exporting…') : uiText('Export review') }}
       </button>
     </PageHeading>
     <InterviewJobContext :job-id="session.jobId" :fallback-title="session.role" />
     <p v-if="exportError" role="alert">{{ exportError }}</p>
-    <p v-if="error" role="alert">{{ uiText("{0} · Answers are retained. Please retry saving.", [error]) }}</p>
+    <p v-if="error" role="alert">
+      {{ uiText('{0} · Answers are retained. Please retry saving.', [error]) }}
+    </p>
     <section v-if="session.generationSource === 'pending'" class="panel form-stack">
-      <h2>{{ uiText("Prepare your interview questions") }}</h2>
-      <p> {{ uiText("Generate {0} questions based on the job, industry and resume. Generation continues after you leave; return to restore it.", [session.answers.length]) }} </p>
+      <h2>{{ uiText('Prepare your interview questions') }}</h2>
+      <p>
+        {{
+          uiText(
+            'Generate {0} questions based on the job, industry and resume. Generation continues after you leave; return to restore it.',
+            [session.answers.length],
+          )
+        }}
+      </p>
       <button class="btn primary" :disabled="generating" @click="generateQuestions">
-        {{ generating ? uiText("Generating questions…") : uiText("Generate interview questions") }}
+        {{ generating ? uiText('Generating questions…') : uiText('Generate interview questions') }}
       </button>
     </section>
     <template v-else-if="!session.completed">
@@ -514,7 +550,9 @@ async function restoreTask() {
         class="btn"
         :disabled="busy || scoring || askingFollowUp"
         @click="finish"
-      > {{ uiText("Save and end interview") }} </button>
+      >
+        {{ uiText('Save and end interview') }}
+      </button>
       <section class="panel interview-stage">
         <progress
           :value="session.questionIndex + 1"
@@ -529,22 +567,35 @@ async function restoreTask() {
             difficultyLabels[current.difficulty]
           }}</span>
           <span class="tag">{{
-            current?.questionSource === 'model' ? uiText("Model-generated") : uiText("Rule-based questions · Model unavailable")
+            current?.questionSource === 'model'
+              ? uiText('Model-generated')
+              : uiText('Rule-based questions · Model unavailable')
           }}</span>
-          <span role="timer"
-            >{{ uiText("This question: {0} min {1} sec", [Math.floor(questionSeconds / 60), questionSeconds % 60]) }}</span
-          >
+          <span role="timer">{{
+            uiText('This question: {0} min {1} sec', [
+              Math.floor(questionSeconds / 60),
+              questionSeconds % 60,
+            ])
+          }}</span>
         </div>
-        <span class="tag"
-          >{{ uiText("Question {0} of {1} #2", [session.questionIndex + 1, session.answers.length]) }}</span
-        >
+        <span class="tag">{{
+          uiText('Question {0} of {1} #2', [session.questionIndex + 1, session.answers.length])
+        }}</span>
         <div class="interview-avatar"><AppIcon name="interviews" :size="38" /></div>
         <h2>{{ current?.questionText }}</h2>
-        <p class="subtle">{{ uiText("You do not need a perfect answer. Start by explaining your real experience clearly.") }}</p>
+        <p class="subtle">
+          {{
+            uiText(
+              'You do not need a perfect answer. Start by explaining your real experience clearly.',
+            )
+          }}
+        </p>
         <div v-if="hasFollowUp" class="follow-up-bubble" aria-live="polite">
-          <span class="tag"
-            >{{ uiText("Interviewer follow-up {0}", [current?.followUpSource === 'rule' ? uiText("· Rule-based") : '']) }}</span
-          >
+          <span class="tag">{{
+            uiText('Interviewer follow-up {0}', [
+              current?.followUpSource === 'rule' ? uiText('· Rule-based') : '',
+            ])
+          }}</span>
           <p>{{ current?.followUpQuestion }}</p>
           <button
             v-if="synthesisSupported"
@@ -552,9 +603,13 @@ async function restoreTask() {
             class="btn text"
             :disabled="busy || scoring || askingFollowUp"
             @click="speech.speak(current?.followUpQuestion ?? '')"
-          > {{ uiText("Read follow-up aloud") }} </button>
+          >
+            {{ uiText('Read follow-up aloud') }}
+          </button>
         </div>
-        <p v-else-if="askingFollowUp" class="subtle" role="status"> {{ uiText("The interviewer is preparing a follow-up based on your answer…") }} </p>
+        <p v-else-if="askingFollowUp" class="subtle" role="status">
+          {{ uiText('The interviewer is preparing a follow-up based on your answer…') }}
+        </p>
         <div v-if="synthesisSupported" class="voice-controls">
           <button
             type="button"
@@ -562,17 +617,23 @@ async function restoreTask() {
             :disabled="busy || scoring || askingFollowUp"
             @click="speaking ? speech.stopSpeaking() : speech.speak(current?.questionText ?? '')"
           >
-            {{ speaking ? uiText("Stop reading") : uiText("Read question aloud") }}
+            {{ speaking ? uiText('Stop reading') : uiText('Read question aloud') }}
           </button>
           <label class="voice-preference"
             ><input
               v-model="voiceAutoPlay"
               type="checkbox"
               :disabled="busy || scoring || askingFollowUp"
-            />{{ uiText("Read aloud automatically") }}</label
+            />{{ uiText('Read aloud automatically') }}</label
           >
           <span class="tag" role="status">{{
-            askingFollowUp ? uiText("Considering a follow-up") : busy ? uiText("Saving") : speaking ? uiText("Asking a question") : uiText("Waiting for an answer")
+            askingFollowUp
+              ? uiText('Considering a follow-up')
+              : busy
+                ? uiText('Saving')
+                : speaking
+                  ? uiText('Asking a question')
+                  : uiText('Waiting for an answer')
           }}</span>
         </div>
       </section>
@@ -589,22 +650,29 @@ async function restoreTask() {
             :disabled="busy || finishing || !canListen || answer.length >= 12000"
             @click="speech.toggleListening"
           >
-            {{ finishing ? uiText("Finishing dictation…") : listenRequested ? uiText("Stop dictation") : uiText("Start dictation") }}
+            {{
+              finishing
+                ? uiText('Finishing dictation…')
+                : listenRequested
+                  ? uiText('Stop dictation')
+                  : uiText('Start dictation')
+            }}
           </button>
           <span class="subtle" role="status" aria-live="polite">{{
             finishing
-              ? uiText("Microphone stopped. Finalizing the last sentence…")
+              ? uiText('Microphone stopped. Finalizing the last sentence…')
               : speaking && listenRequested
-                ? uiText("Resume listening after reading")
+                ? uiText('Resume listening after reading')
                 : listenRequested && !listening
-                  ? uiText("Starting microphone…")
+                  ? uiText('Starting microphone…')
                   : listening
-                    ? uiText("The microphone is listening. Stop dictation to edit your answer.")
-                    : uiText("Microphone is off. Edit your answer after dictation, then save.")
+                    ? uiText('The microphone is listening. Stop dictation to edit your answer.')
+                    : uiText('Microphone is off. Edit your answer after dictation, then save.')
           }}</span>
         </div>
         <label class="field"
-          >{{ uiText("Your answer") }}<textarea
+          >{{ uiText('Your answer')
+          }}<textarea
             v-model="answer"
             rows="6"
             required
@@ -614,60 +682,92 @@ async function restoreTask() {
           />
         </label>
         <label v-if="hasFollowUp" class="field"
-          >{{ uiText("Answer the follow-up") }}<textarea
+          >{{ uiText('Answer the follow-up')
+          }}<textarea
             v-model="followUpDraft"
             rows="4"
             maxlength="12000"
             :disabled="busy || scoring || askingFollowUp"
-            :placeholder="uiText('Add details for the follow-up, or leave it blank and continue to the next question.')"
+            :placeholder="
+              uiText(
+                'Add details for the follow-up, or leave it blank and continue to the next question.',
+              )
+            "
           />
         </label>
         <p v-if="interimText" class="subtle speech-subtitle" role="status" aria-live="polite">
           {{ interimText }}
         </p>
         <p v-if="unsupportedReason" class="helper-note">{{ unsupportedReason }}</p>
-        <p v-if="recognitionSupported" class="helper-note"> {{ uiText("Speech recognition is provided by your browser and may use the browser vendor's online services. OfferPilot does not receive or store audio; saving submits answer text only.") }} </p>
+        <p v-if="recognitionSupported" class="helper-note">
+          {{
+            uiText(
+              "Speech recognition is provided by your browser and may use the browser vendor's online services. OfferPilot does not receive or store audio; saving submits answer text only.",
+            )
+          }}
+        </p>
         <p v-if="speechError" class="helper-note" role="status">{{ speechError }}</p>
-        <p v-if="answer.length >= 12000" class="helper-note">{{ uiText("Your answer has reached the length limit. Edit it to continue.") }}</p>
+        <p v-if="answer.length >= 12000" class="helper-note">
+          {{ uiText('Your answer has reached the length limit. Edit it to continue.') }}
+        </p>
         <div class="card-footer">
-          <span class="subtle" role="status"
-            >{{ uiText("{0} characters · {1}", [[...answer].length, busy ? uiText("Saving…") : dirty ? uiText("Draft not saved") : uiText("Saved to server")]) }}</span
-          >
-          <button type="button" class="btn" :disabled="busy || !dirty" @click="persist()"> {{ uiText("Save draft") }} </button>
+          <span class="subtle" role="status">{{
+            uiText('{0} characters · {1}', [
+              [...answer].length,
+              busy
+                ? uiText('Saving…')
+                : dirty
+                  ? uiText('Draft not saved')
+                  : uiText('Saved to server'),
+            ])
+          }}</span>
+          <button type="button" class="btn" :disabled="busy || !dirty" @click="persist()">
+            {{ uiText('Save draft') }}
+          </button>
           <button
             type="button"
             class="btn"
             :disabled="busy || scoring || session.questionIndex === 0"
             @click="persist(session.questionIndex - 1)"
-          > {{ uiText("Previous question") }} </button>
+          >
+            {{ uiText('Previous question') }}
+          </button>
           <button
             v-if="!hasFollowUp && !redesigned"
             type="button"
             class="btn"
             :disabled="busy || !answer.trim()"
             @click="advance"
-          > {{ uiText("Skip follow-up") }} </button>
+          >
+            {{ uiText('Skip follow-up') }}
+          </button>
           <button
             v-if="redesigned"
             type="button"
             class="btn"
             :disabled="busy || scoring"
             @click="advance"
-          > {{ uiText("Skip question") }} </button>
+          >
+            {{ uiText('Skip question') }}
+          </button>
           <button
             v-if="redesigned"
             type="button"
             class="btn"
             :disabled="busy || scoring"
             @click="finish"
-          > {{ uiText("Finish and generate report") }} </button>
+          >
+            {{ uiText('Finish and generate report') }}
+          </button>
           <button
             v-if="redesigned && !hasFollowUp"
             type="button"
             class="btn"
             :disabled="busy || scoring || !answer.trim()"
             @click="askFollowUp"
-          > {{ uiText("Ask for a follow-up") }} </button>
+          >
+            {{ uiText('Ask for a follow-up') }}
+          </button>
           <button
             class="btn primary"
             :disabled="busy || scoring || !answer.trim()"
@@ -676,25 +776,31 @@ async function restoreTask() {
             {{
               redesigned
                 ? scoring
-                  ? uiText("Evaluating…")
+                  ? uiText('Evaluating…')
                   : session.options?.feedbackMode === 'END'
-                    ? uiText("Save and next question")
+                    ? uiText('Save and next question')
                     : revealed && !dirty
-                      ? uiText("Next question")
+                      ? uiText('Next question')
                       : current?.evaluation
-                        ? uiText("Re-evaluate")
-                        : uiText("Submit and view feedback")
+                        ? uiText('Re-evaluate')
+                        : uiText('Submit and view feedback')
                 : !hasFollowUp
                   ? askingFollowUp
-                    ? uiText("Interviewer is thinking…")
-                    : uiText("Submit answer")
+                    ? uiText('Interviewer is thinking…')
+                    : uiText('Submit answer')
                   : session.questionIndex === session.answers.length - 1
-                    ? uiText("Finish and review")
-                    : uiText("Save and next question")
+                    ? uiText('Finish and review')
+                    : uiText('Save and next question')
             }}
           </button>
         </div>
-        <p class="helper-note">{{ uiText("Drafts are saved to the server when you save, change questions or return to the list. Save before refreshing.") }}</p>
+        <p class="helper-note">
+          {{
+            uiText(
+              'Drafts are saved to the server when you save, change questions or return to the list. Save before refreshing.',
+            )
+          }}
+        </p>
       </form>
     </template>
     <template v-else>
@@ -705,33 +811,54 @@ async function restoreTask() {
         :auto-generate="reportRequested"
       >
         <button class="btn" :disabled="exportBusy" :aria-busy="exportBusy" @click="downloadRecap">
-          {{ exportBusy ? uiText("Exporting…") : uiText("Export review") }}
+          {{ exportBusy ? uiText('Exporting…') : uiText('Export review') }}
         </button>
       </InterviewReportPanel>
-      <div class="success-banner"> {{ uiText("This {0}-question session has ended. Original answers and feedback are saved and can be exported. Unanswered questions receive no fabricated model scores.", [session.answers.length]) }} </div>
+      <div class="success-banner">
+        {{
+          uiText(
+            'This {0}-question session has ended. Original answers and feedback are saved and can be exported. Unanswered questions receive no fabricated model scores.',
+            [session.answers.length],
+          )
+        }}
+      </div>
       <div class="split-content">
         <section class="panel">
           <article v-for="item in session.answers" :key="item.questionIndex" class="answer-card">
             <h3>{{ item.questionIndex + 1 }}. {{ item.questionText }}</h3>
-            <p class="prose-content">{{ item.answerText || uiText("Unanswered") }}</p>
+            <p class="prose-content">{{ item.answerText || uiText('Unanswered') }}</p>
             <template v-if="item.followUpQuestion">
-              <p class="subtle">{{ uiText("Follow-up: {0}", [item.followUpQuestion]) }}</p>
-              <p class="prose-content">{{ item.followUpAnswer || uiText("Follow-up unanswered") }}</p>
+              <p class="subtle">{{ uiText('Follow-up: {0}', [item.followUpQuestion]) }}</p>
+              <p class="prose-content">
+                {{ item.followUpAnswer || uiText('Follow-up unanswered') }}
+              </p>
             </template>
           </article>
         </section>
         <aside class="panel form-stack" style="align-self: start">
-          <h2>{{ uiText("STAR story library") }}</h2>
-          <p class="subtle"> {{ uiText("Save answers with sufficient STAR details for future practice. Saving requires your confirmation; nothing is added automatically.") }} </p>
+          <h2>{{ uiText('STAR story library') }}</h2>
+          <p class="subtle">
+            {{
+              uiText(
+                'Save answers with sufficient STAR details for future practice. Saving requires your confirmation; nothing is added automatically.',
+              )
+            }}
+          </p>
           <p v-if="starMessage" class="success-banner" role="status">{{ starMessage }}</p>
-          <p v-if="starLoading" role="status">{{ uiText("Loading STAR candidates…") }}</p>
+          <p v-if="starLoading" role="status">{{ uiText('Loading STAR candidates…') }}</p>
           <div v-else-if="starError" role="alert">
             <p>{{ starError }}</p>
-            <button class="btn" :disabled="starBusy" @click="loadCandidates">{{ uiText("Reload candidates") }}</button>
+            <button class="btn" :disabled="starBusy" @click="loadCandidates">
+              {{ uiText('Reload candidates') }}
+            </button>
           </div>
-          <div v-else-if="!starCandidates.length" class="helper-note"> {{ uiText("No candidates in this practice have at least 3 STAR elements.") }} </div>
+          <div v-else-if="!starCandidates.length" class="helper-note">
+            {{ uiText('No candidates in this practice have at least 3 STAR elements.') }}
+          </div>
           <article v-for="item in starCandidates" :key="item.questionIndex" class="answer-card">
-            <h3>{{ uiText("Question {0} · {1}/4 STAR", [item.questionIndex + 1, item.starCount]) }}</h3>
+            <h3>
+              {{ uiText('Question {0} · {1}/4 STAR', [item.questionIndex + 1, item.starCount]) }}
+            </h3>
             <p class="subtle">{{ item.title }}</p>
             <p class="prose-content">
               {{ item.body.slice(0, 160) }}{{ formatDisplay(item.body.length > 160 ? '…' : '') }}
@@ -742,11 +869,21 @@ async function restoreTask() {
               :disabled="starBusy || starLoading || item.alreadySaved"
               @click="saveCandidate(item)"
             >
-              {{ item.alreadySaved ? uiText("Saved to library") : starBusy ? uiText("Saving… #2") : uiText("Save to story library") }}
+              {{
+                item.alreadySaved
+                  ? uiText('Saved to library')
+                  : starBusy
+                    ? uiText('Saving… #2')
+                    : uiText('Save to story library')
+              }}
             </button>
           </article>
-          <h2>{{ uiText("Three questions for your review") }}</h2>
-          <p class="subtle"> {{ uiText("① Did I answer the question directly?") }}<br />{{ uiText("② Did I explain my own contribution?") }}<br />{{ uiText("③ Were my results specific and verifiable?") }} </p>
+          <h2>{{ uiText('Three questions for your review') }}</h2>
+          <p class="subtle">
+            {{ uiText('① Did I answer the question directly?') }}<br />{{
+              uiText('② Did I explain my own contribution?')
+            }}<br />{{ uiText('③ Were my results specific and verifiable?') }}
+          </p>
           <RouterLink
             :to="{
               path: '/chat',
@@ -754,13 +891,16 @@ async function restoreTask() {
                 mode: 'INTERVIEWER',
                 interviewSessionId: session.id,
                 interviewAction: 'recallStarStories',
-                prompt: uiText('I am preparing for an interview for {0}. Please help me practice project experience questions.', [session.role]),
+                prompt: uiText(
+                  'I am preparing for an interview for {0}. Please help me practice project experience questions.',
+                  [session.role],
+                ),
               },
             }"
             class="btn primary"
-            >{{ uiText("Keep practicing with AI") }}</RouterLink
+            >{{ uiText('Keep practicing with AI') }}</RouterLink
           >
-          <RouterLink to="/career" class="btn">{{ uiText("Update growth actions") }}</RouterLink>
+          <RouterLink to="/career" class="btn">{{ uiText('Update growth actions') }}</RouterLink>
         </aside>
       </div>
     </template>

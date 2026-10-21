@@ -44,8 +44,13 @@ export function useSpeech(
   const unsupportedReason = computed(() =>
     [
       !recognitionSupported.value &&
-        uiText("This browser does not support speech input. Try Chrome / Edge or continue with text."),
-      !synthesisSupported.value && uiText("This browser does not support reading questions aloud. Read the question directly."),
+        uiText(
+          'This browser does not support speech input. Try Chrome / Edge or continue with text.',
+        ),
+      !synthesisSupported.value &&
+        uiText(
+          'This browser does not support reading questions aloud. Read the question directly.',
+        ),
     ]
       .filter(Boolean)
       .join(' '),
@@ -86,14 +91,19 @@ export function useSpeech(
   function recognitionError(code: string) {
     permissionDenied.value = code === 'not-allowed' || code === 'service-not-allowed'
     const messages: Record<string, string> = {
-      'not-allowed': uiText("Microphone permission denied. Allow it in browser settings and refresh, or continue with text."),
-      'service-not-allowed': uiText("Speech recognition is not allowed by the browser. You can continue with text."),
-      'audio-capture': uiText("No microphone found. Check your device or continue with text."),
-      'no-speech': uiText("No speech detected. Start dictation again or answer with text."),
-      network: uiText("Speech recognition connection failed. Retry or continue with text."),
-      aborted: uiText("Dictation interrupted. Restart or continue with text."),
+      'not-allowed': uiText(
+        'Microphone permission denied. Allow it in browser settings and refresh, or continue with text.',
+      ),
+      'service-not-allowed': uiText(
+        'Speech recognition is not allowed by the browser. You can continue with text.',
+      ),
+      'audio-capture': uiText('No microphone found. Check your device or continue with text.'),
+      'no-speech': uiText('No speech detected. Start dictation again or answer with text.'),
+      network: uiText('Speech recognition connection failed. Retry or continue with text.'),
+      aborted: uiText('Dictation interrupted. Restart or continue with text.'),
     }
-    error.value = () => (messages[code] ?? uiText("Speech recognition is unavailable. Retry or continue with text."))
+    error.value = () =>
+      messages[code] ?? uiText('Speech recognition is unavailable. Retry or continue with text.')
     listenRequested.value = false
     abortRecognition()
   }
@@ -258,13 +268,13 @@ export function useSpeech(
       message.onerror = () => {
         if (utterance !== message) return
         finish()
-        error.value = () => (uiText("Reading aloud is unavailable. Read the question directly."))
+        error.value = () => uiText('Reading aloud is unavailable. Read the question directly.')
       }
       speaking.value = true
       synthesis.speak(message)
     } catch {
       stopSpeaking()
-      error.value = () => (uiText("Reading aloud is unavailable. Read the question directly."))
+      error.value = () => uiText('Reading aloud is unavailable. Read the question directly.')
     }
   }
 

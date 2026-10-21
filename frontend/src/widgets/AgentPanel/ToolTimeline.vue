@@ -11,7 +11,7 @@ defineProps<{
 }>()
 const sourceLabel = (call: ToolCallView) =>
   ['local', 'LOCAL'].includes(call.source)
-    ? uiText("Local tool")
+    ? uiText('Local tool')
     : `MCP · ${call.serverName ?? call.source.replace(/^mcp:/, '')}`
 const jsonOpen = ref(new Set<string>())
 function toggleJson(id: string, event: Event) {
@@ -44,9 +44,13 @@ const fullJson = (call: ToolCallView) =>
 
 <template>
   <section>
-    <h3 class="mb-2 text-xs font-semibold text-muted-foreground">{{ uiText("Tool and specialist calls") }}</h3>
+    <h3 class="mb-2 text-xs font-semibold text-muted-foreground">
+      {{ uiText('Tool and specialist calls') }}
+    </h3>
 
-    <p v-if="toolCalls.length === 0" class="text-sm text-muted-foreground">{{ uiText("None yet") }}</p>
+    <p v-if="toolCalls.length === 0" class="text-sm text-muted-foreground">
+      {{ uiText('None yet') }}
+    </p>
 
     <ul v-else class="space-y-1.5">
       <li v-for="call in toolCalls" :key="call.id">
@@ -64,15 +68,20 @@ const fullJson = (call: ToolCallView) =>
               "
             />
             <span class="min-w-0 break-all font-mono" :title="call.name">{{ call.name }}</span>
-            <span v-if="call.name.startsWith('placeholder.')" class="shrink-0 text-muted-foreground"
-              >{{ uiText("Placeholder") }}</span
+            <span
+              v-if="call.name.startsWith('placeholder.')"
+              class="shrink-0 text-muted-foreground"
+              >{{ uiText('Placeholder') }}</span
             >
             <span class="text-muted-foreground">{{ sourceLabel(call) }}</span>
             <span class="sr-only">{{ call.status }}</span>
             <span class="ml-auto shrink-0 num text-muted-foreground">
               {{
                 call.durationMs !== undefined
-                  ? formatNumber((call.durationMs / 1000), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + 's'
+                  ? formatNumber(call.durationMs / 1000, {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    }) + 's'
                   : call.status === 'RUNNING'
                     ? '…'
                     : '—'
@@ -85,16 +94,20 @@ const fullJson = (call: ToolCallView) =>
           </p>
           <div class="mt-2 space-y-1.5 border-t border-border/60 pt-2">
             <p class="text-xs text-muted-foreground">
-              {{ call.access === 'READ' ? uiText("Read-only analysis") : uiText("Write action requiring approval") }}
+              {{
+                call.access === 'READ'
+                  ? uiText('Read-only analysis')
+                  : uiText('Write action requiring approval')
+              }}
               <template v-if="sourceLabel(call)"> · {{ sourceLabel(call) }}</template>
             </p>
             <p v-if="call.status !== 'RUNNING'" class="text-xs leading-relaxed">
               {{
                 call.status === 'OK'
-                  ? uiText("Executed. See the response and cards for results.")
+                  ? uiText('Executed. See the response and cards for results.')
                   : call.status === 'CANCELLED'
-                    ? uiText("Stopped. No further execution.")
-                    : uiText("Execution failed. See the response or error for details.")
+                    ? uiText('Stopped. No further execution.')
+                    : uiText('Execution failed. See the response or error for details.')
               }}
             </p>
             <dl class="space-y-1 text-xs">
@@ -104,12 +117,16 @@ const fullJson = (call: ToolCallView) =>
               </div>
             </dl>
             <details @toggle="toggleJson(call.id, $event)">
-              <summary class="cursor-pointer text-xs">{{ uiText("View full JSON (redacted)") }}</summary>
+              <summary class="cursor-pointer text-xs">
+                {{ uiText('View full JSON (redacted)') }}
+              </summary>
               <pre
                 v-if="jsonOpen.has(call.id)"
                 class="max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs"
                 >{{ fullJson(call) }}</pre>
-              <p v-if="call.truncated" class="text-xs text-muted-foreground"> {{ uiText("Summary or JSON exceeded the size limit and was truncated.") }} </p>
+              <p v-if="call.truncated" class="text-xs text-muted-foreground">
+                {{ uiText('Summary or JSON exceeded the size limit and was truncated.') }}
+              </p>
             </details>
           </div>
         </details>

@@ -53,7 +53,8 @@ async function cancelTask(id: string, kind: string, entity?: string) {
       await store.refresh()
     }
   } catch (cause) {
-    cancelError.value = () => (cause instanceof Error ? cause.message : uiText("Could not cancel. Please retry."))
+    cancelError.value = () =>
+      cause instanceof Error ? cause.message : uiText('Could not cancel. Please retry.')
   } finally {
     cancellingId.value = ''
   }
@@ -67,20 +68,30 @@ async function cancelTask(id: string, kind: string, entity?: string) {
   >
     <p v-if="store.notice" role="status" aria-live="polite">
       {{ store.notice }}
-      <button class="btn" :aria-label="uiText('Close task notifications')" @click="store.notice = ''">{{ uiText("Off") }}</button>
+      <button
+        class="btn"
+        :aria-label="uiText('Close task notifications')"
+        @click="store.notice = ''"
+      >
+        {{ uiText('Off') }}
+      </button>
     </p>
     <header class="generation-dock__head">
-      <strong>{{ compact ? uiText("Background tasks") : uiText("Background tasks · {0} active", [store.active.length]) }}</strong>
+      <strong>{{
+        compact
+          ? uiText('Background tasks')
+          : uiText('Background tasks · {0} active', [store.active.length])
+      }}</strong>
       <button type="button" class="btn" :aria-expanded="open" @click="open = !open">
-        {{ open ? uiText("Collapse") : uiText("Expand") }}
+        {{ open ? uiText('Collapse') : uiText('Expand') }}
       </button>
     </header>
     <template v-if="open">
       <p v-if="store.error || cancelError" class="generation-dock__error" role="alert">
         {{ cancelError || store.error }}
       </p>
-      <button class="btn" @click="store.refresh">{{ uiText("Refresh tasks") }}</button>
-      <p v-if="!store.tasks.length">{{ uiText("No background tasks") }}</p>
+      <button class="btn" @click="store.refresh">{{ uiText('Refresh tasks') }}</button>
+      <p v-if="!store.tasks.length">{{ uiText('No background tasks') }}</p>
       <ul class="generation-dock__list">
         <li v-for="task in store.tasks" :key="task.id">
           <div class="generation-dock__row">
@@ -90,9 +101,11 @@ async function cancelTask(id: string, kind: string, entity?: string) {
               class="btn"
               :disabled="cancellingId === task.id"
               @click="cancelTask(task.id, task.kind, task.entityId)"
-            > {{ uiText("Cancel") }} </button>
+            >
+              {{ uiText('Cancel') }}
+            </button>
           </div>
-          <p class="subtle">{{ task.error || task.stage || uiText("Running") }}</p>
+          <p class="subtle">{{ task.error || task.stage || uiText('Running') }}</p>
         </li>
       </ul>
     </template>

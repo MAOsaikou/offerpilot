@@ -21,9 +21,9 @@ const current = computed(() =>
   plan.value?.target === props.target && plan.value?.city === props.city ? plan.value : null,
 )
 const levels = computed<Record<string, string>>(() => ({
-  POSSESSED: uiText("Materials available"),
-  PARTIAL: uiText("Partial materials"),
-  MISSING: uiText("Missing materials"),
+  POSSESSED: uiText('Materials available'),
+  PARTIAL: uiText('Partial materials'),
+  MISSING: uiText('Missing materials'),
 }))
 let generation = 0
 async function load() {
@@ -36,7 +36,8 @@ async function load() {
     if (revision === generation) plan.value = value
   } catch (cause) {
     if (revision === generation)
-      error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load coordinated suggestions"))
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Could not load coordinated suggestions')
   } finally {
     if (revision === generation) loading.value = false
   }
@@ -53,7 +54,8 @@ async function decide(retry = false) {
     if (revision === generation) plan.value = value
   } catch (cause) {
     if (revision === generation)
-      error.value = () => (cause instanceof Error ? cause.message : uiText("Operation failed. Please reload."))
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Operation failed. Please reload.')
   } finally {
     if (revision === generation) busy.value = false
   }
@@ -89,38 +91,64 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <section v-if="target" class="panel form-stack" :aria-label="uiText('Career goal coordination')">
-    <h2>{{ uiText("Next steps for “{0}”", [target]) }}</h2>
-    <p v-if="!online" role="status">{{ uiText("You are offline. Reconnect to load and confirm suggestions.") }}</p>
-    <p v-if="loading" role="status">{{ uiText("Loading coordinated suggestions…") }}</p>
+    <h2>{{ uiText('Next steps for “{0}”', [target]) }}</h2>
+    <p v-if="!online" role="status">
+      {{ uiText('You are offline. Reconnect to load and confirm suggestions.') }}
+    </p>
+    <p v-if="loading" role="status">{{ uiText('Loading coordinated suggestions…') }}</p>
     <div v-if="error" role="alert">
-      {{ error }} <button class="btn" :disabled="loading || !online" @click="load">{{ uiText("Reload") }}</button>
+      {{ error }}
+      <button class="btn" :disabled="loading || !online" @click="load">
+        {{ uiText('Reload') }}
+      </button>
     </div>
-    <p v-if="!current && !loading && !error"> {{ uiText("Saving a goal automatically searches jobs, analyzes skill gaps and prepares learning suggestions. Continue with an existing goal below.") }} </p>
-    <p v-if="current && ['PENDING', 'RUNNING'].includes(current.status)" role="status"> {{ uiText("Searching jobs and preparing suggestions for your saved goal. You will receive a notification when ready.") }} </p>
+    <p v-if="!current && !loading && !error">
+      {{
+        uiText(
+          'Saving a goal automatically searches jobs, analyzes skill gaps and prepares learning suggestions. Continue with an existing goal below.',
+        )
+      }}
+    </p>
+    <p v-if="current && ['PENDING', 'RUNNING'].includes(current.status)" role="status">
+      {{
+        uiText(
+          'Searching jobs and preparing suggestions for your saved goal. You will receive a notification when ready.',
+        )
+      }}
+    </p>
     <template v-if="current?.result">
       <p v-if="current.notice" role="status">{{ current.notice }}</p>
-      <h3>{{ uiText("Job search results") }}</h3>
-      <p v-if="!current.result.jobs?.items.length">{{ uiText("No jobs to display. Adjust keywords to continue searching.") }}</p>
-      <p v-if="current.result.jobs?.meta?.partial">{{ uiText("These job search results are incomplete. Retry on the jobs page.") }}</p>
+      <h3>{{ uiText('Job search results') }}</h3>
+      <p v-if="!current.result.jobs?.items.length">
+        {{ uiText('No jobs to display. Adjust keywords to continue searching.') }}
+      </p>
+      <p v-if="current.result.jobs?.meta?.partial">
+        {{ uiText('These job search results are incomplete. Retry on the jobs page.') }}
+      </p>
       <ul v-if="current.result.jobs?.items.length">
         <li v-for="job in current.result.jobs.items.slice(0, 5)" :key="job.id">
           <RouterLink :to="'/jobs/' + encodeURIComponent(job.id)"
             >{{ job.title }} · {{ job.company }}</RouterLink
-          ><span v-if="job.source === 'LOCAL_SNAPSHOT'">{{ uiText("(Offline historical snapshot)") }}</span>
+          ><span v-if="job.source === 'LOCAL_SNAPSHOT'">{{
+            uiText('(Offline historical snapshot)')
+          }}</span>
         </li>
       </ul>
-      <h3>{{ uiText("Skill gaps") }}</h3>
+      <h3>{{ uiText('Skill gaps') }}</h3>
       <p v-if="current.result.skillGap">{{ current.result.skillGap.notice }}</p>
       <ul>
         <li v-for="skill in current.result.skillGap?.skills" :key="skill.name">
           {{ skill.name }}：{{ formatDisplay(levels[skill.level] ?? skill.level) }}
         </li>
       </ul>
-      <h3>{{ uiText("Suggested learning route") }}</h3>
+      <h3>{{ uiText('Suggested learning route') }}</h3>
       <p>{{ current.result.learning?.summary }}</p>
       <ol>
-        <li v-for="week in current.result.learning?.roadmap?.weeks" :key="week.index"> {{ uiText("Week {0} · {1}", [week.index, week.theme]) }} <p v-for="item in week.items" :key="item.id">
-            {{ uiText("{0} · Suggested time: {1} hours", [item.title, item.hours]) }} </p>
+        <li v-for="week in current.result.learning?.roadmap?.weeks" :key="week.index">
+          {{ uiText('Week {0} · {1}', [week.index, week.theme]) }}
+          <p v-for="item in week.items" :key="item.id">
+            {{ uiText('{0} · Suggested time: {1} hours', [item.title, item.hours]) }}
+          </p>
         </li>
       </ol>
       <button
@@ -128,28 +156,45 @@ onBeforeUnmount(() => {
         class="btn primary"
         :disabled="busy || !online"
         @click="decide()"
-      > {{ uiText("Confirm adoption of these next steps") }} </button>
-      <span v-if="current.status === 'CONFIRMED'" class="tag">{{ uiText("Adoption confirmed") }}</span>
+      >
+        {{ uiText('Confirm adoption of these next steps') }}
+      </button>
+      <span v-if="current.status === 'CONFIRMED'" class="tag">{{
+        uiText('Adoption confirmed')
+      }}</span>
       <button
         v-if="current.status === 'FAILED'"
         class="btn"
         :disabled="busy || !online"
         @click="decide(true)"
-      > {{ uiText("Retry coordinated suggestions") }} </button>
-      <p class="subtle">{{ uiText("Confirmation records your intent only. Update task completion and applications according to actual progress.") }}</p>
+      >
+        {{ uiText('Retry coordinated suggestions') }}
+      </button>
+      <p class="subtle">
+        {{
+          uiText(
+            'Confirmation records your intent only. Update task completion and applications according to actual progress.',
+          )
+        }}
+      </p>
     </template>
     <div class="target-links">
-      <RouterLink :to="{ path: '/jobs', query: { q: target, location: city } }" class="btn"
-        >{{ uiText("Continue searching target jobs") }}</RouterLink
-      >
-      <RouterLink to="/career#skill-gap" class="btn">{{ uiText("View skill gaps") }}</RouterLink>
+      <RouterLink :to="{ path: '/jobs', query: { q: target, location: city } }" class="btn">{{
+        uiText('Continue searching target jobs')
+      }}</RouterLink>
+      <RouterLink to="/career#skill-gap" class="btn">{{ uiText('View skill gaps') }}</RouterLink>
       <RouterLink
         :to="{
           path: '/chat',
-          query: { mode: 'COACH', prompt: uiText('Analyze skill gaps and suggest a learning route for my saved target career.') },
+          query: {
+            mode: 'COACH',
+            prompt: uiText(
+              'Analyze skill gaps and suggest a learning route for my saved target career.',
+            ),
+          },
         }"
         class="btn"
-        >{{ uiText("Discuss learning route with coach") }}</RouterLink
+        >{{ uiText('Discuss learning route with coach') }}</RouterLink
       >
     </div>
   </section>

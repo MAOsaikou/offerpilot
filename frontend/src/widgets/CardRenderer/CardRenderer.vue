@@ -38,9 +38,20 @@ const component = computed(() => resolveCardComponent(props.cardType))
 
 <template>
   <div class="card-reveal">
-    <section v-if="failed" class="panel form-stack" role="alert" :aria-label="uiText('Could not load card')">
-      <p>{{ uiText("This card could not be displayed. You can still read the response and other cards.") }}</p>
-      <button type="button" class="btn" @click="retry">{{ uiText("Reload card") }}</button>
+    <section
+      v-if="failed"
+      class="panel form-stack"
+      role="alert"
+      :aria-label="uiText('Could not load card')"
+    >
+      <p>
+        {{
+          uiText(
+            'This card could not be displayed. You can still read the response and other cards.',
+          )
+        }}
+      </p>
+      <button type="button" class="btn" @click="retry">{{ uiText('Reload card') }}</button>
     </section>
     <component
       :is="component"

@@ -20,8 +20,17 @@ const loading = ref(false),
   busy = ref(false),
   error = localizedText(),
   online = ref(navigator.onLine)
-const labels = computed(() => ({ RESUME: uiText("Resume skills"), GITHUB: uiText("GitHub evidence"), INTERVIEW: uiText("Interview report") }))
-const statuses = computed(() => ({ PENDING: uiText("Pending confirmation"), CONFIRMED: uiText("Confirmed"), REJECTED: uiText("Ignored"), STALE: uiText("Source changed") }))
+const labels = computed(() => ({
+  RESUME: uiText('Resume skills'),
+  GITHUB: uiText('GitHub evidence'),
+  INTERVIEW: uiText('Interview report'),
+}))
+const statuses = computed(() => ({
+  PENDING: uiText('Pending confirmation'),
+  CONFIRMED: uiText('Confirmed'),
+  REJECTED: uiText('Ignored'),
+  STALE: uiText('Source changed'),
+}))
 let generation = 0
 async function load() {
   const current = generation
@@ -34,7 +43,8 @@ async function load() {
     selected.value = Object.fromEntries(data.map((item) => [item.id, []]))
   } catch (cause) {
     if (current === generation)
-      error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load profile suggestions"))
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Could not load profile suggestions')
   } finally {
     if (current === generation) loading.value = false
   }
@@ -54,7 +64,8 @@ async function decide(item: ProfileSuggestion, accept: boolean) {
     await load()
   } catch (cause) {
     if (current === generation)
-      error.value = () => (cause instanceof Error ? cause.message : uiText("Confirmation failed. Please retry."))
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Confirmation failed. Please retry.')
   } finally {
     if (current === generation) {
       busy.value = false
@@ -86,17 +97,43 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <section id="profile-updates" class="panel form-stack" :aria-label="uiText('Profile update suggestions')">
-    <h2>{{ uiText("Profile suggestions from your materials") }}</h2>
-    <p> {{ uiText("Existing materials are organized automatically but enter your profile only after confirmation. Select skills you agree with. Repository languages and interview feedback do not establish proficiency.") }} </p>
-    <p v-if="!online" role="status">{{ uiText("You are offline. Load and confirm suggestions when connected.") }}</p>
-    <button class="btn" :disabled="loading || busy || !online" @click="load">{{ uiText("Refresh material suggestions") }}</button>
-    <p v-if="loading" role="status">{{ uiText("Loading material suggestions…") }}</p>
+  <section
+    id="profile-updates"
+    class="panel form-stack"
+    :aria-label="uiText('Profile update suggestions')"
+  >
+    <h2>{{ uiText('Profile suggestions from your materials') }}</h2>
+    <p>
+      {{
+        uiText(
+          'Existing materials are organized automatically but enter your profile only after confirmation. Select skills you agree with. Repository languages and interview feedback do not establish proficiency.',
+        )
+      }}
+    </p>
+    <p v-if="!online" role="status">
+      {{ uiText('You are offline. Load and confirm suggestions when connected.') }}
+    </p>
+    <button class="btn" :disabled="loading || busy || !online" @click="load">
+      {{ uiText('Refresh material suggestions') }}
+    </button>
+    <p v-if="loading" role="status">{{ uiText('Loading material suggestions…') }}</p>
     <p v-if="error" role="alert">{{ error }}</p>
-    <p v-if="!loading && !error && !items.length"> {{ uiText("No suggestions yet. Save a resume, complete an interview report or refresh GitHub evidence, then check again.") }} </p>
+    <p v-if="!loading && !error && !items.length">
+      {{
+        uiText(
+          'No suggestions yet. Save a resume, complete an interview report or refresh GitHub evidence, then check again.',
+        )
+      }}
+    </p>
     <article v-for="item in items" :key="item.id" class="form-stack profile-suggestion">
       <h3>{{ labels[item.sourceType] }} · {{ statuses[item.status] }}</h3>
-      <p class="subtle"> {{ uiText("Source: {0} · {1} #2", [item.sourceId, new Date(item.createdAt).toLocaleString(language)]) }}
+      <p class="subtle">
+        {{
+          uiText('Source: {0} · {1} #2', [
+            item.sourceId,
+            new Date(item.createdAt).toLocaleString(language),
+          ])
+        }}
       </p>
       <ul>
         <li v-for="fact in item.facts" :key="fact">{{ fact }}</li>
@@ -108,11 +145,15 @@ onBeforeUnmount(() => {
             type="checkbox"
             :value="skill"
             :disabled="busy || !online"
-          /> {{ uiText("Add profile skill: {0}", [skill]) }}</label
+          />
+          {{ uiText('Add profile skill: {0}', [skill]) }}</label
         >
         <div class="actions">
-          <button class="btn primary" :disabled="busy || !online" @click="decide(item, true)"> {{ uiText("Confirm evidence and selected skills") }}</button
-          ><button class="btn" :disabled="busy || !online" @click="decide(item, false)"> {{ uiText("Ignore this suggestion") }} </button>
+          <button class="btn primary" :disabled="busy || !online" @click="decide(item, true)">
+            {{ uiText('Confirm evidence and selected skills') }}</button
+          ><button class="btn" :disabled="busy || !online" @click="decide(item, false)">
+            {{ uiText('Ignore this suggestion') }}
+          </button>
         </div>
       </template>
     </article>

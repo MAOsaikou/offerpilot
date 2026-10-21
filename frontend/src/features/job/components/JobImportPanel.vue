@@ -32,7 +32,7 @@ function addFiles(files: File[]) {
   if (parsing.value || !files.length) return
   error.value = ''
   if (screenshots.value.length + files.length > 3) {
-    error.value = () => (uiText("Select up to 3 consecutive screenshots of the same job."))
+    error.value = () => uiText('Select up to 3 consecutive screenshots of the same job.')
     return
   }
   const invalid = files.map(validateJobScreenshot).find(Boolean)
@@ -159,12 +159,13 @@ async function restoreTask(id: string) {
           if (revision !== previewRevision) return
           restoredPreviews.value.push(URL.createObjectURL(blob))
         } catch {
-          error.value = () => (uiText("Draft restored. Screenshot previews are unavailable; refresh later to retry."))
+          error.value = () =>
+            uiText('Draft restored. Screenshot previews are unavailable; refresh later to retry.')
         }
       }
     }
   } catch (cause) {
-    error.value = () => (cause instanceof Error ? cause.message : uiText("Could not restore draft"))
+    error.value = () => (cause instanceof Error ? cause.message : uiText('Could not restore draft'))
   }
 }
 </script>
@@ -177,36 +178,59 @@ async function restoreTask(id: string) {
   >
     <BackgroundTaskStatus kind="JOB_IMPORT" :entity-id="'current'" @completed="restoreTask" />
     <div class="section-heading">
-      <h2 id="job-import-title">{{ uiText("Import job") }}</h2>
+      <h2 id="job-import-title">{{ uiText('Import job') }}</h2>
       <button type="button" class="btn" :aria-expanded="open" @click="open = !open">
-        {{ open ? uiText("Collapse") : uiText("Paste description or URL / Screenshots") }}
+        {{ open ? uiText('Collapse') : uiText('Paste description or URL / Screenshots') }}
       </button>
     </div>
-    <p class="subtle"> {{ uiText("Found a job elsewhere? Paste its description, enter a URL or upload screenshots. Review and save it to generate match reports and add it to your board. Imported jobs are private to you.") }} </p>
+    <p class="subtle">
+      {{
+        uiText(
+          'Found a job elsewhere? Paste its description, enter a URL or upload screenshots. Review and save it to generate match reports and add it to your board. Imported jobs are private to you.',
+        )
+      }}
+    </p>
     <template v-if="open">
       <div v-if="!form" class="form-stack">
         <fieldset class="mode-switch" :disabled="parsing" :aria-label="uiText('Import method')">
-          <label><input v-model="mode" type="radio" value="text" /> {{ uiText("Paste text") }}</label>
-          <label><input v-model="mode" type="radio" value="url" /> {{ uiText("Job URL") }}</label>
-          <label><input v-model="mode" type="radio" value="screenshot" /> {{ uiText("Screenshots") }}</label>
+          <label
+            ><input v-model="mode" type="radio" value="text" /> {{ uiText('Paste text') }}</label
+          >
+          <label><input v-model="mode" type="radio" value="url" /> {{ uiText('Job URL') }}</label>
+          <label
+            ><input v-model="mode" type="radio" value="screenshot" />
+            {{ uiText('Screenshots') }}</label
+          >
         </fieldset>
         <label v-if="mode === 'text'" class="field"
-          >{{ uiText("Job description") }}<textarea
+          >{{ uiText('Job description')
+          }}<textarea
             v-model="text"
             rows="8"
             maxlength="20000"
-            :placeholder="uiText('Copy the job title, responsibilities and requirements from the listing (at least 30 characters)')"
+            :placeholder="
+              uiText(
+                'Copy the job title, responsibilities and requirements from the listing (at least 30 characters)',
+              )
+            "
           />
         </label>
         <template v-else-if="mode === 'url'">
           <label class="field"
-            >{{ uiText("Job URL") }}<input
+            >{{ uiText('Job URL')
+            }}<input
               v-model="url"
               type="url"
               maxlength="2000"
               placeholder="https://jobs.example.com/position/123"
           /></label>
-          <p class="subtle"> {{ uiText("Only public pages can be read. Pages requiring sign-in or browser scripts may not work. Paste the text instead.") }} </p>
+          <p class="subtle">
+            {{
+              uiText(
+                'Only public pages can be read. Pages requiring sign-in or browser scripts may not work. Paste the text instead.',
+              )
+            }}
+          </p>
         </template>
         <div
           v-else
@@ -214,7 +238,13 @@ async function restoreTask(id: string) {
           tabindex="0"
           :aria-label="uiText('Select or paste job screenshots')"
         >
-          <p class="subtle"> {{ uiText("Add consecutive screenshots of the same job in reading order. PNG / JPG / WebP, up to 5 MB each, 3 maximum. Only you can view them.") }} </p>
+          <p class="subtle">
+            {{
+              uiText(
+                'Add consecutive screenshots of the same job in reading order. PNG / JPG / WebP, up to 5 MB each, 3 maximum. Only you can view them.',
+              )
+            }}
+          </p>
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp"
@@ -223,10 +253,19 @@ async function restoreTask(id: string) {
             :aria-label="uiText('Select job screenshots')"
             @change="chooseFiles"
           />
-          <p v-if="!screenshots.length" class="subtle"> {{ uiText("No screenshots selected. Make sure the title, responsibilities and requirements are legible.") }} </p>
+          <p v-if="!screenshots.length" class="subtle">
+            {{
+              uiText(
+                'No screenshots selected. Make sure the title, responsibilities and requirements are legible.',
+              )
+            }}
+          </p>
           <ol v-else class="screenshot-list">
             <li v-for="(image, index) in screenshots" :key="image.preview">
-              <img :src="image.preview" :alt="uiText('Screenshots') + (index + 1) + '：' + image.file.name" />
+              <img
+                :src="image.preview"
+                :alt="uiText('Screenshots') + (index + 1) + '：' + image.file.name"
+              />
               <span>{{ formatDisplay(index + 1) }}. {{ image.file.name }}</span>
               <button
                 type="button"
@@ -234,10 +273,18 @@ async function restoreTask(id: string) {
                 :disabled="parsing"
                 :aria-label="uiText('Remove screenshot') + (index + 1)"
                 @click="removeImage(index)"
-              > {{ uiText("Delete") }} </button>
+              >
+                {{ uiText('Delete') }}
+              </button>
             </li>
           </ol>
-          <div v-if="uploading" role="status"> {{ uiText("Uploading {0} of {1} images", [uploaded, screenshots.length]) }} <progress :value="uploaded" :max="screenshots.length" :aria-label="uiText('Screenshot upload progress')" />
+          <div v-if="uploading" role="status">
+            {{ uiText('Uploading {0} of {1} images', [uploaded, screenshots.length]) }}
+            <progress
+              :value="uploaded"
+              :max="screenshots.length"
+              :aria-label="uiText('Screenshot upload progress')"
+            />
           </div>
         </div>
         <div class="card-footer">
@@ -248,7 +295,9 @@ async function restoreTask(id: string) {
             :aria-busy="parsing"
             @click="parse"
           >
-            {{ uploading ? uiText("Uploading…") : parsing ? uiText("Parsing…") : uiText("Parse job") }}
+            {{
+              uploading ? uiText('Uploading…') : parsing ? uiText('Parsing…') : uiText('Parse job')
+            }}
           </button>
         </div>
       </div>
@@ -256,10 +305,16 @@ async function restoreTask(id: string) {
         <p class="helper-note" role="status">
           {{
             parsed?.sourceKind === 'screenshot'
-              ? uiText("Text was transcribed and fields extracted from the screenshots. There may be omissions or recognition errors. Compare with the screenshots before saving.")
+              ? uiText(
+                  'Text was transcribed and fields extracted from the screenshots. There may be omissions or recognition errors. Compare with the screenshots before saving.',
+                )
               : parsed?.draft.parser === 'model'
-                ? uiText("AI extracted these fields from the source and discarded unsupported content. Review before saving.")
-                : uiText("AI is unavailable. The content below was split using headings such as Responsibilities and Requirements. Review before saving.")
+                ? uiText(
+                    'AI extracted these fields from the source and discarded unsupported content. Review before saving.',
+                  )
+                : uiText(
+                    'AI is unavailable. The content below was split using headings such as Responsibilities and Requirements. Review before saving.',
+                  )
           }}
         </p>
         <div v-if="parsed?.sourceKind === 'screenshot'" class="screenshot-list">
@@ -272,56 +327,83 @@ async function restoreTask(id: string) {
             :alt="uiText('Review screenshots') + ' ' + (index + 1)"
           />
         </div>
-        <p v-if="parsed?.securityNotices?.length" class="security-note" role="alert"> {{ uiText("The source contains possible instructions to AI ({0}). They are treated only as job text and will not be executed. Review the fields before saving.", [parsed.securityNotices.join('、')]) }} </p>
+        <p v-if="parsed?.securityNotices?.length" class="security-note" role="alert">
+          {{
+            uiText(
+              'The source contains possible instructions to AI ({0}). They are treated only as job text and will not be executed. Review the fields before saving.',
+              [parsed.securityNotices.join('、')],
+            )
+          }}
+        </p>
         <div class="import-grid">
           <label class="field"
-            >{{ uiText("Job title") }}<input v-model="form.title" required maxlength="100"
+            >{{ uiText('Job title') }}<input v-model="form.title" required maxlength="100"
           /></label>
           <label class="field"
-            >{{ uiText("Company") }}<input v-model="form.company" maxlength="100" :placeholder="uiText('Not specified in source')"
+            >{{ uiText('Company')
+            }}<input
+              v-model="form.company"
+              maxlength="100"
+              :placeholder="uiText('Not specified in source')"
           /></label>
           <label class="field"
-            >{{ uiText("City") }}<input v-model="form.locations" maxlength="100" :placeholder="uiText('Not specified in source')"
+            >{{ uiText('City')
+            }}<input
+              v-model="form.locations"
+              maxlength="100"
+              :placeholder="uiText('Not specified in source')"
           /></label>
           <label class="field"
-            >{{ uiText("Department") }}<input v-model="form.department" maxlength="100" :placeholder="uiText('Not specified in source')"
+            >{{ uiText('Department')
+            }}<input
+              v-model="form.department"
+              maxlength="100"
+              :placeholder="uiText('Not specified in source')"
           /></label>
           <label class="field"
-            >{{ uiText("Recruitment type") }}<select v-model="form.nature">
-              <option value="campus">{{ uiText("Graduate") }}</option>
-              <option value="intern">{{ uiText("Internship") }}</option>
-              <option value="social">{{ uiText("Experienced hire") }}</option>
+            >{{ uiText('Recruitment type')
+            }}<select v-model="form.nature">
+              <option value="campus">{{ uiText('Graduate') }}</option>
+              <option value="intern">{{ uiText('Internship') }}</option>
+              <option value="social">{{ uiText('Experienced hire') }}</option>
             </select></label
           >
         </div>
         <label class="field"
-          >{{ uiText("Responsibilities") }}<textarea v-model="form.description" rows="6" maxlength="30000" />
+          >{{ uiText('Responsibilities')
+          }}<textarea v-model="form.description" rows="6" maxlength="30000" />
         </label>
         <label class="field"
-          >{{ uiText("Requirements") }}<textarea v-model="form.requirement" rows="6" maxlength="30000" />
+          >{{ uiText('Requirements')
+          }}<textarea v-model="form.requirement" rows="6" maxlength="30000" />
         </label>
-        <p v-if="form.skills.length" class="subtle"> {{ uiText("Skills mentioned in the source:") }}<span v-for="skill in form.skills" :key="skill" class="tag">{{
-            skill
-          }}</span>
+        <p v-if="form.skills.length" class="subtle">
+          {{ uiText('Skills mentioned in the source:')
+          }}<span v-for="skill in form.skills" :key="skill" class="tag">{{ skill }}</span>
         </p>
-        <p v-if="form.url" class="subtle">{{ uiText("Source URL: {0}", [form.url]) }}</p>
-        <p v-if="!form.description.trim() && !form.requirement.trim()" class="error-banner"> {{ uiText("Keep at least responsibilities or requirements as evidence for matching.") }} </p>
+        <p v-if="form.url" class="subtle">{{ uiText('Source URL: {0}', [form.url]) }}</p>
+        <p v-if="!form.description.trim() && !form.requirement.trim()" class="error-banner">
+          {{ uiText('Keep at least responsibilities or requirements as evidence for matching.') }}
+        </p>
         <div class="card-footer">
-          <button type="button" class="btn" :disabled="saving" @click="restart">{{ uiText("Import again") }}</button>
+          <button type="button" class="btn" :disabled="saving" @click="restart">
+            {{ uiText('Import again') }}
+          </button>
           <button class="btn primary" :disabled="!canSave" :aria-busy="saving">
-            {{ saving ? uiText("Saving…") : uiText("Save and view match") }}
+            {{ saving ? uiText('Saving…') : uiText('Save and view match') }}
           </button>
         </div>
       </form>
       <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
     </template>
     <div v-if="imported.data.value?.length" class="imported-list">
-      <h3>{{ uiText("My imported jobs") }}</h3>
+      <h3>{{ uiText('My imported jobs') }}</h3>
       <ul>
         <li v-for="job in imported.data.value" :key="job.id">
           <RouterLink :to="'/jobs/' + job.id">{{ job.title }}</RouterLink>
           <span class="subtle"
-            >{{ job.company || uiText("Company not specified") }} · {{ job.locations || uiText("City not specified") }}</span
+            >{{ job.company || uiText('Company not specified') }} ·
+            {{ job.locations || uiText('City not specified') }}</span
           >
         </li>
       </ul>

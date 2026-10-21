@@ -26,7 +26,8 @@ async function load() {
   try {
     await store.restore(props.kind, props.entityId, selectedId.value)
   } catch (cause) {
-    loadError.value = () => (cause instanceof Error ? cause.message : uiText("Could not load background task"))
+    loadError.value = () =>
+      cause instanceof Error ? cause.message : uiText('Could not load background task')
   }
 }
 watch(() => [props.kind, props.entityId, selectedId.value], load, { immediate: true })
@@ -52,7 +53,8 @@ watch(
     try {
       await router.replace({ query })
     } catch (cause) {
-      loadError.value = () => (cause instanceof Error ? cause.message : uiText("Could not update task link"))
+      loadError.value = () =>
+        cause instanceof Error ? cause.message : uiText('Could not update task link')
     }
   },
 )
@@ -61,16 +63,23 @@ watch(
 <template>
   <div class="background-task-status">
     <p v-if="loadError || store.error" role="alert">
-      {{ loadError || store.error }} <button class="btn" @click="load">{{ uiText("Reload task") }}</button>
+      {{ loadError || store.error }}
+      <button class="btn" @click="load">{{ uiText('Reload task') }}</button>
     </p>
     <p v-if="task && isActiveTask(task)" role="status" aria-live="polite">
-      <progress :aria-label="task.title" /> {{ uiText("{0}. You can leave this page; work continues in the background.", [task.stage]) }} <button
+      <progress :aria-label="task.title" />
+      {{ uiText('{0}. You can leave this page; work continues in the background.', [task.stage]) }}
+      <button
         class="btn"
         @click="store.cancel(task.id).catch((cause) => (loadError = cause.message))"
-      > {{ uiText("Cancel task") }} </button>
+      >
+        {{ uiText('Cancel task') }}
+      </button>
     </p>
     <p v-else-if="task?.status === 'FAILED'" role="alert">{{ task.error }}</p>
-    <p v-else-if="task?.status === 'CANCELLED'" role="status">{{ uiText("{0}. You can start again.", [task.stage]) }}</p>
+    <p v-else-if="task?.status === 'CANCELLED'" role="status">
+      {{ uiText('{0}. You can start again.', [task.stage]) }}
+    </p>
   </div>
 </template>
 <style scoped>

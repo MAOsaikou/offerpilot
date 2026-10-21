@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { formatDisplay, translateLabel, sourceText, translate as uiText } from '@/shared/utils/language'
+import {
+  formatDisplay,
+  translateLabel,
+  sourceText,
+  translate as uiText,
+} from '@/shared/utils/language'
 
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
@@ -7,8 +12,8 @@ import type { Stage } from '@/shared/types/workspace'
 
 const props = defineProps<{ stops: { stage: Stage; count: number }[]; loading?: boolean }>()
 
-const route = computed(() => props.stops.filter((s) => s.stage !== sourceText("Closed")))
-const ended = computed(() => props.stops.find((s) => s.stage === sourceText("Closed"))?.count ?? 0)
+const route = computed(() => props.stops.filter((s) => s.stage !== sourceText('Closed')))
+const ended = computed(() => props.stops.find((s) => s.stage === sourceText('Closed'))?.count ?? 0)
 const furthest = computed(() =>
   route.value.reduce((last, stop, index) => (stop.count > 0 ? index : last), -1),
 )
@@ -36,12 +41,14 @@ const progress = computed(() =>
         <span class="route-label">{{ translateLabel(stop.stage) }}</span>
       </li>
     </ol>
-    <p v-if="loading" class="subtle" role="status">{{ uiText("Loading application board…") }}</p>
-    <p v-else-if="furthest < 0" class="subtle"> {{ uiText("Save your first job to start your journey.") }}<RouterLink to="/jobs" class="route-link"
-        >{{ uiText("Search jobs") }}</RouterLink
-      >
+    <p v-if="loading" class="subtle" role="status">{{ uiText('Loading application board…') }}</p>
+    <p v-else-if="furthest < 0" class="subtle">
+      {{ uiText('Save your first job to start your journey.')
+      }}<RouterLink to="/jobs" class="route-link">{{ uiText('Search jobs') }}</RouterLink>
     </p>
-    <p v-else-if="ended" class="subtle">{{ uiText("{0} other opportunities are closed.", [ended]) }}</p>
+    <p v-else-if="ended" class="subtle">
+      {{ uiText('{0} other opportunities are closed.', [ended]) }}
+    </p>
   </div>
 </template>
 <style scoped>

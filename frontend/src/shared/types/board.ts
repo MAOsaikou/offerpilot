@@ -2,19 +2,27 @@ import { sourceText, translate as uiText } from '@/shared/utils/language'
 import type { RealJob } from './jobs'
 
 export const applicationStages = {
-  TODO: sourceText("Save job"),
-  APPLIED: sourceText("Applied"),
-  INTERVIEW: sourceText("Interviewing"),
+  TODO: sourceText('Save job'),
+  APPLIED: sourceText('Applied'),
+  INTERVIEW: sourceText('Interviewing'),
   OFFER: 'Offer',
-  CLOSED: sourceText("Closed"),
+  CLOSED: sourceText('Closed'),
 } as const
 /** Localized labels are getters so imports follow the current language without changing stored stages. */
 export const applicationStageLabels = {
-  get TODO() { return uiText('Save job') },
-  get APPLIED() { return uiText('Applied') },
-  get INTERVIEW() { return uiText('Interviewing') },
+  get TODO() {
+    return uiText('Save job')
+  },
+  get APPLIED() {
+    return uiText('Applied')
+  },
+  get INTERVIEW() {
+    return uiText('Interviewing')
+  },
   OFFER: 'Offer',
-  get CLOSED() { return uiText('Closed') },
+  get CLOSED() {
+    return uiText('Closed')
+  },
 }
 export type ApplicationStatus = keyof typeof applicationStages
 export interface ServerApplication {

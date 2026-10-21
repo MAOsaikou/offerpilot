@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { formatDisplay, localizedText, language, translate as uiText } from '@/shared/utils/language'
+import {
+  formatDisplay,
+  localizedText,
+  language,
+  translate as uiText,
+} from '@/shared/utils/language'
 
 import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
 import { generationResult } from '@/shared/api/generationTasks'
@@ -60,11 +65,12 @@ watch(
   () => job.data.value,
   (value) => {
     if (value && !jobDescription.value.trim() && (value.description || value.requirement))
-      jobDescription.value =
-        () => (uiText("Job: {0} Responsibilities: {1} Requirements: {2}", [value.title, value.description, value.requirement]).slice(
-          0,
-          20000,
-        ))
+      jobDescription.value = () =>
+        uiText('Job: {0} Responsibilities: {1} Requirements: {2}', [
+          value.title,
+          value.description,
+          value.requirement,
+        ]).slice(0, 20000)
   },
   { immediate: true },
 )
@@ -85,7 +91,12 @@ const canApply = computed(
     !props.dirty &&
     !appliedVersionId.value,
 )
-const labels = computed(() => ({ RUNNING: uiText("Generating"), SUCCEEDED: uiText("Completed"), FAILED: uiText("Failed"), CANCELLED: uiText("Canceled") }))
+const labels = computed(() => ({
+  RUNNING: uiText('Generating'),
+  SUCCEEDED: uiText('Completed'),
+  FAILED: uiText('Failed'),
+  CANCELLED: uiText('Canceled'),
+}))
 let locallyCancelled = false
 let controller: AbortController | undefined,
   alive = true,
@@ -110,14 +121,20 @@ async function show(id: string, expectedVersion?: string) {
   try {
     const task = await getOptimization(id)
     if (task.resumeId !== props.resumeId || (expectedVersion && task.versionId !== expectedVersion))
-      throw new Error(uiText("This rewrite does not belong to the selected resume version. Open it from the corresponding resume."))
-    if (!task.report) throw new Error(uiText("Suggestions are incomplete. Refresh rewrite history."))
+      throw new Error(
+        uiText(
+          'This rewrite does not belong to the selected resume version. Open it from the corresponding resume.',
+        ),
+      )
+    if (!task.report)
+      throw new Error(uiText('Suggestions are incomplete. Refresh rewrite history.'))
     await reveal(task.report, task.jobDescription || '', request)
     if (alive && request === epoch && !jobDescription.value.trim())
       jobDescription.value = task.jobDescription || ''
   } catch (cause) {
     if (alive && request === epoch)
-      error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load suggestions"))
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Could not load suggestions')
   } finally {
     if (alive && request === epoch) selecting.value = false
   }
@@ -169,15 +186,15 @@ async function start(save: boolean) {
         (locallyCancelled && cause instanceof DOMException && cause.name === 'AbortError')
       ) {
         error.value = ''
-        message.value = () => (uiText("Rewrite canceled. You can start again."))
+        message.value = () => uiText('Rewrite canceled. You can start again.')
         return
       }
-      error.value =
-        () => (cause instanceof DOMException && cause.name === 'AbortError'
-          ? uiText("Rewrite connection stopped. Check rewrite history.")
+      error.value = () =>
+        cause instanceof DOMException && cause.name === 'AbortError'
+          ? uiText('Rewrite connection stopped. Check rewrite history.')
           : cause instanceof Error
             ? cause.message
-            : uiText("Rewrite failed"))
+            : uiText('Rewrite failed')
       if (requestId)
         try {
           const tasks = await listOptimizations(props.resumeId)
@@ -206,18 +223,21 @@ async function stop() {
   try {
     if (id) await cancelOptimization(id)
     locallyCancelled = true
-    message.value = () => (uiText("Rewrite canceled. You can start again."))
+    message.value = () => uiText('Rewrite canceled. You can start again.')
     error.value = ''
     controller?.abort()
     void refresh()
   } catch (cause) {
-    if (alive) error.value = () => (cause instanceof Error ? cause.message : uiText("Could not cancel. Please retry."))
+    if (alive)
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Could not cancel. Please retry.')
   }
 }
 function saved(version: ResumeVersion) {
   appliedVersionId.value = version.id
   emit('saved', version)
-  message.value = () => (uiText("Saved as version {0}. The original version remains available.", [version.versionNo]))
+  message.value = () =>
+    uiText('Saved as version {0}. The original version remains available.', [version.versionNo])
 }
 async function apply(decision: PatchDecision) {
   if (
@@ -237,7 +257,10 @@ async function apply(decision: PatchDecision) {
     if (alive) saved(result.version)
   } catch (cause) {
     if (alive) {
-      error.value = () => (cause instanceof Error ? cause.message : uiText("Save failed. Retry with the same decisions."))
+      error.value = () =>
+        cause instanceof Error
+          ? cause.message
+          : uiText('Save failed. Retry with the same decisions.')
       // The response may be lost after commit: restore the batch instead of posting again.
       try {
         const batch = await getPatchBatch(props.resumeId, value.resumeVersionId, decision.batchId)
@@ -269,7 +292,9 @@ async function restoreTask(id: string) {
     const saved = await generationResult<OptimizationReport>(id)
     if (alive && report.value?.reportId !== saved.reportId) await show(saved.reportId)
   } catch (cause) {
-    if (alive) error.value = () => (cause instanceof Error ? cause.message : uiText("Could not restore suggestions"))
+    if (alive)
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Could not restore suggestions')
   }
 }
 </script>
@@ -278,31 +303,63 @@ async function restoreTask(id: string) {
   <section class="panel form-stack optimization-panel">
     <BackgroundTaskStatus kind="RESUME_OPTIMIZE" :entity-id="resumeId" @completed="restoreTask" />
     <header>
-      <h2>{{ uiText("Targeted job rewrite") }}</h2>
-      <p class="subtle">{{ uiText("Improve the expression of existing experience only. Generate suggestions, then select, edit and confirm each one to save a new version.") }}</p>
+      <h2>{{ uiText('Targeted job rewrite') }}</h2>
+      <p class="subtle">
+        {{
+          uiText(
+            'Improve the expression of existing experience only. Generate suggestions, then select, edit and confirm each one to save a new version.',
+          )
+        }}
+      </p>
     </header>
-    <p v-if="job.isPending.value && jobId" role="status">{{ uiText("Loading target job…") }}</p>
+    <p v-if="job.isPending.value && jobId" role="status">{{ uiText('Loading target job…') }}</p>
     <p v-if="job.error.value" class="error-banner" role="alert">
-      {{ uiText("{0}. You can paste the job description, or", [job.error.value.message]) }}<button
-        class="btn"
-        :disabled="occupied"
-        @click="job.refetch()"
-      > {{ uiText("Retry loading job") }} </button>
+      {{ uiText('{0}. You can paste the job description, or', [job.error.value.message])
+      }}<button class="btn" :disabled="occupied" @click="job.refetch()">
+        {{ uiText('Retry loading job') }}
+      </button>
     </p>
-    <p v-if="job.data.value && jobId" class="helper-note"> {{ uiText("Target job: {0} · {1}.", [job.data.value.title, job.data.value.company]) }} <RouterLink :to="'/jobs/' + jobId">{{ uiText("View full job") }}</RouterLink>
+    <p v-if="job.data.value && jobId" class="helper-note">
+      {{ uiText('Target job: {0} · {1}.', [job.data.value.title, job.data.value.company]) }}
+      <RouterLink :to="'/jobs/' + jobId">{{ uiText('View full job') }}</RouterLink>
     </p>
     <label class="field"
-      >{{ uiText("Responsibilities and requirements (JD)") }} <textarea
+      >{{ uiText('Responsibilities and requirements (JD)') }}
+      <textarea
         v-model="jobDescription"
         rows="7"
         maxlength="20000"
         :disabled="occupied"
-        :placeholder="uiText('Paste the target job\'s responsibilities and requirements, preferably only skill-related content.')"
+        :placeholder="
+          uiText(
+            'Paste the target job\'s responsibilities and requirements, preferably only skill-related content.',
+          )
+        "
       />
     </label>
-    <p class="subtle"> {{ uiText("Uses the text model in settings. The job description and saved resume content are sent to that model. The personal information section is excluded.") }} </p>
-    <p v-if="dirty" class="helper-note"> {{ uiText("You have unsaved edits. Save first or use the saved version only. Your unsaved draft will not be overwritten.") }} </p>
-    <div v-if="sourceVersion !== versionId" class="helper-note"> {{ uiText("You selected a historical saved version. Suggestions can be generated and viewed, but accepting them requires the current saved version.") }} <button class="btn" :disabled="occupied" @click="targetVersion = ''">{{ uiText("Use current saved version") }}</button>
+    <p class="subtle">
+      {{
+        uiText(
+          'Uses the text model in settings. The job description and saved resume content are sent to that model. The personal information section is excluded.',
+        )
+      }}
+    </p>
+    <p v-if="dirty" class="helper-note">
+      {{
+        uiText(
+          'You have unsaved edits. Save first or use the saved version only. Your unsaved draft will not be overwritten.',
+        )
+      }}
+    </p>
+    <div v-if="sourceVersion !== versionId" class="helper-note">
+      {{
+        uiText(
+          'You selected a historical saved version. Suggestions can be generated and viewed, but accepting them requires the current saved version.',
+        )
+      }}
+      <button class="btn" :disabled="occupied" @click="targetVersion = ''">
+        {{ uiText('Use current saved version') }}
+      </button>
     </div>
     <div class="optimization-actions">
       <button
@@ -310,28 +367,51 @@ async function restoreTask(id: string) {
         class="btn primary"
         :disabled="occupied || !jobDescription.trim()"
         @click="start(true)"
-      > {{ uiText("Save new version and generate") }} </button>
+      >
+        {{ uiText('Save new version and generate') }}
+      </button>
       <button
         class="btn"
         :class="{ primary: !dirty }"
         :disabled="occupied || !jobDescription.trim()"
         @click="start(false)"
       >
-        {{ running || existing ? uiText("Generating…") : dirty ? uiText("Generate using saved version only") : uiText("Generate rewrite suggestions") }}
+        {{
+          running || existing
+            ? uiText('Generating…')
+            : dirty
+              ? uiText('Generate using saved version only')
+              : uiText('Generate rewrite suggestions')
+        }}
       </button>
-      <button v-if="running || existing" class="btn" @click="stop">{{ uiText("Cancel generation") }}</button>
+      <button v-if="running || existing" class="btn" @click="stop">
+        {{ uiText('Cancel generation') }}
+      </button>
     </div>
-    <p v-if="running || existing" role="status"> {{ uiText("Checking resume and job content. This usually takes tens of seconds and continues after you leave. Return to view suggestions.") }} </p>
-    <p v-if="selecting" role="status">{{ uiText("Loading saved suggestions…") }}</p>
-    <p v-if="saving" role="status">{{ uiText("Saving selected rewrites…") }}</p>
+    <p v-if="running || existing" role="status">
+      {{
+        uiText(
+          'Checking resume and job content. This usually takes tens of seconds and continues after you leave. Return to view suggestions.',
+        )
+      }}
+    </p>
+    <p v-if="selecting" role="status">{{ uiText('Loading saved suggestions…') }}</p>
+    <p v-if="saving" role="status">{{ uiText('Saving selected rewrites…') }}</p>
     <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
     <p v-if="message" class="helper-note" role="status">{{ message }}</p>
     <template v-if="report">
       <p>{{ report.summary }}</p>
-      <p class="subtle"> {{ uiText("Saved version {0} · {1} · {2}", [report.versionNo, report.model, new Date(report.createdAt).toLocaleString(language)]) }}
+      <p class="subtle">
+        {{
+          uiText('Saved version {0} · {1} · {2}', [
+            report.versionNo,
+            report.model,
+            new Date(report.createdAt).toLocaleString(language),
+          ])
+        }}
       </p>
       <details v-if="reportJd">
-        <summary>{{ uiText("Job description used") }}</summary>
+        <summary>{{ uiText('Job description used') }}</summary>
         <pre class="jd-snapshot">{{ reportJd }}</pre>
       </details>
       <RouterLink
@@ -343,13 +423,23 @@ async function restoreTask(id: string) {
             resumeId,
             resumeVersionId: report.resumeVersionId,
             optimizationReportId: report.reportId,
-            prompt: uiText('Explain these rewrite suggestions and their evidence without regenerating or accepting them.'),
+            prompt: uiText(
+              'Explain these rewrite suggestions and their evidence without regenerating or accepting them.',
+            ),
           },
         }"
-        >{{ uiText("Discuss these suggestions") }}</RouterLink
+        >{{ uiText('Discuss these suggestions') }}</RouterLink
       >
-      <p v-if="!appliedVersionId && !canApply && report.patches.length" class="helper-note"> {{ uiText("The current resume version differs or has unsaved edits. These suggestions are read-only. Save current content and regenerate to avoid overwriting later changes.") }} </p>
-      <p v-if="!report.patches.length" class="helper-note" role="status"> {{ uiText("No rewrite suggestions need accepting. No new resume version was created. #2") }} </p>
+      <p v-if="!appliedVersionId && !canApply && report.patches.length" class="helper-note">
+        {{
+          uiText(
+            'The current resume version differs or has unsaved edits. These suggestions are read-only. Save current content and regenerate to avoid overwriting later changes.',
+          )
+        }}
+      </p>
+      <p v-if="!report.patches.length" class="helper-note" role="status">
+        {{ uiText('No rewrite suggestions need accepting. No new resume version was created. #2') }}
+      </p>
       <slot
         v-else
         :key="report.reportId"
@@ -362,20 +452,26 @@ async function restoreTask(id: string) {
       />
     </template>
     <details :open="!report" class="optimization-history">
-      <summary>{{ uiText("Rewrite history · {0}", [history.data.value?.length || 0]) }}</summary>
+      <summary>{{ uiText('Rewrite history · {0}', [history.data.value?.length || 0]) }}</summary>
       <button
         class="btn"
         :disabled="history.isFetching.value || occupied"
         @click="history.refetch()"
-      > {{ uiText("Refresh rewrite history") }} </button>
-      <p v-if="history.isPending.value" role="status">{{ uiText("Loading rewrite history…") }}</p>
+      >
+        {{ uiText('Refresh rewrite history') }}
+      </button>
+      <p v-if="history.isPending.value" role="status">{{ uiText('Loading rewrite history…') }}</p>
       <p v-else-if="history.error.value" class="error-banner" role="alert">
         {{ formatDisplay(history.error.value.message) }}
       </p>
-      <p v-else-if="!history.data.value?.length" class="subtle"> {{ uiText("No rewrite history yet. Enter a job description to start.") }} </p>
+      <p v-else-if="!history.data.value?.length" class="subtle">
+        {{ uiText('No rewrite history yet. Enter a job description to start.') }}
+      </p>
       <div v-for="task in history.data.value" :key="task.id" class="optimization-record">
         <div>
-          <strong>{{ uiText("Version {0} · {1} #2", [task.versionNo, labels[task.status]]) }}</strong>
+          <strong>{{
+            uiText('Version {0} · {1} #2', [task.versionNo, labels[task.status]])
+          }}</strong>
           <p class="subtle">{{ new Date(task.createdAt).toLocaleString(language) }}</p>
           <p v-if="task.error">{{ task.error }}</p>
         </div>
@@ -384,7 +480,9 @@ async function restoreTask(id: string) {
           class="btn"
           :disabled="occupied"
           @click="show(task.id)"
-        > {{ uiText("View suggestions") }} </button>
+        >
+          {{ uiText('View suggestions') }}
+        </button>
       </div>
     </details>
   </section>

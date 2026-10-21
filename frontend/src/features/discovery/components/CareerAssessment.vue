@@ -24,12 +24,12 @@ const emit = defineEmits<{
 }>()
 const LETTERS: RiasecLetter[] = ['R', 'I', 'A', 'S', 'E', 'C']
 const LABELS = computed<Record<RiasecLetter, string>>(() => ({
-  R: uiText("Realistic · Build things hands-on"),
-  I: uiText("Investigative · Explore how things work"),
-  A: uiText("Artistic · Create and express yourself"),
-  S: uiText("Social · Help and influence others"),
-  E: uiText("Enterprising · Organize, lead and persuade"),
-  C: uiText("Conventional · Work with order and precision"),
+  R: uiText('Realistic · Build things hands-on'),
+  I: uiText('Investigative · Explore how things work'),
+  A: uiText('Artistic · Create and express yourself'),
+  S: uiText('Social · Help and influence others'),
+  E: uiText('Enterprising · Organize, lead and persuade'),
+  C: uiText('Conventional · Work with order and precision'),
 }))
 const MIN_ANSWERS = 4
 
@@ -195,7 +195,7 @@ function confirm() {
 }
 
 function restart() {
-  if (!window.confirm(uiText("Clear your assessment answers and profile and start again?"))) return
+  if (!window.confirm(uiText('Clear your assessment answers and profile and start again?'))) return
   editing.value = false
   chatting.value = false
   void run(resetCareerAssessment, () => emit('changed', null))
@@ -213,32 +213,49 @@ async function restoreTask() {
       @completed="restoreTask"
     />
     <div class="assessment-head">
-      <h2 id="assessment-title">{{ uiText("Conversational career assessment") }}</h2>
-      <span v-if="state" class="tag">{{ uiText("Question {0} of {1}", [answered, questions.length]) }}</span>
+      <h2 id="assessment-title">{{ uiText('Conversational career assessment') }}</h2>
+      <span v-if="state" class="tag">{{
+        uiText('Question {0} of {1}', [answered, questions.length])
+      }}</span>
     </div>
-    <p v-if="loading" role="status" class="subtle">{{ uiText("Loading assessment…") }}</p>
+    <p v-if="loading" role="status" class="subtle">{{ uiText('Loading assessment…') }}</p>
     <div v-if="error" role="alert" class="error-banner">
       {{ error }}
-      <button v-if="!state" class="btn text" @click="load">{{ uiText("Retry") }}</button>
+      <button v-if="!state" class="btn text" @click="load">{{ uiText('Retry') }}</button>
     </div>
 
     <template v-if="phase === 'chat'">
-      <p class="subtle"> {{ uiText("No need to answer 60 questions. Answer a few questions about yourself, one at a time. AI will suggest Holland interests and personality traits for you to confirm or adjust.") }} </p>
-      <p class="subtle">{{ uiText("Seven core questions, with up to five follow-ups for brief or unclear answers. No more than 12 exchanges in total.") }}</p>
+      <p class="subtle">
+        {{
+          uiText(
+            'No need to answer 60 questions. Answer a few questions about yourself, one at a time. AI will suggest Holland interests and personality traits for you to confirm or adjust.',
+          )
+        }}
+      </p>
+      <p class="subtle">
+        {{
+          uiText(
+            'Seven core questions, with up to five follow-ups for brief or unclear answers. No more than 12 exchanges in total.',
+          )
+        }}
+      </p>
       <ol class="transcript">
         <li v-for="{ question, index } in transcript" :key="index">
           <p class="bubble ask">{{ question }}</p>
           <p v-if="state!.answers[index]" class="bubble reply">
             {{ formatDisplay(state!.answers[index]) }}
-            <button type="button" class="btn text" :disabled="busy" @click="revise(index)"> {{ uiText("Edit") }} </button>
+            <button type="button" class="btn text" :disabled="busy" @click="revise(index)">
+              {{ uiText('Edit') }}
+            </button>
           </p>
-          <p v-else class="subtle">{{ uiText("Skipped") }}</p>
+          <p v-else class="subtle">{{ uiText('Skipped') }}</p>
         </li>
       </ol>
       <form v-if="!finishedQuestions" class="form-stack" @submit.prevent="send">
         <p class="bubble ask current">{{ questions[step] }}</p>
         <label class="field"
-          >{{ uiText("Your answer") }}<textarea
+          >{{ uiText('Your answer')
+          }}<textarea
             v-model="draft"
             rows="3"
             maxlength="1000"
@@ -247,15 +264,19 @@ async function restoreTask() {
           />
         </label>
         <div class="card-footer">
-          <button type="button" class="btn" :disabled="busy" @click="skip">{{ uiText("Skip this question") }}</button>
+          <button type="button" class="btn" :disabled="busy" @click="skip">
+            {{ uiText('Skip this question') }}
+          </button>
           <button class="btn primary" :disabled="busy || !draft.trim()">
-            {{ busy ? uiText("Saving…") : uiText("Send") }}
+            {{ busy ? uiText('Saving…') : uiText('Send') }}
           </button>
         </div>
       </form>
       <div class="card-footer">
         <span class="subtle">{{
-          answered < MIN_ANSWERS ? uiText("Answer at least {0} questions to generate a profile", [MIN_ANSWERS]) : uiText("Your profile is ready to generate")
+          answered < MIN_ANSWERS
+            ? uiText('Answer at least {0} questions to generate a profile', [MIN_ANSWERS])
+            : uiText('Your profile is ready to generate')
         }}</span>
         <button
           type="button"
@@ -264,7 +285,7 @@ async function restoreTask() {
           :aria-busy="busy"
           @click="infer"
         >
-          {{ busy ? uiText("Analyzing…") : uiText("Generate my profile") }}
+          {{ busy ? uiText('Analyzing…') : uiText('Generate my profile') }}
         </button>
       </div>
     </template>
@@ -273,14 +294,18 @@ async function restoreTask() {
       <p class="helper-note">
         {{
           state?.inference?.source === 'rule'
-            ? uiText("AI is unavailable. This preliminary profile uses keyword rules. Please review it carefully.")
-            : uiText("AI inferred this profile from your words. It may be inaccurate. Adjust scores and edit traits before confirming.")
+            ? uiText(
+                'AI is unavailable. This preliminary profile uses keyword rules. Please review it carefully.',
+              )
+            : uiText(
+                'AI inferred this profile from your words. It may be inaccurate. Adjust scores and edit traits before confirming.',
+              )
         }}
       </p>
       <p v-if="state?.inference?.summary" class="assessment-summary">
         {{ state.inference.summary }}
       </p>
-      <h3>{{ uiText("Interests · Current interest code: {0}", [code]) }}</h3>
+      <h3>{{ uiText('Interests · Current interest code: {0}', [code]) }}</h3>
       <div v-for="letter in LETTERS" :key="letter" class="riasec-row">
         <label :for="`riasec-${letter}`">{{ letter }} {{ LABELS[letter] }}</label>
         <input
@@ -297,12 +322,14 @@ async function restoreTask() {
           「{{ state.inference.riasecEvidence[letter] }}」
         </p>
       </div>
-      <h3>{{ uiText("Personality and work style") }}</h3>
+      <h3>{{ uiText('Personality and work style') }}</h3>
       <ul class="trait-list">
         <li v-for="(trait, index) in traits" :key="trait.name" class="trait">
           <strong>{{ trait.name }}</strong>
           <span class="subtle">{{
-            trait.evidence ? uiText("Confidence: {0}%", [Math.round(trait.confidence * 100)]) : uiText("Add your own")
+            trait.evidence
+              ? uiText('Confidence: {0}%', [Math.round(trait.confidence * 100)])
+              : uiText('Add your own')
           }}</span>
           <button
             type="button"
@@ -310,8 +337,12 @@ async function restoreTask() {
             :aria-label="uiText('Delete trait {0}', [trait.name])"
             :disabled="busy"
             @click="traits.splice(index, 1)"
-          > {{ uiText("Delete") }} </button>
-          <p v-if="trait.evidence" class="evidence">{{ uiText("Evidence: “{0}”", [trait.evidence]) }}</p>
+          >
+            {{ uiText('Delete') }}
+          </button>
+          <p v-if="trait.evidence" class="evidence">
+            {{ uiText('Evidence: “{0}”', [trait.evidence]) }}
+          </p>
         </li>
       </ul>
       <form class="inline-form" @submit.prevent="addTrait">
@@ -322,47 +353,67 @@ async function restoreTask() {
           :aria-label="uiText('Add a trait')"
           :disabled="busy || traits.length >= 8"
         />
-        <button class="btn" :disabled="busy || !newTrait.trim() || traits.length >= 8">{{ uiText("Add") }}</button>
+        <button class="btn" :disabled="busy || !newTrait.trim() || traits.length >= 8">
+          {{ uiText('Add') }}
+        </button>
       </form>
-      <h3>{{ uiText("Practical constraints") }}</h3>
+      <h3>{{ uiText('Practical constraints') }}</h3>
       <div class="form-grid">
         <label class="field"
-          >{{ uiText("Preferred city") }}<input v-model="constraints.city" maxlength="50" :disabled="busy"
+          >{{ uiText('Preferred city')
+          }}<input v-model="constraints.city" maxlength="50" :disabled="busy"
         /></label>
         <label class="field"
-          >{{ uiText("Expected monthly salary") }}<input v-model="constraints.salary" maxlength="50" :disabled="busy"
+          >{{ uiText('Expected monthly salary')
+          }}<input v-model="constraints.salary" maxlength="50" :disabled="busy"
         /></label>
         <label class="field"
-          >{{ uiText("Overtime preference") }}<input v-model="constraints.overtime" maxlength="50" :disabled="busy"
+          >{{ uiText('Overtime preference')
+          }}<input v-model="constraints.overtime" maxlength="50" :disabled="busy"
         /></label>
       </div>
       <div class="card-footer">
-        <button type="button" class="btn" :disabled="busy" @click="revise(0)">{{ uiText("Edit my answers") }}</button>
+        <button type="button" class="btn" :disabled="busy" @click="revise(0)">
+          {{ uiText('Edit my answers') }}
+        </button>
         <button type="button" class="btn primary" :disabled="busy" @click="confirm">
-          {{ busy ? uiText("Saving…") : uiText("Confirm profile") }}
+          {{ busy ? uiText('Saving…') : uiText('Confirm profile') }}
         </button>
       </div>
     </template>
 
     <template v-else-if="phase === 'done' && state?.confirmed">
-      <p class="success-banner" role="status"> {{ uiText("Profile confirmed. Interest code:") }} <strong>{{ state.confirmed.code || uiText("Undifferentiated") }}</strong
+      <p class="success-banner" role="status">
+        {{ uiText('Profile confirmed. Interest code:') }}
+        <strong>{{ state.confirmed.code || uiText('Undifferentiated') }}</strong
         >。{{
-          state.confirmed.code ? uiText("Career recommendations will prioritize this profile.") : uiText("Add your interests before requesting career recommendations.")
+          state.confirmed.code
+            ? uiText('Career recommendations will prioritize this profile.')
+            : uiText('Add your interests before requesting career recommendations.')
         }}
       </p>
       <p class="subtle">
         {{ state.confirmed.traits.map((t) => t.name).join(' · ') }}
       </p>
       <div class="card-footer">
-        <button type="button" class="btn text" :disabled="busy" @click="restart">{{ uiText("Retake assessment") }}</button>
-        <button type="button" class="btn" :disabled="busy" @click="startCorrection('confirmed')"> {{ uiText("Edit profile") }} </button>
+        <button type="button" class="btn text" :disabled="busy" @click="restart">
+          {{ uiText('Retake assessment') }}
+        </button>
+        <button type="button" class="btn" :disabled="busy" @click="startCorrection('confirmed')">
+          {{ uiText('Edit profile') }}
+        </button>
         <RouterLink
           class="btn primary"
           :to="{
             path: '/chat',
-            query: { mode: 'CAREER_DISCOVERY', prompt: uiText('Recommend career directions based on my confirmed assessment profile') },
+            query: {
+              mode: 'CAREER_DISCOVERY',
+              prompt: uiText(
+                'Recommend career directions based on my confirmed assessment profile',
+              ),
+            },
           }"
-          >{{ uiText("Explore suitable careers") }}</RouterLink
+          >{{ uiText('Explore suitable careers') }}</RouterLink
         >
       </div>
     </template>

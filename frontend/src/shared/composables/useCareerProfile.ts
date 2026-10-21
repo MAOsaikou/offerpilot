@@ -58,7 +58,10 @@ export function useCareerProfile() {
       ready.value = true
     } catch (cause) {
       if (current === generation && !disposed)
-        error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load career profile. Please retry."))
+        error.value = () =>
+          cause instanceof Error
+            ? cause.message
+            : uiText('Could not load career profile. Please retry.')
     } finally {
       if (current === generation && !disposed) loading.value = false
     }
@@ -86,7 +89,8 @@ export function useCareerProfile() {
         if (!pending.value) error.value = ''
       } catch (cause) {
         if (current === generation && !disposed && revision === revisions[kind])
-          error.value = () => (cause instanceof Error ? cause.message : uiText("Could not save. Please retry."))
+          error.value = () =>
+            cause instanceof Error ? cause.message : uiText('Could not save. Please retry.')
       }
     })
   }
@@ -117,7 +121,8 @@ export function useCareerProfile() {
     timer = undefined
     if (dirty.profile.value) enqueue('profile')
     await writes
-    if (dirty.profile.value) throw new Error(error.value || uiText("Retry saving your career profile first"))
+    if (dirty.profile.value)
+      throw new Error(error.value || uiText('Retry saving your career profile first'))
     cityBeforeAssessment = profile.value.city
   }
 

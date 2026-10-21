@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { formatDisplay, localizedText, formatDateTime, language, translate as uiText } from '@/shared/utils/language'
+import {
+  formatDisplay,
+  localizedText,
+  formatDateTime,
+  language,
+  translate as uiText,
+} from '@/shared/utils/language'
 
 import { ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
@@ -28,8 +34,10 @@ const server = useQuery({
         : false,
 })
 async function create(
-  content = uiText("# Personal information Name: Email: Target role: # Education School / Major / Graduation date # Projects Project name: My role: Actions taken: Actual results: # Professional skills"),
-  title = uiText("My job search resume"),
+  content = uiText(
+    '# Personal information Name: Email: Target role: # Education School / Major / Graduation date # Projects Project name: My role: Actions taken: Actual results: # Professional skills',
+  ),
+  title = uiText('My job search resume'),
 ) {
   const id = crypto.randomUUID()
   workspace.state.resumes.unshift({
@@ -39,7 +47,7 @@ async function create(
     updated: new Date().toISOString(),
     versions: [],
   })
-  workspace.notify(uiText("Created resume:") + title)
+  workspace.notify(uiText('Created resume:') + title)
   await router.push('/resumes/' + id)
 }
 async function importFile(event: Event) {
@@ -61,7 +69,8 @@ async function importFile(event: Event) {
       query: risk.warning ? { piiWarning: '1' } : {},
     })
   } catch (cause) {
-    error.value = () => (cause instanceof Error ? cause.message : uiText("Upload failed. Please retry."))
+    error.value = () =>
+      cause instanceof Error ? cause.message : uiText('Upload failed. Please retry.')
   } finally {
     importing.value = false
     input.value = ''
@@ -72,10 +81,16 @@ async function importFile(event: Event) {
   <section class="page-stack">
     <PageHeading
       :title="uiText('Make every experience count')"
-      :description="uiText('Organize real experience and prepare different resumes for different opportunities.')"
+      :description="
+        uiText(
+          'Organize real experience and prepare different resumes for different opportunities.',
+        )
+      "
       ><button class="btn" :disabled="importing" @click="fileInput?.click()">
-        {{ importing ? uiText("Uploading… #2") : uiText("Upload and parse") }}</button
-      ><button class="btn primary" :disabled="importing" @click="create()"> {{ uiText("＋ Local draft") }} </button></PageHeading
+        {{ importing ? uiText('Uploading… #2') : uiText('Upload and parse') }}</button
+      ><button class="btn primary" :disabled="importing" @click="create()">
+        {{ uiText('＋ Local draft') }}
+      </button></PageHeading
     ><input
       ref="fileInput"
       type="file"
@@ -85,10 +100,18 @@ async function importFile(event: Event) {
       @change="importFile"
     />
     <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
-    <div class="helper-note"> {{ uiText("PDF, DOCX, PNG, JPG, TXT / Markdown, up to 10 MB per file and 10 pages per PDF. The original is saved on the server and sent to the configured model for parsing. Review the results before saving.") }} <RouterLink to="/settings/models">{{ uiText("Change parsing model") }}</RouterLink>
+    <div class="helper-note">
+      {{
+        uiText(
+          'PDF, DOCX, PNG, JPG, TXT / Markdown, up to 10 MB per file and 10 pages per PDF. The original is saved on the server and sent to the configured model for parsing. Review the results before saving.',
+        )
+      }}
+      <RouterLink to="/settings/models">{{ uiText('Change parsing model') }}</RouterLink>
     </div>
     <template v-if="server.isPending.value">
-      <h2>{{ uiText("Uploaded resumes") }} <span class="subtle">{{ uiText("— resumes") }}</span></h2>
+      <h2>
+        {{ uiText('Uploaded resumes') }} <span class="subtle">{{ uiText('— resumes') }}</span>
+      </h2>
       <div class="card-grid" role="status" :aria-label="uiText('Loading server resumes…')">
         <div
           v-for="index in 3"
@@ -105,10 +128,12 @@ async function importFile(event: Event) {
     </template>
     <div v-else-if="server.isError.value" class="error-banner" role="alert">
       {{ formatDisplay(server.error.value?.message) }}
-      <button class="btn" @click="server.refetch()">{{ uiText("Reload #2") }}</button>
+      <button class="btn" @click="server.refetch()">{{ uiText('Reload #2') }}</button>
     </div>
     <template v-else>
-      <h2> {{ uiText("Uploaded resumes") }} <span class="subtle">{{ uiText("{0} resumes", [server.data.value?.total ?? 0]) }}</span>
+      <h2>
+        {{ uiText('Uploaded resumes') }}
+        <span class="subtle">{{ uiText('{0} resumes', [server.data.value?.total ?? 0]) }}</span>
       </h2>
       <div v-if="server.data.value?.items.length" class="card-grid">
         <RouterLink
@@ -131,27 +156,44 @@ async function importFile(event: Event) {
           />
           <div class="card-footer">
             <span>{{ new Date(item.updatedAt).toLocaleString(language) }}</span
-            ><span>{{ uiText("View") }}</span>
+            ><span>{{ uiText('View') }}</span>
           </div>
         </RouterLink>
       </div>
       <div v-else class="panel empty-state">
-        <h3>{{ uiText("Upload your first resume") }}</h3>
-        <p>{{ uiText("After parsing, edit personal information, education, projects, internships and skills, then save a new version.") }}</p>
-        <button class="btn primary" :disabled="importing" @click="fileInput?.click()"> {{ uiText("Choose file") }} </button>
+        <h3>{{ uiText('Upload your first resume') }}</h3>
+        <p>
+          {{
+            uiText(
+              'After parsing, edit personal information, education, projects, internships and skills, then save a new version.',
+            )
+          }}
+        </p>
+        <button class="btn primary" :disabled="importing" @click="fileInput?.click()">
+          {{ uiText('Choose file') }}
+        </button>
       </div>
       <div v-if="(server.data.value?.total ?? 0) > 20" class="card-footer">
-        <button class="btn" :disabled="page === 1" @click="page--">{{ uiText("Previous page") }}</button
-        ><span>{{ uiText("Page {0}", [page]) }}</span>
+        <button class="btn" :disabled="page === 1" @click="page--">
+          {{ uiText('Previous page') }}</button
+        ><span>{{ uiText('Page {0}', [page]) }}</span>
         <button
           class="btn"
           :disabled="page * 20 >= (server.data.value?.total ?? 0)"
           @click="page++"
-        > {{ uiText("Next page") }} </button>
+        >
+          {{ uiText('Next page') }}
+        </button>
       </div>
     </template>
-    <h2>{{ uiText("Local drafts") }}</h2>
-    <p class="subtle">{{ uiText("Existing drafts remain in this browser and have not been uploaded. Continue editing or exporting them.") }}</p>
+    <h2>{{ uiText('Local drafts') }}</h2>
+    <p class="subtle">
+      {{
+        uiText(
+          'Existing drafts remain in this browser and have not been uploaded. Continue editing or exporting them.',
+        )
+      }}
+    </p>
     <div v-if="workspace.state.resumes.length" class="card-grid">
       <RouterLink
         v-for="resume in workspace.state.resumes"
@@ -160,21 +202,27 @@ async function importFile(event: Event) {
         class="panel job-card"
         ><div class="card-top">
           <span class="stat-icon"><AppIcon name="resumes" /></span
-          ><span class="tag">{{ uiText("{0} versions", [resume.versions.length]) }}</span>
+          ><span class="tag">{{ uiText('{0} versions', [resume.versions.length]) }}</span>
         </div>
         <h2>{{ resume.title }}</h2>
         <p class="subtle">{{ resume.content.slice(0, 100) }}…</p>
         <div class="card-footer">
           <span class="subtle">{{ formatDateTime(resume.updated) }}</span
-          ><span>{{ uiText("Edit #2") }}</span>
+          ><span>{{ uiText('Edit #2') }}</span>
         </div></RouterLink
       >
     </div>
     <div v-else class="panel empty-state">
       <AppIcon name="resumes" :size="44" />
-      <h2>{{ uiText("Your story deserves a good resume") }}</h2>
-      <p>{{ uiText("You can also start a local draft and organize your experience before uploading.") }}</p>
-      <button class="btn primary" @click="create()">{{ uiText("Create your first resume") }}</button>
+      <h2>{{ uiText('Your story deserves a good resume') }}</h2>
+      <p>
+        {{
+          uiText('You can also start a local draft and organize your experience before uploading.')
+        }}
+      </p>
+      <button class="btn primary" @click="create()">
+        {{ uiText('Create your first resume') }}
+      </button>
     </div>
   </section>
 </template>

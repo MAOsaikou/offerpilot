@@ -99,7 +99,7 @@ export function useAgentStream() {
           type: 'error',
           code: 0,
           recoverable: false,
-          message: error instanceof Error ? error.message : uiText("Connection interrupted"),
+          message: error instanceof Error ? error.message : uiText('Connection interrupted'),
         })
       }
       throw error

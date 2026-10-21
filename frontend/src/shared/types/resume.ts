@@ -39,13 +39,27 @@ export interface ResumePage {
   size: number
 }
 export const resumeStatus = {
-  get QUEUED() { return uiText("Waiting to parse") },
-  get PARSING() { return uiText("Parsing") },
-  get READY() { return uiText("Ready to edit") },
-  get FAILED() { return uiText("Parsing failed") },
+  get QUEUED() {
+    return uiText('Waiting to parse')
+  },
+  get PARSING() {
+    return uiText('Parsing')
+  },
+  get READY() {
+    return uiText('Ready to edit')
+  },
+  get FAILED() {
+    return uiText('Parsing failed')
+  },
 }
 export const resumeVersionSource: Record<ResumeVersion['source'], string> = {
-  get UPLOAD() { return uiText("Uploaded and parsed") },
-  get MANUAL_EDIT() { return uiText("Manual edit") },
-  get OPTIMIZED() { return uiText("Accepted rewrite") },
+  get UPLOAD() {
+    return uiText('Uploaded and parsed')
+  },
+  get MANUAL_EDIT() {
+    return uiText('Manual edit')
+  },
+  get OPTIMIZED() {
+    return uiText('Accepted rewrite')
+  },
 }

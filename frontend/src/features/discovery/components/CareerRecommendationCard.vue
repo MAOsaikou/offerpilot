@@ -24,23 +24,41 @@ const valid = computed(
     class="min-w-0 rounded-xl border border-border bg-card p-4"
     :aria-label="uiText('Career recommendations')"
   >
-    <h3 class="font-semibold">{{ uiText("Career interest recommendations · {0}", [payload.hollandCode]) }}</h3>
+    <h3 class="font-semibold">
+      {{ uiText('Career interest recommendations · {0}', [payload.hollandCode]) }}
+    </h3>
     <p class="mt-1 text-sm text-muted-foreground">
-      {{ uiText("{0}. Recommendations are for exploration. Setting a goal still requires approval.", [payload.interestsUsed.includes(uiText("Conversational assessment"))
-          ? uiText("Based on your confirmed assessment profile (interest code:") + payload.hollandCode + '）'
-          : uiText("Based on saved interests:") + payload.interestsUsed.join('、')]) }} </p>
-    <p v-if="!payload.recommendations.length" class="mt-3 text-sm" role="status"> {{ uiText("No matching careers. Adjust your interests on the discovery page and retry.") }} </p>
+      {{
+        uiText(
+          '{0}. Recommendations are for exploration. Setting a goal still requires approval.',
+          [
+            payload.interestsUsed.includes(uiText('Conversational assessment'))
+              ? uiText('Based on your confirmed assessment profile (interest code:') +
+                payload.hollandCode +
+                '）'
+              : uiText('Based on saved interests:') + payload.interestsUsed.join('、'),
+          ],
+        )
+      }}
+    </p>
+    <p v-if="!payload.recommendations.length" class="mt-3 text-sm" role="status">
+      {{ uiText('No matching careers. Adjust your interests on the discovery page and retry.') }}
+    </p>
     <RouterLink
       v-if="payload.revisionId"
       :to="{ path: '/career', query: { revision: payload.revisionId } }"
       class="btn"
-      >{{ uiText("Open these recommendations and comparison") }}</RouterLink
+      >{{ uiText('Open these recommendations and comparison') }}</RouterLink
     >
     <p
       v-if="payload.recommendations.length && payload.ordering === 'interest'"
       class="mt-2 text-sm text-muted-foreground"
     >
-      候选结合职业文本与兴趣召回，展示顺序按兴趣匹配度降序；兴趣匹配度为 (Pearson r + 1) / 2。
+      {{
+        uiText(
+          'Candidates combine occupation text and interest recall, ordered by interest match (descending). Interest match = (Pearson r + 1) / 2.',
+        )
+      }}
     </p>
     <ol v-if="payload.recommendations.length" class="mt-3 space-y-3">
       <li
@@ -55,16 +73,20 @@ const valid = computed(
           >
         </div>
         <p v-if="item.rankingScore != null" class="mt-2 text-sm">
-          综合排序分：{{ item.rankingScore.toFixed(4) }}（初始名次分 +
-          已批准的研究/薪资约束调整，非概率）
+          {{
+            uiText(
+              'Combined ranking score: {0} (initial rank score + approved research/salary constraint adjustments; not a probability)',
+              [item.rankingScore.toFixed(4)],
+            )
+          }}
         </p>
         <p v-if="item.rankDelta != null" class="mt-2 text-sm">
           {{
             item.rankDelta > 0
-              ? uiText("↑ Moved up") + item.rankDelta
+              ? uiText('↑ Moved up') + item.rankDelta
               : item.rankDelta < 0
-                ? uiText("↓ Moved down") + Math.abs(item.rankDelta)
-                : uiText("Rank unchanged")
+                ? uiText('↓ Moved down') + Math.abs(item.rankDelta)
+                : uiText('Rank unchanged')
           }}
         </p>
         <ul class="mt-2 space-y-1 text-sm text-muted-foreground">
@@ -74,7 +96,8 @@ const valid = computed(
           v-for="citation in item.citations ?? []"
           :key="citation.occupationId"
           class="mt-2 break-words text-xs text-muted-foreground"
-        > {{ uiText("Source: {0} · {1}", [citation.title, citation.excerpt]) }}
+        >
+          {{ uiText('Source: {0} · {1}', [citation.title, citation.excerpt]) }}
         </p>
         <CareerCardFacts :details="item.details" :match="item.similarity" />
         <button
@@ -84,9 +107,13 @@ const valid = computed(
           :disabled="disabled"
           :aria-label="uiText('Set {0} as goal', [item.name])"
           @click="emit('adoptTarget', { occupationId: item.occupationId, name: item.name })"
-        > {{ uiText("Set as goal") }} </button>
+        >
+          {{ uiText('Set as goal') }}
+        </button>
       </li>
     </ol>
   </section>
-  <p v-else role="alert">{{ uiText("Career recommendation data is unavailable. Please search again.") }}</p>
+  <p v-else role="alert">
+    {{ uiText('Career recommendation data is unavailable. Please search again.') }}
+  </p>
 </template>

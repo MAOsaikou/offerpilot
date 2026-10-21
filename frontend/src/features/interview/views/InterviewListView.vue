@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { formatDisplay, formatDateTime, language, translateLabel, sourceText, translate as uiText } from '@/shared/utils/language'
+import {
+  formatDisplay,
+  formatDateTime,
+  language,
+  translateLabel,
+  sourceText,
+  translate as uiText,
+} from '@/shared/utils/language'
 
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, useRouter, useRoute } from 'vue-router'
@@ -51,7 +58,7 @@ async function removeStory(id: string) {
   }
 }
 const role = ref(typeof route.query.role === 'string' ? route.query.role : '')
-const kind = ref<InterviewKind>(sourceText("General"))
+const kind = ref<InterviewKind>(sourceText('General'))
 const difficulty = ref<InterviewOptions['difficulty']>('STANDARD')
 const mode = ref<InterviewOptions['mode']>('TEXT')
 const questionCount = ref(5)
@@ -157,15 +164,19 @@ function exportLegacy(session: Interview) {
     />
     <div class="split-content">
       <form class="panel form-stack" @submit.prevent="start">
-        <h2>{{ uiText("Create a mock interview") }}</h2>
-        <p v-if="typeof route.query.jobId === 'string'" class="helper-note"> {{ uiText("This practice session will be linked to the selected job's application workspace.") }}<RouterLink :to="'/jobs/' + route.query.jobId"
-            >{{ uiText("View job") }}</RouterLink
-          >
+        <h2>{{ uiText('Create a mock interview') }}</h2>
+        <p v-if="typeof route.query.jobId === 'string'" class="helper-note">
+          {{
+            uiText(
+              "This practice session will be linked to the selected job's application workspace.",
+            )
+          }}<RouterLink :to="'/jobs/' + route.query.jobId">{{ uiText('View job') }}</RouterLink>
         </p>
         <div class="form-grid">
           <label class="field"
-            >{{ uiText("Linked job (optional)") }}<select v-model="jobId" :disabled="busy">
-              <option value="">{{ uiText("No linked job") }}</option>
+            >{{ uiText('Linked job (optional)')
+            }}<select v-model="jobId" :disabled="busy">
+              <option value="">{{ uiText('No linked job') }}</option>
               <option
                 v-if="jobId && !applications.data.value?.some((item) => item.jobId === jobId)"
                 :value="jobId"
@@ -173,18 +184,23 @@ function exportLegacy(session: Interview) {
                 {{ role }}
               </option>
               <option v-for="item in applications.data.value" :key="item.id" :value="item.jobId">
-                {{ item.job?.title || uiText("Job details unavailable") }}
+                {{ item.job?.title || uiText('Job details unavailable') }}
               </option>
             </select></label
           >
-          <p v-if="applications.isPending.value" role="status">{{ uiText("Loading saved jobs…") }}</p>
+          <p v-if="applications.isPending.value" role="status">
+            {{ uiText('Loading saved jobs…') }}
+          </p>
           <p v-if="applications.isError.value" role="alert">
             {{ formatDisplay(applications.error.value?.message) }}
-            <button type="button" class="btn" @click="applications.refetch()">{{ uiText("Retry jobs") }}</button>
+            <button type="button" class="btn" @click="applications.refetch()">
+              {{ uiText('Retry jobs') }}
+            </button>
           </p>
           <label class="field"
-            >{{ uiText("Resume") }}<select v-model="resumeId" :disabled="busy || resumes.isPending.value">
-              <option value="">{{ uiText("No resume (general practice)") }}</option>
+            >{{ uiText('Resume')
+            }}<select v-model="resumeId" :disabled="busy || resumes.isPending.value">
+              <option value="">{{ uiText('No resume (general practice)') }}</option>
               <option
                 v-for="item in resumes.data.value?.items.filter(
                   (item) => item.parseStatus === 'READY',
@@ -196,61 +212,79 @@ function exportLegacy(session: Interview) {
               </option>
             </select></label
           >
-          <p v-if="resumes.isPending.value" role="status">{{ uiText("Loading resumes…") }}</p>
+          <p v-if="resumes.isPending.value" role="status">{{ uiText('Loading resumes…') }}</p>
           <p v-if="resumes.isError.value" role="alert">
             {{ formatDisplay(resumes.error.value?.message) }}
-            <button type="button" class="btn" @click="resumes.refetch()">{{ uiText("Retry resumes") }}</button>
+            <button type="button" class="btn" @click="resumes.refetch()">
+              {{ uiText('Retry resumes') }}
+            </button>
           </p>
           <label v-if="resumeId" class="field"
-            >{{ uiText("Resume version") }}<select
-              v-model="versionId"
-              required
-              :disabled="busy || versions.isPending.value"
-            >
-              <option value="">{{ uiText("Select a saved version") }}</option>
-              <option v-for="item in versions.data.value" :key="item.id" :value="item.id"> {{ uiText("Version {0} · {1}", [item.versionNo, new Date(item.createdAt).toLocaleDateString(language)]) }}
+            >{{ uiText('Resume version')
+            }}<select v-model="versionId" required :disabled="busy || versions.isPending.value">
+              <option value="">{{ uiText('Select a saved version') }}</option>
+              <option v-for="item in versions.data.value" :key="item.id" :value="item.id">
+                {{
+                  uiText('Version {0} · {1}', [
+                    item.versionNo,
+                    new Date(item.createdAt).toLocaleDateString(language),
+                  ])
+                }}
               </option>
             </select></label
           >
-          <p v-if="resumeId && versions.isPending.value" role="status">{{ uiText("Loading versions…") }}</p>
+          <p v-if="resumeId && versions.isPending.value" role="status">
+            {{ uiText('Loading versions…') }}
+          </p>
           <p v-if="resumeId && versions.isError.value" role="alert">
             {{ formatDisplay(versions.error.value?.message) }}
-            <button type="button" class="btn" @click="versions.refetch()">{{ uiText("Retry versions") }}</button>
+            <button type="button" class="btn" @click="versions.refetch()">
+              {{ uiText('Retry versions') }}
+            </button>
           </p>
           <label class="field"
-            >{{ uiText("Target job") }}<input
+            >{{ uiText('Target job')
+            }}<input
               v-model="role"
               :disabled="busy"
               required
               maxlength="100"
               :placeholder="uiText('Enter the role you want to practice for')" /></label
           ><label class="field"
-            >{{ uiText("Interview type") }}<select v-model="kind" :disabled="busy">
-              <option :value="sourceText('Technical')">{{ uiText("Technical") }}</option>
-              <option :value="sourceText('Behavioral')">{{ uiText("Behavioral") }}</option>
+            >{{ uiText('Interview type')
+            }}<select v-model="kind" :disabled="busy">
+              <option :value="sourceText('Technical')">{{ uiText('Technical') }}</option>
+              <option :value="sourceText('Behavioral')">{{ uiText('Behavioral') }}</option>
               <option>HR</option>
-              <option :value="sourceText('General')">{{ uiText("General") }}</option>
+              <option :value="sourceText('General')">{{ uiText('General') }}</option>
             </select></label
           >
         </div>
         <div class="form-grid">
           <label class="field"
-            >{{ uiText("Difficulty") }}<select v-model="difficulty" :disabled="busy">
-              <option value="EASY">{{ uiText("Beginner") }}</option>
-              <option value="STANDARD">{{ uiText("Intermediate") }}</option>
-              <option value="HARD">{{ uiText("Advanced") }}</option>
+            >{{ uiText('Difficulty')
+            }}<select v-model="difficulty" :disabled="busy">
+              <option value="EASY">{{ uiText('Beginner') }}</option>
+              <option value="STANDARD">{{ uiText('Intermediate') }}</option>
+              <option value="HARD">{{ uiText('Advanced') }}</option>
             </select></label
           >
           <label class="field"
-            >{{ uiText("Mode") }}<select v-model="mode" :disabled="busy">
-              <option value="TEXT">{{ uiText("Text") }}</option>
+            >{{ uiText('Mode')
+            }}<select v-model="mode" :disabled="busy">
+              <option value="TEXT">{{ uiText('Text') }}</option>
               <option value="VOICE" :disabled="!voiceAvailable">
-                {{ voiceAvailable ? uiText("Voice (browser recognition and speech)") : uiText("Voice (unavailable)") }}
+                {{
+                  voiceAvailable
+                    ? uiText('Voice (browser recognition and speech)')
+                    : uiText('Voice (unavailable)')
+                }}
               </option>
             </select></label
           >
           <label class="field"
-            >{{ uiText("Question count") }}<input
+            >{{ uiText('Question count')
+            }}<input
               v-model.number="questionCount"
               type="number"
               min="3"
@@ -259,34 +293,36 @@ function exportLegacy(session: Interview) {
               :disabled="busy"
           /></label>
           <label class="field"
-            >{{ uiText("Industry (optional)") }}<input
+            >{{ uiText('Industry (optional)')
+            }}<input
               v-model="industry"
               maxlength="100"
               :placeholder="uiText('For example: healthcare, education, consumer goods')"
               :disabled="busy"
           /></label>
           <label class="field"
-            >{{ uiText("Feedback timing") }}<select v-model="feedbackMode" :disabled="busy">
-              <option value="IMMEDIATE">{{ uiText("After each answer") }}</option>
-              <option value="END">{{ uiText("At the end") }}</option>
+            >{{ uiText('Feedback timing')
+            }}<select v-model="feedbackMode" :disabled="busy">
+              <option value="IMMEDIATE">{{ uiText('After each answer') }}</option>
+              <option value="END">{{ uiText('At the end') }}</option>
             </select></label
           >
           <label class="field"
-            >{{ uiText("Duration") }}<select v-model="durationMinutes" :disabled="busy">
-              <option :value="15">{{ uiText("15 minutes") }}</option>
-              <option :value="30">{{ uiText("30 minutes") }}</option>
-              <option :value="45">{{ uiText("45 minutes") }}</option>
-              <option :value="60">{{ uiText("60 minutes") }}</option>
+            >{{ uiText('Duration')
+            }}<select v-model="durationMinutes" :disabled="busy">
+              <option :value="15">{{ uiText('15 minutes') }}</option>
+              <option :value="30">{{ uiText('30 minutes') }}</option>
+              <option :value="45">{{ uiText('45 minutes') }}</option>
+              <option :value="60">{{ uiText('60 minutes') }}</option>
             </select></label
           >
         </div>
         <fieldset class="form-stack" :disabled="busy">
-          <legend>{{ uiText("Question mix") }}</legend>
+          <legend>{{ uiText('Question mix') }}</legend>
           <label
-            ><input
-              v-model="customMix"
-              type="checkbox"
-            />{{ uiText("Customize counts by question type (automatic selection by role by default)") }}</label
+            ><input v-model="customMix" type="checkbox" />{{
+              uiText('Customize counts by question type (automatic selection by role by default)')
+            }}</label
           >
           <div v-if="customMix" class="form-grid">
             <label v-for="(label, type) in questionTypeLabels" :key="type" class="field"
@@ -294,38 +330,56 @@ function exportLegacy(session: Interview) {
               }}<input v-model.number="typeMix[type]" type="number" min="0" max="15" required
             /></label>
           </div>
-          <p v-if="mixInvalid" role="alert"> {{ uiText("Question counts total {0}; expected {1}.", [mixTotal, questionCount]) }} </p>
+          <p v-if="mixInvalid" role="alert">
+            {{ uiText('Question counts total {0}; expected {1}.', [mixTotal, questionCount]) }}
+          </p>
         </fieldset>
-        <p class="helper-note"> {{ uiText("Any role is supported. Enter the room to generate questions. Rule-based fallback questions are labeled when the model is unavailable, and unavailable scores remain unscored. Improved answers use only real answers and resume facts.") }} </p>
+        <p class="helper-note">
+          {{
+            uiText(
+              'Any role is supported. Enter the room to generate questions. Rule-based fallback questions are labeled when the model is unavailable, and unavailable scores remain unscored. Improved answers use only real answers and resume facts.',
+            )
+          }}
+        </p>
         <p v-if="error" role="alert">{{ error }}</p>
         <button
           class="btn primary"
           type="submit"
           :disabled="busy || !role.trim() || invalidSelection || mixInvalid"
         >
-          {{ busy ? uiText("Creating…") : uiText("Start practice") }}
+          {{ busy ? uiText('Creating…') : uiText('Start practice') }}
         </button>
       </form>
       <aside class="panel form-stack">
         <span class="stat-icon"><AppIcon name="interviews" /></span>
-        <h2>{{ uiText("Clarity comes first") }}</h2>
-        <p class="subtle"> {{ uiText("Structure project stories with STAR: situation, task, action and result. Include concrete details wherever possible.") }} </p>
-        <span class="tag">{{ uiText("Question-by-question practice · Adjustable count and feedback timing") }}</span>
+        <h2>{{ uiText('Clarity comes first') }}</h2>
+        <p class="subtle">
+          {{
+            uiText(
+              'Structure project stories with STAR: situation, task, action and result. Include concrete details wherever possible.',
+            )
+          }}
+        </p>
+        <span class="tag">{{
+          uiText('Question-by-question practice · Adjustable count and feedback timing')
+        }}</span>
       </aside>
     </div>
     <section class="panel">
       <div class="section-heading">
-        <h2>{{ uiText("My practice history") }}</h2>
-        <span class="subtle">{{ uiText("{0} practice sessions", [query.data.value?.length ?? 0]) }}</span>
+        <h2>{{ uiText('My practice history') }}</h2>
+        <span class="subtle">{{
+          uiText('{0} practice sessions', [query.data.value?.length ?? 0])
+        }}</span>
       </div>
-      <p v-if="query.isPending.value" role="status">{{ uiText("Loading practice history…") }}</p>
+      <p v-if="query.isPending.value" role="status">{{ uiText('Loading practice history…') }}</p>
       <div v-else-if="query.isError.value" class="empty-state" role="alert">
         <p>{{ formatDisplay(query.error.value?.message) }}</p>
-        <button class="btn" @click="query.refetch()">{{ uiText("Reload #2") }}</button>
+        <button class="btn" @click="query.refetch()">{{ uiText('Reload #2') }}</button>
       </div>
       <div v-else-if="!query.data.value?.length" class="empty-state">
-        <h2>{{ uiText("Start your first practice with an introduction") }}</h2>
-        <p>{{ uiText("Completed answers stay here for repeated review.") }}</p>
+        <h2>{{ uiText('Start your first practice with an introduction') }}</h2>
+        <p>{{ uiText('Completed answers stay here for repeated review.') }}</p>
       </div>
       <article
         v-for="session in query.data.value"
@@ -339,46 +393,72 @@ function exportLegacy(session: Interview) {
           </h3>
           <InterviewJobContext :job-id="session.jobId" :fallback-title="session.role" />
           <small
-            >{{ translateLabel(session.kind) }} · {{ new Date(session.createdAt).toLocaleString(language) }}</small
+            >{{ translateLabel(session.kind) }} ·
+            {{ new Date(session.createdAt).toLocaleString(language) }}</small
           >
         </div>
         <div class="interview-record-actions">
-          <span class="tag">{{ session.completed ? uiText("Completed") : uiText("In progress") }}</span>
+          <span class="tag">{{
+            session.completed ? uiText('Completed') : uiText('In progress')
+          }}</span>
           <RouterLink :to="'/interviews/' + session.id">{{
-            session.completed ? uiText("View report") : uiText("Continue practice")
+            session.completed ? uiText('View report') : uiText('Continue practice')
           }}</RouterLink>
         </div>
       </article>
     </section>
     <section v-if="workspace.state.interviews.length" class="panel">
-      <div class="section-heading"><h2>{{ uiText("Older local practice") }}</h2></div>
-      <p class="helper-note"> {{ uiText("These records stay in this browser. You can export the original answers. New sessions and drafts are saved on the server.") }} </p>
+      <div class="section-heading">
+        <h2>{{ uiText('Older local practice') }}</h2>
+      </div>
+      <p class="helper-note">
+        {{
+          uiText(
+            'These records stay in this browser. You can export the original answers. New sessions and drafts are saved on the server.',
+          )
+        }}
+      </p>
       <article v-for="session in workspace.state.interviews" :key="session.id" class="list-row">
         <div>
           <h3>{{ session.role }}</h3>
           <small>{{ translateLabel(session.kind) }} · {{ formatDateTime(session.date) }}</small>
         </div>
-        <button class="btn" @click="exportLegacy(session)">{{ uiText("Export older practice") }}</button>
+        <button class="btn" @click="exportLegacy(session)">
+          {{ uiText('Export older practice') }}
+        </button>
       </article>
     </section>
 
     <section class="panel">
       <div class="section-heading">
-        <h2>{{ uiText("STAR story library") }}</h2>
+        <h2>{{ uiText('STAR story library') }}</h2>
         <span class="subtle"
-          >{{ formatDisplay(stories.data.value?.items.length ?? 0) }} / {{ formatDisplay(stories.data.value?.limit ?? 30) }}</span
+          >{{ formatDisplay(stories.data.value?.items.length ?? 0) }} /
+          {{ formatDisplay(stories.data.value?.limit ?? 30) }}</span
         >
       </div>
-      <p class="helper-note"> {{ uiText("STAR answers you confirm from completed practice can be cited as evidence in future interview conversations.") }} </p>
+      <p class="helper-note">
+        {{
+          uiText(
+            'STAR answers you confirm from completed practice can be cited as evidence in future interview conversations.',
+          )
+        }}
+      </p>
       <p v-if="storyError" role="alert">{{ storyError }}</p>
-      <p v-if="stories.isPending.value" role="status">{{ uiText("Loading story library…") }}</p>
+      <p v-if="stories.isPending.value" role="status">{{ uiText('Loading story library…') }}</p>
       <div v-else-if="stories.isError.value" class="empty-state" role="alert">
         <p>{{ formatDisplay(stories.error.value?.message) }}</p>
-        <button class="btn" @click="stories.refetch()">{{ uiText("Reload #2") }}</button>
+        <button class="btn" @click="stories.refetch()">{{ uiText('Reload #2') }}</button>
       </div>
       <div v-else-if="!stories.data.value?.items.length" class="empty-state">
-        <h2>{{ uiText("No saved stories yet") }}</h2>
-        <p>{{ uiText("After practice, save answers with sufficient STAR details from the review page.") }}</p>
+        <h2>{{ uiText('No saved stories yet') }}</h2>
+        <p>
+          {{
+            uiText(
+              'After practice, save answers with sufficient STAR details from the review page.',
+            )
+          }}
+        </p>
       </div>
       <article
         v-for="story in stories.data.value?.items"
@@ -387,7 +467,10 @@ function exportLegacy(session: Interview) {
         style="margin-top: 12px"
       >
         <h3>{{ story.title }}</h3>
-        <p class="subtle">{{ story.role || uiText("Role not specified") }} · {{ formatDisplay(story.starCount) }}/4 STAR</p>
+        <p class="subtle">
+          {{ story.role || uiText('Role not specified') }} · {{ formatDisplay(story.starCount) }}/4
+          STAR
+        </p>
         <p class="prose-content">
           {{ story.body.slice(0, 200) }}{{ formatDisplay(story.body.length > 200 ? '…' : '') }}
         </p>
@@ -397,7 +480,7 @@ function exportLegacy(session: Interview) {
           :disabled="Boolean(storyBusy)"
           @click="removeStory(story.id)"
         >
-          {{ storyBusy === story.id ? uiText("Deleting…") : uiText("Delete") }}
+          {{ storyBusy === story.id ? uiText('Deleting…') : uiText('Delete') }}
         </button>
       </article>
     </section>

@@ -25,15 +25,30 @@ const remainingMinutes = computed(() => {
 })
 </script>
 <template>
-  <aside v-if="auth.user?.isDemo" class="demo-banner" :aria-label="uiText('Demo account information')">
+  <aside
+    v-if="auth.user?.isDemo"
+    class="demo-banner"
+    :aria-label="uiText('Demo account information')"
+  >
     <template v-if="sandbox">
-      <strong>{{ uiText("Private demo sandbox") }}</strong> {{ uiText("· {0} minutes remaining", [remainingMinutes]) }} <span v-if="query.data.value"> {{ uiText("· {0} / {1} tokens left today (resets at midnight UTC)", [query.data.value.remainingTokens.toLocaleString(language), query.data.value.dailyTokenLimit.toLocaleString(language)]) }} </span>
-      <span v-else-if="query.isError.value"> {{ uiText("· Could not load quota") }}</span>
-      <span v-else> {{ uiText("· Loading quota…") }}</span>
-      <p>{{ uiText("Automatically deleted on expiry. Do not enter personal information.") }}</p>
+      <strong>{{ uiText('Private demo sandbox') }}</strong>
+      {{ uiText('· {0} minutes remaining', [remainingMinutes]) }}
+      <span v-if="query.data.value">
+        {{
+          uiText('· {0} / {1} tokens left today (resets at midnight UTC)', [
+            query.data.value.remainingTokens.toLocaleString(language),
+            query.data.value.dailyTokenLimit.toLocaleString(language),
+          ])
+        }}
+      </span>
+      <span v-else-if="query.isError.value"> {{ uiText('· Could not load quota') }}</span>
+      <span v-else> {{ uiText('· Loading quota…') }}</span>
+      <p>{{ uiText('Automatically deleted on expiry. Do not enter personal information.') }}</p>
     </template>
     <template v-else>
-      <strong>{{ uiText("Shared demo account") }}</strong> {{ uiText("· Fictional data resets periodically. Do not enter personal information.") }} </template>
+      <strong>{{ uiText('Shared demo account') }}</strong>
+      {{ uiText('· Fictional data resets periodically. Do not enter personal information.') }}
+    </template>
   </aside>
 </template>
 <style scoped>

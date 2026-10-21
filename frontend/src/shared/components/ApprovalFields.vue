@@ -8,21 +8,21 @@ const props = defineProps<{ fields: string[]; args: unknown; disabled?: boolean 
 const emit = defineEmits<{ change: [Record<string, unknown>, string] }>()
 const values = ref<Record<string, string>>({})
 const labels = computed<Record<string, string>>(() => ({
-  name: uiText("Target career name"),
-  taskTitles: uiText("Completed tasks (JSON array)"),
-  accepted: uiText("Accepted patches (JSON array)"),
-  edited: uiText("Edited patches (JSON object)"),
-  confirmed: uiText("Verified patches (JSON array)"),
-  questionIndex: uiText("Question index (starts at 0)"),
-  role: uiText("Interview role"),
-  kind: uiText("Interview type"),
-  answer: uiText("Interview answer"),
-  nextQuestion: uiText("Next question (true / false)"),
-  fact: uiText("Memory content (original quotes only)"),
-  status: uiText("Status"),
-  note: uiText("Notes"),
-  nextAction: uiText("Next action"),
-  nextActionAt: uiText("Action date"),
+  name: uiText('Target career name'),
+  taskTitles: uiText('Completed tasks (JSON array)'),
+  accepted: uiText('Accepted patches (JSON array)'),
+  edited: uiText('Edited patches (JSON object)'),
+  confirmed: uiText('Verified patches (JSON array)'),
+  questionIndex: uiText('Question index (starts at 0)'),
+  role: uiText('Interview role'),
+  kind: uiText('Interview type'),
+  answer: uiText('Interview answer'),
+  nextQuestion: uiText('Next question (true / false)'),
+  fact: uiText('Memory content (original quotes only)'),
+  status: uiText('Status'),
+  note: uiText('Notes'),
+  nextAction: uiText('Next action'),
+  nextActionAt: uiText('Action date'),
 }))
 const jsonFields = new Set([
   'taskTitles',
@@ -59,7 +59,7 @@ function change() {
     }
     emit('change', args, '')
   } catch {
-    emit('change', {}, uiText("Enter valid JSON parameters"))
+    emit('change', {}, uiText('Enter valid JSON parameters'))
   }
 }
 </script>

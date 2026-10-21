@@ -71,10 +71,13 @@ export function useRunReplay() {
       const history = await getAgentWorkbench(id)
       if (version !== generation) return
       events.value = [...history].sort((a, b) => a.id - b.id)
-      if (!history.length) error.value = () => (uiText("No replayable events in this run."))
+      if (!history.length) error.value = () => uiText('No replayable events in this run.')
     } catch (failure) {
       if (version === generation)
-        error.value = () => (failure instanceof Error ? failure.message : uiText("Could not load replay. Please retry."))
+        error.value = () =>
+          failure instanceof Error
+            ? failure.message
+            : uiText('Could not load replay. Please retry.')
     } finally {
       if (version === generation) loading.value = false
     }

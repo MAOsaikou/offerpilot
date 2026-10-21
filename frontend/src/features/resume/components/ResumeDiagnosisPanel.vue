@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { formatDisplay, localizedText, language, translate as uiText } from '@/shared/utils/language'
+import {
+  formatDisplay,
+  localizedText,
+  language,
+  translate as uiText,
+} from '@/shared/utils/language'
 
 import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
 import { generationResult } from '@/shared/api/generationTasks'
@@ -35,7 +40,12 @@ let locallyCancelled = false
 let controller: AbortController | undefined
 let alive = true
 let selection = 0
-const labels = computed(() => ({ RUNNING: uiText("Analyzing"), SUCCEEDED: uiText("Completed"), FAILED: uiText("Failed"), CANCELLED: uiText("Canceled") }))
+const labels = computed(() => ({
+  RUNNING: uiText('Analyzing'),
+  SUCCEEDED: uiText('Completed'),
+  FAILED: uiText('Failed'),
+  CANCELLED: uiText('Canceled'),
+}))
 const refresh = () => cache.invalidateQueries({ queryKey: ['diagnoses', props.resumeId] })
 async function revealReport(value: Report, epoch: number) {
   if (!alive || epoch !== selection) return
@@ -54,11 +64,12 @@ async function show(id: string) {
   error.value = ''
   try {
     const task = await getDiagnosis(id)
-    if (!task.report) throw new Error(uiText("The report is incomplete. Refresh diagnosis history and retry."))
+    if (!task.report)
+      throw new Error(uiText('The report is incomplete. Refresh diagnosis history and retry.'))
     await revealReport(task.report, epoch)
   } catch (cause) {
     if (alive && epoch === selection)
-      error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load report"))
+      error.value = () => (cause instanceof Error ? cause.message : uiText('Could not load report'))
   } finally {
     if (alive && epoch === selection) selecting.value = false
   }
@@ -97,15 +108,15 @@ async function start(save: boolean) {
         (locallyCancelled && cause instanceof DOMException && cause.name === 'AbortError')
       ) {
         error.value = ''
-        message.value = () => (uiText("Diagnosis canceled. You can start again."))
+        message.value = () => uiText('Diagnosis canceled. You can start again.')
         return
       }
-      error.value =
-        () => (cause instanceof DOMException && cause.name === 'AbortError'
-          ? uiText("Diagnosis connection stopped. Check report history.")
+      error.value = () =>
+        cause instanceof DOMException && cause.name === 'AbortError'
+          ? uiText('Diagnosis connection stopped. Check report history.')
           : cause instanceof Error
             ? cause.message
-            : uiText("Diagnosis failed"))
+            : uiText('Diagnosis failed')
       // A disconnect may happen after the report committed. Recover this exact request before retrying.
       if (requestId)
         try {
@@ -130,7 +141,7 @@ async function start(save: boolean) {
 async function stop(id = runningId.value || existing.value?.id) {
   if (!id) {
     locallyCancelled = true
-    message.value = () => (uiText("Diagnosis canceled. You can start again."))
+    message.value = () => uiText('Diagnosis canceled. You can start again.')
     error.value = ''
     controller?.abort()
     return
@@ -138,12 +149,13 @@ async function stop(id = runningId.value || existing.value?.id) {
   try {
     await cancelDiagnosis(id)
     locallyCancelled = true
-    message.value = () => (uiText("Diagnosis canceled. You can start again."))
+    message.value = () => uiText('Diagnosis canceled. You can start again.')
     error.value = ''
     controller?.abort()
     await refresh()
   } catch (cause) {
-    error.value = () => (cause instanceof Error ? cause.message : uiText("Could not cancel. Please retry."))
+    error.value = () =>
+      cause instanceof Error ? cause.message : uiText('Could not cancel. Please retry.')
   }
 }
 onBeforeUnmount(() => {
@@ -156,7 +168,9 @@ async function restoreTask(id: string) {
     const saved = await generationResult<Report>(id)
     if (alive && report.value?.reportId !== saved.reportId) await show(saved.reportId)
   } catch (cause) {
-    if (alive) error.value = () => (cause instanceof Error ? cause.message : uiText("Could not restore report"))
+    if (alive)
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Could not restore report')
   }
 }
 </script>
@@ -166,34 +180,66 @@ async function restoreTask(id: string) {
     <header class="diagnosis-intro">
       <span class="diagnosis-icon"><AppIcon name="spark" :size="24" /></span>
       <div>
-        <h2>{{ uiText("AI resume diagnosis") }}</h2>
-        <p>{{ uiText("Find strengths worth keeping and turn suggestions into action.") }}</p>
-        <small>{{ uiText("Analyzes the saved version using the text model in settings. Your resume is not changed automatically.") }}</small>
+        <h2>{{ uiText('AI resume diagnosis') }}</h2>
+        <p>{{ uiText('Find strengths worth keeping and turn suggestions into action.') }}</p>
+        <small>{{
+          uiText(
+            'Analyzes the saved version using the text model in settings. Your resume is not changed automatically.',
+          )
+        }}</small>
       </div>
     </header>
-    <div v-if="dirty" class="helper-note"> {{ uiText("You have unsaved edits. Save them before diagnosis or analyze only the saved version.") }} </div>
+    <div v-if="dirty" class="helper-note">
+      {{
+        uiText(
+          'You have unsaved edits. Save them before diagnosis or analyze only the saved version.',
+        )
+      }}
+    </div>
     <div class="diagnosis-actions">
       <button
         v-if="dirty"
         class="btn primary"
         :disabled="running || !!existing"
         @click="start(true)"
-      > {{ uiText("Save new version and diagnose") }} </button>
+      >
+        {{ uiText('Save new version and diagnose') }}
+      </button>
       <button
         class="btn"
         :class="{ primary: !dirty }"
         :disabled="running || !!existing"
         @click="start(false)"
       >
-        {{ running || existing ? uiText("Analyzing…") : dirty ? uiText("Diagnose saved version only") : uiText("Start AI diagnosis") }}
+        {{
+          running || existing
+            ? uiText('Analyzing…')
+            : dirty
+              ? uiText('Diagnose saved version only')
+              : uiText('Start AI diagnosis')
+        }}
       </button>
-      <button v-if="running || existing" class="btn" @click="stop()">{{ uiText("Cancel diagnosis") }}</button>
+      <button v-if="running || existing" class="btn" @click="stop()">
+        {{ uiText('Cancel diagnosis') }}
+      </button>
     </div>
-    <p v-if="running || existing" role="status"> {{ uiText("Analyzing the saved version. This usually takes tens of seconds and continues after you leave. Return to view the report.") }} </p>
+    <p v-if="running || existing" role="status">
+      {{
+        uiText(
+          'Analyzing the saved version. This usually takes tens of seconds and continues after you leave. Return to view the report.',
+        )
+      }}
+    </p>
     <p v-if="message" role="status">{{ message }}</p>
     <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
-    <p v-if="selecting" role="status">{{ uiText("Loading report…") }}</p>
-    <p v-if="report && report.versionId !== versionId" class="helper-note"> {{ uiText("This diagnosis is for an older version. Your editing version differs; citations still point to the report's original version.") }} </p>
+    <p v-if="selecting" role="status">{{ uiText('Loading report…') }}</p>
+    <p v-if="report && report.versionId !== versionId" class="helper-note">
+      {{
+        uiText(
+          "This diagnosis is for an older version. Your editing version differs; citations still point to the report's original version.",
+        )
+      }}
+    </p>
     <div
       v-if="report"
       ref="reportElement"
@@ -205,21 +251,27 @@ async function restoreTask(id: string) {
     </div>
     <details class="diagnosis-history-group" :open="!report">
       <summary :data-expand="uiText('Expand')" :data-collapse="uiText('Collapse')">
-        <AppIcon name="history" :size="18" /><span>{{ uiText("Diagnosis history") }}</span
-        ><span class="subtle">{{ uiText("{0} times", [history.data.value?.length || 0]) }}</span>
+        <AppIcon name="history" :size="18" /><span>{{ uiText('Diagnosis history') }}</span
+        ><span class="subtle">{{ uiText('{0} times', [history.data.value?.length || 0]) }}</span>
       </summary>
       <div class="history-toolbar">
-        <p class="subtle">{{ uiText("View saved reports without calling the model again.") }}</p>
-        <button class="btn" :disabled="history.isFetching.value" @click="history.refetch()"> {{ uiText("Refresh history") }} </button>
+        <p class="subtle">{{ uiText('View saved reports without calling the model again.') }}</p>
+        <button class="btn" :disabled="history.isFetching.value" @click="history.refetch()">
+          {{ uiText('Refresh history') }}
+        </button>
       </div>
-      <p v-if="history.isPending.value" role="status">{{ uiText("Loading history…") }}</p>
+      <p v-if="history.isPending.value" role="status">{{ uiText('Loading history…') }}</p>
       <p v-else-if="history.error.value" class="error-banner" role="alert">
         {{ formatDisplay(history.error.value.message) }}
       </p>
-      <p v-else-if="!history.data.value?.length" class="subtle"> {{ uiText("No diagnosis reports yet. Use the button above to start.") }} </p>
+      <p v-else-if="!history.data.value?.length" class="subtle">
+        {{ uiText('No diagnosis reports yet. Use the button above to start.') }}
+      </p>
       <div v-for="task in history.data.value" :key="task.id" class="diagnosis-history">
         <div>
-          <strong>{{ uiText("Version {0} · {1} #2", [task.versionNo, labels[task.status]]) }}</strong>
+          <strong>{{
+            uiText('Version {0} · {1} #2', [task.versionNo, labels[task.status]])
+          }}</strong>
           <p class="subtle">{{ new Date(task.createdAt).toLocaleString(language) }}</p>
           <p v-if="task.error">{{ task.error }}</p>
         </div>
@@ -228,7 +280,9 @@ async function restoreTask(id: string) {
           class="btn"
           :disabled="selecting || running"
           @click="show(task.id)"
-        > {{ uiText("View report") }} </button>
+        >
+          {{ uiText('View report') }}
+        </button>
       </div>
     </details>
   </section>

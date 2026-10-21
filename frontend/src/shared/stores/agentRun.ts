@@ -285,12 +285,16 @@ export const useAgentRunStore = defineStore('agentRun', () => {
     for (const step of run.steps) {
       if (step.status !== 'RUNNING' && step.status !== 'PENDING') continue
       step.status = status === 'FAILED' && step.status === 'RUNNING' ? 'FAILED' : 'SKIPPED'
-      step.summary = status === 'CANCELLED' ? uiText("Run canceled") : uiText("Run ended before this step completed")
+      step.summary =
+        status === 'CANCELLED'
+          ? uiText('Run canceled')
+          : uiText('Run ended before this step completed')
     }
     for (const call of run.toolCalls) {
       if (call.status !== 'RUNNING') continue
       call.status = status === 'CANCELLED' ? 'CANCELLED' : 'FAILED'
-      call.resultPreview = status === 'CANCELLED' ? uiText("Run canceled") : uiText("Run ended without a tool result")
+      call.resultPreview =
+        status === 'CANCELLED' ? uiText('Run canceled') : uiText('Run ended without a tool result')
     }
   }
 

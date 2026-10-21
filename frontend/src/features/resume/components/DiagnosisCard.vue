@@ -11,8 +11,10 @@ defineProps<{ payload: ResumeDiagnosisPayload }>()
     :report="payload"
   />
   <section v-else-if="'overall' in payload" class="form-stack">
-    <h3>{{ uiText("Historical resume diagnosis · Score {0}", [payload.overall]) }}</h3>
-    <p class="subtle">{{ uiText("Legacy score report. New diagnoses focus on source evidence and suggestions.") }}</p>
+    <h3>{{ uiText('Historical resume diagnosis · Score {0}', [payload.overall]) }}</h3>
+    <p class="subtle">
+      {{ uiText('Legacy score report. New diagnoses focus on source evidence and suggestions.') }}
+    </p>
     <div v-for="(issue, index) in payload.issues" :key="index">
       <p>{{ issue.message }}</p>
       <p>{{ issue.suggestion }}</p>

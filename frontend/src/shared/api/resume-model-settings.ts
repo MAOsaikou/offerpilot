@@ -21,7 +21,7 @@ export interface ResumeModelSettings {
 export const getResumeModelSettings = async () => {
   const settings = await apiRequest<ResumeModelSettings>('/resume-model-settings')
   const legacy = (id: string) =>
-    ['CHEAP', 'ECONOMY', sourceText("Economy"), 'BALANCED'].includes(id.trim().toUpperCase())
+    ['CHEAP', 'ECONOMY', sourceText('Economy'), 'BALANCED'].includes(id.trim().toUpperCase())
       ? normalizeModelTier(id)
       : id
   return {

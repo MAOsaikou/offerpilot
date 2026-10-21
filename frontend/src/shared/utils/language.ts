@@ -18,7 +18,11 @@ export function translate(key: string, values: readonly unknown[] = []): string 
   const text = dictionaries[language.value][key] ?? key
   return text.replace(/\{(\d+)\}/g, (match, index: string) => {
     const value = values[Number(index)]
-    return value === undefined ? match : typeof value === 'number' ? formatNumber(value) : String(value)
+    return value === undefined
+      ? match
+      : typeof value === 'number'
+        ? formatNumber(value)
+        : String(value)
   })
 }
 
@@ -55,8 +59,10 @@ export function formatDateTime(value: string | number | Date | null | undefined)
 export function localizedText() {
   const value = shallowRef<string | (() => string)>('')
   return computed({
-    get: () => typeof value.value === 'function' ? value.value() : value.value,
-    set: (next: string | (() => string)) => { value.value = next },
+    get: () => (typeof value.value === 'function' ? value.value() : value.value),
+    set: (next: string | (() => string)) => {
+      value.value = next
+    },
   })
 }
 

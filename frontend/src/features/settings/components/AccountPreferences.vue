@@ -30,8 +30,7 @@ async function load() {
     setLanguage(preferences.language)
     loaded.value = true
   } catch {
-    if (alive)
-      status.value = () => (uiText("Could not load preferences. Please retry."))
+    if (alive) status.value = () => uiText('Could not load preferences. Please retry.')
   } finally {
     if (alive) busy.value = false
   }
@@ -51,11 +50,12 @@ async function save() {
     if (!alive) return
     setTheme(saved.theme)
     setLanguage(saved.language)
-    status.value = () => (uiText("Saved to your account. Applies when you sign in on another browser."))
+    status.value = () =>
+      uiText('Saved to your account. Applies when you sign in on another browser.')
   } catch {
     if (!alive) return
     loaded.value = false
-    status.value = () => (uiText("Save failed. Reload preferences to confirm their current values."))
+    status.value = () => uiText('Save failed. Reload preferences to confirm their current values.')
   } finally {
     if (alive) busy.value = false
   }
@@ -64,48 +64,48 @@ async function save() {
 <template>
   <fieldset class="form-grid" :disabled="busy || !loaded" style="border: 0; padding: 0; margin: 0">
     <label class="field"
-      >{{ uiText("Theme")
+      >{{ uiText('Theme')
       }}<select v-model="theme" @change="save">
-        <option value="light">{{ uiText("Light") }}</option>
-        <option value="dark">{{ uiText("Dark") }}</option>
-        <option value="system">{{ uiText("System") }}</option>
+        <option value="light">{{ uiText('Light') }}</option>
+        <option value="dark">{{ uiText('Dark') }}</option>
+        <option value="system">{{ uiText('System') }}</option>
       </select></label
     >
     <label class="field"
-      >{{ uiText("Default model for new chats")
+      >{{ uiText('Default model for new chats')
       }}<select v-model="defaultTier" @change="save">
-        <option value="FLASH">{{ uiText("Fast (DeepSeek Flash)") }}</option>
-        <option value="PRO">{{ uiText("Deep (DeepSeek Pro)") }}</option>
+        <option value="FLASH">{{ uiText('Fast (DeepSeek Flash)') }}</option>
+        <option value="PRO">{{ uiText('Deep (DeepSeek Pro)') }}</option>
       </select></label
     >
     <label class="field"
-      >{{ uiText("Language")
+      >{{ uiText('Language')
       }}<select v-model="selectedLanguage" @change="save">
-        <option value="zh-CN">{{ uiText("Simplified Chinese") }}</option>
+        <option value="zh-CN">{{ uiText('Simplified Chinese') }}</option>
         <option value="en-US">English</option>
       </select></label
     >
     <label class="field"
-      ><span>{{ uiText("Mask personal data before sending to models") }}</span>
+      ><span>{{ uiText('Mask personal data before sending to models') }}</span>
       <input v-model="piiMasking" type="checkbox" @change="save" />
     </label>
   </fieldset>
   <p class="subtle">
     {{
-      uiText("Language applies to all interface pages and subsequent AI replies. Source materials, citations and your data keep their original text.")
+      uiText(
+        'Language applies to all interface pages and subsequent AI replies. Source materials, citations and your data keep their original text.',
+      )
     }}
   </p>
   <p v-if="!piiMasking && loaded" class="helper-note">
     {{
-      uiText("When disabled, contact details may be sent as plain text. Image pixels and names are outside masking coverage.")
+      uiText(
+        'When disabled, contact details may be sent as plain text. Image pixels and names are outside masking coverage.',
+      )
     }}
   </p>
   <p class="subtle" role="status">
-    {{
-      busy
-        ? uiText("Syncing…")
-        : status || uiText("Changes apply immediately after saving.")
-    }}
+    {{ busy ? uiText('Syncing…') : status || uiText('Changes apply immediately after saving.') }}
   </p>
-  <button v-if="!loaded && !busy" class="btn" @click="load">{{ uiText("Reload") }}</button>
+  <button v-if="!loaded && !busy" class="btn" @click="load">{{ uiText('Reload') }}</button>
 </template>

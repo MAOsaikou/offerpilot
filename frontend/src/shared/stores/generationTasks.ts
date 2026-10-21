@@ -41,7 +41,8 @@ export const useGenerationTasks = defineStore('generation-tasks', () => {
           'interview-report',
         ])
           void queryClient.invalidateQueries({ queryKey: [key] })
-        notice.value = () => (`${task.title}：${task.status === 'SUCCEEDED' ? uiText("Completed") : task.error || task.stage}`)
+        notice.value = () =>
+          `${task.title}：${task.status === 'SUCCEEDED' ? uiText('Completed') : task.error || task.stage}`
       }
       previous.set(task.id, task)
     }
@@ -67,7 +68,7 @@ export const useGenerationTasks = defineStore('generation-tasks', () => {
         delay = Math.min(10000, delay * 1.3)
       } catch (cause) {
         if (version !== epoch) return
-        error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load task"))
+        error.value = () => (cause instanceof Error ? cause.message : uiText('Could not load task'))
         delay = Math.min(30000, delay * 2)
       } finally {
         if (version === epoch) {
@@ -110,7 +111,7 @@ export const useGenerationTasks = defineStore('generation-tasks', () => {
     signal?.throwIfAborted()
     const task = await startGenerationTask(kind, entity, input, requestId)
     session.throwIfAborted()
-    if (version !== epoch) throw new Error(uiText("Identity changed"))
+    if (version !== epoch) throw new Error(uiText('Identity changed'))
     merge([task], false)
     startedTaskId.value = task.id
     started?.(task.id)
@@ -125,14 +126,19 @@ export const useGenerationTasks = defineStore('generation-tasks', () => {
       }
       const abort = () => {
         cleanup()
-        reject(new DOMException(uiText("Observation ended; the background task continues"), 'AbortError'))
+        reject(
+          new DOMException(
+            uiText('Observation ended; the background task continues'),
+            'AbortError',
+          ),
+        )
       }
       stop = watch(
         () => tasks.value.find((t) => t.id === task.id),
         (current) => {
           if (!current) {
             cleanup()
-            reject(new Error(uiText("Task deleted or access denied. Please reload.")))
+            reject(new Error(uiText('Task deleted or access denied. Please reload.')))
           } else if (!isActiveTask(current)) {
             cleanup()
             resolve(current)

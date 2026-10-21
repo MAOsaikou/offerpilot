@@ -7,17 +7,17 @@ import type { DiagnosisEvidence } from '@/shared/types/diagnosis'
 
 defineProps<{ evidence: DiagnosisEvidence[] }>()
 const sections = computed<Record<string, string>>(() => ({
-  summary: uiText("Professional summary"),
-  education: uiText("Education #2"),
-  experience: uiText("Work / Internship experience"),
-  projects: uiText("Projects"),
-  skills: uiText("Skills"),
-  certificates: uiText("Certificates and awards"),
+  summary: uiText('Professional summary'),
+  education: uiText('Education #2'),
+  experience: uiText('Work / Internship experience'),
+  projects: uiText('Projects'),
+  skills: uiText('Skills'),
+  certificates: uiText('Certificates and awards'),
 }))
 function location(path: string) {
   const [, section = '', index] = path.split('/')
-  const label = sections.value[section] || uiText("Original resume text")
-  return index && /^\d+$/.test(index) ? uiText("{0} · Item {1}", [label, Number(index) + 1]) : label
+  const label = sections.value[section] || uiText('Original resume text')
+  return index && /^\d+$/.test(index) ? uiText('{0} · Item {1}', [label, Number(index) + 1]) : label
 }
 </script>
 <template>

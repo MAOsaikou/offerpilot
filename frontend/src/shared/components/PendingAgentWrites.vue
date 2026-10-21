@@ -10,7 +10,10 @@ import {
   listPendingAgentApprovals,
   type PendingAgentApproval,
 } from '@/shared/api/agentApprovals'
-import { applicationStageLabels as applicationStages, type ApplicationStatus } from '@/shared/types/board'
+import {
+  applicationStageLabels as applicationStages,
+  type ApplicationStatus,
+} from '@/shared/types/board'
 
 /** board: only board writes (on the board page); all: every agent write (workbench). */
 const props = withDefaults(defineProps<{ scope?: 'board' | 'all' }>(), { scope: 'all' })
@@ -43,17 +46,22 @@ const stage = (status?: unknown) =>
 const target = (item: PendingAgentApproval) =>
   item.company || item.title
     ? `「${[item.company, item.title].filter(Boolean).join(' · ')}」`
-    : uiText("a record that no longer exists")
+    : uiText('a record that no longer exists')
 function describe(item: PendingAgentApproval) {
-  if (!isBoard(item)) return item.summary ?? uiText("Perform the action proposed by the agent")
+  if (!isBoard(item)) return item.summary ?? uiText('Perform the action proposed by the agent')
   const changes: string[] = []
   if (item.action === 'createApplication')
-    changes.push(uiText("Add to board at stage “{0}”", [stage(item.args.status ?? 'TODO')]))
+    changes.push(uiText('Add to board at stage “{0}”', [stage(item.args.status ?? 'TODO')]))
   else if (item.args.status)
-    changes.push(uiText("Change stage from “{0}” to “{1}”", [stage(item.currentStatus), stage(item.args.status)]))
-  if (item.args.note) changes.push(uiText("Change notes to “{0}”", [text(item.args.note)]))
-  if (item.args.nextAction) changes.push(uiText("Next action: {0}", [text(item.args.nextAction)]))
-  if (item.args.nextActionAt) changes.push(uiText("Date: {0}", [text(item.args.nextActionAt)]))
+    changes.push(
+      uiText('Change stage from “{0}” to “{1}”', [
+        stage(item.currentStatus),
+        stage(item.args.status),
+      ]),
+    )
+  if (item.args.note) changes.push(uiText('Change notes to “{0}”', [text(item.args.note)]))
+  if (item.args.nextAction) changes.push(uiText('Next action: {0}', [text(item.args.nextAction)]))
+  if (item.args.nextActionAt) changes.push(uiText('Date: {0}', [text(item.args.nextActionAt)]))
   return `${target(item)}：${changes.join('；')}`
 }
 const secondsLeft = (item: PendingAgentApproval) =>
@@ -79,7 +87,8 @@ async function decide(item: PendingAgentApproval, decision: 'APPROVE' | 'REJECT'
       await client.invalidateQueries(isBoard(item) ? { queryKey: ['applications'] } : undefined)
     }
   } catch (failure) {
-    error.value = () => (failure instanceof Error ? failure.message : uiText("Operation failed. Please retry. #2"))
+    error.value = () =>
+      failure instanceof Error ? failure.message : uiText('Operation failed. Please retry. #2')
   } finally {
     busy.value = ''
     await client.invalidateQueries({ queryKey: ['agent-approvals', 'pending'] })
@@ -92,18 +101,36 @@ async function decide(item: PendingAgentApproval, decision: 'APPROVE' | 'REJECT'
     class="panel pending-writes"
     :aria-label="uiText('Pending agent actions')"
   >
-    <h2>{{ scope === 'board' ? uiText("Agent board changes awaiting your confirmation") : uiText("Agent actions awaiting your confirmation") }}</h2>
-    <p class="subtle"> {{ uiText("The conversation ended before your confirmation. Approval is required to {0}. Rejection or timeout makes no changes.", [scope === 'board' ? uiText("update the board") : uiText("execute the action")]) }} </p>
+    <h2>
+      {{
+        scope === 'board'
+          ? uiText('Agent board changes awaiting your confirmation')
+          : uiText('Agent actions awaiting your confirmation')
+      }}
+    </h2>
+    <p class="subtle">
+      {{
+        uiText(
+          'The conversation ended before your confirmation. Approval is required to {0}. Rejection or timeout makes no changes.',
+          [scope === 'board' ? uiText('update the board') : uiText('execute the action')],
+        )
+      }}
+    </p>
     <ul>
       <li v-for="item in items" :key="item.id">
         <span>{{ describe(item) }}</span>
         <small class="subtle">{{
           secondsLeft(item)
-            ? uiText("{0} seconds remaining · Valid for {1} minutes", [secondsLeft(item), Math.ceil(secondsLeft(item) / 60)])
-            : uiText("Automatically rejected after timeout. Review the proposal and request it again if you want to save it.")
+            ? uiText('{0} seconds remaining · Valid for {1} minutes', [
+                secondsLeft(item),
+                Math.ceil(secondsLeft(item) / 60),
+              ])
+            : uiText(
+                'Automatically rejected after timeout. Review the proposal and request it again if you want to save it.',
+              )
         }}</small>
         <details v-if="item.editableFields?.length && secondsLeft(item) > 0" class="w-full min-w-0">
-          <summary>{{ uiText("Edit parameters and approve") }}</summary>
+          <summary>{{ uiText('Edit parameters and approve') }}</summary>
           <ApprovalFields
             :fields="item.editableFields"
             :args="item.args"
@@ -123,13 +150,17 @@ async function decide(item: PendingAgentApproval, decision: 'APPROVE' | 'REJECT'
             type="button"
             :disabled="busy !== '' || secondsLeft(item) === 0"
             @click="decide(item, 'APPROVE')"
-          > {{ uiText("Approve") }} </button>
+          >
+            {{ uiText('Approve') }}
+          </button>
           <button
             class="btn"
             type="button"
             :disabled="busy !== '' || secondsLeft(item) === 0"
             @click="decide(item, 'REJECT')"
-          > {{ uiText("Reject") }} </button>
+          >
+            {{ uiText('Reject') }}
+          </button>
         </span>
       </li>
     </ul>

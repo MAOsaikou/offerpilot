@@ -107,7 +107,11 @@ watch(
 )
 const deleted = ref(false)
 function confirmLeave() {
-  return deleted.value || !dirty.value || window.confirm(uiText("You have unsaved resume edits. Leave this page?"))
+  return (
+    deleted.value ||
+    !dirty.value ||
+    window.confirm(uiText('You have unsaved resume edits. Leave this page?'))
+  )
 }
 onBeforeRouteLeave(confirmLeave)
 onBeforeRouteUpdate(confirmLeave)
@@ -127,17 +131,21 @@ async function run(action: () => Promise<void>) {
   try {
     await action()
   } catch (cause) {
-    error.value = () => (cause instanceof Error ? cause.message : uiText("Operation failed. Please retry."))
+    error.value = () =>
+      cause instanceof Error ? cause.message : uiText('Operation failed. Please retry.')
   } finally {
     busy.value = false
   }
 }
 const router = useRouter()
 async function remove() {
-  const name = resume.value?.title ?? uiText("this resume")
+  const name = resume.value?.title ?? uiText('this resume')
   if (
     !window.confirm(
-      uiText("Delete “{0}”? All versions, diagnoses, rewrites, match reports and the original file will be deleted permanently.", [name]),
+      uiText(
+        'Delete “{0}”? All versions, diagnoses, rewrites, match reports and the original file will be deleted permanently.',
+        [name],
+      ),
     )
   )
     return
@@ -153,7 +161,7 @@ async function save() {
   let success = false
   await run(async () => {
     if (!draft.value || !baseVersion.value) return
-    if (!title.value.trim()) throw new Error(uiText("Enter a resume name."))
+    if (!title.value.trim()) throw new Error(uiText('Enter a resume name.'))
     if (title.value.trim() !== savedTitle.value) {
       await renameResume(props.id, title.value.trim())
       savedTitle.value = title.value = title.value.trim()
@@ -162,7 +170,7 @@ async function save() {
     original.value = JSON.stringify(draft.value)
     cache.setQueryData(['resume', props.id], updated)
     populate()
-    message.value = () => (uiText("Saved as a new version. View it in version history."))
+    message.value = () => uiText('Saved as a new version. View it in version history.')
     void cache.invalidateQueries({ queryKey: ['resumes'] })
     success = true
   })
@@ -180,9 +188,10 @@ async function exportPdf() {
   error.value = ''
   try {
     await exportResumePdf(props.id, pdfTemplate.value)
-    message.value = () => (uiText("Exported the server's current saved resume version as PDF."))
+    message.value = () => uiText("Exported the server's current saved resume version as PDF.")
   } catch (cause) {
-    error.value = () => (cause instanceof Error ? cause.message : uiText("PDF export failed. Please retry."))
+    error.value = () =>
+      cause instanceof Error ? cause.message : uiText('PDF export failed. Please retry.')
   } finally {
     exporting.value = false
   }
@@ -208,25 +217,30 @@ async function showHistory() {
   try {
     history.value = await listResumeVersions(props.id)
   } catch (cause) {
-    error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load version"))
+    error.value = () => (cause instanceof Error ? cause.message : uiText('Could not load version'))
   } finally {
     historyLoading.value = false
   }
 }
 function restore(version: ResumeVersion) {
-  if (dirty.value && !window.confirm(uiText("Replace unsaved edits with this version?"))) return
+  if (dirty.value && !window.confirm(uiText('Replace unsaved edits with this version?'))) return
   draft.value = JSON.parse(JSON.stringify(version.structured)) as ResumeStructure
   tab.value = 'Content'
-  message.value = () => (uiText("Historical version loaded. Saving will create a new version."))
+  message.value = () => uiText('Historical version loaded. Saving will create a new version.')
 }
 async function rollback(version: ResumeVersion) {
   if (!resume.value?.currentVersionId) return
   if (dirty.value) {
-    error.value = () => (uiText("Save or discard your unsaved edits before restoring."))
+    error.value = () => uiText('Save or discard your unsaved edits before restoring.')
     return
   }
   if (
-    !window.confirm(uiText("Create a new current version using version {0}? All existing versions will be retained.", [version.versionNo]))
+    !window.confirm(
+      uiText(
+        'Create a new current version using version {0}? All existing versions will be retained.',
+        [version.versionNo],
+      ),
+    )
   )
     return
   await run(async () => {
@@ -238,7 +252,11 @@ async function rollback(version: ResumeVersion) {
     cache.setQueryData(['resume', props.id], updated)
     populate()
     history.value = await listResumeVersions(props.id)
-    message.value = () => (uiText("Restored: version {0} uses content from version {1}.", [updated.currentVersion?.versionNo ?? '', version.versionNo]))
+    message.value = () =>
+      uiText('Restored: version {0} uses content from version {1}.', [
+        updated.currentVersion?.versionNo ?? '',
+        version.versionNo,
+      ])
     void cache.invalidateQueries({ queryKey: ['resumes'] })
   })
 }
@@ -251,7 +269,7 @@ function optimized(version: ResumeVersion) {
     updatedAt: version.createdAt,
   })
   populate()
-  message.value = () => (uiText("Rewrite saved as a new version."))
+  message.value = () => uiText('Rewrite saved as a new version.')
 }
 function githubAdopted(updated: ServerResume) {
   cache.setQueryData(['resume', props.id], updated)
@@ -265,53 +283,53 @@ function lines(value: string) {
 const sections = computed(() => [
   {
     key: 'education' as const,
-    title: uiText("Education #2"),
+    title: uiText('Education #2'),
     fields: [
-      { key: 'school', label: uiText("School") },
-      { key: 'degree', label: uiText("Education") },
-      { key: 'major', label: uiText("Major") },
-      { key: 'start', label: uiText("Start date") },
-      { key: 'end', label: uiText("End date") },
-      { key: 'gpa', label: uiText("GPA / Grades") },
+      { key: 'school', label: uiText('School') },
+      { key: 'degree', label: uiText('Education') },
+      { key: 'major', label: uiText('Major') },
+      { key: 'start', label: uiText('Start date') },
+      { key: 'end', label: uiText('End date') },
+      { key: 'gpa', label: uiText('GPA / Grades') },
     ],
   },
   {
     key: 'experience' as const,
-    title: uiText("Internships and work"),
+    title: uiText('Internships and work'),
     fields: [
-      { key: 'org', label: uiText("Company / Organization") },
-      { key: 'title', label: uiText("Position") },
-      { key: 'start', label: uiText("Start date") },
-      { key: 'end', label: uiText("End date") },
-      { key: 'bullets', label: uiText("Responsibilities and achievements"), array: true },
+      { key: 'org', label: uiText('Company / Organization') },
+      { key: 'title', label: uiText('Position') },
+      { key: 'start', label: uiText('Start date') },
+      { key: 'end', label: uiText('End date') },
+      { key: 'bullets', label: uiText('Responsibilities and achievements'), array: true },
     ],
   },
   {
     key: 'projects' as const,
-    title: uiText("Projects"),
+    title: uiText('Projects'),
     fields: [
-      { key: 'name', label: uiText("Project name") },
-      { key: 'role', label: uiText("Role #2") },
-      { key: 'start', label: uiText("Start date") },
-      { key: 'end', label: uiText("End date") },
-      { key: 'tech', label: uiText("Technology stack"), array: true },
-      { key: 'bullets', label: uiText("Actions and results"), array: true },
+      { key: 'name', label: uiText('Project name') },
+      { key: 'role', label: uiText('Role #2') },
+      { key: 'start', label: uiText('Start date') },
+      { key: 'end', label: uiText('End date') },
+      { key: 'tech', label: uiText('Technology stack'), array: true },
+      { key: 'bullets', label: uiText('Actions and results'), array: true },
     ],
   },
   {
     key: 'skills' as const,
-    title: uiText("Professional skills"),
+    title: uiText('Professional skills'),
     fields: [
-      { key: 'category', label: uiText("Skill category") },
-      { key: 'items', label: uiText("Skills"), array: true },
+      { key: 'category', label: uiText('Skill category') },
+      { key: 'items', label: uiText('Skills'), array: true },
     ],
   },
 ])
 const basics = computed(() => [
-  { key: 'name' as const, label: uiText("Name") },
-  { key: 'phone' as const, label: uiText("Phone") },
-  { key: 'email' as const, label: uiText("Email") },
-  { key: 'city' as const, label: uiText("City") },
+  { key: 'name' as const, label: uiText('Name') },
+  { key: 'phone' as const, label: uiText('Phone') },
+  { key: 'email' as const, label: uiText('Email') },
+  { key: 'city' as const, label: uiText('City') },
 ])
 </script>
 <template>
@@ -320,32 +338,43 @@ const basics = computed(() => [
       :title="resume?.title ?? uiText('Resume details')"
       :description="uiText('Review every experience and make your real strengths clear.')"
     >
-      <RouterLink class="btn" to="/resumes">{{ uiText("Back to resumes") }}</RouterLink>
+      <RouterLink class="btn" to="/resumes">{{ uiText('Back to resumes') }}</RouterLink>
       <select
         v-model="pdfTemplate"
         class="input pdf-template"
         :aria-label="uiText('PDF template')"
         :disabled="exporting"
       >
-        <option value="classic">{{ uiText("Classic template") }}</option>
-        <option value="compact">{{ uiText("Compact single-page template") }}</option>
+        <option value="classic">{{ uiText('Classic template') }}</option>
+        <option value="compact">{{ uiText('Compact single-page template') }}</option>
       </select>
       <button
         class="btn"
         :disabled="busy || exporting || resume?.parseStatus !== 'READY' || !resume?.currentVersion"
         :aria-busy="exporting"
-        :title="uiText('Exports the server\'s current saved version. Unsaved edits are excluded from the PDF.')"
+        :title="
+          uiText(
+            'Exports the server\'s current saved version. Unsaved edits are excluded from the PDF.',
+          )
+        "
         @click="exportPdf"
       >
-        {{ exporting ? uiText("Exporting… #2") : uiText("Export PDF") }}
+        {{ exporting ? uiText('Exporting… #2') : uiText('Export PDF') }}
       </button>
-      <button class="btn" :disabled="busy || query.isFetching.value" @click="reload"> {{ uiText("Reload #2") }} </button>
-      <button class="btn danger" :disabled="busy || !resume" @click="remove">{{ uiText("Delete resume") }}</button>
+      <button class="btn" :disabled="busy || query.isFetching.value" @click="reload">
+        {{ uiText('Reload #2') }}
+      </button>
+      <button class="btn danger" :disabled="busy || !resume" @click="remove">
+        {{ uiText('Delete resume') }}
+      </button>
     </PageHeading>
-    <p v-if="query.isPending.value" role="status">{{ uiText("Loading resumes… #2") }}</p>
+    <p v-if="query.isPending.value" role="status">{{ uiText('Loading resumes… #2') }}</p>
     <p v-if="query.error.value" class="error-banner" role="alert">
-      {{ uiText("{0}. Click reload to retry.", [query.error.value.message]) }} </p>
-    <p v-if="error && (!draft || tab !== 'Content')" class="error-banner" role="alert">{{ error }}</p>
+      {{ uiText('{0}. Click reload to retry.', [query.error.value.message]) }}
+    </p>
+    <p v-if="error && (!draft || tab !== 'Content')" class="error-banner" role="alert">
+      {{ error }}
+    </p>
     <template v-if="resume">
       <div class="panel form-stack" aria-live="polite">
         <div class="card-top">
@@ -356,46 +385,92 @@ const basics = computed(() => [
           <h2 aria-live="polite" role="status">
             {{
               resume.parseStatus === 'QUEUED'
-                ? uiText("File saved, queued for parsing")
+                ? uiText('File saved, queued for parsing')
                 : resume.parseProgress < 50
-                  ? uiText("Reading original text and page images")
-                  : uiText("Extracting and validating structured fields")
+                  ? uiText('Reading original text and page images')
+                  : uiText('Extracting and validating structured fields')
             }}
           </h2>
-          <progress :value="resume.parseProgress" max="100" :aria-label="uiText('Resume parsing progress')" />
-          <p class="subtle">{{ uiText("Progress indicates the processing stage, not time remaining.") }}</p>
-          <p>{{ uiText("Parsing continues in the background. You can leave and return later. Images and scans may take longer.") }}</p>
+          <progress
+            :value="resume.parseProgress"
+            max="100"
+            :aria-label="uiText('Resume parsing progress')"
+          />
+          <p class="subtle">
+            {{ uiText('Progress indicates the processing stage, not time remaining.') }}
+          </p>
+          <p>
+            {{
+              uiText(
+                'Parsing continues in the background. You can leave and return later. Images and scans may take longer.',
+              )
+            }}
+          </p>
         </template>
         <template v-if="resume.parseStatus === 'FAILED'">
           <p class="error-banner" role="alert">{{ resume.parseError }}</p>
           <div>
             <button class="btn primary" :disabled="busy" @click="retry">
-              {{ busy ? uiText("Submitting…") : uiText("Parse again") }}
+              {{ busy ? uiText('Submitting…') : uiText('Parse again') }}
             </button>
           </div>
-          <p class="subtle"> {{ uiText("The original file is saved. Retry without uploading again. If the file is damaged, upload a corrected file from the resume center.") }} </p>
+          <p class="subtle">
+            {{
+              uiText(
+                'The original file is saved. Retry without uploading again. If the file is damaged, upload a corrected file from the resume center.',
+              )
+            }}
+          </p>
         </template>
-        <p v-if="resume.parseStatus === 'READY'" class="subtle"> {{ uiText("Parsing may miss details. Check against the original file. Saving creates a new version. PDF export uses the current saved version.") }} </p>
+        <p v-if="resume.parseStatus === 'READY'" class="subtle">
+          {{
+            uiText(
+              'Parsing may miss details. Check against the original file. Saving creates a new version. PDF export uses the current saved version.',
+            )
+          }}
+        </p>
       </div>
       <template v-if="resume.parseStatus === 'READY' && draft">
         <div class="tabs no-print">
-          <button :disabled="busy" :class="{ selected: tab === 'Content' }" @click="tab = 'Content'"> {{ uiText("Edit content") }}</button
-          ><button :disabled="busy" :class="{ selected: tab === 'Diagnosis' }" @click="tab = 'Diagnosis'"> {{ uiText("AI diagnosis") }}</button
-          ><button :disabled="busy" :class="{ selected: tab === 'Rewrite' }" @click="tab = 'Rewrite'"> {{ uiText("Targeted rewrite") }}</button
-          ><button :disabled="busy" :class="{ selected: tab === 'Versions' }" @click="showHistory"> {{ uiText("Version history") }} </button>
-          <button :disabled="busy" :class="{ selected: tab === 'GitHub' }" @click="tab = 'GitHub'"> {{ uiText("GitHub evidence") }} </button>
+          <button
+            :disabled="busy"
+            :class="{ selected: tab === 'Content' }"
+            @click="tab = 'Content'"
+          >
+            {{ uiText('Edit content') }}</button
+          ><button
+            :disabled="busy"
+            :class="{ selected: tab === 'Diagnosis' }"
+            @click="tab = 'Diagnosis'"
+          >
+            {{ uiText('AI diagnosis') }}</button
+          ><button
+            :disabled="busy"
+            :class="{ selected: tab === 'Rewrite' }"
+            @click="tab = 'Rewrite'"
+          >
+            {{ uiText('Targeted rewrite') }}</button
+          ><button :disabled="busy" :class="{ selected: tab === 'Versions' }" @click="showHistory">
+            {{ uiText('Version history') }}
+          </button>
+          <button :disabled="busy" :class="{ selected: tab === 'GitHub' }" @click="tab = 'GitHub'">
+            {{ uiText('GitHub evidence') }}
+          </button>
         </div>
         <form v-if="tab === 'Content'" class="panel form-stack" @submit.prevent="save">
           <fieldset :disabled="busy" class="form-stack resume-fields">
-            <label class="field">{{ uiText("Resume name") }}<input v-model="title" maxlength="100" required /></label>
-            <h2>{{ uiText("Personal information") }}</h2>
+            <label class="field"
+              >{{ uiText('Resume name') }}<input v-model="title" maxlength="100" required
+            /></label>
+            <h2>{{ uiText('Personal information') }}</h2>
             <div class="resume-basics">
               <label v-for="field in basics" :key="field.key" class="field"
                 >{{ field.label }}<input v-model="draft.basics[field.key]" maxlength="5000"
               /></label>
             </div>
             <label class="field"
-              >{{ uiText("Personal links (one per line)") }}<textarea
+              >{{ uiText('Personal links (one per line)')
+              }}<textarea
                 :value="draft.basics.links.join('\n')"
                 rows="2"
                 maxlength="5000"
@@ -403,7 +478,8 @@ const basics = computed(() => [
               />
             </label>
             <label class="field"
-              >{{ uiText("Professional summary") }}<textarea v-model="draft.summary" rows="4" maxlength="5000" />
+              >{{ uiText('Professional summary')
+              }}<textarea v-model="draft.summary" rows="4" maxlength="5000" />
             </label>
             <ResumeSectionEditor
               v-for="section in sections"
@@ -419,11 +495,11 @@ const basics = computed(() => [
             <div class="form-stack">
               <span v-if="error" class="error-banner" role="alert">{{ error }}</span>
               <span role="status">{{
-                dirty ? uiText("Unsaved changes") : message || uiText("Synced with server")
+                dirty ? uiText('Unsaved changes') : message || uiText('Synced with server')
               }}</span>
             </div>
             <button class="btn primary" :disabled="busy || !dirty" type="submit">
-              {{ busy ? uiText("Saving… #2") : uiText("Save new version") }}
+              {{ busy ? uiText('Saving… #2') : uiText('Save new version') }}
             </button>
           </div>
         </form>
@@ -468,7 +544,7 @@ const basics = computed(() => [
           @adoption-busy="busy = $event"
         />
         <section v-else class="panel form-stack">
-          <p v-if="historyLoading" role="status">{{ uiText("Loading versions… #3") }}</p>
+          <p v-if="historyLoading" role="status">{{ uiText('Loading versions… #3') }}</p>
           <ResumeVersionTree
             :versions="history"
             :current-version-id="resume.currentVersionId"
@@ -478,7 +554,7 @@ const basics = computed(() => [
             @restore="rollback"
           />
           <article v-if="selected" class="form-stack">
-            <h2>{{ uiText("Version {0} content", [selected.versionNo]) }}</h2>
+            <h2>{{ uiText('Version {0} content', [selected.versionNo]) }}</h2>
             <pre class="resume-text">{{ selected.plainText }}</pre>
             <button
               class="btn"
@@ -488,7 +564,9 @@ const basics = computed(() => [
                   JSON.stringify(selected.structured, null, 2),
                 )
               "
-            > {{ uiText("Download structured content") }} </button>
+            >
+              {{ uiText('Download structured content') }}
+            </button>
           </article>
         </section>
       </template>

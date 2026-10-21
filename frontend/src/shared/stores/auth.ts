@@ -138,7 +138,7 @@ export const useAuthStore = defineStore('auth', () => {
         getStoredGuest() !== initialGuest ||
         loginRequired() !== initialLoginRequired
       )
-        throw new Error(uiText("Identity changed. Please select guest mode again."))
+        throw new Error(uiText('Identity changed. Please select guest mode again.'))
       if (getStoredGuest()) return resumeGuest()
       localStorage.setItem('offerpilot-storage-check', '1')
       localStorage.removeItem('offerpilot-storage-check')

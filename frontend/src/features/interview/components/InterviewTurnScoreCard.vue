@@ -16,12 +16,24 @@ const valid = computed(
 )
 </script>
 <template>
-  <section class="panel form-stack min-w-0 break-words" :aria-label="uiText('Single-question interview score')">
-    <h3>{{ uiText("Single-question interview score") }}</h3>
-    <p v-if="!valid" role="alert">{{ uiText("Score data is unavailable. Please request scoring again.") }}</p>
+  <section
+    class="panel form-stack min-w-0 break-words"
+    :aria-label="uiText('Single-question interview score')"
+  >
+    <h3>{{ uiText('Single-question interview score') }}</h3>
+    <p v-if="!valid" role="alert">
+      {{ uiText('Score data is unavailable. Please request scoring again.') }}
+    </p>
     <template v-else
-      ><p>{{ uiText("Question {0} · {1} / 100", [payload.turnIndex + 1, payload.score ?? uiText("Not scored")]) }}</p>
-      <p>{{ payload.brief || uiText("No scoring explanation yet") }}</p>
+      ><p>
+        {{
+          uiText('Question {0} · {1} / 100', [
+            payload.turnIndex + 1,
+            payload.score ?? uiText('Not scored'),
+          ])
+        }}
+      </p>
+      <p>{{ payload.brief || uiText('No scoring explanation yet') }}</p>
     </template>
   </section>
 </template>

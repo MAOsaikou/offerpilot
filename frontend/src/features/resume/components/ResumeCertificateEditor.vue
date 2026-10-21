@@ -18,25 +18,36 @@ function add() {
 <template>
   <section class="form-stack certificate-section">
     <div class="section-heading">
-      <h2>{{ uiText("Certificates and awards") }}</h2>
+      <h2>{{ uiText('Certificates and awards') }}</h2>
       <button
         type="button"
         class="btn"
         :disabled="disabled || certificates.length >= 100"
         @click="add"
-      > {{ uiText("＋ Add certificate or award") }} </button>
+      >
+        {{ uiText('＋ Add certificate or award') }}
+      </button>
     </div>
-    <p v-if="!certificates.length" class="subtle">{{ uiText("No certificates or awards yet. Add any you have earned.") }}</p>
-    <ResumeReorderList v-model="certificates" :title="uiText('Certificates and awards')" :disabled="disabled">
+    <p v-if="!certificates.length" class="subtle">
+      {{ uiText('No certificates or awards yet. Add any you have earned.') }}
+    </p>
+    <ResumeReorderList
+      v-model="certificates"
+      :title="uiText('Certificates and awards')"
+      :disabled="disabled"
+    >
       <template #default="{ entry, index }">
         <label class="field"
-          >{{ uiText("Certificate or award name") }}<input :value="entry" maxlength="5000" @input="update(index, $event)"
+          >{{ uiText('Certificate or award name')
+          }}<input :value="entry" maxlength="5000" @input="update(index, $event)"
         /></label>
         <button
           type="button"
           class="btn"
           @click="certificates = certificates.filter((_, i) => i !== index)"
-        > {{ uiText("Remove this certificate or award") }} </button>
+        >
+          {{ uiText('Remove this certificate or award') }}
+        </button>
       </template>
     </ResumeReorderList>
   </section>

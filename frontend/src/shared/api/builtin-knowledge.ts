@@ -56,17 +56,43 @@ export interface BuiltinFacets {
   directOnetOccupations: number
 }
 export const questionTypes: Record<string, string> = {
-  get BEHAVIORAL() { return uiText("Behavioral") },
-  get SITUATIONAL() { return uiText("Situational") },
-  get KNOWLEDGE() { return uiText("Major") },
-  get CASE() { return uiText("Case study") },
+  get BEHAVIORAL() {
+    return uiText('Behavioral')
+  },
+  get SITUATIONAL() {
+    return uiText('Situational')
+  },
+  get KNOWLEDGE() {
+    return uiText('Major')
+  },
+  get CASE() {
+    return uiText('Case study')
+  },
 }
-export const difficulties: Record<string, string> = { get EASY() { return uiText("Basic") }, get STANDARD() { return uiText("Standard") }, get HARD() { return uiText("Advanced #2") } }
+export const difficulties: Record<string, string> = {
+  get EASY() {
+    return uiText('Basic')
+  },
+  get STANDARD() {
+    return uiText('Standard')
+  },
+  get HARD() {
+    return uiText('Advanced #2')
+  },
+}
 export const builtinKinds: Record<BuiltinKind, string> = {
-  get QUESTION() { return uiText("General question bank") },
-  get COMPETENCY() { return uiText("Job competency models") },
-  get CAMPUS() { return uiText("Graduate recruitment process") },
-  get REPORT() { return uiText("Industry reports (planned)") },
+  get QUESTION() {
+    return uiText('General question bank')
+  },
+  get COMPETENCY() {
+    return uiText('Job competency models')
+  },
+  get CAMPUS() {
+    return uiText('Graduate recruitment process')
+  },
+  get REPORT() {
+    return uiText('Industry reports (planned)')
+  },
 }
 export type CatalogFilters = Record<string, string | number>
 const params = (filters: CatalogFilters) =>

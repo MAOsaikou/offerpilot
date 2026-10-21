@@ -47,12 +47,30 @@ export interface InterviewSession extends InterviewSummary {
 
 export type QuestionType = 'BEHAVIORAL' | 'SITUATIONAL' | 'KNOWLEDGE' | 'CASE'
 export const questionTypeLabels: Record<QuestionType, string> = {
-  get BEHAVIORAL() { return uiText('Behavioral') },
-  get SITUATIONAL() { return uiText('Situational') },
-  get KNOWLEDGE() { return uiText('Professional knowledge') },
-  get CASE() { return uiText('Case analysis') },
+  get BEHAVIORAL() {
+    return uiText('Behavioral')
+  },
+  get SITUATIONAL() {
+    return uiText('Situational')
+  },
+  get KNOWLEDGE() {
+    return uiText('Professional knowledge')
+  },
+  get CASE() {
+    return uiText('Case analysis')
+  },
 }
-export const difficultyLabels = { get EASY() { return uiText('Beginner') }, get STANDARD() { return uiText('Intermediate') }, get HARD() { return uiText('Advanced') } }
+export const difficultyLabels = {
+  get EASY() {
+    return uiText('Beginner')
+  },
+  get STANDARD() {
+    return uiText('Intermediate')
+  },
+  get HARD() {
+    return uiText('Advanced')
+  },
+}
 export interface InterviewEvaluation {
   source: 'model' | 'unavailable'
   score: number | null
