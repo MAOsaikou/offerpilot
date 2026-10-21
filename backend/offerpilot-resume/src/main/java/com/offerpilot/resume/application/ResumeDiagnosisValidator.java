@@ -30,6 +30,34 @@ public final class ResumeDiagnosisValidator {
             return true;
         } catch (Exception ex) { return false; }
     }
+    /** Recheck stored/delivered v2 evidence against its bound version, preserving stable finding IDs. */
+    public static ObjectNode verifiedReport(JsonNode report, JsonNode source) {
+        require(report != null && report.isObject() && source != null);
+        var content = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        for (String key : List.of("summary", "strengths", "findings")) content.set(key, report.path(key).deepCopy());
+        for (var finding : content.path("findings")) {
+            require(finding.isObject());
+            ((ObjectNode) finding).remove("findingId");
+        }
+        var result = salvage(content, source);
+        ObjectNode verified = report.deepCopy();
+        verified.set("summary", result.report().path("summary"));
+        for (String section : List.of("strengths", "findings")) {
+            var kept = verified.putArray(section);
+            int index = 0;
+            for (var item : report.path(section)) {
+                String pointer = "/" + section + "/" + index++;
+                if (result.failures().stream().noneMatch(f -> f.outputPointer().equals(pointer)
+                        || f.outputPointer().startsWith(pointer + "/"))) kept.add(item.deepCopy());
+            }
+        }
+        if (result.omittedItems() > 0) {
+            var limits = verified.withArray("limitations");
+            if (limits.size() >= 5) limits.remove(4);
+            limits.add("已省略 " + result.omittedItems() + " 项无法在此保存版本定位的条目；报告不代表完整诊断。");
+        }
+        return verified;
+    }
     private static void envelope(JsonNode report) {
         require(report != null && report.isObject() && report.toString().length() <= 22000);
         fields(report, Set.of("summary", "strengths", "findings"));

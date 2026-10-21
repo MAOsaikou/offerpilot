@@ -231,11 +231,19 @@ class RedteamRegressionTest {
         assertThat(initial.path("saved").asBoolean()).isFalse();
         var saved = data(http("PUT","/preferences",token,"{\"defaultModelTier\":\"PRO\",\"theme\":\"dark\"}"));
         assertThat(saved.path("saved").asBoolean()).isTrue();
+        var localized = data(http("PUT","/preferences",token,"{\"defaultModelTier\":\"PRO\",\"theme\":\"dark\",\"language\":\"en-US\",\"piiMasking\":false}"));
+        assertThat(localized.path("language").asText()).isEqualTo("en-US");
+        assertThat(localized.path("piiMasking").asBoolean()).isFalse();
+        assertThat(privacy.enabled(identities.require("Bearer " + token))).isFalse();
+        assertThat(data(http("PUT","/preferences",token,"{\"defaultModelTier\":\"PRO\",\"theme\":\"dark\"}")).path("language").asText()).isEqualTo("en-US");
         // Saving another settings page must not reset these preferences.
         http("PUT","/privacy-settings",token,"{\"piiMasking\":true}");
         var reread = data(http("GET","/preferences",token,null));
         assertThat(reread.path("defaultModelTier").asText()).isEqualTo("PRO");
         assertThat(reread.path("theme").asText()).isEqualTo("dark");
+        assertThat(reread.path("language").asText()).isEqualTo("en-US");
+        assertThat(reread.path("piiMasking").asBoolean()).isTrue();
+        assertThat(http("PUT","/preferences",token,"{\"defaultModelTier\":\"PRO\",\"theme\":\"dark\",\"language\":\"unsupported\"}").statusCode()).isEqualTo(400);
         assertThat(data(http("GET","/preferences",other,null)).path("saved").asBoolean()).isFalse();
         assertThat(http("GET","/preferences",null,null).statusCode()).isEqualTo(401);
         for (String invalid : List.of("{}", "{\"defaultModelTier\":\"CHEAP\",\"theme\":\"dark\"}", "{\"defaultModelTier\":\"PRO\",\"theme\":\"blue\"}"))

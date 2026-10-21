@@ -87,6 +87,30 @@ services:
       timeout: 3s
       retries: 5
 
+  ollama:
+    image: ollama/ollama:latest
+    restart: always
+    logging: *service-logging
+    volumes: [ollama_data:/root/.ollama]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    profiles: ["full"]
+
+  ollama-init:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama show bge-m3 >/dev/null 2>&1 || ollama pull bge-m3"]
+    depends_on:
+      ollama: { condition: service_healthy }
+    restart: "no"
+    profiles: ["full"]
+
   backend:
     build: ../backend
     image: offerpilot/backend:${TAG:-latest}
@@ -99,6 +123,10 @@ services:
       JOBS_LIVE_TIMEOUT_MS: ${JOBS_LIVE_TIMEOUT_MS:-10000}
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://ollama:11434}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-ollama}
+      LLM_MODEL_EMBEDDING: ${LLM_MODEL_EMBEDDING:-bge-m3}
+      LLM_EMBEDDING_DIMENSIONS: ${LLM_EMBEDDING_DIMENSIONS:-1024}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:+UseZGC -Dfile.encoding=UTF-8"
     depends_on:
@@ -106,6 +134,7 @@ services:
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
       jobs-mcp: { condition: service_healthy }
+      ollama-init: { condition: service_completed_successfully }
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
       interval: 30s
@@ -150,6 +179,7 @@ services:
     profiles: ["full"]
 
 volumes:
+  ollama_data: {}
   pg_data: {}
   redis_data: {}
   minio_data: {}

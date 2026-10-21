@@ -33,6 +33,22 @@ class ResumeFieldRecallLiveEvaluationTest {
     @Test void fieldRecallOnGeneratedCorpus() throws Exception {
         Path dir = Path.of(System.getenv().getOrDefault("RESUME_RECALL_DIR", "../eval/resume-recall/out"));
         var truth = JSON.readTree(dir.resolve("truth.json").toFile());
+        var manifestPath = dir.resolve("manifest.json");
+        var manifest = Files.exists(manifestPath) ? JSON.readTree(manifestPath.toFile()) : JSON.createObjectNode();
+        String provenance = manifest.path("provenance").asText("unspecified");
+        if ("consented_real".equals(provenance)) {
+            assertThat(manifest.path("samples").isArray()).isTrue();
+            assertThat(manifest.path("samples").size()).isEqualTo(truth.size());
+            var declared = new HashMap<String, String>();
+            manifest.path("samples").forEach(sample -> assertThat(declared.put(sample.path("id").asText(), sample.path("file").asText())).isNull());
+            truth.forEach(sample -> assertThat(declared.get(sample.path("id").asText())).isEqualTo(sample.path("file").asText()));
+        }
+        for (var sample : manifest.path("samples")) {
+            var file = dir.resolve(sample.path("file").asText()).normalize();
+            assertThat(file.startsWith(dir.normalize())).as("sample must stay inside corpus").isTrue();
+            String digest = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file)));
+            assertThat(digest).as(sample.path("id").asText() + " source fingerprint").isEqualTo(sample.path("sha256").asText());
+        }
         String base = System.getenv().getOrDefault("DEEPSEEK_BASE_URL", "https://api.deepseek.com");
         String model = System.getenv().getOrDefault("RESUME_RECALL_MODEL", "deepseek-flash");
         var tier = new OfferPilotProperties.Llm.Tier("deepseek", model, Duration.ofSeconds(120), true);
@@ -42,130 +58,50 @@ class ResumeFieldRecallLiveEvaluationTest {
                 .withProperty("spring.ai.deepseek.base-url", base);
         var extractor = new ResumeExtractor(new ModelGateway(properties, environment), JSON, new ClassPathResource("prompts/resume/extract.st"));
         var reader = new ResumeDocumentReader();
-        boolean textOnly = !"false".equals(System.getenv("RESUME_RECALL_TEXT_ONLY"));
+        boolean textOnly = "true".equals(System.getenv("RESUME_RECALL_TEXT_ONLY"));
         String only = System.getenv("RESUME_RECALL_ONLY");
 
-        var score = new Score();
+        assertThat(truth.isArray()).isTrue();
+        var sampleIds = new HashSet<String>();
+        truth.forEach(sample -> assertThat(sampleIds.add(sample.path("id").asText())).as("unique sample IDs").isTrue());
+        var independent = new HashSet<String>();
+        truth.forEach(sample -> independent.add(sample.path("sourceId").asText(sample.path("id").asText())));
+        assertThat(independent.size()).as("At least 20 independently annotated resumes, derivatives do not count").isGreaterThanOrEqualTo(20);
+        var score = new ResumeFieldRecallScore();
         var outputs = JSON.createObjectNode();
         for (JsonNode expected : truth) {
             String id = expected.path("id").asText();
-            if (only != null && !only.contains(id)) continue;
-            byte[] bytes = Files.readAllBytes(dir.resolve(expected.path("file").asText()));
-            var document = reader.read(bytes, reader.mime(expected.path("file").asText(), bytes));
-            // Text layer only by default, so the run measures extraction without page-image fusion.
-            if (textOnly) document = new ResumeDocumentReader.Document(document.text(), List.of(), document.channel());
+            if (only != null && !Set.of(only.split(",")).contains(id)) continue;
             JsonNode actual;
             try {
+                byte[] bytes = Files.readAllBytes(dir.resolve(expected.path("file").asText()));
+                var document = reader.read(bytes, reader.mime(expected.path("file").asText(), bytes));
+                if (textOnly) document = new ResumeDocumentReader.Document(document.text(), List.of(), document.channel());
                 actual = extractor.extractResult(document).structured();
-            } catch (RuntimeException failed) {
-                score.failures.add(id + ": " + failed.getMessage());
+            } catch (Exception failed) {
+                score.failures.add(id + ": " + failed.getClass().getSimpleName());
                 actual = JSON.createObjectNode();
             }
             outputs.set(id, actual);
             score.resume(id + "/" + expected.path("layout").asText(), expected, actual);
         }
         var report = JSON.createObjectNode();
-        report.put("model", model).put("textOnly", textOnly).put("overall", score.overall());
+        report.put("model", model).put("textOnly", textOnly).put("overall", score.overall())
+                .put("independentResumes", independent.size()).put("samples", outputs.size())
+                .put("corpusSha256", java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(dir.resolve("truth.json")))));
+        report.put("corpusProvenance", provenance);
+        report.put("passesFieldRecallGate", score.failures.isEmpty() && score.overall() >= 0.9);
+        if (only != null || textOnly || !"consented_real".equals(provenance)) report.putNull("passesLiveGate");
+        else report.put("passesLiveGate", score.failures.isEmpty() && score.overall() >= 0.9);
         report.set("fields", JSON.valueToTree(score.recall()));
         report.set("misses", JSON.valueToTree(score.misses));
         report.set("failures", JSON.valueToTree(score.failures));
         report.set("outputs", outputs);
         Files.writeString(Path.of("target/resume-recall-report.json"), JSON.writerWithDefaultPrettyPrinter().writeValueAsString(report));
         System.out.println("RS-02 recall overall=" + score.overall() + " fields=" + score.recall());
+        assertThat(outputs.size()).as("selected samples").isPositive();
         assertThat(score.failures).isEmpty();
+        if (only == null && !textOnly) assertThat(score.overall()).as("RS-02 field recall").isGreaterThanOrEqualTo(0.9);
     }
 
-    /** Hits/total per field path; values are compared after normalising spacing, punctuation and date styles. */
-    static final class Score {
-        final Map<String, int[]> fields = new TreeMap<>();
-        final List<String> misses = new ArrayList<>();
-        final List<String> failures = new ArrayList<>();
-
-        double overall() {
-            int hit = 0, total = 0;
-            for (int[] v : fields.values()) { hit += v[0]; total += v[1]; }
-            return total == 0 ? 0 : Math.round(hit * 1000.0 / total) / 1000.0;
-        }
-        Map<String, String> recall() {
-            var out = new TreeMap<String, String>();
-            fields.forEach((k, v) -> out.put(k, String.format("%.3f (%d/%d)", v[0] * 1.0 / v[1], v[0], v[1])));
-            return out;
-        }
-        void check(String resume, String field, boolean hit, Object expected) {
-            var counts = fields.computeIfAbsent(field, k -> new int[2]);
-            counts[1]++;
-            if (hit) counts[0]++; else misses.add(resume + " " + field + " expected=" + expected);
-        }
-
-        void resume(String id, JsonNode e, JsonNode a) {
-            var eb = e.path("basics"); var ab = a.path("basics");
-            check(id, "basics.name", same(ab.path("name").asText(), eb.path("name").asText()), eb.path("name").asText());
-            check(id, "basics.phone", digits(ab.path("phone").asText()).endsWith(eb.path("phone").asText()), eb.path("phone").asText());
-            check(id, "basics.email", same(ab.path("email").asText(), eb.path("email").asText()), eb.path("email").asText());
-            check(id, "basics.city", norm(ab.path("city").asText()).contains(norm(eb.path("city").asText())), eb.path("city").asText());
-            for (JsonNode link : eb.path("links"))
-                check(id, "basics.links", strings(ab.path("links")).stream().anyMatch(l -> same(l, link.asText())), link.asText());
-            section(id, "education", e, a, "school", List.of("degree", "major", "gpa"));
-            section(id, "experience", e, a, "org", List.of("title"));
-            section(id, "projects", e, a, "name", List.of("role"));
-            var skills = new ArrayList<String>();
-            a.path("skills").forEach(s -> skills.addAll(strings(s.path("items"))));
-            for (JsonNode s : e.path("skills")) for (JsonNode item : s.path("items"))
-                check(id, "skills.items", skills.stream().anyMatch(x -> same(x, item.asText())), item.asText());
-            for (JsonNode cert : e.path("certificates"))
-                check(id, "certificates", strings(a.path("certificates")).stream().anyMatch(x -> overlaps(x, cert.asText())), cert.asText());
-            // Precision guard: awards or skills misfiled as certificates.
-            for (String got : strings(a.path("certificates")))
-                check(id, "certificates.precision", strings(e.path("certificates")).stream().anyMatch(x -> overlaps(got, x)), "not a stated certificate: " + got);
-            if (!e.path("summary").asText().isBlank())
-                check(id, "summary", overlaps(a.path("summary").asText(), e.path("summary").asText()), e.path("summary").asText());
-        }
-
-        private void section(String id, String name, JsonNode e, JsonNode a, String key, List<String> texts) {
-            for (JsonNode want : e.path(name)) {
-                JsonNode got = null;
-                for (JsonNode candidate : a.path(name))
-                    if (overlaps(candidate.path(key).asText(), want.path(key).asText())) { got = candidate; break; }
-                check(id, name + "." + key, got != null, want.path(key).asText());
-                JsonNode g = got == null ? JSON.createObjectNode() : got;
-                for (String field : texts) if (!want.path(field).asText().isBlank())
-                    check(id, name + "." + field, overlaps(g.path(field).asText(), want.path(field).asText()), want.path(field).asText());
-                for (String field : List.of("start", "end"))
-                    check(id, name + "." + field, Objects.equals(date(g.path(field).asText()), date(want.path(field).asText())), want.path(field).asText());
-                for (String list : List.of("bullets", "tech")) for (JsonNode item : want.path(list)) {
-                    var have = strings(g.path(list));
-                    Function<String, Boolean> match = list.equals("tech") ? x -> same(x, item.asText()) : x -> overlaps(x, item.asText());
-                    check(id, name + "." + list, have.stream().anyMatch(match::apply), item.asText());
-                }
-            }
-        }
-
-        static List<String> strings(JsonNode array) {
-            var out = new ArrayList<String>();
-            array.forEach(n -> out.add(n.asText()));
-            return out;
-        }
-        static String norm(String s) {
-            return s == null ? "" : s.toLowerCase(Locale.ROOT).replaceAll("[\\s\\p{Punct}，。；：、（）【】「」•·–—|]", "");
-        }
-        static boolean same(String a, String b) { return !norm(b).isEmpty() && norm(a).equals(norm(b)); }
-        static boolean overlaps(String a, String b) {
-            String x = norm(a), y = norm(b);
-            return !x.isEmpty() && !y.isEmpty() && (x.contains(y) || y.contains(x));
-        }
-        static String digits(String s) { return s.replaceAll("\\D", "").replaceFirst("^86(?=1\\d{10}$)", ""); }
-        static final List<String> MONTHS = List.of("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec");
-        /** yyyymm, "present", or the normalised text when no date is recognisable. */
-        static String date(String s) {
-            String t = s == null ? "" : s.strip().toLowerCase(Locale.ROOT);
-            if (t.matches(".*(至今|present|now|今).*")) return "present";
-            var m = java.util.regex.Pattern.compile("(\\d{4})\\D{1,3}(\\d{1,2})").matcher(t);
-            if (m.find()) return m.group(1) + String.format("%02d", Integer.parseInt(m.group(2)));
-            for (int i = 0; i < 12; i++) {
-                var w = java.util.regex.Pattern.compile(MONTHS.get(i) + "[a-z]*\\.?\\s*(\\d{4})").matcher(t);
-                if (w.find()) return w.group(1) + String.format("%02d", i + 1);
-            }
-            return norm(t);
-        }
-    }
 }

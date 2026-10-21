@@ -1,82 +1,135 @@
-"""RS-01「文本版 PDF 10s 内完成；图片版 30s 内完成」计时。
+"""RS-01 upload-to-terminal timing. Standard library only; live HTTP requires explicit invocation.
 
-对目录里的每个 .pdf / .docx / .png / .jpg：新访客上传 POST /api/v1/resumes，每 0.25s 轮询
-GET /api/v1/resumes/{id} 直到 READY 或 FAILED，记录从开始上传到终态的秒数。
-样本可用 eval/resume-recall/generate.py 生成，图片可用 `pdftoppm -png -r 110 -singlefile` 由 PDF 转成。
-只依赖 Python 标准库，不读取密钥；模型调用发生在后端。
+Every sample counts, including errors/timeouts. Observed progress is polling evidence, not fabricated
+intermediate stages. No answer cache, backend safety or quota overrides.
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import json
-import mimetypes
+import math
 import pathlib
 import statistics
 import time
 import urllib.request
 import uuid
 
-TYPES = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg",
-         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+TYPES = {'.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+         '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}
 
 
-def call(req):
-    with urllib.request.urlopen(req, timeout=120) as response:
+def call(req, timeout=120):
+    with urllib.request.urlopen(req, timeout=timeout) as response:
         return json.load(response)
 
 
 def guest(base):
-    return call(urllib.request.Request(base + "/api/v1/auth/guest", data=b"", method="POST"))["data"]["accessToken"]
+    return call(urllib.request.Request(base + '/api/v1/auth/guest', data=b'', method='POST'))['data']['accessToken']
 
 
-def upload(base, token, path):
+def upload(base, token, path, timeout=120):
     boundary = uuid.uuid4().hex
-    body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{path.name}\"\r\n"
-            f"Content-Type: {TYPES[path.suffix.lower()]}\r\n\r\n").encode() + path.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
-    req = urllib.request.Request(base + "/api/v1/resumes", data=body, method="POST", headers={
-        "Authorization": "Bearer " + token, "Content-Type": "multipart/form-data; boundary=" + boundary})
-    return call(req)["data"]["id"]
+    body = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{path.name}"\r\n'
+            f'Content-Type: {TYPES[path.suffix.lower()]}\r\n\r\n').encode() + path.read_bytes() + f'\r\n--{boundary}--\r\n'.encode()
+    return call(urllib.request.Request(base + '/api/v1/resumes', data=body, method='POST', headers={
+        'Authorization': 'Bearer ' + token, 'Content-Type': 'multipart/form-data; boundary=' + boundary}), timeout)['data']['id']
 
 
 def one(base, token, path, limit):
-    t0 = time.monotonic()
-    resume = upload(base, token, path)
-    while time.monotonic() - t0 < limit:
-        data = call(urllib.request.Request(base + "/api/v1/resumes/" + resume, headers={"Authorization": "Bearer " + token}))["data"]
-        if data["parseStatus"] in ("READY", "FAILED"):
-            return {"status": data["parseStatus"], "seconds": time.monotonic() - t0, "error": data.get("parseError")}
-        time.sleep(0.25)
-    return {"status": "TIMEOUT", "seconds": time.monotonic() - t0}
+    start = time.monotonic()
+    observations = []
+    try:
+        resume = upload(base, token, path, limit)
+        while time.monotonic() - start < limit:
+            remaining = max(0.001, limit - (time.monotonic() - start))
+            data = call(urllib.request.Request(base + '/api/v1/resumes/' + resume,
+                        headers={'Authorization': 'Bearer ' + token}), remaining)['data']
+            now = time.monotonic() - start
+            state = {'status': data['parseStatus'], 'progress': data['parseProgress']}
+            if not observations or any(state[key] != observations[-1][key] for key in state):
+                observations.append({**state, 'seconds': now})
+            if state['status'] in ('READY', 'FAILED'):
+                return {'status': state['status'], 'seconds': now, 'observedProgress': observations}
+            time.sleep(min(0.25, max(0, limit - now)))
+        return {'status': 'TIMEOUT', 'seconds': time.monotonic() - start, 'observedProgress': observations}
+    except Exception as error:
+        # Never include HTTP bodies, private content, provider errors or bearer tokens.
+        return {'status': 'ERROR', 'errorType': type(error).__name__,
+                'seconds': time.monotonic() - start, 'observedProgress': observations}
 
 
-def pct(values, p):
-    values = sorted(values)
-    return values[max(0, min(len(values) - 1, round(p / 100 * len(values) + 0.5) - 1))]
+def pct(values, percentile):
+    return sorted(values)[max(0, math.ceil(percentile / 100 * len(values)) - 1)]
+
+
+def summary(rows):
+    groups = []
+    for kind in sorted({row['kind'] for row in rows}):
+        group = [row for row in rows if row['kind'] == kind]
+        ok = [row['seconds'] for row in group if row['status'] == 'READY']
+        # DOCX has no published latency threshold. Image PDF is explicitly labelled by filename/manifest.
+        budget = 30 if kind in ('png', 'jpg', 'jpeg', 'scanned-pdf') else 10 if kind == 'pdf' else None
+        groups.append({'kind': kind, 'n': len(group), 'ready': len(ok), 'failed': len(group) - len(ok),
+                       'p50ReadySeconds': statistics.median(ok) if ok else None,
+                       'p95ReadySeconds': pct(ok, 95) if ok else None, 'maxReadySeconds': max(ok) if ok else None,
+                       'budgetSeconds': budget, 'withinBudget': sum(value <= budget for value in ok) if budget else None,
+                       'passesTimingGate': len(ok) == len(group) and max(ok) <= budget if budget else None})
+    return groups
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("dir")
-    parser.add_argument("--base", default="http://127.0.0.1:18082")
-    parser.add_argument("--per-guest", type=int, default=4)
-    parser.add_argument("--limit", type=float, default=120)
-    parser.add_argument("--pause", type=float, default=2.0)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('dir', type=pathlib.Path)
+    parser.add_argument('--base', default='http://127.0.0.1:18082')
+    parser.add_argument('--per-guest', type=int, default=4)
+    parser.add_argument('--workers', type=int, default=1, help='concurrent uploads, including backend queue time')
+    parser.add_argument('--limit', type=float, default=120)
+    parser.add_argument('--output', type=pathlib.Path, required=True)
     args = parser.parse_args()
-    files = sorted(p for p in pathlib.Path(args.dir).iterdir() if p.suffix.lower() in TYPES)
-    rows, token = [], None
-    for i, path in enumerate(files):
-        if i % args.per_guest == 0:
-            token = guest(args.base)
-        row = {"file": path.name, "kind": "image" if path.suffix.lower() in (".png", ".jpg") else path.suffix[1:].lower(),
-               **one(args.base, token, path, args.limit)}
-        rows.append(row)
-        print(json.dumps({k: (round(v, 2) if isinstance(v, float) else v) for k, v in row.items()}, ensure_ascii=False))
-        time.sleep(args.pause)
-    for kind in sorted({r["kind"] for r in rows}):
-        group = [r for r in rows if r["kind"] == kind]
-        ok = [r["seconds"] for r in group if r["status"] == "READY"]
-        print(json.dumps({"kind": kind, "n": len(group), "ready": len(ok),
-                          "p50": round(statistics.median(ok), 2) if ok else None,
-                          "p95": round(pct(ok, 95), 2) if ok else None, "max": round(max(ok), 2) if ok else None}))
+    if args.workers < 1 or args.per_guest < 1 or args.limit <= 0:
+        parser.error('workers/per-guest/limit must be positive')
+    # Prefer corpus manifest to avoid counting intermediate DOCX/page PNG artifacts as independent samples.
+    manifest = args.dir / 'manifest.json'
+    expected_hashes = {}
+    if manifest.exists():
+        samples = json.loads(manifest.read_text())['samples']
+        files = [args.dir / sample['file'] for sample in samples if pathlib.Path(sample['file']).suffix.lower() in TYPES]
+        expected_hashes = {sample['file']: sample['sha256'] for sample in samples}
+    else:
+        files = sorted(path for path in args.dir.iterdir() if path.suffix.lower() in TYPES)
+    if not files:
+        parser.error('no supported input samples')
+    def run(index_path):
+        index, path = index_path
+        # Each concurrent group uses its own identity; never bypass server limits.
+        digest = None
+        try:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            if path.name in expected_hashes and digest != expected_hashes[path.name]:
+                raise ValueError('source fingerprint mismatch')
+            token = tokens[index // args.per_guest]
+            if token is None:
+                raise RuntimeError('identity unavailable')
+            result = one(args.base.rstrip('/'), token, path, args.limit)
+        except Exception as error:
+            result = {'status': 'ERROR', 'errorType': type(error).__name__, 'seconds': 0, 'observedProgress': []}
+        return {'file': path.name, 'sha256': digest,
+                'kind': 'scanned-pdf' if path.name.endswith('-scan.pdf') else path.suffix[1:].lower(), **result}
+    tokens = []
+    for _ in range(math.ceil(len(files) / args.per_guest)):
+        try:
+            tokens.append(guest(args.base.rstrip('/')))
+        except Exception:
+            tokens.append(None)
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        rows = list(pool.map(run, enumerate(files)))
+    report = {'samples': rows, 'summary': summary(rows), 'workers': args.workers,
+              'timingScope': 'upload start through terminal observation; includes backend queue',
+              'allReady': all(row['status'] == 'READY' for row in rows)}
+    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2))
+    print(json.dumps({key: value for key, value in report.items() if key != 'samples'}, ensure_ascii=False))
+    return 0 if report['allReady'] and all(g['passesTimingGate'] is not False for g in report['summary']) else 1
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    raise SystemExit(main())

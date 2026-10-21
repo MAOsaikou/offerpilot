@@ -9,6 +9,7 @@ import PageBoundary from './PageBoundary.vue'
 import { useWorkspace } from '@/shared/stores/workspace'
 import { useAuthStore } from '@/shared/stores/auth'
 import { useNotifications } from '@/shared/stores/notifications'
+import { translate as t } from '@/shared/utils/language'
 const route = useRoute()
 const router = useRouter()
 const workspace = useWorkspace()
@@ -31,18 +32,18 @@ function onLogout() {
   auth.logout()
   router.push({ name: 'login' })
 }
-const items = [
-  { name: 'dashboard', label: '工作台', path: '/' },
-  { name: 'chat', label: 'AI 对话', path: '/chat' },
-  { name: 'discover', label: '职业探索', path: '/discover' },
-  { name: 'resumes', label: '简历', path: '/resumes' },
-  { name: 'jobs', label: '岗位', path: '/jobs' },
-  { name: 'board', label: '求职看板', path: '/board' },
-  { name: 'interviews', label: '模拟面试', path: '/interviews' },
-  { name: 'career', label: '成长路线', path: '/career' },
-  { name: 'kb', label: '内置知识库', path: '/kb/builtin' },
-  { name: 'kb-notes', label: '我的资料', path: '/kb' },
-]
+const items = computed(() => [
+  { name: 'dashboard', label: t('工作台', 'Dashboard'), path: '/' },
+  { name: 'chat', label: t('AI 对话', 'AI chat'), path: '/chat' },
+  { name: 'discover', label: t('职业探索', 'Career discovery'), path: '/discover' },
+  { name: 'resumes', label: t('简历', 'Resumes'), path: '/resumes' },
+  { name: 'jobs', label: t('岗位', 'Jobs'), path: '/jobs' },
+  { name: 'board', label: t('求职看板', 'Applications'), path: '/board' },
+  { name: 'interviews', label: t('模拟面试', 'Interviews'), path: '/interviews' },
+  { name: 'career', label: t('成长路线', 'Growth plan'), path: '/career' },
+  { name: 'kb', label: t('内置知识库', 'Knowledge base'), path: '/kb/builtin' },
+  { name: 'kb-notes', label: t('我的资料', 'My materials'), path: '/kb' },
+])
 function active(path: string) {
   return path === '/'
     ? route.path === '/'
@@ -71,7 +72,7 @@ watch(
         <span><span class="brand-word">OfferPilot</span><small>职航</small></span>
       </RouterLink>
       <RouterLink to="/chat" class="sidebar-new"
-        ><AppIcon name="plus" :size="16" />新对话</RouterLink
+        ><AppIcon name="plus" :size="16" />{{ t('新对话', 'New chat') }}</RouterLink
       >
       <nav class="nav-list" aria-label="主导航">
         <template v-for="(item, index) in items" :key="item.name">
@@ -95,18 +96,20 @@ watch(
           to="/notifications"
           class="nav-link"
           :class="{ active: active('/notifications') }"
-          ><AppIcon name="bell" :size="18" />通知<span v-if="unread" class="nav-count num">{{
-            unread
-          }}</span></RouterLink
+          ><AppIcon name="bell" :size="18" />{{ t('通知', 'Notifications')
+          }}<span v-if="unread" class="nav-count num">{{ unread }}</span></RouterLink
         >
         <RouterLink to="/settings" class="profile-link"
           ><span class="avatar">{{ displayName.slice(0, 1) }}</span
           ><span
-            >{{ displayName }}<small>{{ auth.isLoggedIn ? '已登录' : '访客体验' }}</small></span
+            >{{ displayName
+            }}<small>{{
+              auth.isLoggedIn ? t('已登录', 'Signed in') : t('访客体验', 'Guest')
+            }}</small></span
           ><AppIcon name="settings" :size="18"
         /></RouterLink>
         <button class="nav-link" type="button" @click="onLogout">
-          <AppIcon name="logout" :size="18" />退出登录
+          <AppIcon name="logout" :size="18" />{{ t('退出登录', 'Sign out') }}
         </button>
       </div>
     </aside>

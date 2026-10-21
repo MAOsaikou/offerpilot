@@ -359,3 +359,25 @@ it('删除需要确认，取消不调用接口；确认后即使有未保存修�
   expect(confirm.mock.calls[1]?.[0]).toContain('无法恢复')
   confirm.mockRestore()
 })
+
+it('进度展示排队、读取和模型字段阶段，完成后移除进度条', async () => {
+  for (const [parseStatus, parseProgress, label] of [
+    ['QUEUED', 0, '排队等待解析'],
+    ['PARSING', 10, '正在读取原文与页面图片'],
+    ['PARSING', 50, '正在提取和校验结构化字段'],
+  ] as const) {
+    cache.setQueryData(['resume', 'rs1'], {
+      ...fixture(),
+      parseStatus,
+      parseProgress,
+      currentVersion: null,
+    })
+    await nextTick()
+    await vi.waitFor(() => expect(root.textContent).toContain(label))
+    expect(root.querySelector<HTMLProgressElement>('progress')?.value).toBe(parseProgress)
+    expect(root.textContent).toContain('进度表示处理阶段')
+  }
+  cache.setQueryData(['resume', 'rs1'], fixture())
+  await nextTick()
+  expect(root.querySelector('progress')).toBeNull()
+})

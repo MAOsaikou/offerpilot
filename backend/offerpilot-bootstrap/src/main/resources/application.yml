@@ -61,6 +61,7 @@ spring:
         # Retrieval debug accepts only local bge-m3 with a matching persisted index fingerprint.
         base-url: ${EMBEDDING_BASE_URL:http://localhost:11434}
         api-key: ${EMBEDDING_API_KEY:ollama}
+        embeddings-path: /v1/embeddings
         options:
           model: ${LLM_MODEL_EMBEDDING:bge-m3}
           dimensions: ${LLM_EMBEDDING_DIMENSIONS:1024}

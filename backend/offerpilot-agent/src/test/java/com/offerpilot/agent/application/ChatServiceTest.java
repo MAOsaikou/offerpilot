@@ -75,6 +75,18 @@ class ChatServiceTest {
         return (Map<?, ?>) org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations");
     }
 
+    @Test void languageChangesApplyToNextTurnAndPreserveUserTextAndSafetyPrompt() {
+        var language = new java.util.concurrent.atomic.AtomicReference<>("en-US");
+        com.offerpilot.llm.ChatLanguagePreference preference = owner -> language.get();
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "languagePreference", preference);
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.just(reply("reply")));
+        events(); language.set("zh-CN"); events();
+        var captured = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(gateway, times(2)).stream(eq(ModelTier.FLASH), captured.capture());
+        assertThat(captured.getAllValues().get(0).toString()).contains("Reply in English", "Safety and evidence rules", "你好", "test system prompt");
+        assertThat(captured.getAllValues().get(1).toString()).contains("简体中文", "你好", "test system prompt").doesNotContain("Reply in English");
+    }
+
     @Test void firstDeltaIsDeliveredBeforeBlockedCheckpointAndCompletionStillAwaitsIt() throws Exception {
         var delivered = new AtomicBoolean();
         var saving = new java.util.concurrent.CountDownLatch(1);
