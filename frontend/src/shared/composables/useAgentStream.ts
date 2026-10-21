@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import { ref } from 'vue'
 import { queryClient } from '@/shared/api/queryClient'
 import { cancelAgentRun, resumeAgentRun, streamAgentChat } from '@/shared/api/agent'
@@ -98,7 +99,7 @@ export function useAgentStream() {
           type: 'error',
           code: 0,
           recoverable: false,
-          message: error instanceof Error ? error.message : '连接中断',
+          message: error instanceof Error ? error.message : uiText("Connection interrupted"),
         })
       }
       throw error

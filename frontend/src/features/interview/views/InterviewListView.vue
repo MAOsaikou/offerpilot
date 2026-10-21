@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, formatDateTime, language, translateLabel, sourceText, translate as uiText } from '@/shared/utils/language'
+
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, useRouter, useRoute } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
@@ -49,7 +51,7 @@ async function removeStory(id: string) {
   }
 }
 const role = ref(typeof route.query.role === 'string' ? route.query.role : '')
-const kind = ref<InterviewKind>('综合')
+const kind = ref<InterviewKind>(sourceText("General"))
 const difficulty = ref<InterviewOptions['difficulty']>('STANDARD')
 const mode = ref<InterviewOptions['mode']>('TEXT')
 const questionCount = ref(5)
@@ -150,21 +152,20 @@ function exportLegacy(session: Interview) {
 <template>
   <section class="page-stack">
     <PageHeading
-      title="让表达，先于机会准备好"
-      description="在轻松的练习里，把经历讲清楚，把信心建立起来。"
+      :title="uiText('Be ready to tell your story')"
+      :description="uiText('Practice explaining your experience clearly and build confidence.')"
     />
     <div class="split-content">
       <form class="panel form-stack" @submit.prevent="start">
-        <h2>创建模拟面试</h2>
-        <p v-if="typeof route.query.jobId === 'string'" class="helper-note">
-          本次练习将关联到所选岗位的投递工作区。<RouterLink :to="'/jobs/' + route.query.jobId"
-            >查看岗位</RouterLink
+        <h2>{{ uiText("Create a mock interview") }}</h2>
+        <p v-if="typeof route.query.jobId === 'string'" class="helper-note"> {{ uiText("This practice session will be linked to the selected job's application workspace.") }}<RouterLink :to="'/jobs/' + route.query.jobId"
+            >{{ uiText("View job") }}</RouterLink
           >
         </p>
         <div class="form-grid">
           <label class="field"
-            >关联岗位（可无）<select v-model="jobId" :disabled="busy">
-              <option value="">不关联岗位</option>
+            >{{ uiText("Linked job (optional)") }}<select v-model="jobId" :disabled="busy">
+              <option value="">{{ uiText("No linked job") }}</option>
               <option
                 v-if="jobId && !applications.data.value?.some((item) => item.jobId === jobId)"
                 :value="jobId"
@@ -172,18 +173,18 @@ function exportLegacy(session: Interview) {
                 {{ role }}
               </option>
               <option v-for="item in applications.data.value" :key="item.id" :value="item.jobId">
-                {{ item.job?.title || '岗位信息不可用' }}
+                {{ item.job?.title || uiText("Job details unavailable") }}
               </option>
             </select></label
           >
-          <p v-if="applications.isPending.value" role="status">正在读取收藏岗位…</p>
+          <p v-if="applications.isPending.value" role="status">{{ uiText("Loading saved jobs…") }}</p>
           <p v-if="applications.isError.value" role="alert">
-            {{ applications.error.value?.message }}
-            <button type="button" class="btn" @click="applications.refetch()">重试岗位</button>
+            {{ formatDisplay(applications.error.value?.message) }}
+            <button type="button" class="btn" @click="applications.refetch()">{{ uiText("Retry jobs") }}</button>
           </p>
           <label class="field"
-            >简历<select v-model="resumeId" :disabled="busy || resumes.isPending.value">
-              <option value="">不使用简历（通用练习）</option>
+            >{{ uiText("Resume") }}<select v-model="resumeId" :disabled="busy || resumes.isPending.value">
+              <option value="">{{ uiText("No resume (general practice)") }}</option>
               <option
                 v-for="item in resumes.data.value?.items.filter(
                   (item) => item.parseStatus === 'READY',
@@ -195,63 +196,61 @@ function exportLegacy(session: Interview) {
               </option>
             </select></label
           >
-          <p v-if="resumes.isPending.value" role="status">正在读取简历…</p>
+          <p v-if="resumes.isPending.value" role="status">{{ uiText("Loading resumes…") }}</p>
           <p v-if="resumes.isError.value" role="alert">
-            {{ resumes.error.value?.message }}
-            <button type="button" class="btn" @click="resumes.refetch()">重试简历</button>
+            {{ formatDisplay(resumes.error.value?.message) }}
+            <button type="button" class="btn" @click="resumes.refetch()">{{ uiText("Retry resumes") }}</button>
           </p>
           <label v-if="resumeId" class="field"
-            >简历版本<select
+            >{{ uiText("Resume version") }}<select
               v-model="versionId"
               required
               :disabled="busy || versions.isPending.value"
             >
-              <option value="">请选择已保存版本</option>
-              <option v-for="item in versions.data.value" :key="item.id" :value="item.id">
-                第 {{ item.versionNo }} 版 ·
-                {{ new Date(item.createdAt).toLocaleDateString('zh-CN') }}
+              <option value="">{{ uiText("Select a saved version") }}</option>
+              <option v-for="item in versions.data.value" :key="item.id" :value="item.id"> {{ uiText("Version {0} · {1}", [item.versionNo, new Date(item.createdAt).toLocaleDateString(language)]) }}
               </option>
             </select></label
           >
-          <p v-if="resumeId && versions.isPending.value" role="status">正在读取版本…</p>
+          <p v-if="resumeId && versions.isPending.value" role="status">{{ uiText("Loading versions…") }}</p>
           <p v-if="resumeId && versions.isError.value" role="alert">
-            {{ versions.error.value?.message }}
-            <button type="button" class="btn" @click="versions.refetch()">重试版本</button>
+            {{ formatDisplay(versions.error.value?.message) }}
+            <button type="button" class="btn" @click="versions.refetch()">{{ uiText("Retry versions") }}</button>
           </p>
           <label class="field"
-            >目标岗位<input
+            >{{ uiText("Target job") }}<input
               v-model="role"
               :disabled="busy"
               required
               maxlength="100"
-              placeholder="输入想练习的岗位" /></label
+              :placeholder="uiText('Enter the role you want to practice for')" /></label
           ><label class="field"
-            >面试类型<select v-model="kind" :disabled="busy">
-              <option>技术</option>
-              <option>行为</option>
+            >{{ uiText("Interview type") }}<select v-model="kind" :disabled="busy">
+              <option :value="sourceText('Technical')">{{ uiText("Technical") }}</option>
+              <option :value="sourceText('Behavioral')">{{ uiText("Behavioral") }}</option>
               <option>HR</option>
-              <option>综合</option>
+              <option :value="sourceText('General')">{{ uiText("General") }}</option>
             </select></label
           >
         </div>
         <div class="form-grid">
           <label class="field"
-            >难度<select v-model="difficulty" :disabled="busy">
-              <option value="EASY">初级</option>
-              <option value="STANDARD">中级</option>
-              <option value="HARD">高级</option>
+            >{{ uiText("Difficulty") }}<select v-model="difficulty" :disabled="busy">
+              <option value="EASY">{{ uiText("Beginner") }}</option>
+              <option value="STANDARD">{{ uiText("Intermediate") }}</option>
+              <option value="HARD">{{ uiText("Advanced") }}</option>
             </select></label
           >
           <label class="field"
-            >模式<select v-model="mode" :disabled="busy">
-              <option value="TEXT">文字</option>
+            >{{ uiText("Mode") }}<select v-model="mode" :disabled="busy">
+              <option value="TEXT">{{ uiText("Text") }}</option>
               <option value="VOICE" :disabled="!voiceAvailable">
-                {{ voiceAvailable ? '语音（浏览器识别与朗读）' : '语音（暂不支持）' }}
+                {{ voiceAvailable ? uiText("Voice (browser recognition and speech)") : uiText("Voice (unavailable)") }}
               </option>
             </select></label
           >
           <label class="field"
-            >题数<input
+            >{{ uiText("Question count") }}<input
               v-model.number="questionCount"
               type="number"
               min="3"
@@ -260,34 +259,34 @@ function exportLegacy(session: Interview) {
               :disabled="busy"
           /></label>
           <label class="field"
-            >行业（可选）<input
+            >{{ uiText("Industry (optional)") }}<input
               v-model="industry"
               maxlength="100"
-              placeholder="如医疗、教育、消费品"
+              :placeholder="uiText('For example: healthcare, education, consumer goods')"
               :disabled="busy"
           /></label>
           <label class="field"
-            >反馈时机<select v-model="feedbackMode" :disabled="busy">
-              <option value="IMMEDIATE">每题提交后</option>
-              <option value="END">结束后统一查看</option>
+            >{{ uiText("Feedback timing") }}<select v-model="feedbackMode" :disabled="busy">
+              <option value="IMMEDIATE">{{ uiText("After each answer") }}</option>
+              <option value="END">{{ uiText("At the end") }}</option>
             </select></label
           >
           <label class="field"
-            >时长<select v-model="durationMinutes" :disabled="busy">
-              <option :value="15">15 分钟</option>
-              <option :value="30">30 分钟</option>
-              <option :value="45">45 分钟</option>
-              <option :value="60">60 分钟</option>
+            >{{ uiText("Duration") }}<select v-model="durationMinutes" :disabled="busy">
+              <option :value="15">{{ uiText("15 minutes") }}</option>
+              <option :value="30">{{ uiText("30 minutes") }}</option>
+              <option :value="45">{{ uiText("45 minutes") }}</option>
+              <option :value="60">{{ uiText("60 minutes") }}</option>
             </select></label
           >
         </div>
         <fieldset class="form-stack" :disabled="busy">
-          <legend>题型配比</legend>
+          <legend>{{ uiText("Question mix") }}</legend>
           <label
             ><input
               v-model="customMix"
               type="checkbox"
-            />自定义各题型数量（默认按岗位自动选择）</label
+            />{{ uiText("Customize counts by question type (automatic selection by role by default)") }}</label
           >
           <div v-if="customMix" class="form-grid">
             <label v-for="(label, type) in questionTypeLabels" :key="type" class="field"
@@ -295,45 +294,38 @@ function exportLegacy(session: Interview) {
               }}<input v-model.number="typeMix[type]" type="number" min="0" max="15" required
             /></label>
           </div>
-          <p v-if="mixInvalid" role="alert">
-            题型数量合计 {{ mixTotal }}，应为 {{ questionCount }}。
-          </p>
+          <p v-if="mixInvalid" role="alert"> {{ uiText("Question counts total {0}; expected {1}.", [mixTotal, questionCount]) }} </p>
         </fieldset>
-        <p class="helper-note">
-          支持任意岗位。先进入面试室生成题目；模型不可用时明确标记规则题库，评分不可用时保留未评分状态。改进答案只引用真实回答和简历事实。
-        </p>
+        <p class="helper-note"> {{ uiText("Any role is supported. Enter the room to generate questions. Rule-based fallback questions are labeled when the model is unavailable, and unavailable scores remain unscored. Improved answers use only real answers and resume facts.") }} </p>
         <p v-if="error" role="alert">{{ error }}</p>
         <button
           class="btn primary"
           type="submit"
           :disabled="busy || !role.trim() || invalidSelection || mixInvalid"
         >
-          {{ busy ? '正在创建…' : '开始练习' }}
+          {{ busy ? uiText("Creating…") : uiText("Start practice") }}
         </button>
       </form>
       <aside class="panel form-stack">
         <span class="stat-icon"><AppIcon name="interviews" /></span>
-        <h2>先讲清楚，再讲精彩</h2>
-        <p class="subtle">
-          用 STAR
-          组织项目故事：背景是什么、任务是什么、你采取了哪些行动、结果如何。尽量说出具体细节。
-        </p>
-        <span class="tag">逐题练习 · 可调整题数与反馈时机</span>
+        <h2>{{ uiText("Clarity comes first") }}</h2>
+        <p class="subtle"> {{ uiText("Structure project stories with STAR: situation, task, action and result. Include concrete details wherever possible.") }} </p>
+        <span class="tag">{{ uiText("Question-by-question practice · Adjustable count and feedback timing") }}</span>
       </aside>
     </div>
     <section class="panel">
       <div class="section-heading">
-        <h2>我的练习记录</h2>
-        <span class="subtle">{{ query.data.value?.length ?? 0 }} 场练习</span>
+        <h2>{{ uiText("My practice history") }}</h2>
+        <span class="subtle">{{ uiText("{0} practice sessions", [query.data.value?.length ?? 0]) }}</span>
       </div>
-      <p v-if="query.isPending.value" role="status">正在加载练习记录…</p>
+      <p v-if="query.isPending.value" role="status">{{ uiText("Loading practice history…") }}</p>
       <div v-else-if="query.isError.value" class="empty-state" role="alert">
-        <p>{{ query.error.value?.message }}</p>
-        <button class="btn" @click="query.refetch()">重新加载</button>
+        <p>{{ formatDisplay(query.error.value?.message) }}</p>
+        <button class="btn" @click="query.refetch()">{{ uiText("Reload #2") }}</button>
       </div>
       <div v-else-if="!query.data.value?.length" class="empty-state">
-        <h2>第一场练习，从自我介绍开始</h2>
-        <p>完成后的回答会留在这里，方便你反复复盘。</p>
+        <h2>{{ uiText("Start your first practice with an introduction") }}</h2>
+        <p>{{ uiText("Completed answers stay here for repeated review.") }}</p>
       </div>
       <article
         v-for="session in query.data.value"
@@ -347,50 +339,46 @@ function exportLegacy(session: Interview) {
           </h3>
           <InterviewJobContext :job-id="session.jobId" :fallback-title="session.role" />
           <small
-            >{{ session.kind }} · {{ new Date(session.createdAt).toLocaleString('zh-CN') }}</small
+            >{{ translateLabel(session.kind) }} · {{ new Date(session.createdAt).toLocaleString(language) }}</small
           >
         </div>
         <div class="interview-record-actions">
-          <span class="tag">{{ session.completed ? '已完成' : '进行中' }}</span>
+          <span class="tag">{{ session.completed ? uiText("Completed") : uiText("In progress") }}</span>
           <RouterLink :to="'/interviews/' + session.id">{{
-            session.completed ? '查看报告' : '继续练习'
+            session.completed ? uiText("View report") : uiText("Continue practice")
           }}</RouterLink>
         </div>
       </article>
     </section>
     <section v-if="workspace.state.interviews.length" class="panel">
-      <div class="section-heading"><h2>本机旧练习</h2></div>
-      <p class="helper-note">
-        这些记录保留在当前浏览器，可导出原始回答。新练习与草稿保存到服务端。
-      </p>
+      <div class="section-heading"><h2>{{ uiText("Older local practice") }}</h2></div>
+      <p class="helper-note"> {{ uiText("These records stay in this browser. You can export the original answers. New sessions and drafts are saved on the server.") }} </p>
       <article v-for="session in workspace.state.interviews" :key="session.id" class="list-row">
         <div>
           <h3>{{ session.role }}</h3>
-          <small>{{ session.kind }} · {{ session.date }}</small>
+          <small>{{ translateLabel(session.kind) }} · {{ formatDateTime(session.date) }}</small>
         </div>
-        <button class="btn" @click="exportLegacy(session)">导出旧练习</button>
+        <button class="btn" @click="exportLegacy(session)">{{ uiText("Export older practice") }}</button>
       </article>
     </section>
 
     <section class="panel">
       <div class="section-heading">
-        <h2>STAR 故事库</h2>
+        <h2>{{ uiText("STAR story library") }}</h2>
         <span class="subtle"
-          >{{ stories.data.value?.items.length ?? 0 }} / {{ stories.data.value?.limit ?? 30 }}</span
+          >{{ formatDisplay(stories.data.value?.items.length ?? 0) }} / {{ formatDisplay(stories.data.value?.limit ?? 30) }}</span
         >
       </div>
-      <p class="helper-note">
-        从已完成练习中确认保存的 STAR 回答，会在后续面试对话中作为可引用证据。
-      </p>
+      <p class="helper-note"> {{ uiText("STAR answers you confirm from completed practice can be cited as evidence in future interview conversations.") }} </p>
       <p v-if="storyError" role="alert">{{ storyError }}</p>
-      <p v-if="stories.isPending.value" role="status">正在加载故事库…</p>
+      <p v-if="stories.isPending.value" role="status">{{ uiText("Loading story library…") }}</p>
       <div v-else-if="stories.isError.value" class="empty-state" role="alert">
-        <p>{{ stories.error.value?.message }}</p>
-        <button class="btn" @click="stories.refetch()">重新加载</button>
+        <p>{{ formatDisplay(stories.error.value?.message) }}</p>
+        <button class="btn" @click="stories.refetch()">{{ uiText("Reload #2") }}</button>
       </div>
       <div v-else-if="!stories.data.value?.items.length" class="empty-state">
-        <h2>还没有入库的故事</h2>
-        <p>完成练习后，在复盘页把 STAR 线索齐全的回答保存进来。</p>
+        <h2>{{ uiText("No saved stories yet") }}</h2>
+        <p>{{ uiText("After practice, save answers with sufficient STAR details from the review page.") }}</p>
       </div>
       <article
         v-for="story in stories.data.value?.items"
@@ -399,9 +387,9 @@ function exportLegacy(session: Interview) {
         style="margin-top: 12px"
       >
         <h3>{{ story.title }}</h3>
-        <p class="subtle">{{ story.role || '未标注岗位' }} · {{ story.starCount }}/4 STAR</p>
+        <p class="subtle">{{ story.role || uiText("Role not specified") }} · {{ formatDisplay(story.starCount) }}/4 STAR</p>
         <p class="prose-content">
-          {{ story.body.slice(0, 200) }}{{ story.body.length > 200 ? '…' : '' }}
+          {{ story.body.slice(0, 200) }}{{ formatDisplay(story.body.length > 200 ? '…' : '') }}
         </p>
         <button
           type="button"
@@ -409,7 +397,7 @@ function exportLegacy(session: Interview) {
           :disabled="Boolean(storyBusy)"
           @click="removeStory(story.id)"
         >
-          {{ storyBusy === story.id ? '删除中…' : '删除' }}
+          {{ storyBusy === story.id ? uiText("Deleting…") : uiText("Delete") }}
         </button>
       </article>
     </section>

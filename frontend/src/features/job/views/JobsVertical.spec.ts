@@ -1,3 +1,4 @@
+import { setLanguage } from '@/shared/utils/language'
 import { createApp, nextTick } from 'vue'
 import type { Component } from 'vue'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
@@ -182,4 +183,22 @@ it('persisted chat search cards retain partial/source labels and require an expl
   button.click()
   await vi.waitFor(() => expect(button.textContent).toContain('已加入看板'))
   expect(favoriteJob).toHaveBeenCalledTimes(1)
+})
+
+afterEach(() => setLanguage('zh-CN'))
+
+it('switches job search labels live without translating listing content', async () => {
+  const root = await mount(JobSearchView, '/jobs?q=Java&nature=all')
+  await vi.waitFor(() => expect(root.textContent).toContain('Java开发'))
+  const calls = vi.mocked(searchJobs).mock.calls.length
+  setLanguage('en-US')
+  await nextTick()
+  expect(root.textContent).toContain('Find your next opportunity')
+  expect(root.textContent).toContain('Save job')
+  expect(root.textContent).toContain('Java开发')
+  expect(root.textContent).toContain('测试企业')
+  expect(searchJobs).toHaveBeenCalledTimes(calls)
+  setLanguage('zh-CN')
+  await nextTick()
+  expect(root.textContent).toContain('发现适合你的下一站')
 })

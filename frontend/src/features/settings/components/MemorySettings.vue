@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { computed, onMounted, ref } from 'vue'
 import {
   addMemory,
@@ -21,13 +23,13 @@ const inventory = ref<MemoryInventory>({ items: [], memoryEnabled: true, limit: 
 const candidates = ref<MemoryCandidate[]>([])
 const loaded = ref(false)
 const busy = ref(false)
-const error = ref('')
+const error = localizedText()
 const status = ref('')
 const editingId = ref<string | null>(null)
 const formOpen = ref(false)
 const draft = ref<MemoryDraft>({ kind: 'OTHER', fact: '' })
 const confirming = ref<string | null>(null)
-const sourceLabels = { EXPLICIT: '聊天确认', SUGGESTED_ACCEPTED: '建议已确认', MANUAL: '手动管理' }
+const sourceLabels = computed(() => ({ EXPLICIT: uiText("Confirmed in chat"), SUGGESTED_ACCEPTED: uiText("Suggestion confirmed"), MANUAL: uiText("Manually managed") }))
 const points = computed(() => Array.from(draft.value.fact).length)
 const valid = computed(() => draft.value.fact.trim().length > 0 && points.value <= 200)
 async function load() {
@@ -40,7 +42,7 @@ async function load() {
     candidates.value = pending
     loaded.value = true
   } catch {
-    error.value = '记忆加载失败，请重试。'
+    error.value = () => (uiText("Could not load memories. Please retry."))
   } finally {
     busy.value = false
   }
@@ -50,7 +52,7 @@ async function changeEnabled(event: Event) {
   const next = input.checked
   await perform(async () => {
     inventory.value.memoryEnabled = (await setMemoryEnabled(next)).memoryEnabled
-  }, '记忆设置已保存。')
+  }, uiText("Memory settings saved."))
   input.checked = inventory.value.memoryEnabled
 }
 async function perform(action: () => Promise<void>, message: string) {
@@ -63,7 +65,7 @@ async function perform(action: () => Promise<void>, message: string) {
     status.value = message
   } catch (cause) {
     error.value =
-      cause instanceof Error ? `操作失败：${cause.message}。请重试。` : '操作失败，请重试。'
+      () => (cause instanceof Error ? uiText("Operation failed: {0}. Please retry.", [cause.message]) : uiText("Operation failed. Please retry."))
   } finally {
     busy.value = false
   }
@@ -82,7 +84,7 @@ async function save() {
       : await addMemory(draft.value)
     inventory.value.items = [saved, ...inventory.value.items.filter((item) => item.id !== saved.id)]
     formOpen.value = false
-  }, '记忆已保存。')
+  }, uiText("Memory saved."))
 }
 function askDelete(id: string) {
   confirming.value = id
@@ -103,7 +105,7 @@ async function remove() {
       }
       confirming.value = null
     },
-    id === 'all' ? '全部记忆已清空。' : '记忆已删除。',
+    id === 'all' ? uiText("All memories cleared.") : uiText("Memory deleted."),
   )
 }
 async function decideCandidate(candidate: MemoryCandidate, accept: boolean) {
@@ -118,7 +120,7 @@ async function decideCandidate(candidate: MemoryCandidate, accept: boolean) {
       } else await deleteMemoryCandidate(candidate.id)
       candidates.value = candidates.value.filter((item) => item.id !== candidate.id)
     },
-    accept ? '候选已确认，后续新会话可参考。' : '候选已删除，不再建议相同事实。',
+    accept ? uiText("Candidate confirmed. Future conversations may use it.") : uiText("Candidate deleted. This fact will not be suggested again."),
   )
 }
 onMounted(load)
@@ -126,54 +128,40 @@ onMounted(load)
 
 <template>
   <section class="form-stack" aria-labelledby="memory-heading">
-    <h3 id="memory-heading">长期记忆</h3>
-    <p class="subtle">
-      保存你确认的目标城市、岗位、技能和约束，供新对话参考。每轮成功对话后从你的原话自动提取候选，确认后才用于新对话；不会从简历、岗位描述或知识笔记自动提取。最多50条，每条200字。
-    </p>
+    <h3 id="memory-heading">{{ uiText("Long-term memory") }}</h3>
+    <p class="subtle"> {{ uiText("Saves your confirmed target cities, roles, skills and constraints for new conversations. After successful exchanges, candidates are extracted from your words and used only after confirmation. Nothing is automatically extracted from resumes, job descriptions or notes. Up to 50 entries, 200 characters each.") }} </p>
     <label>
       <input
         type="checkbox"
         :checked="inventory.memoryEnabled"
         :disabled="busy || !loaded"
         @change="changeEnabled"
-      />
-      使用长期记忆（默认开启）
-    </label>
-    <p v-if="loaded && !inventory.memoryEnabled" class="helper-note">
-      已关闭：新运行不读取记忆，也不提出保存建议。已有条目仍保留，可手动编辑或删除；关闭前已开始的回复可能仍带有已读取的上下文。
-    </p>
-    <p class="subtle">
-      记忆保存在服务端，送模型前遵循文本脱敏设置。删除记忆不会删除原对话；原对话中的短期上下文仍可能引用它。删除账号数据会同时清除记忆。
-    </p>
-    <p v-if="busy" role="status">正在同步记忆…</p>
+      /> {{ uiText("Use long-term memory (on by default)") }} </label>
+    <p v-if="loaded && !inventory.memoryEnabled" class="helper-note"> {{ uiText("Off: new runs do not read memory or suggest saving it. Existing entries remain and can be edited or deleted. Responses started before disabling may still contain previously read context.") }} </p>
+    <p class="subtle"> {{ uiText("Memories are stored on the server and follow text masking settings before model use. Deleting a memory does not delete the original conversation, whose context may still refer to it. Deleting account data also clears memories.") }} </p>
+    <p v-if="busy" role="status">{{ uiText("Syncing memories…") }}</p>
     <p v-if="status" role="status">{{ status }}</p>
     <p v-if="error" class="error-banner" role="alert">
-      {{ error }} <button class="btn" :disabled="busy" @click="load">重新加载</button>
+      {{ error }} <button class="btn" :disabled="busy" @click="load">{{ uiText("Reload #2") }}</button>
     </p>
     <template v-if="loaded">
-      <div v-if="candidates.length" class="form-stack" aria-label="待确认记忆">
-        <h4>从对话提取的候选 · 请核对</h4>
+      <div v-if="candidates.length" class="form-stack" :aria-label="uiText('Memory candidates')">
+        <h4>{{ uiText("Extracted from conversations · Please review") }}</h4>
         <article v-for="candidate in candidates" :key="candidate.id" class="rounded-lg border p-3">
           <p class="break-words">{{ candidate.fact }}</p>
-          <p class="subtle">
-            置信度 {{ Math.round(candidate.confidence * 100) }}% ·
-            {{ candidate.extractor === 'rule' ? '规则提取' : 'FLASH 提取' }}
+          <p class="subtle"> {{ uiText("Confidence {0}% · {1}", [Math.round(candidate.confidence * 100), candidate.extractor === 'rule' ? uiText("Rule-based extraction") : uiText("FLASH extraction")]) }}
           </p>
           <a
             :href="`/chat/${encodeURIComponent(candidate.sourceConversationId)}?messageId=${encodeURIComponent(candidate.sourceMessageId)}`"
-            >查看来源对话</a
+            >{{ uiText("View source conversation") }}</a
           >
           <div class="flex flex-wrap gap-2">
             <button
               class="btn"
               :disabled="busy || !inventory.memoryEnabled"
               @click="decideCandidate(candidate, true)"
-            >
-              确认候选
-            </button>
-            <button class="btn" :disabled="busy" @click="decideCandidate(candidate, false)">
-              删除候选
-            </button>
+            > {{ uiText("Confirm candidate") }} </button>
+            <button class="btn" :disabled="busy" @click="decideCandidate(candidate, false)"> {{ uiText("Delete candidate") }} </button>
           </div>
         </article>
       </div>
@@ -182,21 +170,15 @@ onMounted(load)
           class="btn"
           :disabled="busy || inventory.items.length >= inventory.limit"
           @click="open()"
-        >
-          添加记忆
-        </button>
+        > {{ uiText("Add memory") }} </button>
         <button
           class="btn"
           :disabled="busy || inventory.items.length === 0"
           @click="askDelete('all')"
-        >
-          清空全部记忆
-        </button>
-        <span class="subtle">{{ inventory.items.length }} / {{ inventory.limit }}</span>
+        > {{ uiText("Clear all memories") }} </button>
+        <span class="subtle">{{ formatDisplay(inventory.items.length) }} / {{ inventory.limit }}</span>
       </div>
-      <p v-if="inventory.items.length === 0" class="subtle">
-        还没有长期记忆。可以手动添加，或在聊天中说「记住：我的目标城市是杭州」并确认。
-      </p>
+      <p v-if="inventory.items.length === 0" class="subtle"> {{ uiText("No long-term memories yet. Add one manually or ask in chat to remember your target city, then confirm.") }} </p>
       <ul v-else class="space-y-3">
         <li v-for="memory in inventory.items" :key="memory.id" class="rounded-lg border p-3">
           <p class="break-words">{{ memory.fact }}</p>
@@ -205,51 +187,46 @@ onMounted(load)
             <button
               class="btn"
               :disabled="busy"
-              :aria-label="`编辑记忆：${memory.fact}`"
+              :aria-label="uiText('Edit memory: {0}', [memory.fact])"
               @click="open(memory)"
-            >
-              编辑
-            </button>
+            > {{ uiText("Edit #2") }} </button>
             <button
               class="btn"
               :disabled="busy"
-              :aria-label="`删除记忆：${memory.fact}`"
+              :aria-label="uiText('Delete memory: {0}', [memory.fact])"
               @click="askDelete(memory.id)"
-            >
-              删除
-            </button>
+            > {{ uiText("Delete") }} </button>
           </div>
         </li>
       </ul>
-      <div v-if="confirming" class="rounded-lg border p-3" role="group" aria-label="确认删除记忆">
+      <div v-if="confirming" class="rounded-lg border p-3" role="group" :aria-label="uiText('Confirm memory deletion')">
         <p>
           {{
             confirming === 'all'
-              ? '确认清空全部记忆？此操作无法撤销。'
-              : '确认删除这条记忆？此操作无法撤销。'
+              ? uiText("Clear all memories? This cannot be undone.")
+              : uiText("Delete this memory? This cannot be undone.")
           }}
         </p>
-        <button class="btn" :disabled="busy" @click="remove">确认删除</button>
-        <button class="btn" :disabled="busy" @click="confirming = null">取消</button>
+        <button class="btn" :disabled="busy" @click="remove">{{ uiText("Confirm deletion") }}</button>
+        <button class="btn" :disabled="busy" @click="confirming = null">{{ uiText("Cancel") }}</button>
       </div>
       <form v-if="formOpen" class="form-stack" @submit.prevent="save">
         <fieldset :disabled="busy" class="form-stack min-w-0">
-          <legend>{{ editingId ? '编辑记忆' : '添加记忆' }}</legend>
+          <legend>{{ editingId ? uiText("Edit memory") : uiText("Add memory") }}</legend>
           <label class="field"
-            >类型
-            <select v-model="draft.kind">
+            >{{ uiText("Type") }} <select v-model="draft.kind">
               <option v-for="(label, kind) in memoryKinds" :key="kind" :value="kind">
                 {{ label }}
               </option>
             </select>
           </label>
           <label class="field"
-            >事实内容（单行，最多200字）<input v-model="draft.fact" type="text"
+            >{{ uiText("Fact (one line, up to 200 characters)") }}<input v-model="draft.fact" type="text"
           /></label>
           <p class="subtle">{{ points }} / 200</p>
           <div class="flex flex-wrap gap-2">
-            <button type="submit" class="btn primary" :disabled="!valid">保存记忆</button>
-            <button type="button" class="btn" @click="formOpen = false">取消</button>
+            <button type="submit" class="btn primary" :disabled="!valid">{{ uiText("Save memory") }}</button>
+            <button type="button" class="btn" @click="formOpen = false">{{ uiText("Cancel") }}</button>
           </div>
         </fieldset>
       </form>

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
+import { localizedText, language, translate as uiText } from '@/shared/utils/language'
+
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
@@ -18,15 +22,15 @@ const page = ref(1)
 const total = ref(0)
 const loading = ref(false)
 const busy = ref(false)
-const error = ref('')
+const error = localizedText()
 const online = ref(navigator.onLine)
-const labels = {
-  DDL: '截止提醒',
-  NEW_JOB: '新岗位',
-  INTERVIEW_PLAN: '面试计划',
-  CAREER_TARGET: '目标联动',
-  PROFILE_UPDATE: '画像建议',
-}
+const labels = computed(() => ({
+  DDL: uiText("Deadline reminder"),
+  NEW_JOB: uiText("New job"),
+  INTERVIEW_PLAN: uiText("Interview plan"),
+  CAREER_TARGET: uiText("Goal coordination"),
+  PROFILE_UPDATE: uiText("Profile suggestion"),
+}))
 let generation = 0
 let reader = 0
 async function load() {
@@ -42,7 +46,7 @@ async function load() {
     notices.setCount(result.unread)
   } catch (cause) {
     if (current === generation && revision === reader)
-      error.value = cause instanceof Error ? cause.message : '通知读取失败'
+      error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load notifications"))
   } finally {
     if (current === generation && revision === reader) loading.value = false
   }
@@ -61,7 +65,7 @@ async function mark(id?: string) {
     if (current === generation) await load()
   } catch (cause) {
     if (current === generation)
-      error.value = cause instanceof Error ? cause.message : '标记失败，请重试'
+      error.value = () => (cause instanceof Error ? cause.message : uiText("Could not mark as read. Please retry."))
   } finally {
     if (current === generation) busy.value = false
   }
@@ -92,21 +96,19 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <section class="page-stack">
-    <PageHeading title="通知中心" :description="notices.unread + ' 条未读 · 服务端通知'">
-      <button class="btn" :disabled="!notices.unread || busy || loading || !online" @click="mark()">
-        全部标为已读
-      </button>
+    <PageHeading :title="uiText('Notification center')" :description="uiText('{0} unread · Server notifications', [notices.unread])">
+      <button class="btn" :disabled="!notices.unread || busy || loading || !online" @click="mark()"> {{ uiText("Mark all as read") }} </button>
     </PageHeading>
-    <p v-if="!online" role="status">当前离线，恢复连接后可读取和标记通知。</p>
-    <p v-if="loading" role="status">正在读取通知…</p>
+    <p v-if="!online" role="status">{{ uiText("You are offline. Reconnect to load and mark notifications.") }}</p>
+    <p v-if="loading" role="status">{{ uiText("Loading notifications…") }}</p>
     <div v-if="error" role="alert">
-      {{ error }} <button class="btn" :disabled="loading || !online" @click="load">重新读取</button>
+      {{ error }} <button class="btn" :disabled="loading || !online" @click="load">{{ uiText("Reload") }}</button>
     </div>
     <section class="panel">
       <div v-if="!loading && !error && !items.length" class="empty-state">
         <AppIcon name="bell" :size="40" />
-        <h2>暂无通知</h2>
-        <p>岗位推荐、看板截止日期与面试计划有新动态时，会在这里提醒。</p>
+        <h2>{{ uiText("No notifications yet") }}</h2>
+        <p>{{ uiText("Job recommendations, board deadlines and interview plan updates will appear here.") }}</p>
       </div>
       <article
         v-for="notice in items"
@@ -119,35 +121,30 @@ onBeforeUnmount(() => {
           <h2>{{ notice.title }}</h2>
           <p>{{ notice.body }}</p>
           <time class="subtle" :datetime="notice.createdAt">{{
-            new Date(notice.createdAt).toLocaleString()
+            new Date(notice.createdAt).toLocaleString(language)
           }}</time>
-          <RouterLink :to="notice.link" class="btn text">查看详情</RouterLink>
+          <RouterLink :to="notice.link" class="btn text">{{ uiText("View details") }}</RouterLink>
         </div>
         <button
           v-if="!notice.readAt"
           class="btn text"
           :disabled="busy || loading || !online"
           @click="mark(notice.id)"
-        >
-          标为已读</button
-        ><span v-else class="tag">已读</span>
+        > {{ uiText("Mark as read") }}</button
+        ><span v-else class="tag">{{ uiText("Read") }}</span>
       </article>
-      <nav v-if="total > 20" aria-label="通知分页" class="notice-pages">
+      <nav v-if="total > 20" :aria-label="uiText('Notification pagination')" class="notice-pages">
         <button
           class="btn"
           :disabled="page === 1 || loading || busy || !online"
           @click="changePage(-1)"
-        >
-          上一页
-        </button>
-        <span>第 {{ page }} 页 · 共 {{ total }} 条</span>
+        > {{ uiText("Previous page") }} </button>
+        <span>{{ uiText("Page {0} · {1} entries in total", [page, total]) }}</span>
         <button
           class="btn"
           :disabled="page * 20 >= total || loading || busy || !online"
           @click="changePage(1)"
-        >
-          下一页
-        </button>
+        > {{ uiText("Next page") }} </button>
       </nav>
     </section>
   </section>

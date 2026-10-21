@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { listMcpServers, refreshMcpServer, mcpStatus, type McpConnection } from '@/shared/api/mcp'
@@ -8,7 +10,7 @@ const props = defineProps<{ toolCalls: ToolCallView[] }>()
 const session = identitySignal()
 const servers = ref<McpConnection[]>([])
 const loading = ref(false)
-const error = ref('')
+const error = localizedText()
 async function load() {
   loading.value = true
   error.value = ''
@@ -33,10 +35,10 @@ async function load() {
         servers.value = servers.value.map((server) =>
           server.provider === result.value.provider ? result.value : server,
         )
-      } else error.value = '部分工具发现失败，请检查连接后重试。'
+      } else error.value = () => (uiText("Some tools could not be discovered. Check connections and retry."))
     }
   } catch {
-    if (!session.aborted) error.value = '工具列表加载失败，请重试。'
+    if (!session.aborted) error.value = () => (uiText("Could not load tool list. Please retry."))
   } finally {
     loading.value = false
   }
@@ -50,21 +52,21 @@ function state(server: McpConnection, name: string) {
         (item.serverName === server.name || item.source === `mcp:${server.name}`),
     )
   return call
-    ? { RUNNING: '调用中', OK: '成功', FAILED: '失败', CANCELLED: '已取消' }[call.status]
-    : '空闲'
+    ? { RUNNING: uiText("Calling"), OK: uiText("Succeeded"), FAILED: uiText("Failed"), CANCELLED: uiText("Canceled") }[call.status]
+    : uiText("Idle")
 }
 onMounted(load)
 </script>
 <template>
-  <section class="space-y-2 text-xs" aria-label="MCP 可用工具">
+  <section class="space-y-2 text-xs" :aria-label="uiText('Available MCP tools')">
     <div class="flex flex-wrap items-center justify-between gap-2">
-      <h3 class="font-semibold text-muted-foreground">MCP 可用工具</h3>
-      <RouterLink to="/integrations/mcp" class="text-primary">管理连接</RouterLink>
+      <h3 class="font-semibold text-muted-foreground">{{ uiText("Available MCP tools") }}</h3>
+      <RouterLink to="/integrations/mcp" class="text-primary">{{ uiText("Manage connections") }}</RouterLink>
     </div>
-    <p v-if="loading" role="status">加载中…</p>
+    <p v-if="loading" role="status">{{ uiText("Loading… #2") }}</p>
     <p v-if="error" role="alert">{{ error }}</p>
-    <button class="text-primary" :disabled="loading" @click="load">重新加载工具列表</button>
-    <p v-if="!loading && !error && !servers.length">暂无连接</p>
+    <button class="text-primary" :disabled="loading" @click="load">{{ uiText("Reload tool list") }}</button>
+    <p v-if="!loading && !error && !servers.length">{{ uiText("No connections") }}</p>
     <div
       v-for="server in servers"
       :key="server.provider"
@@ -82,7 +84,7 @@ onMounted(load)
         </li>
       </ul>
       <p v-else class="text-muted-foreground">
-        {{ server.status === 'READY' ? '没有可用工具' : '请在管理页配置、启用或刷新工具' }}
+        {{ server.status === 'READY' ? uiText("No available tools") : uiText("Configure, enable or refresh tools on the management page") }}
       </p>
     </div>
   </section>

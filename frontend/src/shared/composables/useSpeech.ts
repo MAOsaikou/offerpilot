@@ -1,3 +1,4 @@
+import { localizedText, language, translate as uiText } from '@/shared/utils/language'
 import { computed, getCurrentScope, onScopeDispose, ref } from 'vue'
 
 // Recognition is not in lib.dom; keep the vendor API boundary narrow.
@@ -43,8 +44,8 @@ export function useSpeech(
   const unsupportedReason = computed(() =>
     [
       !recognitionSupported.value &&
-        '当前浏览器不支持语音输入，可尝试 Chrome / Edge 或继续文字作答。',
-      !synthesisSupported.value && '当前浏览器不支持题目朗读，请直接阅读题目。',
+        uiText("This browser does not support speech input. Try Chrome / Edge or continue with text."),
+      !synthesisSupported.value && uiText("This browser does not support reading questions aloud. Read the question directly."),
     ]
       .filter(Boolean)
       .join(' '),
@@ -53,7 +54,7 @@ export function useSpeech(
   const listenRequested = ref(false)
   const speaking = ref(false)
   const interimText = ref('')
-  const error = ref('')
+  const error = localizedText()
   const permissionDenied = ref(false)
   const finishing = ref(false)
   const canListen = computed(() => recognitionSupported.value && !permissionDenied.value)
@@ -85,14 +86,14 @@ export function useSpeech(
   function recognitionError(code: string) {
     permissionDenied.value = code === 'not-allowed' || code === 'service-not-allowed'
     const messages: Record<string, string> = {
-      'not-allowed': '麦克风权限被拒绝，请在浏览器设置中允许后刷新；可以继续文字作答。',
-      'service-not-allowed': '浏览器未允许语音识别，可以继续文字作答。',
-      'audio-capture': '未找到可用麦克风，请检查设备；可以继续文字作答。',
-      'no-speech': '没有听到声音，请重新开始口述或文字作答。',
-      network: '语音识别连接失败，请重试或继续文字作答。',
-      aborted: '口述已中断，可以重新开始或继续文字作答。',
+      'not-allowed': uiText("Microphone permission denied. Allow it in browser settings and refresh, or continue with text."),
+      'service-not-allowed': uiText("Speech recognition is not allowed by the browser. You can continue with text."),
+      'audio-capture': uiText("No microphone found. Check your device or continue with text."),
+      'no-speech': uiText("No speech detected. Start dictation again or answer with text."),
+      network: uiText("Speech recognition connection failed. Retry or continue with text."),
+      aborted: uiText("Dictation interrupted. Restart or continue with text."),
     }
-    error.value = messages[code] ?? '语音识别暂不可用，请重试或继续文字作答。'
+    error.value = () => (messages[code] ?? uiText("Speech recognition is unavailable. Retry or continue with text."))
     listenRequested.value = false
     abortRecognition()
   }
@@ -116,7 +117,7 @@ export function useSpeech(
     try {
       const active = new Recognition()
       recognition = active
-      active.lang = options.lang ?? 'zh-CN'
+      active.lang = options.lang ?? language.value
       active.continuous = options.continuous ?? true
       active.interimResults = options.interimResults ?? true
       const isActive = () => recognition === active
@@ -235,7 +236,7 @@ export function useSpeech(
     try {
       const message = new Utterance(text)
       utterance = message
-      message.lang = options.lang ?? 'zh-CN'
+      message.lang = options.lang ?? language.value
       const voices = synthesis.getVoices()
       const matching = voices.filter(
         (voice) => voice.lang.toLowerCase().replace('_', '-') === message.lang.toLowerCase(),
@@ -257,13 +258,13 @@ export function useSpeech(
       message.onerror = () => {
         if (utterance !== message) return
         finish()
-        error.value = '朗读暂不可用，请直接阅读题目。'
+        error.value = () => (uiText("Reading aloud is unavailable. Read the question directly."))
       }
       speaking.value = true
       synthesis.speak(message)
     } catch {
       stopSpeaking()
-      error.value = '朗读暂不可用，请直接阅读题目。'
+      error.value = () => (uiText("Reading aloud is unavailable. Read the question directly."))
     }
   }
 

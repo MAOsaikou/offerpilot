@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
+import { language, translate as uiText } from '@/shared/utils/language'
+
 import { onBeforeUnmount, ref, watch, nextTick } from 'vue'
 import {
   Chart,
@@ -14,25 +18,25 @@ Chart.register(RadarController, RadialLinearScale, PointElement, LineElement, Fi
 const props = defineProps<{ comparison: CareerComparison }>()
 const canvas = ref<HTMLCanvasElement>()
 let chart: Chart<'radar'> | undefined
-const labels: Record<RiasecLetter, string> = {
-  R: '实际型',
-  I: '研究型',
-  A: '艺术型',
-  S: '社会型',
-  E: '企业型',
-  C: '常规型',
-}
+const labels = computed<Record<RiasecLetter, string>>(() => ({
+  R: uiText('Realistic'),
+  I: uiText('Investigative'),
+  A: uiText('Artistic'),
+  S: uiText('Social'),
+  E: uiText('Enterprising'),
+  C: uiText('Conventional'),
+}))
 const colors = ['#2563eb', '#b45309', '#7c3aed']
 watch(
-  () => props.comparison,
-  async (comparison) => {
+  () => [props.comparison, labels.value] as const,
+  async ([comparison]) => {
     await nextTick()
     chart?.destroy()
     if (!canvas.value) return
     chart = new Chart(canvas.value, {
       type: 'radar',
       data: {
-        labels: comparison.axes.map((axis) => labels[axis]),
+        labels: comparison.axes.map((axis) => labels.value[axis]),
         datasets: comparison.occupations.map((occupation, index) => ({
           label: occupation.name,
           data: comparison.axes.map((axis) => occupation.riasec[axis] * 100),
@@ -43,6 +47,7 @@ watch(
         })),
       },
       options: {
+        locale: language.value,
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
@@ -56,7 +61,15 @@ onBeforeUnmount(() => chart?.destroy())
 </script>
 <template>
   <div class="radar-container">
-    <canvas ref="canvas" role="img" aria-label="职业六维兴趣雷达图，完整数值见下方对比表" />
+    <canvas
+      ref="canvas"
+      role="img"
+      :aria-label="
+        uiText(
+          'Career interest radar with six dimensions. Full values appear in the comparison table below.',
+        )
+      "
+    />
   </div>
 </template>
 <style scoped>

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
+import { localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { ref, watch, onBeforeUnmount } from 'vue'
 import {
   confirmCareerAssessment,
@@ -11,18 +15,18 @@ const props = defineProps<{
   beforeConfirm: () => Promise<void>
 }>()
 const emit = defineEmits<{ confirmed: [assessment: AssessmentConfirmed] }>()
-const dimensions: { key: RiasecLetter; label: string }[] = [
-  { key: 'R', label: '实际型' },
-  { key: 'I', label: '研究型' },
-  { key: 'A', label: '艺术型' },
-  { key: 'S', label: '社会型' },
-  { key: 'E', label: '企业型' },
-  { key: 'C', label: '常规型' },
-]
+const dimensions = computed<{ key: RiasecLetter; label: string }[]>(() => [
+  { key: 'R', label: uiText("Realistic") },
+  { key: 'I', label: uiText("Investigative") },
+  { key: 'A', label: uiText("Artistic") },
+  { key: 'S', label: uiText("Social") },
+  { key: 'E', label: uiText("Enterprising") },
+  { key: 'C', label: uiText("Conventional") },
+])
 const draft = ref<AssessmentConfirmed | null>(null)
 const editing = ref(false)
 const busy = ref(false)
-const error = ref('')
+const error = localizedText()
 const newTrait = ref('')
 let disposed = false
 onBeforeUnmount(() => (disposed = true))
@@ -60,11 +64,11 @@ async function save() {
       ...draft.value.constraints,
     })
     if (disposed) return
-    if (!result.confirmed) throw new Error('确认结果为空，请重试')
+    if (!result.confirmed) throw new Error(uiText("Confirmation returned no result. Please retry."))
     emit('confirmed', result.confirmed)
     editing.value = false
   } catch (cause) {
-    if (!disposed) error.value = cause instanceof Error ? cause.message : '保存失败，请重试'
+    if (!disposed) error.value = () => (cause instanceof Error ? cause.message : uiText("Could not save. Please retry."))
   } finally {
     if (!disposed) busy.value = false
   }
@@ -73,11 +77,11 @@ async function save() {
 
 <template>
   <div v-if="!assessment" class="form-stack">
-    <p class="subtle">还没有确认性格与兴趣画像。先聊几个问题，再由你确认或修正结果。</p>
-    <a class="btn" href="#career-assessment">开始或继续职业测评</a>
+    <p class="subtle">{{ uiText("No personality and interest profile has been confirmed. Answer a few questions, then confirm or adjust the results.") }}</p>
+    <a class="btn" href="#career-assessment">{{ uiText("Start or resume career assessment") }}</a>
   </div>
   <form v-else-if="editing && draft" class="form-stack" @submit.prevent="save">
-    <p class="subtle">六个兴趣维度为 0–100 分，不能全部相同。修改后会重新确认测评画像。</p>
+    <p class="subtle">{{ uiText("Interest dimensions range from 0 to 100 and cannot all be equal. Saving changes reconfirms the assessment profile.") }}</p>
     <div class="score-grid">
       <label v-for="dimension in dimensions" :key="dimension.key" class="field">
         {{ dimension.key }} · {{ dimension.label }}
@@ -100,7 +104,7 @@ async function save() {
         type="button"
         class="btn"
         :disabled="busy"
-        :aria-label="`移除特质${trait.name}`"
+        :aria-label="uiText('Remove trait {0}', [trait.name])"
         @click="draft.traits.splice(index, 1)"
       >
         {{ trait.name }} ×
@@ -108,7 +112,7 @@ async function save() {
     </div>
     <div class="trait-input">
       <label class="field"
-        >添加特质（最多 8 个）<input
+        >{{ uiText("Add traits (up to 8)") }}<input
           v-model="newTrait"
           maxlength="12"
           :disabled="busy || draft.traits.length >= 8"
@@ -119,27 +123,25 @@ async function save() {
         class="btn"
         :disabled="busy || !newTrait.trim() || draft.traits.length >= 8"
         @click="addTrait"
-      >
-        添加特质
-      </button>
+      > {{ uiText("Add trait") }} </button>
     </div>
     <div class="score-grid">
       <label class="field"
-        >约束城市<input v-model="draft.constraints.city" maxlength="50" :disabled="busy"
+        >{{ uiText("Preferred city constraint") }}<input v-model="draft.constraints.city" maxlength="50" :disabled="busy"
       /></label>
       <label class="field"
-        >期望月薪<input v-model="draft.constraints.salary" maxlength="50" :disabled="busy"
+        >{{ uiText("Expected monthly salary") }}<input v-model="draft.constraints.salary" maxlength="50" :disabled="busy"
       /></label>
       <label class="field"
-        >加班接受度<input v-model="draft.constraints.overtime" maxlength="50" :disabled="busy"
+        >{{ uiText("Overtime preference") }}<input v-model="draft.constraints.overtime" maxlength="50" :disabled="busy"
       /></label>
     </div>
-    <p v-if="error" role="alert" class="error-banner">{{ error }}（草稿已保留）</p>
+    <p v-if="error" role="alert" class="error-banner">{{ uiText("{0} (draft retained)", [error]) }}</p>
     <div class="card-footer">
       <button class="btn primary" :disabled="busy">
-        {{ busy ? '正在确认…' : '保存性格画像' }}
+        {{ busy ? uiText("Confirming…") : uiText("Save personality profile") }}
       </button>
-      <button type="button" class="btn" :disabled="busy" @click="editing = false">取消</button>
+      <button type="button" class="btn" :disabled="busy" @click="editing = false">{{ uiText("Cancel") }}</button>
     </div>
   </form>
   <div v-else class="form-stack">
@@ -157,18 +159,15 @@ async function save() {
       <li v-for="trait in assessment.traits" :key="trait.name">
         <strong>{{ trait.name }}</strong>
         <p class="subtle">
-          {{ trait.evidence ? `依据：${trait.evidence}` : '自述特质，暂无原话依据' }}
+          {{ trait.evidence ? uiText("Evidence: {0}", [trait.evidence]) : uiText("Self-reported trait; no supporting quote yet") }}
         </p>
       </li>
     </ul>
-    <p v-else class="subtle">还没有添加特质，可按自己的感受补充。</p>
-    <p class="helper-note">
-      现实约束：城市 {{ assessment.constraints.city || '未填写' }} · 月薪
-      {{ assessment.constraints.salary || '未填写' }} · 加班
-      {{ assessment.constraints.overtime || '未填写' }}
+    <p v-else class="subtle">{{ uiText("No traits added yet. Add one based on your experience.") }}</p>
+    <p class="helper-note"> {{ uiText("Constraints: City {0} · Monthly salary {1} · Overtime {2}", [assessment.constraints.city || uiText("Not provided"), assessment.constraints.salary || uiText("Not provided"), assessment.constraints.overtime || uiText("Not provided")]) }}
     </p>
-    <p class="subtle">对话推断仅供探索参考，不是标准化心理测评；你的修正会用于后续职业推荐。</p>
-    <button type="button" class="btn" @click="startEdit">编辑性格与约束</button>
+    <p class="subtle">{{ uiText("Conversational inferences are for exploration, not a standardized psychological assessment. Your adjustments inform future career recommendations.") }}</p>
+    <button type="button" class="btn" @click="startEdit">{{ uiText("Edit personality and constraints") }}</button>
   </div>
 </template>
 

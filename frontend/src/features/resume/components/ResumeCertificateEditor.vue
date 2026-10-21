@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 import ResumeReorderList from './ResumeReorderList.vue'
 
 const props = defineProps<{ disabled?: boolean }>()
@@ -16,29 +18,25 @@ function add() {
 <template>
   <section class="form-stack certificate-section">
     <div class="section-heading">
-      <h2>证书与奖项</h2>
+      <h2>{{ uiText("Certificates and awards") }}</h2>
       <button
         type="button"
         class="btn"
         :disabled="disabled || certificates.length >= 100"
         @click="add"
-      >
-        ＋ 添加证书与奖项
-      </button>
+      > {{ uiText("＋ Add certificate or award") }} </button>
     </div>
-    <p v-if="!certificates.length" class="subtle">尚未填写证书与奖项，可按实际情况补充。</p>
-    <ResumeReorderList v-model="certificates" title="证书与奖项" :disabled="disabled">
+    <p v-if="!certificates.length" class="subtle">{{ uiText("No certificates or awards yet. Add any you have earned.") }}</p>
+    <ResumeReorderList v-model="certificates" :title="uiText('Certificates and awards')" :disabled="disabled">
       <template #default="{ entry, index }">
         <label class="field"
-          >证书或奖项名称<input :value="entry" maxlength="5000" @input="update(index, $event)"
+          >{{ uiText("Certificate or award name") }}<input :value="entry" maxlength="5000" @input="update(index, $event)"
         /></label>
         <button
           type="button"
           class="btn"
           @click="certificates = certificates.filter((_, i) => i !== index)"
-        >
-          移除此条证书与奖项
-        </button>
+        > {{ uiText("Remove this certificate or award") }} </button>
       </template>
     </ResumeReorderList>
   </section>

@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import { apiRequest } from './client'
 export type BuiltinKind = 'QUESTION' | 'COMPETENCY' | 'CAMPUS' | 'REPORT'
 export interface CatalogPage<T> {
@@ -55,17 +56,17 @@ export interface BuiltinFacets {
   directOnetOccupations: number
 }
 export const questionTypes: Record<string, string> = {
-  BEHAVIORAL: '行为',
-  SITUATIONAL: '情境',
-  KNOWLEDGE: '专业',
-  CASE: '案例',
+  get BEHAVIORAL() { return uiText("Behavioral") },
+  get SITUATIONAL() { return uiText("Situational") },
+  get KNOWLEDGE() { return uiText("Major") },
+  get CASE() { return uiText("Case study") },
 }
-export const difficulties: Record<string, string> = { EASY: '基础', STANDARD: '标准', HARD: '进阶' }
+export const difficulties: Record<string, string> = { get EASY() { return uiText("Basic") }, get STANDARD() { return uiText("Standard") }, get HARD() { return uiText("Advanced #2") } }
 export const builtinKinds: Record<BuiltinKind, string> = {
-  QUESTION: '通用题库',
-  COMPETENCY: '岗位能力模型',
-  CAMPUS: '校招流程',
-  REPORT: '行业报告（计划）',
+  get QUESTION() { return uiText("General question bank") },
+  get COMPETENCY() { return uiText("Job competency models") },
+  get CAMPUS() { return uiText("Graduate recruitment process") },
+  get REPORT() { return uiText("Industry reports (planned)") },
 }
 export type CatalogFilters = Record<string, string | number>
 const params = (filters: CatalogFilters) =>

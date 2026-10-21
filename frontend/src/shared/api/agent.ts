@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import {
   apiRequest,
   apiUrl,
@@ -87,7 +88,7 @@ async function consume(response: Response, options: AgentStreamOptions): Promise
       break
     }
   }
-  if (!completed) throw new Error('连接在回复完成前中断，请检查后端后重试。')
+  if (!completed) throw new Error(uiText("Connection ended before the response finished. Check the backend and retry."))
   return runId
 }
 

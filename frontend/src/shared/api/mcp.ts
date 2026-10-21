@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import { apiRequest } from './client'
 
 export interface McpTool {
@@ -18,12 +19,12 @@ export interface McpConnection {
 }
 export const mcpStatus = (status: string) =>
   ({
-    READY: '可用',
-    NOT_CONFIGURED: '未配置',
-    NOT_ADDED: '未添加',
-    DISABLED: '已停用',
-    NOT_REFRESHED: '待刷新',
-    UNAVAILABLE: '连接失败',
+    READY: uiText("Available"),
+    NOT_CONFIGURED: uiText("Unconfigured"),
+    NOT_ADDED: uiText("Not added"),
+    DISABLED: uiText("Disabled"),
+    NOT_REFRESHED: uiText("Refresh needed"),
+    UNAVAILABLE: uiText("Connection failed"),
   })[status] ?? status
 export const listMcpServers = () => apiRequest<McpConnection[]>('/mcp/servers')
 export const addMcpServer = (provider: string) =>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { computed, onBeforeUnmount, ref } from 'vue'
 import {
   getQuestionnaire,
@@ -13,7 +15,7 @@ const emit = defineEmits<{ confirmed: [assessment: AssessmentConfirmed] }>()
 const state = ref<CareerQuestionnaire>()
 const step = ref(0)
 const busy = ref(false)
-const error = ref('')
+const error = localizedText()
 const online = ref(navigator.onLine)
 const updateOnline = () => {
   online.value = navigator.onLine
@@ -28,7 +30,7 @@ onBeforeUnmount(() => {
 })
 const count = computed(() => Object.keys(state.value?.answers ?? {}).length)
 const question = computed(() => state.value?.questions[step.value])
-const choices = ['很不喜欢', '不太喜欢', '不确定', '比较喜欢', '非常喜欢']
+const choices = computed(() => [uiText("Strongly dislike"), uiText("Dislike"), uiText("Unsure"), uiText("Like"), uiText("Strongly like")])
 async function load() {
   busy.value = true
   error.value = ''
@@ -39,7 +41,7 @@ async function load() {
     const missing = next.questions.findIndex((q) => next.answers[q.id] == null)
     step.value = missing < 0 ? next.questions.length : missing
   } catch (cause) {
-    if (!disposed) error.value = cause instanceof Error ? cause.message : '读取失败，请重试'
+    if (!disposed) error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load. Please retry."))
   } finally {
     if (!disposed) busy.value = false
   }
@@ -54,7 +56,7 @@ async function answer(value: number) {
     state.value = next
     step.value++
   } catch (cause) {
-    if (!disposed) error.value = cause instanceof Error ? cause.message : '保存失败，请重试'
+    if (!disposed) error.value = () => (cause instanceof Error ? cause.message : uiText("Could not save. Please retry."))
   } finally {
     if (!disposed) busy.value = false
   }
@@ -71,7 +73,7 @@ async function complete() {
     const profile = await getCareerProfile()
     if (!disposed && profile.assessment) emit('confirmed', profile.assessment)
   } catch (cause) {
-    if (!disposed) error.value = cause instanceof Error ? cause.message : '提交失败，请重试'
+    if (!disposed) error.value = () => (cause instanceof Error ? cause.message : uiText("Could not submit. Please retry."))
   } finally {
     if (!disposed) busy.value = false
   }
@@ -80,24 +82,19 @@ void load()
 </script>
 <template>
   <section class="panel form-stack" aria-labelledby="questionnaire-title">
-    <h2 id="questionnaire-title">快速兴趣问卷 · 30 题</h2>
-    <p class="subtle">
-      按 O*NET 使用的 RIASEC 兴趣框架自写中文活动题，每类 5
-      题；不是官方译本或经常模验证的心理量表。按喜欢程度作答，不是能力考试，约需 5 分钟。
-    </p>
-    <p class="helper-note">
-      每题保存到账号，可离开后续答。确认写入时只替换画像的六维兴趣与兴趣码，保留已确认的特质和现实条件；之后确认对话测评会再次更新兴趣，以最近一次明确确认为准。
-    </p>
-    <p v-if="!online" role="status">当前离线，已保存回答会保留，恢复网络后可继续。</p>
-    <p v-if="busy" role="status">正在同步问卷…</p>
+    <h2 id="questionnaire-title">{{ uiText("Quick interest questionnaire · 30 questions") }}</h2>
+    <p class="subtle"> {{ uiText("Original activity questions based on the RIASEC framework used by O*NET, with five questions per dimension. This is not an official translation or a validated psychological scale. Rate your interests, not your abilities. Takes about five minutes.") }} </p>
+    <p class="helper-note"> {{ uiText("Each answer is saved to your account so you can resume later. Confirmation replaces only the six interest scores and interest code, keeping confirmed traits and constraints. A later conversational assessment can update interests again; the latest explicit confirmation takes precedence.") }} </p>
+    <p v-if="!online" role="status">{{ uiText("You are offline. Saved answers are retained. Continue when connected.") }}</p>
+    <p v-if="busy" role="status">{{ uiText("Syncing questionnaire…") }}</p>
     <p v-if="error" role="alert">
-      {{ error }} <button class="btn" :disabled="busy" @click="load">重新读取</button>
+      {{ error }} <button class="btn" :disabled="busy" @click="load">{{ uiText("Reload") }}</button>
     </p>
     <template v-if="state">
-      <p role="status">已保存 {{ count }} / 30 题</p>
-      <article v-if="question" class="form-stack" aria-label="问卷答题卡">
+      <p role="status">{{ uiText("{0} of 30 answers saved", [count]) }}</p>
+      <article v-if="question" class="form-stack" :aria-label="uiText('Questionnaire answer card')">
         <h3>{{ step + 1 }}. {{ question.text }}</h3>
-        <div class="flex flex-wrap gap-2" role="group" aria-label="喜欢程度">
+        <div class="flex flex-wrap gap-2" role="group" :aria-label="uiText('Interest level')">
           <button
             v-for="(label, index) in choices"
             :key="label"
@@ -110,15 +107,10 @@ void load()
           </button>
         </div>
       </article>
-      <p v-else-if="!state.completed">
-        30 题已答完，可以确认写入画像；分数完全相同时会保存为未分化，不强行给出兴趣码。
-      </p>
-      <p v-if="state.completed" role="status">
-        已写入画像，兴趣码 {{ state.code || '未分化' }}。并列分数按 R、I、A、S、E、C
-        顺序展示，不代表显著差异。
-      </p>
+      <p v-else-if="!state.completed"> {{ uiText("All 30 questions are answered. Confirm to update your profile. Equal scores are saved as undifferentiated without forcing an interest code.") }} </p>
+      <p v-if="state.completed" role="status"> {{ uiText("Profile updated. Interest code: {0}. Tied scores appear in R, I, A, S, E, C order and do not imply meaningful differences.", [state.code || uiText("Undifferentiated")]) }} </p>
       <div class="flex flex-wrap gap-2">
-        <button class="btn" :disabled="busy || step === 0" @click="step--">上一题</button>
+        <button class="btn" :disabled="busy || step === 0" @click="step--">{{ uiText("Previous question") }}</button>
         <button
           class="btn"
           :disabled="
@@ -128,17 +120,13 @@ void load()
             state.answers[question.id] == null
           "
           @click="step++"
-        >
-          下一题
-        </button>
+        > {{ uiText("Next question") }} </button>
         <button
           v-if="count === 30"
           class="btn primary"
           :disabled="busy || !online || state.completed"
           @click="complete"
-        >
-          确认兴趣并写入画像
-        </button>
+        > {{ uiText("Confirm interests and update profile") }} </button>
       </div>
     </template>
   </section>

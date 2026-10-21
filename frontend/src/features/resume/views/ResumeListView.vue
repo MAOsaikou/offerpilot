@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, localizedText, formatDateTime, language, translate as uiText } from '@/shared/utils/language'
+
 import { ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
@@ -11,7 +13,7 @@ import { useWorkspace } from '@/shared/stores/workspace'
 const workspace = useWorkspace()
 const router = useRouter()
 const fileInput = ref<HTMLInputElement | null>(null)
-const error = ref('')
+const error = localizedText()
 const importing = ref(false)
 const page = ref(1)
 const cache = useQueryClient()
@@ -26,18 +28,18 @@ const server = useQuery({
         : false,
 })
 async function create(
-  content = '# 个人信息\n姓名：\n邮箱：\n求职方向：\n\n# 教育经历\n学校 / 专业 / 毕业时间\n\n# 项目经历\n项目名称：\n我的职责：\n采取的行动：\n实际成果：\n\n# 专业技能\n',
-  title = '我的求职简历',
+  content = uiText("# Personal information Name: Email: Target role: # Education School / Major / Graduation date # Projects Project name: My role: Actions taken: Actual results: # Professional skills"),
+  title = uiText("My job search resume"),
 ) {
   const id = crypto.randomUUID()
   workspace.state.resumes.unshift({
     id,
     title,
     content,
-    updated: new Date().toLocaleString('zh-CN'),
+    updated: new Date().toISOString(),
     versions: [],
   })
-  workspace.notify('创建了简历：' + title)
+  workspace.notify(uiText("Created resume:") + title)
   await router.push('/resumes/' + id)
 }
 async function importFile(event: Event) {
@@ -59,7 +61,7 @@ async function importFile(event: Event) {
       query: risk.warning ? { piiWarning: '1' } : {},
     })
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '上传失败，请重试。'
+    error.value = () => (cause instanceof Error ? cause.message : uiText("Upload failed. Please retry."))
   } finally {
     importing.value = false
     input.value = ''
@@ -69,30 +71,25 @@ async function importFile(event: Event) {
 <template>
   <section class="page-stack">
     <PageHeading
-      title="让每一段经历，有力表达"
-      description="整理真实经历，为不同的机会准备不同的简历。"
+      :title="uiText('Make every experience count')"
+      :description="uiText('Organize real experience and prepare different resumes for different opportunities.')"
       ><button class="btn" :disabled="importing" @click="fileInput?.click()">
-        {{ importing ? '上传中…' : '上传并解析' }}</button
-      ><button class="btn primary" :disabled="importing" @click="create()">
-        ＋ 本地草稿
-      </button></PageHeading
+        {{ importing ? uiText("Uploading… #2") : uiText("Upload and parse") }}</button
+      ><button class="btn primary" :disabled="importing" @click="create()"> {{ uiText("＋ Local draft") }} </button></PageHeading
     ><input
       ref="fileInput"
       type="file"
       accept=".pdf,.docx,.png,.jpg,.jpeg,.txt,.md"
       hidden
-      aria-label="上传简历"
+      :aria-label="uiText('Upload resume')"
       @change="importFile"
     />
     <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
-    <div class="helper-note">
-      支持 PDF、DOCX、PNG、JPG、TXT / Markdown，单文件不超过 10MB，PDF 最多 10 页。
-      点击上传后，原文件保存到服务端，内容将发送给配置的模型用于解析。请核对解析结果后保存。
-      <RouterLink to="/settings/models">切换解析模型</RouterLink>
+    <div class="helper-note"> {{ uiText("PDF, DOCX, PNG, JPG, TXT / Markdown, up to 10 MB per file and 10 pages per PDF. The original is saved on the server and sent to the configured model for parsing. Review the results before saving.") }} <RouterLink to="/settings/models">{{ uiText("Change parsing model") }}</RouterLink>
     </div>
     <template v-if="server.isPending.value">
-      <h2>已上传的简历 <span class="subtle">— 份</span></h2>
-      <div class="card-grid" role="status" aria-label="正在加载服务端简历…">
+      <h2>{{ uiText("Uploaded resumes") }} <span class="subtle">{{ uiText("— resumes") }}</span></h2>
+      <div class="card-grid" role="status" :aria-label="uiText('Loading server resumes…')">
         <div
           v-for="index in 3"
           :key="index"
@@ -107,12 +104,11 @@ async function importFile(event: Event) {
       </div>
     </template>
     <div v-else-if="server.isError.value" class="error-banner" role="alert">
-      {{ server.error.value?.message }}
-      <button class="btn" @click="server.refetch()">重新加载</button>
+      {{ formatDisplay(server.error.value?.message) }}
+      <button class="btn" @click="server.refetch()">{{ uiText("Reload #2") }}</button>
     </div>
     <template v-else>
-      <h2>
-        已上传的简历 <span class="subtle">{{ server.data.value?.total ?? 0 }} 份</span>
+      <h2> {{ uiText("Uploaded resumes") }} <span class="subtle">{{ uiText("{0} resumes", [server.data.value?.total ?? 0]) }}</span>
       </h2>
       <div v-if="server.data.value?.items.length" class="card-grid">
         <RouterLink
@@ -131,35 +127,31 @@ async function importFile(event: Event) {
             v-if="item.parseStatus === 'PARSING' || item.parseStatus === 'QUEUED'"
             :value="item.parseProgress"
             max="100"
-            aria-label="解析进度"
+            :aria-label="uiText('Parsing progress')"
           />
           <div class="card-footer">
-            <span>{{ new Date(item.updatedAt).toLocaleString('zh-CN') }}</span
-            ><span>查看</span>
+            <span>{{ new Date(item.updatedAt).toLocaleString(language) }}</span
+            ><span>{{ uiText("View") }}</span>
           </div>
         </RouterLink>
       </div>
       <div v-else class="panel empty-state">
-        <h3>上传你的第一份简历</h3>
-        <p>解析后可编辑个人信息、教育、项目、实习与技能，并保存为新版本。</p>
-        <button class="btn primary" :disabled="importing" @click="fileInput?.click()">
-          选择文件
-        </button>
+        <h3>{{ uiText("Upload your first resume") }}</h3>
+        <p>{{ uiText("After parsing, edit personal information, education, projects, internships and skills, then save a new version.") }}</p>
+        <button class="btn primary" :disabled="importing" @click="fileInput?.click()"> {{ uiText("Choose file") }} </button>
       </div>
       <div v-if="(server.data.value?.total ?? 0) > 20" class="card-footer">
-        <button class="btn" :disabled="page === 1" @click="page--">上一页</button
-        ><span>第 {{ page }} 页</span>
+        <button class="btn" :disabled="page === 1" @click="page--">{{ uiText("Previous page") }}</button
+        ><span>{{ uiText("Page {0}", [page]) }}</span>
         <button
           class="btn"
           :disabled="page * 20 >= (server.data.value?.total ?? 0)"
           @click="page++"
-        >
-          下一页
-        </button>
+        > {{ uiText("Next page") }} </button>
       </div>
     </template>
-    <h2>本地草稿</h2>
-    <p class="subtle">原有草稿保留在此浏览器，未上传。可继续编辑与导出。</p>
+    <h2>{{ uiText("Local drafts") }}</h2>
+    <p class="subtle">{{ uiText("Existing drafts remain in this browser and have not been uploaded. Continue editing or exporting them.") }}</p>
     <div v-if="workspace.state.resumes.length" class="card-grid">
       <RouterLink
         v-for="resume in workspace.state.resumes"
@@ -168,21 +160,21 @@ async function importFile(event: Event) {
         class="panel job-card"
         ><div class="card-top">
           <span class="stat-icon"><AppIcon name="resumes" /></span
-          ><span class="tag">{{ resume.versions.length }} 个版本</span>
+          ><span class="tag">{{ uiText("{0} versions", [resume.versions.length]) }}</span>
         </div>
         <h2>{{ resume.title }}</h2>
         <p class="subtle">{{ resume.content.slice(0, 100) }}…</p>
         <div class="card-footer">
-          <span class="subtle">{{ resume.updated }}</span
-          ><span>编辑</span>
+          <span class="subtle">{{ formatDateTime(resume.updated) }}</span
+          ><span>{{ uiText("Edit #2") }}</span>
         </div></RouterLink
       >
     </div>
     <div v-else class="panel empty-state">
       <AppIcon name="resumes" :size="44" />
-      <h2>你的故事，值得一份好简历</h2>
-      <p>也可以先创建本地草稿，整理经历后再上传解析。</p>
-      <button class="btn primary" @click="create()">创建第一份简历</button>
+      <h2>{{ uiText("Your story deserves a good resume") }}</h2>
+      <p>{{ uiText("You can also start a local draft and organize your experience before uploading.") }}</p>
+      <button class="btn primary" @click="create()">{{ uiText("Create your first resume") }}</button>
     </div>
   </section>
 </template>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, translate as uiText } from '@/shared/utils/language'
+
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
@@ -22,7 +24,7 @@ const inProgress = computed(
 const failure = computed(
   () =>
     generationError.value ||
-    (task.value?.status === 'FAILED' ? task.value.error || '报告生成失败' : ''),
+    (task.value?.status === 'FAILED' ? task.value.error || uiText("Report generation failed") : ''),
 )
 const report = useQuery({
   queryKey: computed(() => ['interview-report', props.sessionId]),
@@ -88,37 +90,37 @@ async function createPlan() {
 }
 </script>
 <template>
-  <section class="panel form-stack interview-report" aria-label="面试报告与学习计划">
-    <h2>面试报告</h2>
-    <p v-if="restoring" role="status">正在恢复报告任务…</p>
+  <section class="panel form-stack interview-report" :aria-label="uiText('Interview report and learning plan')">
+    <h2>{{ uiText("Interview report") }}</h2>
+    <p v-if="restoring" role="status">{{ uiText("Restoring report task…") }}</p>
     <div v-else-if="restoreError" role="alert">
-      <p>报告任务读取失败：{{ restoreError }}</p>
-      <button class="btn" @click="restore">重新读取任务</button>
+      <p>{{ uiText("Could not load report task: {0}", [restoreError]) }}</p>
+      <button class="btn" @click="restore">{{ uiText("Reload task") }}</button>
     </div>
     <div v-else-if="inProgress" role="status" aria-live="polite">
-      <h3>正在生成面试报告</h3>
-      <progress aria-label="面试报告生成进度" />
-      <p>{{ task?.stage || '正在提交报告任务' }}</p>
-      <p class="helper-note">可以离开页面，后台会继续；完成后报告会自动显示，并保存到面试历史。</p>
+      <h3>{{ uiText("Generating interview report") }}</h3>
+      <progress :aria-label="uiText('Interview report progress')" />
+      <p>{{ task?.stage || uiText("Submitting report task") }}</p>
+      <p class="helper-note">{{ uiText("You can leave this page. Generation continues in the background. The report will appear automatically and be saved to interview history.") }}</p>
     </div>
     <div v-else-if="failure" role="alert">
-      <h3>报告生成失败</h3>
+      <h3>{{ uiText("Report generation failed") }}</h3>
       <p>{{ failure }}</p>
-      <p class="helper-note">回答已保存，可重试生成报告。</p>
-      <button v-if="canGenerate" class="btn primary" @click="generate">重试生成报告</button>
+      <p class="helper-note">{{ uiText("Answers are saved. You can retry report generation.") }}</p>
+      <button v-if="canGenerate" class="btn primary" @click="generate">{{ uiText("Retry report generation") }}</button>
     </div>
     <div v-else-if="task?.status === 'CANCELLED' && !hasReport" role="status">
-      <p>报告生成已取消，回答已保存。</p>
-      <button v-if="canGenerate" class="btn primary" @click="generate">重新生成报告</button>
+      <p>{{ uiText("Report generation was canceled. Answers are saved.") }}</p>
+      <button v-if="canGenerate" class="btn primary" @click="generate">{{ uiText("Regenerate report") }}</button>
     </div>
-    <p v-else-if="report.isPending.value" role="status">正在读取面试报告…</p>
+    <p v-else-if="report.isPending.value" role="status">{{ uiText("Loading interview report…") }}</p>
     <p v-else-if="report.isError.value" role="alert">
-      {{ report.error.value?.message }}
-      <button class="btn" @click="report.refetch()">重试报告</button>
+      {{ formatDisplay(report.error.value?.message) }}
+      <button class="btn" @click="report.refetch()">{{ uiText("Retry report") }}</button>
     </p>
     <template v-else-if="report.data.value && (hasReport || !canGenerate)">
       <InterviewReportCard :payload="report.data.value" inline />
-      <p class="helper-note">报告已保存，可随时从面试历史查看。</p>
+      <p class="helper-note">{{ uiText("Your report is saved and available in interview history.") }}</p>
       <InterviewPlanUpdatePanel :key="sessionId" :report-id="sessionId" />
       <div class="report-actions">
         <button
@@ -126,24 +128,20 @@ async function createPlan() {
           :disabled="busy || !report.data.value.recommendedLearning.length"
           @click="createPlan"
         >
-          {{ busy ? '正在生成…' : planId ? '学习计划已生成' : '一键生成学习计划' }}
+          {{ busy ? uiText("Generating…") : planId ? uiText("Learning plan generated") : uiText("Generate a learning plan") }}
         </button>
         <slot />
       </div>
-      <p class="helper-note">
-        将报告短板保存为四周学习计划，保留报告来源。重复点击会返回同一计划。
-      </p>
-      <p v-if="!report.data.value.recommendedLearning.length" role="status">
-        报告暂无可转为学习任务的短板。
-      </p>
+      <p class="helper-note"> {{ uiText("Save report gaps as a four-week learning plan with a link to this report. Repeated requests return the same plan.") }} </p>
+      <p v-if="!report.data.value.recommendedLearning.length" role="status"> {{ uiText("This report has no gaps that can become learning tasks.") }} </p>
       <RouterLink v-if="planId" class="btn" :to="{ path: '/career', query: { plan: planId } }"
-        >查看学习计划</RouterLink
+        >{{ uiText("View learning plan") }}</RouterLink
       >
       <p v-if="error" role="alert">{{ error }}</p>
     </template>
     <div v-else>
-      <p>报告尚未生成，原始回答已保存。</p>
-      <button v-if="canGenerate" class="btn primary" @click="generate">生成面试报告</button>
+      <p>{{ uiText("The report has not been generated. Original answers are saved.") }}</p>
+      <button v-if="canGenerate" class="btn primary" @click="generate">{{ uiText("Generate interview report") }}</button>
     </div>
   </section>
 </template>

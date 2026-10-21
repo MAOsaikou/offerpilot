@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { asPayload } from '@/shared/utils/payload'
@@ -8,15 +10,13 @@ const data = computed(() => asPayload<InterviewerStatePayload>(props.payload, 's
 </script>
 <template>
   <article v-if="data" class="surface space-y-2 rounded-[14px] p-4 text-sm">
-    <h3 class="font-semibold">文字模拟面试 · {{ data.questionIndex + 1 }} / {{ data.total }}</h3>
+    <h3 class="font-semibold">{{ uiText("Text mock interview · {0} / {1}", [data.questionIndex + 1, data.total]) }}</h3>
     <p class="break-words">{{ data.question }}</p>
     <p class="text-xs text-muted-foreground">{{ data.note }}</p>
     <RouterLink v-if="data.sessionId" :to="'/interviews/' + data.sessionId" class="btn"
-      >打开面试室</RouterLink
+      >{{ uiText("Open interview room") }}</RouterLink
     >
-    <p class="text-xs text-muted-foreground">
-      在聊天中回答；可发送「下一题」「给我面试反馈」或「结束面试」。多场面试时请从对应面试室进入聊天。
-    </p>
+    <p class="text-xs text-muted-foreground"> {{ uiText("Answer in chat. You can ask for the next question, interview feedback or to end the interview. If you have multiple interviews, enter chat from the corresponding interview room.") }} </p>
   </article>
-  <p v-else class="text-sm text-muted-foreground">面试问题暂不可用，请重试。</p>
+  <p v-else class="text-sm text-muted-foreground">{{ uiText("Interview questions are unavailable. Please retry.") }}</p>
 </template>

@@ -1,16 +1,22 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
+import { translate as uiText } from '@/shared/utils/language'
+
 const emit = defineEmits<{ pick: [text: string] }>()
-const suggestions = [
-  '帮我梳理职业兴趣和方向',
-  '如何写好简历中的项目经历？',
-  '帮我准备技术面试的自我介绍',
-  '如何安排一周的求职计划？',
-]
+const suggestions = computed(() => [
+  uiText('Help me explore my career interests and direction'),
+  uiText('How can I improve project experience descriptions on my resume?'),
+  uiText('Help me prepare an introduction for a technical interview'),
+  uiText('How should I plan a week of job searching?'),
+])
 </script>
 <template>
   <div class="chat-welcome">
-    <h2>下一步，我们一起想。</h2>
-    <p class="subtle">描述你眼前的问题，从一个具体的小目标开始。</p>
+    <h2>{{ uiText("Let's figure out your next step.") }}</h2>
+    <p class="subtle">
+      {{ uiText('Describe a specific challenge and start with one small goal.') }}
+    </p>
     <div class="suggestion-grid">
       <button
         v-for="(text, index) in suggestions"
@@ -22,6 +28,12 @@ const suggestions = [
         {{ text }}
       </button>
     </div>
-    <p class="subtle">支持连续追问。同一对话会参考最近完成的内容，新对话独立开始。</p>
+    <p class="subtle">
+      {{
+        uiText(
+          'Ask follow-up questions freely. This conversation uses recently completed exchanges; a new conversation starts independently.',
+        )
+      }}
+    </p>
   </div>
 </template>

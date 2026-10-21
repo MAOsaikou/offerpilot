@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 import { computed, onErrorCaptured, ref, watch } from 'vue'
 import CardFallback from './CardFallback.vue'
 import { resolveCardComponent } from './registry'
@@ -36,9 +38,9 @@ const component = computed(() => resolveCardComponent(props.cardType))
 
 <template>
   <div class="card-reveal">
-    <section v-if="failed" class="panel form-stack" role="alert" aria-label="卡片加载失败">
-      <p>这张卡片暂时无法显示，回复与其他卡片仍可继续查看。</p>
-      <button type="button" class="btn" @click="retry">重新加载卡片</button>
+    <section v-if="failed" class="panel form-stack" role="alert" :aria-label="uiText('Could not load card')">
+      <p>{{ uiText("This card could not be displayed. You can still read the response and other cards.") }}</p>
+      <button type="button" class="btn" @click="retry">{{ uiText("Reload card") }}</button>
     </section>
     <component
       :is="component"

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { localizedText, translate as uiText } from '@/shared/utils/language'
+
 import ResumeVersionTree from './ResumeVersionTree.vue'
 import GitHubEvidencePanel from '@/shared/components/GitHubEvidencePanel.vue'
 import type { ServerResume } from '@/shared/types/resume'
@@ -52,22 +54,22 @@ const baseVersion = ref('')
 const busy = ref(false)
 const exporting = ref(false)
 const pdfTemplate = ref<'classic' | 'compact'>('classic')
-const error = ref('')
-const message = ref('')
+const error = localizedText()
+const message = localizedText()
 const tab = ref(
   route.query.tab === 'github'
     ? 'GitHub'
     : route.query.tab === 'optimize'
-      ? '改写'
+      ? 'Rewrite'
       : route.query.tab === 'diagnosis'
-        ? '诊断'
-        : '内容',
+        ? 'Diagnosis'
+        : 'Content',
 )
 watch(
   () => route.query.tab,
   (value) => {
     if (!busy.value && (value === 'optimize' || value === 'diagnosis' || value === 'github'))
-      tab.value = value === 'github' ? 'GitHub' : value === 'optimize' ? '改写' : '诊断'
+      tab.value = value === 'github' ? 'GitHub' : value === 'optimize' ? 'Rewrite' : 'Diagnosis'
   },
 )
 const history = ref<ResumeVersion[]>([])
@@ -105,7 +107,7 @@ watch(
 )
 const deleted = ref(false)
 function confirmLeave() {
-  return deleted.value || !dirty.value || window.confirm('有尚未保存的简历修改，确定离开吗？')
+  return deleted.value || !dirty.value || window.confirm(uiText("You have unsaved resume edits. Leave this page?"))
 }
 onBeforeRouteLeave(confirmLeave)
 onBeforeRouteUpdate(confirmLeave)
@@ -125,17 +127,17 @@ async function run(action: () => Promise<void>) {
   try {
     await action()
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '操作失败，请重试。'
+    error.value = () => (cause instanceof Error ? cause.message : uiText("Operation failed. Please retry."))
   } finally {
     busy.value = false
   }
 }
 const router = useRouter()
 async function remove() {
-  const name = resume.value?.title ?? '这份简历'
+  const name = resume.value?.title ?? uiText("this resume")
   if (
     !window.confirm(
-      `确定删除「${name}」吗？所有版本、诊断报告、改写建议、岗位匹配报告和原文件都会一并删除，且无法恢复。`,
+      uiText("Delete “{0}”? All versions, diagnoses, rewrites, match reports and the original file will be deleted permanently.", [name]),
     )
   )
     return
@@ -151,7 +153,7 @@ async function save() {
   let success = false
   await run(async () => {
     if (!draft.value || !baseVersion.value) return
-    if (!title.value.trim()) throw new Error('请填写简历名称。')
+    if (!title.value.trim()) throw new Error(uiText("Enter a resume name."))
     if (title.value.trim() !== savedTitle.value) {
       await renameResume(props.id, title.value.trim())
       savedTitle.value = title.value = title.value.trim()
@@ -160,7 +162,7 @@ async function save() {
     original.value = JSON.stringify(draft.value)
     cache.setQueryData(['resume', props.id], updated)
     populate()
-    message.value = '已保存为新版本，可在版本记录中查看。'
+    message.value = () => (uiText("Saved as a new version. View it in version history."))
     void cache.invalidateQueries({ queryKey: ['resumes'] })
     success = true
   })
@@ -178,9 +180,9 @@ async function exportPdf() {
   error.value = ''
   try {
     await exportResumePdf(props.id, pdfTemplate.value)
-    message.value = '已导出服务端当前保存版本的 PDF。'
+    message.value = () => (uiText("Exported the server's current saved resume version as PDF."))
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : 'PDF 导出失败，请重试。'
+    error.value = () => (cause instanceof Error ? cause.message : uiText("PDF export failed. Please retry."))
   } finally {
     exporting.value = false
   }
@@ -199,32 +201,32 @@ async function reload() {
   })
 }
 async function showHistory() {
-  tab.value = '版本'
+  tab.value = 'Versions'
   selected.value = undefined
   historyLoading.value = true
   error.value = ''
   try {
     history.value = await listResumeVersions(props.id)
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '版本加载失败'
+    error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load version"))
   } finally {
     historyLoading.value = false
   }
 }
 function restore(version: ResumeVersion) {
-  if (dirty.value && !window.confirm('用此版本替换尚未保存的编辑内容吗？')) return
+  if (dirty.value && !window.confirm(uiText("Replace unsaved edits with this version?"))) return
   draft.value = JSON.parse(JSON.stringify(version.structured)) as ResumeStructure
-  tab.value = '内容'
-  message.value = '已载入历史版本，点击保存将创建新版本。'
+  tab.value = 'Content'
+  message.value = () => (uiText("Historical version loaded. Saving will create a new version."))
 }
 async function rollback(version: ResumeVersion) {
   if (!resume.value?.currentVersionId) return
   if (dirty.value) {
-    error.value = '请先保存或放弃当前未保存的编辑，再回滚。'
+    error.value = () => (uiText("Save or discard your unsaved edits before restoring."))
     return
   }
   if (
-    !window.confirm(`以版本 ${version.versionNo} 的内容创建一个新的当前版本吗？原有版本都会保留。`)
+    !window.confirm(uiText("Create a new current version using version {0}? All existing versions will be retained.", [version.versionNo]))
   )
     return
   await run(async () => {
@@ -236,7 +238,7 @@ async function rollback(version: ResumeVersion) {
     cache.setQueryData(['resume', props.id], updated)
     populate()
     history.value = await listResumeVersions(props.id)
-    message.value = `已回滚：版本 ${updated.currentVersion?.versionNo ?? ''} 的内容来自版本 ${version.versionNo}。`
+    message.value = () => (uiText("Restored: version {0} uses content from version {1}.", [updated.currentVersion?.versionNo ?? '', version.versionNo]))
     void cache.invalidateQueries({ queryKey: ['resumes'] })
   })
 }
@@ -249,7 +251,7 @@ function optimized(version: ResumeVersion) {
     updatedAt: version.createdAt,
   })
   populate()
-  message.value = '改写已保存为新版本。'
+  message.value = () => (uiText("Rewrite saved as a new version."))
 }
 function githubAdopted(updated: ServerResume) {
   cache.setQueryData(['resume', props.id], updated)
@@ -260,93 +262,90 @@ function githubAdopted(updated: ServerResume) {
 function lines(value: string) {
   return value.split('\n')
 }
-const sections = [
+const sections = computed(() => [
   {
     key: 'education' as const,
-    title: '教育经历',
+    title: uiText("Education #2"),
     fields: [
-      { key: 'school', label: '学校' },
-      { key: 'degree', label: '学历' },
-      { key: 'major', label: '专业' },
-      { key: 'start', label: '开始时间' },
-      { key: 'end', label: '结束时间' },
-      { key: 'gpa', label: 'GPA / 成绩' },
+      { key: 'school', label: uiText("School") },
+      { key: 'degree', label: uiText("Education") },
+      { key: 'major', label: uiText("Major") },
+      { key: 'start', label: uiText("Start date") },
+      { key: 'end', label: uiText("End date") },
+      { key: 'gpa', label: uiText("GPA / Grades") },
     ],
   },
   {
     key: 'experience' as const,
-    title: '实习与工作',
+    title: uiText("Internships and work"),
     fields: [
-      { key: 'org', label: '公司 / 组织' },
-      { key: 'title', label: '职位' },
-      { key: 'start', label: '开始时间' },
-      { key: 'end', label: '结束时间' },
-      { key: 'bullets', label: '职责与成果', array: true },
+      { key: 'org', label: uiText("Company / Organization") },
+      { key: 'title', label: uiText("Position") },
+      { key: 'start', label: uiText("Start date") },
+      { key: 'end', label: uiText("End date") },
+      { key: 'bullets', label: uiText("Responsibilities and achievements"), array: true },
     ],
   },
   {
     key: 'projects' as const,
-    title: '项目经历',
+    title: uiText("Projects"),
     fields: [
-      { key: 'name', label: '项目名称' },
-      { key: 'role', label: '担任角色' },
-      { key: 'start', label: '开始时间' },
-      { key: 'end', label: '结束时间' },
-      { key: 'tech', label: '技术栈', array: true },
-      { key: 'bullets', label: '行动与成果', array: true },
+      { key: 'name', label: uiText("Project name") },
+      { key: 'role', label: uiText("Role #2") },
+      { key: 'start', label: uiText("Start date") },
+      { key: 'end', label: uiText("End date") },
+      { key: 'tech', label: uiText("Technology stack"), array: true },
+      { key: 'bullets', label: uiText("Actions and results"), array: true },
     ],
   },
   {
     key: 'skills' as const,
-    title: '专业技能',
+    title: uiText("Professional skills"),
     fields: [
-      { key: 'category', label: '技能类别' },
-      { key: 'items', label: '技能', array: true },
+      { key: 'category', label: uiText("Skill category") },
+      { key: 'items', label: uiText("Skills"), array: true },
     ],
   },
-]
-const basics = [
-  { key: 'name' as const, label: '姓名' },
-  { key: 'phone' as const, label: '电话' },
-  { key: 'email' as const, label: '邮箱' },
-  { key: 'city' as const, label: '城市' },
-]
+])
+const basics = computed(() => [
+  { key: 'name' as const, label: uiText("Name") },
+  { key: 'phone' as const, label: uiText("Phone") },
+  { key: 'email' as const, label: uiText("Email") },
+  { key: 'city' as const, label: uiText("City") },
+])
 </script>
 <template>
   <section class="page-stack resume-editor">
     <PageHeading
-      :title="resume?.title ?? '简历详情'"
-      description="核对每一段经历，让真实的优势清晰可见。"
+      :title="resume?.title ?? uiText('Resume details')"
+      :description="uiText('Review every experience and make your real strengths clear.')"
     >
-      <RouterLink class="btn" to="/resumes">返回简历中心</RouterLink>
+      <RouterLink class="btn" to="/resumes">{{ uiText("Back to resumes") }}</RouterLink>
       <select
         v-model="pdfTemplate"
         class="input pdf-template"
-        aria-label="PDF 模板"
+        :aria-label="uiText('PDF template')"
         :disabled="exporting"
       >
-        <option value="classic">经典模板</option>
-        <option value="compact">紧凑单页模板</option>
+        <option value="classic">{{ uiText("Classic template") }}</option>
+        <option value="compact">{{ uiText("Compact single-page template") }}</option>
       </select>
       <button
         class="btn"
         :disabled="busy || exporting || resume?.parseStatus !== 'READY' || !resume?.currentVersion"
         :aria-busy="exporting"
-        title="导出服务端当前保存版本，未保存的编辑不会包含在 PDF 中"
+        :title="uiText('Exports the server\'s current saved version. Unsaved edits are excluded from the PDF.')"
         @click="exportPdf"
       >
-        {{ exporting ? '导出中…' : '导出 PDF' }}
+        {{ exporting ? uiText("Exporting… #2") : uiText("Export PDF") }}
       </button>
-      <button class="btn" :disabled="busy || query.isFetching.value" @click="reload">
-        重新加载
-      </button>
-      <button class="btn danger" :disabled="busy || !resume" @click="remove">删除简历</button>
+      <button class="btn" :disabled="busy || query.isFetching.value" @click="reload"> {{ uiText("Reload #2") }} </button>
+      <button class="btn danger" :disabled="busy || !resume" @click="remove">{{ uiText("Delete resume") }}</button>
     </PageHeading>
-    <p v-if="query.isPending.value" role="status">正在加载简历…</p>
+    <p v-if="query.isPending.value" role="status">{{ uiText("Loading resumes… #2") }}</p>
     <p v-if="query.error.value" class="error-banner" role="alert">
-      {{ query.error.value.message }}。可点击重新加载。
-    </p>
-    <p v-if="error && (!draft || tab !== '内容')" class="error-banner" role="alert">{{ error }}</p>
+      {{ uiText("{0}. Click reload to retry.", [query.error.value.message]) }} </p>
+    <p v-if="error && (!draft || tab !== 'Content')" class="error-banner" role="alert">{{ error }}</p>
     <template v-if="resume">
       <div class="panel form-stack" aria-live="polite">
         <div class="card-top">
@@ -357,58 +356,46 @@ const basics = [
           <h2 aria-live="polite" role="status">
             {{
               resume.parseStatus === 'QUEUED'
-                ? '文件已保存，排队等待解析'
+                ? uiText("File saved, queued for parsing")
                 : resume.parseProgress < 50
-                  ? '正在读取原文与页面图片'
-                  : '正在提取和校验结构化字段'
+                  ? uiText("Reading original text and page images")
+                  : uiText("Extracting and validating structured fields")
             }}
           </h2>
-          <progress :value="resume.parseProgress" max="100" aria-label="简历解析进度" />
-          <p class="subtle">进度表示处理阶段，不代表剩余时间。</p>
-          <p>解析会在后台继续，你可以离开页面，稍后返回查看。图片与扫描件可能需要更长时间。</p>
+          <progress :value="resume.parseProgress" max="100" :aria-label="uiText('Resume parsing progress')" />
+          <p class="subtle">{{ uiText("Progress indicates the processing stage, not time remaining.") }}</p>
+          <p>{{ uiText("Parsing continues in the background. You can leave and return later. Images and scans may take longer.") }}</p>
         </template>
         <template v-if="resume.parseStatus === 'FAILED'">
           <p class="error-banner" role="alert">{{ resume.parseError }}</p>
           <div>
             <button class="btn primary" :disabled="busy" @click="retry">
-              {{ busy ? '提交中…' : '重新解析' }}
+              {{ busy ? uiText("Submitting…") : uiText("Parse again") }}
             </button>
           </div>
-          <p class="subtle">
-            原文件已保存，重试无需重复上传。如果文件损坏，请返回简历中心上传修正后的文件。
-          </p>
+          <p class="subtle"> {{ uiText("The original file is saved. Retry without uploading again. If the file is damaged, upload a corrected file from the resume center.") }} </p>
         </template>
-        <p v-if="resume.parseStatus === 'READY'" class="subtle">
-          解析结果可能存在遗漏，请对照原文件核对。手动保存后会生成新版本。PDF
-          导出使用当前已保存版本。
-        </p>
+        <p v-if="resume.parseStatus === 'READY'" class="subtle"> {{ uiText("Parsing may miss details. Check against the original file. Saving creates a new version. PDF export uses the current saved version.") }} </p>
       </div>
       <template v-if="resume.parseStatus === 'READY' && draft">
         <div class="tabs no-print">
-          <button :disabled="busy" :class="{ selected: tab === '内容' }" @click="tab = '内容'">
-            内容编辑</button
-          ><button :disabled="busy" :class="{ selected: tab === '诊断' }" @click="tab = '诊断'">
-            AI 诊断</button
-          ><button :disabled="busy" :class="{ selected: tab === '改写' }" @click="tab = '改写'">
-            定向改写</button
-          ><button :disabled="busy" :class="{ selected: tab === '版本' }" @click="showHistory">
-            版本记录
-          </button>
-          <button :disabled="busy" :class="{ selected: tab === 'GitHub' }" @click="tab = 'GitHub'">
-            GitHub 实证
-          </button>
+          <button :disabled="busy" :class="{ selected: tab === 'Content' }" @click="tab = 'Content'"> {{ uiText("Edit content") }}</button
+          ><button :disabled="busy" :class="{ selected: tab === 'Diagnosis' }" @click="tab = 'Diagnosis'"> {{ uiText("AI diagnosis") }}</button
+          ><button :disabled="busy" :class="{ selected: tab === 'Rewrite' }" @click="tab = 'Rewrite'"> {{ uiText("Targeted rewrite") }}</button
+          ><button :disabled="busy" :class="{ selected: tab === 'Versions' }" @click="showHistory"> {{ uiText("Version history") }} </button>
+          <button :disabled="busy" :class="{ selected: tab === 'GitHub' }" @click="tab = 'GitHub'"> {{ uiText("GitHub evidence") }} </button>
         </div>
-        <form v-if="tab === '内容'" class="panel form-stack" @submit.prevent="save">
+        <form v-if="tab === 'Content'" class="panel form-stack" @submit.prevent="save">
           <fieldset :disabled="busy" class="form-stack resume-fields">
-            <label class="field">简历名称<input v-model="title" maxlength="100" required /></label>
-            <h2>个人信息</h2>
+            <label class="field">{{ uiText("Resume name") }}<input v-model="title" maxlength="100" required /></label>
+            <h2>{{ uiText("Personal information") }}</h2>
             <div class="resume-basics">
               <label v-for="field in basics" :key="field.key" class="field"
                 >{{ field.label }}<input v-model="draft.basics[field.key]" maxlength="5000"
               /></label>
             </div>
             <label class="field"
-              >个人链接（每行一项）<textarea
+              >{{ uiText("Personal links (one per line)") }}<textarea
                 :value="draft.basics.links.join('\n')"
                 rows="2"
                 maxlength="5000"
@@ -416,7 +403,7 @@ const basics = [
               />
             </label>
             <label class="field"
-              >个人简介<textarea v-model="draft.summary" rows="4" maxlength="5000" />
+              >{{ uiText("Professional summary") }}<textarea v-model="draft.summary" rows="4" maxlength="5000" />
             </label>
             <ResumeSectionEditor
               v-for="section in sections"
@@ -432,23 +419,23 @@ const basics = [
             <div class="form-stack">
               <span v-if="error" class="error-banner" role="alert">{{ error }}</span>
               <span role="status">{{
-                dirty ? '有未保存的修改' : message || '已与服务端同步'
+                dirty ? uiText("Unsaved changes") : message || uiText("Synced with server")
               }}</span>
             </div>
             <button class="btn primary" :disabled="busy || !dirty" type="submit">
-              {{ busy ? '保存中…' : '保存新版本' }}
+              {{ busy ? uiText("Saving… #2") : uiText("Save new version") }}
             </button>
           </div>
         </form>
         <ResumeDiagnosisPanel
-          v-else-if="tab === '诊断'"
+          v-else-if="tab === 'Diagnosis'"
           :resume-id="id"
           :version-id="baseVersion"
           :dirty="!!dirty"
           :save-first="save"
         />
         <ResumeOptimizationPanel
-          v-else-if="tab === '改写'"
+          v-else-if="tab === 'Rewrite'"
           :key="route.fullPath"
           :resume-id="id"
           :version-id="baseVersion"
@@ -481,7 +468,7 @@ const basics = [
           @adoption-busy="busy = $event"
         />
         <section v-else class="panel form-stack">
-          <p v-if="historyLoading" role="status">正在加载版本…</p>
+          <p v-if="historyLoading" role="status">{{ uiText("Loading versions… #3") }}</p>
           <ResumeVersionTree
             :versions="history"
             :current-version-id="resume.currentVersionId"
@@ -491,7 +478,7 @@ const basics = [
             @restore="rollback"
           />
           <article v-if="selected" class="form-stack">
-            <h2>版本 {{ selected.versionNo }} 的内容</h2>
+            <h2>{{ uiText("Version {0} content", [selected.versionNo]) }}</h2>
             <pre class="resume-text">{{ selected.plainText }}</pre>
             <button
               class="btn"
@@ -501,9 +488,7 @@ const basics = [
                   JSON.stringify(selected.structured, null, 2),
                 )
               "
-            >
-              下载结构化内容
-            </button>
+            > {{ uiText("Download structured content") }} </button>
           </article>
         </section>
       </template>

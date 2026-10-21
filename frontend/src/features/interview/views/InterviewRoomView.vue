@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, localizedText, translateLabel, translate as uiText } from '@/shared/utils/language'
+
 import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
 
 import InterviewFeedback from '../components/InterviewFeedback.vue'
@@ -38,7 +40,7 @@ const askingFollowUp = ref(false)
 const loading = ref(true)
 const loadError = ref('')
 const notFound = ref(false)
-const error = ref('')
+const error = localizedText()
 const busy = ref(false)
 const generating = ref(false)
 const scoring = ref(false)
@@ -99,7 +101,7 @@ async function finish() {
 }
 const starCandidates = ref<StarStoryCandidate[]>([])
 const starBusy = ref(false)
-const starMessage = ref('')
+const starMessage = localizedText()
 const starLoading = ref(false)
 const starError = ref('')
 const exportBusy = ref(false)
@@ -146,8 +148,8 @@ const timerLabel = computed(() =>
   remainingSeconds.value === null
     ? ''
     : remainingSeconds.value === 0
-      ? '本次面试时间已到，请保存回答并完成复盘。'
-      : `剩余 ${Math.floor(remainingSeconds.value / 60)} 分 ${remainingSeconds.value % 60} 秒`,
+      ? uiText("Interview time is up. Save your answers and complete the review.")
+      : uiText("{0} min {1} sec remaining", [Math.floor(remainingSeconds.value / 60), remainingSeconds.value % 60]),
 )
 const voiceAutoPlay = ref(false)
 try {
@@ -375,7 +377,7 @@ async function submit() {
     syncDrafts()
   } catch (e) {
     if (requestRevision === revision)
-      error.value = `面试官暂时无法追问：${(e as Error).message}。可以重试，或跳过追问进入下一题`
+      error.value = () => (uiText("The interviewer could not ask a follow-up: {0}. Retry or skip to the next question.", [(e as Error).message]))
   } finally {
     if (requestRevision === revision) {
       askingFollowUp.value = false
@@ -418,7 +420,7 @@ async function saveCandidate(candidate: StarStoryCandidate) {
     )
     if (requestRevision !== revision) return
     candidate.alreadySaved = true
-    starMessage.value = '已保存到 STAR 故事库。'
+    starMessage.value = () => (uiText("Saved to the STAR story library."))
     void cache.invalidateQueries({ queryKey: ['star-stories'] })
     await loadCandidates()
   } catch (e) {
@@ -455,17 +457,17 @@ async function restoreTask() {
       void cache.invalidateQueries({ queryKey: ['interview-report', saved.id] })
     }
   } catch (cause) {
-    if (version === revision) error.value = cause instanceof Error ? cause.message : '面试恢复失败'
+    if (version === revision) error.value = () => (cause instanceof Error ? cause.message : uiText("Could not restore interview"))
   }
 }
 </script>
 <template>
-  <div v-if="loading" class="panel empty-state" role="status">正在加载练习…</div>
+  <div v-if="loading" class="panel empty-state" role="status">{{ uiText("Loading practice…") }}</div>
   <div v-else-if="loadError" class="panel empty-state">
-    <h2>{{ notFound ? '未找到这场练习' : '练习加载失败' }}</h2>
+    <h2>{{ notFound ? uiText("Practice session not found") : uiText("Could not load practice") }}</h2>
     <p role="alert">{{ loadError }}</p>
-    <button v-if="!notFound" class="btn" @click="load">重新加载</button>
-    <RouterLink to="/interviews" class="btn">返回练习列表</RouterLink>
+    <button v-if="!notFound" class="btn" @click="load">{{ uiText("Reload #2") }}</button>
+    <RouterLink to="/interviews" class="btn">{{ uiText("Back to practice list") }}</RouterLink>
   </div>
   <section v-else-if="session" class="page-stack">
     <BackgroundTaskStatus
@@ -481,10 +483,10 @@ async function restoreTask() {
       @completed="restoreTask"
     />
     <PageHeading
-      :title="session.completed ? '一次练习，一份积累' : session.role + ' · 面试练习'"
-      :description="session.kind + ' · ' + session.answers.length + ' 道问题，可按需追加追问'"
+      :title="session.completed ? uiText('Build experience through practice') : session.role + uiText('· Interview practice')"
+      :description="uiText('{0} · {1} questions, with optional follow-ups', [translateLabel(session.kind), session.answers.length])"
     >
-      <RouterLink to="/interviews" class="btn">返回练习列表</RouterLink>
+      <RouterLink to="/interviews" class="btn">{{ uiText("Back to practice list") }}</RouterLink>
       <button
         v-if="!session.completed"
         class="btn"
@@ -492,20 +494,17 @@ async function restoreTask() {
         :aria-busy="exportBusy"
         @click="downloadRecap"
       >
-        {{ exportBusy ? '正在导出…' : '导出复盘' }}
+        {{ exportBusy ? uiText("Exporting…") : uiText("Export review") }}
       </button>
     </PageHeading>
     <InterviewJobContext :job-id="session.jobId" :fallback-title="session.role" />
     <p v-if="exportError" role="alert">{{ exportError }}</p>
-    <p v-if="error" role="alert">{{ error }} · 回答已保留，请重试保存。</p>
+    <p v-if="error" role="alert">{{ uiText("{0} · Answers are retained. Please retry saving.", [error]) }}</p>
     <section v-if="session.generationSource === 'pending'" class="panel form-stack">
-      <h2>准备你的面试题目</h2>
-      <p>
-        根据岗位要求、行业与简历生成
-        {{ session.answers.length }} 道问题。生成任务离页后继续，回来即可恢复。
-      </p>
+      <h2>{{ uiText("Prepare your interview questions") }}</h2>
+      <p> {{ uiText("Generate {0} questions based on the job, industry and resume. Generation continues after you leave; return to restore it.", [session.answers.length]) }} </p>
       <button class="btn primary" :disabled="generating" @click="generateQuestions">
-        {{ generating ? '正在生成题目…' : '生成面试题目' }}
+        {{ generating ? uiText("Generating questions…") : uiText("Generate interview questions") }}
       </button>
     </section>
     <template v-else-if="!session.completed">
@@ -515,14 +514,12 @@ async function restoreTask() {
         class="btn"
         :disabled="busy || scoring || askingFollowUp"
         @click="finish"
-      >
-        保存并结束面试
-      </button>
+      > {{ uiText("Save and end interview") }} </button>
       <section class="panel interview-stage">
         <progress
           :value="session.questionIndex + 1"
           :max="session.answers.length"
-          aria-label="面试进度"
+          :aria-label="uiText('Interview progress')"
         />
         <div v-if="redesigned" class="question-meta">
           <span v-if="current?.questionType" class="tag">{{
@@ -532,21 +529,21 @@ async function restoreTask() {
             difficultyLabels[current.difficulty]
           }}</span>
           <span class="tag">{{
-            current?.questionSource === 'model' ? '模型生成' : '规则题库 · 模型不可用'
+            current?.questionSource === 'model' ? uiText("Model-generated") : uiText("Rule-based questions · Model unavailable")
           }}</span>
           <span role="timer"
-            >本题 {{ Math.floor(questionSeconds / 60) }} 分 {{ questionSeconds % 60 }} 秒</span
+            >{{ uiText("This question: {0} min {1} sec", [Math.floor(questionSeconds / 60), questionSeconds % 60]) }}</span
           >
         </div>
         <span class="tag"
-          >第 {{ session.questionIndex + 1 }} / {{ session.answers.length }} 题</span
+          >{{ uiText("Question {0} of {1} #2", [session.questionIndex + 1, session.answers.length]) }}</span
         >
         <div class="interview-avatar"><AppIcon name="interviews" :size="38" /></div>
         <h2>{{ current?.questionText }}</h2>
-        <p class="subtle">不急着给出完美答案。先把你的真实经历讲清楚。</p>
+        <p class="subtle">{{ uiText("You do not need a perfect answer. Start by explaining your real experience clearly.") }}</p>
         <div v-if="hasFollowUp" class="follow-up-bubble" aria-live="polite">
           <span class="tag"
-            >面试官追问{{ current?.followUpSource === 'rule' ? ' · 规则' : '' }}</span
+            >{{ uiText("Interviewer follow-up {0}", [current?.followUpSource === 'rule' ? uiText("· Rule-based") : '']) }}</span
           >
           <p>{{ current?.followUpQuestion }}</p>
           <button
@@ -555,13 +552,9 @@ async function restoreTask() {
             class="btn text"
             :disabled="busy || scoring || askingFollowUp"
             @click="speech.speak(current?.followUpQuestion ?? '')"
-          >
-            朗读追问
-          </button>
+          > {{ uiText("Read follow-up aloud") }} </button>
         </div>
-        <p v-else-if="askingFollowUp" class="subtle" role="status">
-          面试官正在根据你的回答准备追问…
-        </p>
+        <p v-else-if="askingFollowUp" class="subtle" role="status"> {{ uiText("The interviewer is preparing a follow-up based on your answer…") }} </p>
         <div v-if="synthesisSupported" class="voice-controls">
           <button
             type="button"
@@ -569,17 +562,17 @@ async function restoreTask() {
             :disabled="busy || scoring || askingFollowUp"
             @click="speaking ? speech.stopSpeaking() : speech.speak(current?.questionText ?? '')"
           >
-            {{ speaking ? '停止朗读' : '朗读题目' }}
+            {{ speaking ? uiText("Stop reading") : uiText("Read question aloud") }}
           </button>
           <label class="voice-preference"
             ><input
               v-model="voiceAutoPlay"
               type="checkbox"
               :disabled="busy || scoring || askingFollowUp"
-            />自动朗读</label
+            />{{ uiText("Read aloud automatically") }}</label
           >
           <span class="tag" role="status">{{
-            askingFollowUp ? '思考追问' : busy ? '正在保存' : speaking ? '提问中' : '等待回答'
+            askingFollowUp ? uiText("Considering a follow-up") : busy ? uiText("Saving") : speaking ? uiText("Asking a question") : uiText("Waiting for an answer")
           }}</span>
         </div>
       </section>
@@ -596,101 +589,85 @@ async function restoreTask() {
             :disabled="busy || finishing || !canListen || answer.length >= 12000"
             @click="speech.toggleListening"
           >
-            {{ finishing ? '正在结束口述…' : listenRequested ? '停止口述' : '开始口述' }}
+            {{ finishing ? uiText("Finishing dictation…") : listenRequested ? uiText("Stop dictation") : uiText("Start dictation") }}
           </button>
           <span class="subtle" role="status" aria-live="polite">{{
             finishing
-              ? '麦克风已停止，正在确认最后一句…'
+              ? uiText("Microphone stopped. Finalizing the last sentence…")
               : speaking && listenRequested
-                ? '朗读后继续倾听'
+                ? uiText("Resume listening after reading")
                 : listenRequested && !listening
-                  ? '正在启动麦克风…'
+                  ? uiText("Starting microphone…")
                   : listening
-                    ? '麦克风正在倾听；停止口述后可编辑回答。'
-                    : '麦克风未开启；口述结束后可编辑，再保存回答。'
+                    ? uiText("The microphone is listening. Stop dictation to edit your answer.")
+                    : uiText("Microphone is off. Edit your answer after dictation, then save.")
           }}</span>
         </div>
         <label class="field"
-          >你的回答<textarea
+          >{{ uiText("Your answer") }}<textarea
             v-model="answer"
             rows="6"
             required
             maxlength="12000"
             :disabled="busy || scoring || askingFollowUp"
-            placeholder="可以从背景、任务、行动、结果四个角度展开…"
+            :placeholder="uiText('Start with the situation, task, action and result…')"
           />
         </label>
         <label v-if="hasFollowUp" class="field"
-          >回答追问<textarea
+          >{{ uiText("Answer the follow-up") }}<textarea
             v-model="followUpDraft"
             rows="4"
             maxlength="12000"
             :disabled="busy || scoring || askingFollowUp"
-            placeholder="针对追问补充细节；也可以留空，直接进入下一题。"
+            :placeholder="uiText('Add details for the follow-up, or leave it blank and continue to the next question.')"
           />
         </label>
         <p v-if="interimText" class="subtle speech-subtitle" role="status" aria-live="polite">
           {{ interimText }}
         </p>
         <p v-if="unsupportedReason" class="helper-note">{{ unsupportedReason }}</p>
-        <p v-if="recognitionSupported" class="helper-note">
-          语音由浏览器识别，可能使用浏览器厂商的在线服务。OfferPilot
-          不接收或保存音频，保存时仅提交回答文字。
-        </p>
+        <p v-if="recognitionSupported" class="helper-note"> {{ uiText("Speech recognition is provided by your browser and may use the browser vendor's online services. OfferPilot does not receive or store audio; saving submits answer text only.") }} </p>
         <p v-if="speechError" class="helper-note" role="status">{{ speechError }}</p>
-        <p v-if="answer.length >= 12000" class="helper-note">回答已达到长度上限，请编辑后继续。</p>
+        <p v-if="answer.length >= 12000" class="helper-note">{{ uiText("Your answer has reached the length limit. Edit it to continue.") }}</p>
         <div class="card-footer">
           <span class="subtle" role="status"
-            >{{ [...answer].length }} 字 ·
-            {{ busy ? '正在保存…' : dirty ? '草稿未保存' : '已保存到服务端' }}</span
+            >{{ uiText("{0} characters · {1}", [[...answer].length, busy ? uiText("Saving…") : dirty ? uiText("Draft not saved") : uiText("Saved to server")]) }}</span
           >
-          <button type="button" class="btn" :disabled="busy || !dirty" @click="persist()">
-            保存草稿
-          </button>
+          <button type="button" class="btn" :disabled="busy || !dirty" @click="persist()"> {{ uiText("Save draft") }} </button>
           <button
             type="button"
             class="btn"
             :disabled="busy || scoring || session.questionIndex === 0"
             @click="persist(session.questionIndex - 1)"
-          >
-            上一题
-          </button>
+          > {{ uiText("Previous question") }} </button>
           <button
             v-if="!hasFollowUp && !redesigned"
             type="button"
             class="btn"
             :disabled="busy || !answer.trim()"
             @click="advance"
-          >
-            跳过追问
-          </button>
+          > {{ uiText("Skip follow-up") }} </button>
           <button
             v-if="redesigned"
             type="button"
             class="btn"
             :disabled="busy || scoring"
             @click="advance"
-          >
-            跳过本题
-          </button>
+          > {{ uiText("Skip question") }} </button>
           <button
             v-if="redesigned"
             type="button"
             class="btn"
             :disabled="busy || scoring"
             @click="finish"
-          >
-            结束并生成报告
-          </button>
+          > {{ uiText("Finish and generate report") }} </button>
           <button
             v-if="redesigned && !hasFollowUp"
             type="button"
             class="btn"
             :disabled="busy || scoring || !answer.trim()"
             @click="askFollowUp"
-          >
-            请面试官追问
-          </button>
+          > {{ uiText("Ask for a follow-up") }} </button>
           <button
             class="btn primary"
             :disabled="busy || scoring || !answer.trim()"
@@ -699,25 +676,25 @@ async function restoreTask() {
             {{
               redesigned
                 ? scoring
-                  ? '正在评价…'
+                  ? uiText("Evaluating…")
                   : session.options?.feedbackMode === 'END'
-                    ? '保存，下一题'
+                    ? uiText("Save and next question")
                     : revealed && !dirty
-                      ? '下一题'
+                      ? uiText("Next question")
                       : current?.evaluation
-                        ? '重新评价'
-                        : '提交并查看反馈'
+                        ? uiText("Re-evaluate")
+                        : uiText("Submit and view feedback")
                 : !hasFollowUp
                   ? askingFollowUp
-                    ? '面试官思考中…'
-                    : '提交回答'
+                    ? uiText("Interviewer is thinking…")
+                    : uiText("Submit answer")
                   : session.questionIndex === session.answers.length - 1
-                    ? '完成并复盘'
-                    : '保存，下一题'
+                    ? uiText("Finish and review")
+                    : uiText("Save and next question")
             }}
           </button>
         </div>
-        <p class="helper-note">保存草稿、切题或返回列表时会保存到服务端；刷新前请先保存。</p>
+        <p class="helper-note">{{ uiText("Drafts are saved to the server when you save, change questions or return to the list. Save before refreshing.") }}</p>
       </form>
     </template>
     <template v-else>
@@ -728,44 +705,36 @@ async function restoreTask() {
         :auto-generate="reportRequested"
       >
         <button class="btn" :disabled="exportBusy" :aria-busy="exportBusy" @click="downloadRecap">
-          {{ exportBusy ? '正在导出…' : '导出复盘' }}
+          {{ exportBusy ? uiText("Exporting…") : uiText("Export review") }}
         </button>
       </InterviewReportPanel>
-      <div class="success-banner">
-        已结束本场
-        {{ session.answers.length }}
-        题练习。原始回答与反馈已保存，可导出复盘；未作答题不会伪造模型评分。
-      </div>
+      <div class="success-banner"> {{ uiText("This {0}-question session has ended. Original answers and feedback are saved and can be exported. Unanswered questions receive no fabricated model scores.", [session.answers.length]) }} </div>
       <div class="split-content">
         <section class="panel">
           <article v-for="item in session.answers" :key="item.questionIndex" class="answer-card">
             <h3>{{ item.questionIndex + 1 }}. {{ item.questionText }}</h3>
-            <p class="prose-content">{{ item.answerText || '未作答' }}</p>
+            <p class="prose-content">{{ item.answerText || uiText("Unanswered") }}</p>
             <template v-if="item.followUpQuestion">
-              <p class="subtle">追问：{{ item.followUpQuestion }}</p>
-              <p class="prose-content">{{ item.followUpAnswer || '未回答追问' }}</p>
+              <p class="subtle">{{ uiText("Follow-up: {0}", [item.followUpQuestion]) }}</p>
+              <p class="prose-content">{{ item.followUpAnswer || uiText("Follow-up unanswered") }}</p>
             </template>
           </article>
         </section>
         <aside class="panel form-stack" style="align-self: start">
-          <h2>STAR 故事库</h2>
-          <p class="subtle">
-            把 STAR 线索齐全的回答保存下来，之后面试练习会引用这些故事。保存需你确认，不会自动入库。
-          </p>
+          <h2>{{ uiText("STAR story library") }}</h2>
+          <p class="subtle"> {{ uiText("Save answers with sufficient STAR details for future practice. Saving requires your confirmation; nothing is added automatically.") }} </p>
           <p v-if="starMessage" class="success-banner" role="status">{{ starMessage }}</p>
-          <p v-if="starLoading" role="status">正在加载 STAR 候选…</p>
+          <p v-if="starLoading" role="status">{{ uiText("Loading STAR candidates…") }}</p>
           <div v-else-if="starError" role="alert">
             <p>{{ starError }}</p>
-            <button class="btn" :disabled="starBusy" @click="loadCandidates">重新加载候选</button>
+            <button class="btn" :disabled="starBusy" @click="loadCandidates">{{ uiText("Reload candidates") }}</button>
           </div>
-          <div v-else-if="!starCandidates.length" class="helper-note">
-            本题练习暂无满足 3 项 STAR 线索的候选。
-          </div>
+          <div v-else-if="!starCandidates.length" class="helper-note"> {{ uiText("No candidates in this practice have at least 3 STAR elements.") }} </div>
           <article v-for="item in starCandidates" :key="item.questionIndex" class="answer-card">
-            <h3>第 {{ item.questionIndex + 1 }} 题 · {{ item.starCount }}/4 STAR</h3>
+            <h3>{{ uiText("Question {0} · {1}/4 STAR", [item.questionIndex + 1, item.starCount]) }}</h3>
             <p class="subtle">{{ item.title }}</p>
             <p class="prose-content">
-              {{ item.body.slice(0, 160) }}{{ item.body.length > 160 ? '…' : '' }}
+              {{ item.body.slice(0, 160) }}{{ formatDisplay(item.body.length > 160 ? '…' : '') }}
             </p>
             <button
               type="button"
@@ -773,13 +742,11 @@ async function restoreTask() {
               :disabled="starBusy || starLoading || item.alreadySaved"
               @click="saveCandidate(item)"
             >
-              {{ item.alreadySaved ? '已入库' : starBusy ? '保存中…' : '保存到故事库' }}
+              {{ item.alreadySaved ? uiText("Saved to library") : starBusy ? uiText("Saving… #2") : uiText("Save to story library") }}
             </button>
           </article>
-          <h2>复盘时，问自己三个问题</h2>
-          <p class="subtle">
-            ① 我是否直接回答了问题？<br />② 我是否说清自己的贡献？<br />③ 我的结果是否具体、可验证？
-          </p>
+          <h2>{{ uiText("Three questions for your review") }}</h2>
+          <p class="subtle"> {{ uiText("① Did I answer the question directly?") }}<br />{{ uiText("② Did I explain my own contribution?") }}<br />{{ uiText("③ Were my results specific and verifiable?") }} </p>
           <RouterLink
             :to="{
               path: '/chat',
@@ -787,13 +754,13 @@ async function restoreTask() {
                 mode: 'INTERVIEWER',
                 interviewSessionId: session.id,
                 interviewAction: 'recallStarStories',
-                prompt: '我正在准备' + session.role + '的面试，请帮我练习回答项目经历类问题。',
+                prompt: uiText('I am preparing for an interview for {0}. Please help me practice project experience questions.', [session.role]),
               },
             }"
             class="btn primary"
-            >继续和 AI 练习</RouterLink
+            >{{ uiText("Keep practicing with AI") }}</RouterLink
           >
-          <RouterLink to="/career" class="btn">更新成长行动</RouterLink>
+          <RouterLink to="/career" class="btn">{{ uiText("Update growth actions") }}</RouterLink>
         </aside>
       </div>
     </template>

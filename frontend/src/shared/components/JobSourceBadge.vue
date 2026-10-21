@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 defineProps<{ source?: string; snapshotDate?: string; cached?: boolean }>()
 </script>
 
@@ -6,23 +8,23 @@ defineProps<{ source?: string; snapshotDate?: string; cached?: boolean }>()
   <span
     v-if="source === 'LOCAL_SNAPSHOT'"
     class="tag"
-    :title="`快照日期：${snapshotDate || '未提供'}；人工整理的示例岗位快照，非实时数据`"
-    >离线快照</span
+    :title="uiText('Snapshot date: {0}; manually curated sample, not live data', [snapshotDate || uiText('Not provided #2')])"
+    >{{ uiText("Offline snapshot") }}</span
   >
   <span
     v-else-if="source === 'STORED_SNAPSHOT'"
     class="tag"
-    title="实时详情暂不可用，展示已保存的企业岗位；可能已调整或关闭"
-    >已存岗位 · 实时更新不可用</span
+    :title="uiText('Live details unavailable. Saved company listing shown; it may have changed or closed.')"
+    >{{ uiText("Saved job · Live update unavailable") }}</span
   >
-  <span v-else-if="source === 'demo'" class="tag" title="虚构体验岗位，不接受实际投递"
-    >演示岗位</span
+  <span v-else-if="source === 'demo'" class="tag" :title="uiText('Fictional demo job. No real applications accepted.')"
+    >{{ uiText("Demo job") }}</span
   >
   <span
     v-else-if="source === 'USER_IMPORT'"
     class="tag"
-    title="你粘贴或从网址导入的岗位，只有你可见；内容以原招聘页为准"
-    >我导入的岗位</span
+    :title="uiText('This pasted or URL-imported job is private to you. Refer to the original listing.')"
+    >{{ uiText("My imported jobs") }}</span
   >
-  <span v-else class="tag">企业官网 · {{ cached ? '近期缓存' : '本次查询' }}</span>
+  <span v-else class="tag">{{ uiText("Company website · {0}", [cached ? uiText("Recent cache") : uiText("Current query")]) }}</span>
 </template>

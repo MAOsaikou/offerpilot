@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 defineProps<{
   title: string
   description?: string
@@ -17,7 +19,7 @@ defineProps<{
     </header>
 
     <div class="mt-6 rounded-[14px] border border-dashed border-input p-10 text-center">
-      <p class="text-sm text-muted-foreground">该页面尚未实现</p>
+      <p class="text-sm text-muted-foreground">{{ uiText("This page is not available yet") }}</p>
       <p v-if="spec" class="mt-1.5 text-xs text-muted-foreground">{{ spec }}</p>
     </div>
   </section>

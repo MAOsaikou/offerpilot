@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { localizedText, translate as uiText } from '@/shared/utils/language'
+
+import { computed, watch } from 'vue'
 import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import { useGenerationTasks } from '@/shared/stores/generationTasks'
 import { isActiveTask, type GenerationKind } from '@/shared/api/generationTasks'
@@ -11,7 +13,7 @@ const router = useRouter()
 const selectedId = computed(() =>
   typeof route.query.taskId === 'string' ? route.query.taskId : undefined,
 )
-const loadError = ref('')
+const loadError = localizedText()
 const task = computed(() =>
   selectedId.value
     ? store.tasks.find(
@@ -24,7 +26,7 @@ async function load() {
   try {
     await store.restore(props.kind, props.entityId, selectedId.value)
   } catch (cause) {
-    loadError.value = cause instanceof Error ? cause.message : '后台任务读取失败'
+    loadError.value = () => (cause instanceof Error ? cause.message : uiText("Could not load background task"))
   }
 }
 watch(() => [props.kind, props.entityId, selectedId.value], load, { immediate: true })
@@ -50,7 +52,7 @@ watch(
     try {
       await router.replace({ query })
     } catch (cause) {
-      loadError.value = cause instanceof Error ? cause.message : '任务链接更新失败'
+      loadError.value = () => (cause instanceof Error ? cause.message : uiText("Could not update task link"))
     }
   },
 )
@@ -59,19 +61,16 @@ watch(
 <template>
   <div class="background-task-status">
     <p v-if="loadError || store.error" role="alert">
-      {{ loadError || store.error }} <button class="btn" @click="load">重新读取任务</button>
+      {{ loadError || store.error }} <button class="btn" @click="load">{{ uiText("Reload task") }}</button>
     </p>
     <p v-if="task && isActiveTask(task)" role="status" aria-live="polite">
-      <progress :aria-label="task.title" /> {{ task.stage }}。可以离开页面，后台会继续。
-      <button
+      <progress :aria-label="task.title" /> {{ uiText("{0}. You can leave this page; work continues in the background.", [task.stage]) }} <button
         class="btn"
         @click="store.cancel(task.id).catch((cause) => (loadError = cause.message))"
-      >
-        取消任务
-      </button>
+      > {{ uiText("Cancel task") }} </button>
     </p>
     <p v-else-if="task?.status === 'FAILED'" role="alert">{{ task.error }}</p>
-    <p v-else-if="task?.status === 'CANCELLED'" role="status">{{ task.stage }}，可重新发起。</p>
+    <p v-else-if="task?.status === 'CANCELLED'" role="status">{{ uiText("{0}. You can start again.", [task.stage]) }}</p>
   </div>
 </template>
 <style scoped>

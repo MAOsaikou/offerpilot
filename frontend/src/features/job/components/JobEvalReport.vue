@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { computed, ref } from 'vue'
 import type { JobEvaluation } from '@/shared/types/jobs'
 import { exportJobEvalMarkdown } from '@/shared/api/jobs'
@@ -26,16 +28,16 @@ const data = computed(() => {
 })
 const reportId = computed(() => props.matchId || data.value?.matchId)
 const exporting = ref(false)
-const exportError = ref('')
+const exportError = localizedText()
 async function exportMarkdown() {
   if (!reportId.value || exporting.value) return
   exporting.value = true
   exportError.value = ''
   try {
-    const title = data.value?.title?.trim() || '岗位'
-    await exportJobEvalMarkdown(reportId.value, `${title}-岗位评估.md`)
+    const title = data.value?.title?.trim() || uiText("Jobs")
+    await exportJobEvalMarkdown(reportId.value, uiText("{0}-job-assessment.md", [title]))
   } catch (error) {
-    exportError.value = error instanceof Error ? error.message : '导出失败，请重试'
+    exportError.value = () => (error instanceof Error ? error.message : uiText("Export failed. Please retry."))
   } finally {
     exporting.value = false
   }
@@ -44,14 +46,14 @@ async function exportMarkdown() {
 <template>
   <section v-if="data" class="panel form-stack" aria-labelledby="job-eval-heading">
     <div class="section-heading">
-      <h2 id="job-eval-heading">岗位评估卡 · {{ data.grade }}</h2>
-      <span class="tag">{{ data.overall }}/100</span>
+      <h2 id="job-eval-heading">{{ uiText("Job assessment · {0}", [data.grade]) }}</h2>
+      <span class="tag">{{ formatDisplay(data.overall) }}/100</span>
     </div>
     <p class="subtle">{{ data.summary }}</p>
     <p class="helper-note">{{ data.note }}</p>
     <div v-if="reportId" class="card-footer">
       <button type="button" class="btn" :disabled="exporting" @click="exportMarkdown">
-        {{ exporting ? '正在导出…' : '导出评估.md' }}
+        {{ exporting ? uiText("Exporting…") : uiText("Download assessment.md #2") }}
       </button>
       <p v-if="exportError" class="error-banner" role="alert">{{ exportError }}</p>
     </div>
@@ -59,17 +61,17 @@ async function exportMarkdown() {
       <li v-for="dim in data.dimensions" :key="dim.code" class="rounded-lg border p-3">
         <div class="section-heading">
           <strong>{{ dim.code }} {{ dim.name }}</strong>
-          <span class="subtle">{{ dim.score }}/100</span>
+          <span class="subtle">{{ formatDisplay(dim.score) }}/100</span>
         </div>
         <p class="subtle">{{ dim.reason }}</p>
       </li>
     </ul>
     <div>
-      <h3 class="font-semibold">建议</h3>
+      <h3 class="font-semibold">{{ uiText("Suggestions") }}</h3>
       <ul>
         <li v-for="(line, index) in data.advice" :key="index">{{ line }}</li>
       </ul>
     </div>
   </section>
-  <p v-else class="helper-note" role="status">岗位评估数据不可用。</p>
+  <p v-else class="helper-note" role="status">{{ uiText("Job assessment data is unavailable.") }}</p>
 </template>

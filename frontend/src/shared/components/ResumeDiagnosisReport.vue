@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, language, translate as uiText } from '@/shared/utils/language'
+
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import AppIcon from './AppIcon.vue'
@@ -9,20 +11,20 @@ const props = defineProps<{ report: ResumeDiagnosisReport }>()
 type Finding = ResumeDiagnosisReport['findings'][number]
 type Priority = Finding['priority']
 const filter = ref<'ALL' | Priority>('ALL')
-const priorities: { id: Priority; label: string }[] = [
-  { id: 'HIGH', label: '优先处理' },
-  { id: 'MEDIUM', label: '建议改进' },
-  { id: 'LOW', label: '可选优化' },
-]
-const priority = { HIGH: '优先处理', MEDIUM: '建议改进', LOW: '可选优化' }
+const priorities = computed<{ id: Priority; label: string }[]>(() => [
+  { id: 'HIGH', label: uiText("High priority") },
+  { id: 'MEDIUM', label: uiText("Recommended improvement") },
+  { id: 'LOW', label: uiText("Optional improvement") },
+])
+const priority = computed(() => ({ HIGH: uiText("High priority"), MEDIUM: uiText("Recommended improvement"), LOW: uiText("Optional improvement") }))
 const order = { HIGH: 0, MEDIUM: 1, LOW: 2 }
-const rules: Record<string, string> = {
-  CONTRIBUTION: '个人贡献',
-  EVIDENCE: '经历依据',
-  RESULT: '成果与验证',
-  CLARITY: '表达清晰',
-  CONSISTENCY: '内容一致',
-}
+const rules = computed<Record<string, string>>(() => ({
+  CONTRIBUTION: uiText("Personal contribution"),
+  EVIDENCE: uiText("Experience evidence"),
+  RESULT: uiText("Results and verification"),
+  CLARITY: uiText("Clarity"),
+  CONSISTENCY: uiText("Consistency"),
+}))
 const sorted = computed(() =>
   [...props.report.findings]
     .sort((a, b) => order[a.priority] - order[b.priority])
@@ -54,8 +56,8 @@ function discussion(finding?: Finding) {
       resumeVersionId: props.report.versionId,
       diagnosisReportId: props.report.reportId,
       prompt: finding
-        ? `请结合这份诊断报告，帮我落实「${rules[finding.ruleId] || finding.ruleId}」这条建议（${finding.findingId}）。建议内容：\n${finding.suggestion}\n请先问清缺失信息，再给出基于真实经历的修改方案。`
-        : '请结合这份简历诊断，帮我逐条梳理可以怎样改进。先从优先处理的建议开始，不要编造经历或成果。',
+        ? uiText("Help me act on the diagnosis suggestion “{0}” ({1}). Suggestion: {2}. Ask about missing information first, then propose edits based on real experience.", [rules.value[finding.ruleId] || finding.ruleId, finding.findingId, finding.suggestion])
+        : uiText("Help me work through this resume diagnosis, starting with high-priority suggestions. Do not invent experience or results."),
     },
   }
 }
@@ -64,54 +66,52 @@ function discussion(finding?: Finding) {
   <article :key="report.reportId" class="diagnosis-report">
     <header class="report-overview">
       <div class="overview-top">
-        <span class="completed-label"><AppIcon name="check" :size="16" /> 诊断完成</span>
+        <span class="completed-label"><AppIcon name="check" :size="16" /> {{ uiText("Diagnosis complete") }}</span>
         <span class="report-meta"
-          >版本 {{ report.versionNo }} ·
-          {{ new Date(report.createdAt).toLocaleString('zh-CN') }}</span
+          >{{ uiText("Version {0} · {1} #2", [report.versionNo, new Date(report.createdAt).toLocaleString(language)]) }}</span
         >
       </div>
-      <h2>你的简历改进清单</h2>
+      <h2>{{ uiText("Your resume improvement checklist") }}</h2>
       <p class="overview-description">
         <template v-if="report.findings.length"
-          >发现 {{ report.findings.length }} 项可改进的内容，从最值得投入的地方开始。</template
+          >{{ uiText("Found {0} opportunities to improve. Start where your effort will matter most.", [report.findings.length]) }}</template
         >
-        <template v-else>本次未发现明确的内容问题，可结合目标岗位继续核对。</template>
+        <template v-else>{{ uiText("No clear content issues found. Continue reviewing against your target role.") }}</template>
       </p>
       <dl class="report-metrics">
         <div class="metric priority-metric">
-          <dt><AppIcon name="discover" :size="18" />优先处理</dt>
-          <dd>{{ counts.HIGH }}<span>项建议</span></dd>
+          <dt><AppIcon name="discover" :size="18" />{{ uiText("High priority") }}</dt>
+          <dd>{{ counts.HIGH }}<span>{{ uiText("suggestions") }}</span></dd>
         </div>
         <div class="metric strength-metric">
-          <dt><AppIcon name="check" :size="18" />值得保留</dt>
-          <dd>{{ report.strengths.length }}<span>处亮点</span></dd>
+          <dt><AppIcon name="check" :size="18" />{{ uiText("Worth keeping") }}</dt>
+          <dd>{{ formatDisplay(report.strengths.length) }}<span>{{ uiText("strengths") }}</span></dd>
         </div>
         <div class="metric question-metric">
-          <dt><AppIcon name="chat" :size="18" />待补充信息</dt>
-          <dd>{{ questions }}<span>个问题</span></dd>
+          <dt><AppIcon name="chat" :size="18" />{{ uiText("Missing information") }}</dt>
+          <dd>{{ questions }}<span>{{ uiText("questions") }}</span></dd>
         </div>
       </dl>
       <details class="report-summary">
-        <summary>查看完整诊断总览</summary>
+        <summary>{{ uiText("View full diagnosis overview") }}</summary>
         <p>{{ report.summary }}</p>
       </details>
     </header>
 
     <div class="report-layout">
-      <section class="improvements" aria-label="改进建议">
+      <section class="improvements" :aria-label="uiText('Suggestions for improvement')">
         <div class="section-title">
           <AppIcon name="resumes" />
-          <h3>从这里开始改</h3>
-          <span>{{ report.findings.length }} 项建议</span>
+          <h3>{{ uiText("Start improving here") }}</h3>
+          <span>{{ uiText("{0} suggestions #2", [report.findings.length]) }}</span>
         </div>
         <div
           v-if="report.findings.length"
           class="priority-filters"
           role="group"
-          aria-label="按优先级筛选建议"
+          :aria-label="uiText('Filter suggestions by priority')"
         >
-          <button type="button" :aria-pressed="filter === 'ALL'" @click="filter = 'ALL'">
-            全部 <span>{{ report.findings.length }}</span>
+          <button type="button" :aria-pressed="filter === 'ALL'" @click="filter = 'ALL'"> {{ uiText("All") }} <span>{{ formatDisplay(report.findings.length) }}</span>
           </button>
           <button
             v-for="item in priorities"
@@ -126,8 +126,8 @@ function discussion(finding?: Finding) {
         <p class="filter-status" role="status">
           {{
             report.findings.length
-              ? `显示 ${visible.length} 项建议，按优先级排列`
-              : '本次没有需要明确指出的内容问题。'
+              ? uiText("Showing {0} suggestions in priority order", [visible.length])
+              : uiText("No clear content issues to highlight this time.")
           }}
         </p>
         <div class="finding-list">
@@ -144,38 +144,38 @@ function discussion(finding?: Finding) {
             </header>
             <div class="suggestion">
               <span class="field-label">{{
-                finding.kind === 'NEEDS_CLARIFICATION' ? '先确认，再完善' : '可以这样改'
+                finding.kind === 'NEEDS_CLARIFICATION' ? uiText("Confirm first, then improve") : uiText("Suggested edit")
               }}</span>
               <p>{{ finding.suggestion }}</p>
             </div>
             <div v-if="finding.questions.length" class="questions">
-              <h5><AppIcon name="chat" :size="16" />需要你补充</h5>
+              <h5><AppIcon name="chat" :size="16" />{{ uiText("Details needed from you") }}</h5>
               <ul>
                 <li v-for="question in finding.questions" :key="question">{{ question }}</li>
               </ul>
             </div>
             <details class="finding-evidence">
-              <summary>为什么这样建议 · 原文依据</summary>
+              <summary>{{ uiText("Why this is suggested · Original evidence") }}</summary>
               <p class="finding-reason">{{ finding.reason }}</p>
               <DiagnosisEvidenceList :evidence="finding.evidence" />
             </details>
             <RouterLink class="finding-action" :to="discussion(finding)"
-              ><AppIcon name="chat" :size="16" />帮我落实这条建议<AppIcon name="arrow" :size="16"
+              ><AppIcon name="chat" :size="16" />{{ uiText("Help me apply this suggestion") }}<AppIcon name="arrow" :size="16"
             /></RouterLink>
           </article>
           <div v-if="report.findings.length && !visible.length" class="empty-findings">
             <AppIcon name="check" :size="24" />
-            <p>本次没有「{{ priority[filter as Priority] }}」建议。</p>
-            <button class="btn" type="button" @click="filter = 'ALL'">查看全部建议</button>
+            <p>{{ uiText("No “{0}” suggestions this time.", [priority[filter as Priority]]) }}</p>
+            <button class="btn" type="button" @click="filter = 'ALL'">{{ uiText("View all suggestions") }}</button>
           </div>
         </div>
       </section>
 
-      <aside class="report-aside" aria-label="亮点与核对信息">
+      <aside class="report-aside" :aria-label="uiText('Strengths and details to verify')">
         <section v-if="report.checks.length" class="basics-card">
           <div class="section-title">
             <AppIcon name="resumes" />
-            <h3>先核对基础信息</h3>
+            <h3>{{ uiText("Check basic information first") }}</h3>
           </div>
           <ul>
             <li v-for="check in report.checks" :key="check.path">{{ check.message }}</li>
@@ -184,33 +184,33 @@ function discussion(finding?: Finding) {
         <section v-if="report.strengths.length" class="strengths-card">
           <div class="section-title">
             <AppIcon name="check" />
-            <h3>这些亮点，继续保留</h3>
+            <h3>{{ uiText("Keep these strengths") }}</h3>
           </div>
-          <p class="aside-description">修改时，别丢掉已有的好内容。</p>
+          <p class="aside-description">{{ uiText("Preserve what already works as you edit.") }}</p>
           <div v-for="(strength, index) in report.strengths" :key="index" class="strength-item">
             <p>{{ strength.message }}</p>
             <details class="strength-evidence">
-              <summary>原文依据 · {{ strength.evidence.length }} 处</summary>
+              <summary>{{ uiText("Original evidence · {0} excerpts", [strength.evidence.length]) }}</summary>
               <DiagnosisEvidenceList :evidence="strength.evidence" />
             </details>
           </div>
         </section>
         <section class="discussion-card">
           <AppIcon name="spark" :size="24" />
-          <h3>把建议变成下一步</h3>
-          <p>带着这份报告继续讨论，从真实经历中补充细节，逐条完善表达。</p>
+          <h3>{{ uiText("Turn suggestions into a next step") }}</h3>
+          <p>{{ uiText("Discuss this report, add details from real experience and improve each description.") }}</p>
           <RouterLink class="btn primary" :to="discussion()"
-            >带着报告继续讨论<AppIcon name="arrow" :size="16"
+            >{{ uiText("Discuss this report") }}<AppIcon name="arrow" :size="16"
           /></RouterLink>
-          <small>进入对话后确认并发送，不会自动修改简历。</small>
+          <small>{{ uiText("Review and send in chat. Your resume is not changed automatically.") }}</small>
         </section>
       </aside>
     </div>
     <footer class="report-footnote">
       <details>
-        <summary>诊断范围与生成信息</summary>
+        <summary>{{ uiText("Diagnosis scope and generation details") }}</summary>
         <p v-for="limit in report.limitations" :key="limit">{{ limit }}</p>
-        <p>分析模型：{{ report.model }} · 简历版本 {{ report.versionNo }}</p>
+        <p>{{ uiText("Analysis model: {0} · Resume version {1}", [report.model, report.versionNo]) }}</p>
       </details>
     </footer>
   </article>

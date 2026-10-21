@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { computed, onMounted, ref, watch } from 'vue'
 import {
   getResumeModelSettings,
@@ -13,7 +15,7 @@ const visionTier = ref('')
 const shared = ref(false)
 const loading = ref(true)
 const saving = ref(false)
-const error = ref('')
+const error = localizedText()
 const saved = ref(false)
 const models = computed(() => settings.value?.models ?? [])
 const textModels = computed(() => models.value.filter((model) => model.id !== 'VISION_ALT'))
@@ -50,7 +52,7 @@ async function load() {
   try {
     apply(await getResumeModelSettings())
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '无法读取模型配置'
+    error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load model configuration"))
   } finally {
     loading.value = false
   }
@@ -63,28 +65,27 @@ async function save() {
     apply(await saveResumeModelSettings({ textTier: textTier.value, visionTier: visionTier.value }))
     saved.value = true
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '保存失败，请重试'
+    error.value = () => (cause instanceof Error ? cause.message : uiText("Could not save. Please retry."))
   } finally {
     saving.value = false
   }
 }
 function optionLabel(model: ResumeModelOption) {
-  return `${model.label} · ${model.provider} / ${model.model}${model.configured ? '' : '（未配置）'}`
+  return `${model.label} · ${model.provider} / ${model.model}${model.configured ? '' : uiText("(Unconfigured)")}`
 }
 onMounted(load)
 </script>
 
 <template>
   <section class="panel form-stack model-settings" aria-labelledby="resume-model-heading">
-    <h2 id="resume-model-heading">简历解析模型</h2>
-    <p class="subtle">为文字和图片选择合适的模型，也可以共用一个支持图片的模型。</p>
-    <p v-if="loading" role="status">正在读取模型配置…</p>
+    <h2 id="resume-model-heading">{{ uiText("Resume parsing models") }}</h2>
+    <p class="subtle">{{ uiText("Choose models for text and images, or share a model that supports images.") }}</p>
+    <p v-if="loading" role="status">{{ uiText("Loading model configuration…") }}</p>
     <template v-else-if="settings">
       <fieldset :disabled="saving" class="form-stack model-fields">
         <label class="field"
-          >文字简历模型
-          <select v-model="textTier" data-testid="text-model">
-            <option v-if="!textModel" :value="textTier" disabled>原模型已移除，请重新选择</option>
+          >{{ uiText("Text resume model") }} <select v-model="textTier" data-testid="text-model">
+            <option v-if="!textModel" :value="textTier" disabled>{{ uiText("The previous model was removed. Select another.") }}</option>
             <option
               v-for="model in textModels"
               :key="model.id"
@@ -100,48 +101,33 @@ onMounted(load)
             v-model="shared"
             type="checkbox"
             :disabled="!textModel?.configured || !textModel?.supportsVision"
-          />
-          文字和图片共用此模型
-        </label>
-        <p v-if="textModel && !textModel.supportsVision" class="subtle">
-          当前文字模型未标记为支持图片，请另选视觉模型。
-        </p>
+          /> {{ uiText("Use this model for text and images") }} </label>
+        <p v-if="textModel && !textModel.supportsVision" class="subtle"> {{ uiText("The current text model is not marked as image-capable. Choose a separate vision model.") }} </p>
         <label v-if="!shared" class="field"
-          >图片与 PDF 模型
-          <select v-model="visionTier" data-testid="vision-model">
-            <option v-if="!visionModel" :value="visionTier" disabled>
-              原模型已移除，请重新选择
-            </option>
+          >{{ uiText("Image and PDF model") }} <select v-model="visionTier" data-testid="vision-model">
+            <option v-if="!visionModel" :value="visionTier" disabled> {{ uiText("The previous model was removed. Select another.") }} </option>
             <option
               v-for="model in models"
               :key="model.id"
               :value="model.id"
               :disabled="!model.configured || !model.supportsVision"
             >
-              {{ optionLabel(model) }}{{ model.supportsVision ? '' : '（仅文字）' }}
+              {{ optionLabel(model) }}{{ model.supportsVision ? '' : uiText("(Text only)") }}
             </option>
           </select>
         </label>
       </fieldset>
-      <p class="helper-note">
-        仅影响你后续上传或重试的简历。已经排队或正在解析的任务保持原选择，聊天模型不受影响。PDF
-        和含图片的 DOCX 使用视觉模型。
-      </p>
-      <p v-if="!valid" class="error-banner" role="status">
-        当前选择不可用，请选择已配置的文字模型和支持图片的模型。
-      </p>
+      <p class="helper-note"> {{ uiText("Applies only to future uploads and retries. Queued or active parsing keeps its original selection. Chat models are unaffected. PDFs and DOCX files with images use the vision model.") }} </p>
+      <p v-if="!valid" class="error-banner" role="status"> {{ uiText("This selection is unavailable. Choose a configured text model and an image-capable model.") }} </p>
       <button class="btn primary" :disabled="!valid || !dirty || saving" @click="save">
-        {{ saving ? '正在保存…' : '保存模型选择' }}
+        {{ saving ? uiText("Saving…") : uiText("Save model selection") }}
       </button>
-      <p v-if="dirty && !saving" class="subtle">有尚未保存的模型选择。</p>
-      <p v-if="saved" class="success-banner" role="status">已保存，下一次上传或重试时生效。</p>
+      <p v-if="dirty && !saving" class="subtle">{{ uiText("You have unsaved model selections.") }}</p>
+      <p v-if="saved" class="success-banner" role="status">{{ uiText("Saved. Applies to the next upload or retry.") }}</p>
     </template>
     <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
-    <button v-if="!settings && !loading" class="btn" @click="load">重新加载</button>
-    <p class="subtle">
-      模型列表来自后端配置；“已配置”不代表已验证联网可用。API Key
-      保留在服务器，页面不会读取或显示密钥。
-    </p>
+    <button v-if="!settings && !loading" class="btn" @click="load">{{ uiText("Reload #2") }}</button>
+    <p class="subtle"> {{ uiText("The model list comes from the backend. Configured does not mean connectivity has been verified. API keys stay on the server and are never read or displayed here.") }} </p>
   </section>
 </template>
 

@@ -1,3 +1,4 @@
+import { localizedText, translate as uiText } from '@/shared/utils/language'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiError } from '@/shared/api/client'
@@ -16,8 +17,8 @@ import {
 
 export const useGenerationTasks = defineStore('generation-tasks', () => {
   const tasks = ref<BackgroundTask[]>([])
-  const error = ref('')
-  const notice = ref('')
+  const error = localizedText()
+  const notice = localizedText()
   const startedTaskId = ref('')
   const active = computed(() => tasks.value.filter(isActiveTask))
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -40,7 +41,7 @@ export const useGenerationTasks = defineStore('generation-tasks', () => {
           'interview-report',
         ])
           void queryClient.invalidateQueries({ queryKey: [key] })
-        notice.value = `${task.title}：${task.status === 'SUCCEEDED' ? '已完成' : task.error || task.stage}`
+        notice.value = () => (`${task.title}：${task.status === 'SUCCEEDED' ? uiText("Completed") : task.error || task.stage}`)
       }
       previous.set(task.id, task)
     }
@@ -66,7 +67,7 @@ export const useGenerationTasks = defineStore('generation-tasks', () => {
         delay = Math.min(10000, delay * 1.3)
       } catch (cause) {
         if (version !== epoch) return
-        error.value = cause instanceof Error ? cause.message : '任务读取失败'
+        error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load task"))
         delay = Math.min(30000, delay * 2)
       } finally {
         if (version === epoch) {
@@ -109,7 +110,7 @@ export const useGenerationTasks = defineStore('generation-tasks', () => {
     signal?.throwIfAborted()
     const task = await startGenerationTask(kind, entity, input, requestId)
     session.throwIfAborted()
-    if (version !== epoch) throw new Error('身份已切换')
+    if (version !== epoch) throw new Error(uiText("Identity changed"))
     merge([task], false)
     startedTaskId.value = task.id
     started?.(task.id)
@@ -124,14 +125,14 @@ export const useGenerationTasks = defineStore('generation-tasks', () => {
       }
       const abort = () => {
         cleanup()
-        reject(new DOMException('观察已结束，后台任务继续', 'AbortError'))
+        reject(new DOMException(uiText("Observation ended; the background task continues"), 'AbortError'))
       }
       stop = watch(
         () => tasks.value.find((t) => t.id === task.id),
         (current) => {
           if (!current) {
             cleanup()
-            reject(new Error('任务已删除或无权访问，请重新读取'))
+            reject(new Error(uiText("Task deleted or access denied. Please reload.")))
           } else if (!isActiveTask(current)) {
             cleanup()
             resolve(current)

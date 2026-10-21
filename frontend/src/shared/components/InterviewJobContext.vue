@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, translate as uiText } from '@/shared/utils/language'
+
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
@@ -27,9 +29,8 @@ const href = computed(() =>
 )
 </script>
 <template>
-  <p v-if="jobId" class="subtle interview-job-context">
-    针对：<RouterLink :to="href">{{ job.data.value?.title || fallbackTitle }}</RouterLink>
-    <span v-if="application"> · 投递工作区</span>
+  <p v-if="jobId" class="subtle interview-job-context"> {{ uiText("For:") }}<RouterLink :to="href">{{ formatDisplay(job.data.value?.title || fallbackTitle) }}</RouterLink>
+    <span v-if="application"> {{ uiText("· Application workspace") }}</span>
   </p>
 </template>
 

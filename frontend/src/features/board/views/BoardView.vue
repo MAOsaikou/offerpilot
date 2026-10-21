@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, translate as uiText } from '@/shared/utils/language'
+
 import { computed, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import ApplicationDrawer from '../components/ApplicationDrawer.vue'
@@ -6,7 +8,7 @@ import PageHeading from '@/shared/components/PageHeading.vue'
 import { useBoard } from '@/shared/composables/useBoard'
 import {
   APPLICATION_DRAG_TYPE,
-  applicationStages,
+  applicationStageLabels as applicationStages,
   type ApplicationStatus,
 } from '@/shared/types/board'
 import ApplicationCard from '../components/ApplicationCard.vue'
@@ -44,23 +46,34 @@ function closeDetail() {
 </script>
 <template>
   <section class="page-stack">
-    <PageHeading title="每一个机会，都有迹可循" description="用清晰的进度，管理你的求职节奏。">
-      <RouterLink to="/jobs" class="btn primary">＋ 发现岗位</RouterLink>
+    <PageHeading
+      :title="uiText('Track every opportunity')"
+      :description="uiText('Manage your job search at your own pace.')"
+    >
+      <RouterLink to="/jobs" class="btn primary">{{ uiText('＋ Find jobs') }}</RouterLink>
     </PageHeading>
     <div class="helper-note">
-      共 {{ board.applications.value.length }} 个机会 ·
-      拖动卡片到其他列即可更新阶段（也可在卡片里选择阶段），点击机会查看材料、时间线和下一步行动。更新阶段不会发送真实投递。
+      {{
+        uiText(
+          '{0} opportunities · Drag cards between columns or select a stage on a card. Open an opportunity for materials, history and next steps. Changing a stage does not submit a real application.',
+          [board.applications.value.length],
+        )
+      }}
     </div>
     <PendingAgentWrites scope="board" />
-    <p v-if="board.query.isPending.value" class="panel" role="status">正在加载看板…</p>
+    <p v-if="board.query.isPending.value" class="panel" role="status">
+      {{ uiText('Loading board…') }}
+    </p>
     <div v-else-if="board.query.isError.value" class="error-banner" role="alert">
-      {{ board.query.error.value?.message }}
-      <button class="btn" @click="board.query.refetch()">重试加载</button>
+      {{ formatDisplay(board.query.error.value?.message) }}
+      <button class="btn" @click="board.query.refetch()">{{ uiText('Retry loading') }}</button>
     </div>
     <div v-else-if="!board.applications.value.length" class="panel empty-state">
-      <h2>把第一个机会放进看板</h2>
-      <p>在岗位页点击收藏，随后就能在这里记录投递、面试和 Offer 进度。</p>
-      <RouterLink to="/jobs" class="btn primary">去发现岗位</RouterLink>
+      <h2>{{ uiText('Add your first opportunity') }}</h2>
+      <p>
+        {{ uiText('Save a job to track your application, interview and offer progress here.') }}
+      </p>
+      <RouterLink to="/jobs" class="btn primary">{{ uiText('Find jobs') }}</RouterLink>
     </div>
     <ApplicationDrawer v-if="selected" :id="selected" :key="selected" @close="closeDetail" />
     <div
@@ -83,7 +96,9 @@ function closeDetail() {
       >
         <h2>
           {{ label }}
-          <span>{{ board.applications.value.filter((a) => a.status === status).length }}</span>
+          <span>{{
+            formatDisplay(board.applications.value.filter((a) => a.status === status).length)
+          }}</span>
         </h2>
         <ApplicationCard
           v-for="app in board.applications.value.filter((a) => a.status === status)"
@@ -91,12 +106,17 @@ function closeDetail() {
           :application="app"
         />
         <p v-if="!board.applications.value.some((a) => a.status === status)" class="subtle">
-          暂无机会
+          {{ uiText('No opportunities yet') }}
         </p>
       </section>
     </div>
     <p v-if="board.error.value" class="error-banner" role="alert">
-      阶段更新失败：{{ board.error.value }}。卡片已退回原来的列，请重试。
+      {{
+        uiText(
+          'Could not update stage: {0}. The card has returned to its original column. Please retry.',
+          [board.error.value],
+        )
+      }}
     </p>
   </section>
 </template>

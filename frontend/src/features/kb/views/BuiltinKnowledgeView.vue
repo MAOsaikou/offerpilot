@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, translate as uiText } from '@/shared/utils/language'
+
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
@@ -19,7 +21,7 @@ import { useBuiltinFilters } from '../stores/builtinFilters'
 const route = useRoute(),
   filters = useBuiltinFilters()
 const queryDraft = ref(filters.q)
-const tabs = { OCCUPATION: '职业条目', ...builtinKinds }
+const tabs = computed(() => ({ OCCUPATION: uiText("Career entry"), ...builtinKinds }))
 const id = computed(() => String(route.params.occupationId || ''))
 const criteria = computed(() => ({
   q: filters.q,
@@ -108,80 +110,67 @@ function submit() {
 <template>
   <section class="page-stack builtin-catalog">
     <PageHeading
-      title="内置知识库"
-      description="探索职业、理解能力要求，用通用题型练习。来源与缺失数据逐项披露。"
+      :title="uiText('Built-in knowledge')"
+      :description="uiText('Explore careers, understand skill requirements and practice general questions. Sources and missing data are disclosed for each item.')"
     >
-      <RouterLink class="btn" to="/kb">我的资料与笔记</RouterLink>
+      <RouterLink class="btn" to="/kb">{{ uiText("My resources and notes") }}</RouterLink>
     </PageHeading>
     <p v-if="facets.data.value" class="subtle" role="status">
-      {{ facets.data.value.directOnetOccupations }} 条直接 O*NET 职业 ·
-      {{ facets.data.value.occupations }} 个目录 ID（含中文映射） ·
-      {{ facets.data.value.counts.QUESTION ?? 0 }} 道 curated 通用题
-    </p>
-    <div v-if="facets.isError.value" role="alert" class="error-banner">
-      分类读取失败。<button class="btn" @click="facets.refetch()">重试分类</button>
+      {{ uiText("{0} direct O*NET careers · {1} catalog IDs (including Chinese mappings) · {2} curated general questions", [facets.data.value.directOnetOccupations, facets.data.value.occupations, facets.data.value.counts.QUESTION ?? 0]) }} </p>
+    <div v-if="facets.isError.value" role="alert" class="error-banner"> {{ uiText("Could not load categories.") }}<button class="btn" @click="facets.refetch()">{{ uiText("Retry categories") }}</button>
     </div>
     <template v-if="id">
-      <RouterLink to="/kb/builtin" class="btn">返回职业目录</RouterLink>
+      <RouterLink to="/kb/builtin" class="btn">{{ uiText("Back to career catalog") }}</RouterLink>
       <p v-if="detail.isPending.value" role="status">
         {{
-          detail.fetchStatus.value === 'paused' ? '当前离线，恢复连接后重试。' : '正在加载职业详情…'
+          detail.fetchStatus.value === 'paused' ? uiText("You are offline. Reconnect and retry.") : uiText("Loading career details…")
         }}
       </p>
-      <div v-else-if="detail.isError.value" role="alert" class="error-banner">
-        职业详情读取失败，条目可能不存在或连接不可用。<button class="btn" @click="detail.refetch()">
-          重试详情
-        </button>
+      <div v-else-if="detail.isError.value" role="alert" class="error-banner"> {{ uiText("Could not load career details. The entry may not exist or the connection may be unavailable.") }}<button class="btn" @click="detail.refetch()"> {{ uiText("Retry details") }} </button>
       </div>
       <article v-else-if="detail.data.value" class="panel form-stack">
-        <h2>{{ detail.data.value.name }}</h2>
-        <p>{{ detail.data.value.family }}</p>
-        <p class="catalog-copy">{{ detail.data.value.description }}</p>
-        <h3>RIASEC 兴趣代码：{{ detail.data.value.hollandCode ?? '暂无数据' }}</h3>
+        <h2>{{ formatDisplay(detail.data.value.name) }}</h2>
+        <p>{{ formatDisplay(detail.data.value.family) }}</p>
+        <p class="catalog-copy">{{ formatDisplay(detail.data.value.description) }}</p>
+        <h3>{{ uiText("RIASEC interest code: {0}", [detail.data.value.hollandCode ?? uiText("No data available")]) }}</h3>
         <dl class="catalog-grid">
           <div v-for="(value, axis) in detail.data.value.riasec" :key="axis">
             <dt>{{ axis }}</dt>
             <dd>{{ value }}</dd>
           </div>
         </dl>
-        <p v-if="!detail.data.value.riasec">兴趣分数暂无数据</p>
-        <h3>核心技能</h3>
-        <p v-if="detail.data.value.skillsSource === 'curated'" class="subtle">
-          curated：编辑建议，非 O*NET 官方技术技能标准
-        </p>
+        <p v-if="!detail.data.value.riasec">{{ uiText("No interest scores available") }}</p>
+        <h3>{{ uiText("Core skills") }}</h3>
+        <p v-if="detail.data.value.skillsSource === 'curated'" class="subtle"> {{ uiText("Curated editorial suggestions, not official O*NET technical skill standards") }} </p>
         <ul v-if="detail.data.value.coreSkills?.length">
           <li v-for="skill in detail.data.value.coreSkills" :key="skill.name">
-            {{ skill.name }} · {{ skill.level }}
+            {{ skill.name }} · {{ formatDisplay(skill.level) }}
           </li>
         </ul>
-        <p v-else>暂无技能数据</p>
-        <h3>薪资</h3>
-        <p>{{ detail.data.value.salaryNotice }}</p>
+        <p v-else>{{ uiText("No skill data available") }}</p>
+        <h3>{{ uiText("Salary") }}</h3>
+        <p>{{ formatDisplay(detail.data.value.salaryNotice) }}</p>
         <pre v-if="detail.data.value.salaryRange" class="catalog-copy">{{
-          JSON.stringify(detail.data.value.salaryRange, null, 2)
+          formatDisplay(JSON.stringify(detail.data.value.salaryRange, null, 2))
         }}</pre>
-        <h3>成长路径</h3>
-        <p>{{ detail.data.value.growthPath ?? '暂无数据：尚无可信路径资料' }}</p>
-        <p v-if="detail.data.value.growthPathSource === 'curated'" class="subtle">
-          curated：编辑提供的方向建议，不保证实际晋升路径
-        </p>
-        <p>{{ detail.data.value.notice }}</p>
-        <p>
-          来源：{{ detail.data.value.source }} · O*NET-SOC {{ detail.data.value.onetCode }} ·
-          {{ detail.data.value.license }}
+        <h3>{{ uiText("Career path") }}</h3>
+        <p>{{ detail.data.value.growthPath ?? uiText("No data: no reliable career path information yet") }}</p>
+        <p v-if="detail.data.value.growthPathSource === 'curated'" class="subtle"> {{ uiText("Curated editorial guidance, not a guarantee of actual advancement") }} </p>
+        <p>{{ formatDisplay(detail.data.value.notice) }}</p>
+        <p> {{ uiText("Source: {0} · O*NET-SOC {1} · {2}", [detail.data.value.source, detail.data.value.onetCode, detail.data.value.license]) }}
         </p>
         <a
           v-if="detail.data.value.sourceUrl"
           :href="detail.data.value.sourceUrl"
           target="_blank"
           rel="noopener noreferrer"
-          >查看 O*NET 原始职业</a
+          >{{ uiText("View original O*NET career") }}</a
         >
-        <p class="subtle catalog-copy">{{ detail.data.value.attribution }}</p>
+        <p class="subtle catalog-copy">{{ formatDisplay(detail.data.value.attribution) }}</p>
       </article>
     </template>
     <template v-else>
-      <nav class="catalog-tabs" aria-label="内置知识分类">
+      <nav class="catalog-tabs" :aria-label="uiText('Built-in knowledge categories')">
         <button
           v-for="(label, key) in tabs"
           :key="key"
@@ -192,60 +181,56 @@ function submit() {
           {{ label }}
         </button>
       </nav>
-      <p v-if="filters.tab === 'QUESTION'" class="subtle">
-        source=curated：通用题型与岗位情境组合（AI 辅助整理），非真实候选人面经；未逐题专家校审。
-      </p>
-      <p v-if="filters.tab === 'REPORT'" class="subtle">
-        计划接入可信报告：当前只有结构与入口，无行业规模、薪资或增长结论。
-      </p>
+      <p v-if="filters.tab === 'QUESTION'" class="subtle"> {{ uiText("source=curated: general question patterns and job scenarios organized with AI assistance. Not real candidate interview reports; questions have not each been reviewed by experts.") }} </p>
+      <p v-if="filters.tab === 'REPORT'" class="subtle"> {{ uiText("Reliable reports are planned. This section currently has structure and navigation only, with no claims about industry size, salary or growth.") }} </p>
       <form class="panel form-stack" @submit.prevent="submit">
         <label class="field"
-          >搜索<input v-model="queryDraft" maxlength="2000" placeholder="职业、技能或练习主题"
+          >{{ uiText("Search") }}<input v-model="queryDraft" maxlength="2000" :placeholder="uiText('Careers, skills or practice topics')"
         /></label>
         <div v-if="filters.tab === 'OCCUPATION'" class="catalog-grid">
           <label class="field"
-            >职业分类<select v-model="filters.family">
-              <option value="">全部分类</option>
+            >{{ uiText("Career category") }}<select v-model="filters.family">
+              <option value="">{{ uiText("All categories") }}</option>
               <option v-for="family in facets.data.value?.families" :key="family">
                 {{ family }}
               </option>
             </select></label
           >
           <label class="field"
-            >兴趣代码（前缀）<input
+            >{{ uiText("Interest code prefix") }}<input
               v-model="filters.holland"
               maxlength="3"
               pattern="[RIASECriasec]{0,3}"
-              placeholder="如 I 或 IRC"
+              :placeholder="uiText('For example: I or IRC')"
           /></label>
         </div>
         <div v-else-if="filters.tab !== 'CAMPUS'" class="catalog-grid">
           <label class="field"
-            >行业<select v-model="filters.industry">
-              <option value="">全部行业</option>
+            >{{ uiText("Industry") }}<select v-model="filters.industry">
+              <option value="">{{ uiText("All industries") }}</option>
               <option v-for="industry in facets.data.value?.industries" :key="industry">
                 {{ industry }}
               </option>
             </select></label
           >
           <label v-if="filters.tab !== 'REPORT'" class="field"
-            >岗位<select v-model="filters.role">
-              <option value="">全部岗位</option>
+            >{{ uiText("Jobs") }}<select v-model="filters.role">
+              <option value="">{{ uiText("All jobs") }}</option>
               <option v-for="role in facets.data.value?.roles" :key="role">{{ role }}</option>
             </select></label
           >
           <template v-if="filters.tab === 'QUESTION'">
             <label class="field"
-              >题型<select v-model="filters.questionType">
-                <option value="">全部题型</option>
+              >{{ uiText("Question type") }}<select v-model="filters.questionType">
+                <option value="">{{ uiText("All question types") }}</option>
                 <option v-for="(label, key) in questionTypes" :key="key" :value="key">
                   {{ label }}
                 </option>
               </select></label
             >
             <label class="field"
-              >难度<select v-model="filters.difficulty">
-                <option value="">全部难度</option>
+              >{{ uiText("Difficulty") }}<select v-model="filters.difficulty">
+                <option value="">{{ uiText("All difficulty levels") }}</option>
                 <option v-for="(label, key) in difficulties" :key="key" :value="key">
                   {{ label }}
                 </option>
@@ -254,29 +239,24 @@ function submit() {
           </template>
         </div>
         <div class="catalog-tabs">
-          <button class="btn primary" type="submit">搜索目录</button
+          <button class="btn primary" type="submit">{{ uiText("Search catalog") }}</button
           ><button
             v-if="filters.tab !== 'OCCUPATION' && filters.tab !== 'REPORT'"
             class="btn"
             type="button"
             :disabled="!queryDraft.trim()"
             @click="referenceText = queryDraft.trim()"
-          >
-            检索参考资料
-          </button>
+          > {{ uiText("Search references") }} </button>
         </div>
       </form>
       <p v-if="busy" role="status">
-        {{ active.fetchStatus.value === 'paused' ? '当前离线，恢复连接后重试。' : '正在加载目录…' }}
+        {{ active.fetchStatus.value === 'paused' ? uiText("You are offline. Reconnect and retry.") : uiText("Loading catalog…") }}
       </p>
-      <div v-else-if="active.isError.value" class="error-banner" role="alert">
-        读取失败，请确认登录状态和网络连接。<button class="btn" @click="active.refetch()">
-          重试目录
-        </button>
+      <div v-else-if="active.isError.value" class="error-banner" role="alert"> {{ uiText("Could not load. Check your sign-in status and connection.") }}<button class="btn" @click="active.refetch()"> {{ uiText("Retry catalog") }} </button>
       </div>
       <template v-else>
-        <p role="status">共 {{ total }} 条，第 {{ filters.page }} 页</p>
-        <p v-if="!total">暂无匹配条目，请调整筛选条件。</p>
+        <p role="status">{{ uiText("{0} entries · Page {1}", [total, filters.page]) }}</p>
+        <p v-if="!total">{{ uiText("No matching entries. Adjust your filters.") }}</p>
         <div v-if="filters.tab === 'OCCUPATION'" class="catalog-cards">
           <article
             v-for="item in occupations.data.value?.items"
@@ -305,49 +285,45 @@ function submit() {
             <span v-if="item.questionType">· {{ questionTypes[item.questionType] }}</span>
             <span v-if="item.difficulty">· {{ difficulties[item.difficulty] }}</span>
           </p>
-          <p v-if="item.status === 'PLANNED'" class="subtle">计划 · 暂无报告数据</p>
+          <p v-if="item.status === 'PLANNED'" class="subtle">{{ uiText("Planned · No report data yet") }}</p>
           <p class="catalog-copy">{{ item.content }}</p>
           <details v-if="item.payload.answerGuide">
-            <summary>练习思路（非标准答案）</summary>
+            <summary>{{ uiText("Practice approach (not a model answer)") }}</summary>
             <ul>
               <li v-for="guide in item.payload.answerGuide" :key="guide">{{ guide }}</li>
             </ul>
           </details>
-          <p v-if="item.payload.plannedSections">
-            计划栏目：{{ item.payload.plannedSections.join('、') }}
+          <p v-if="item.payload.plannedSections"> {{ uiText("Planned section: {0}", [item.payload.plannedSections.join('、')]) }}
           </p>
           <p class="subtle catalog-copy">
             {{ item.source }} · {{ item.license }} · {{ item.notice }}
           </p>
         </article>
-        <nav class="catalog-tabs" aria-label="分页">
-          <button class="btn" :disabled="filters.page <= 1" @click="filters.page--">上一页</button
-          ><button class="btn" :disabled="filters.page * 20 >= total" @click="filters.page++">
-            下一页
-          </button>
+        <nav class="catalog-tabs" :aria-label="uiText('Pagination')">
+          <button class="btn" :disabled="filters.page <= 1" @click="filters.page--">{{ uiText("Previous page") }}</button
+          ><button class="btn" :disabled="filters.page * 20 >= total" @click="filters.page++"> {{ uiText("Next page") }} </button>
         </nav>
       </template>
       <aside
         v-if="referenceText && filters.tab !== 'OCCUPATION' && filters.tab !== 'REPORT'"
         class="panel form-stack"
-        aria-label="参考检索"
+        :aria-label="uiText('Reference search')"
       >
-        <h2>参考资料：{{ referenceText }}</h2>
+        <h2>{{ uiText("References: {0}", [referenceText]) }}</h2>
         <p v-if="references.isPending.value" role="status">
           {{
-            references.fetchStatus.value === 'paused' ? '当前离线，连接恢复后可检索。' : '检索中…'
+            references.fetchStatus.value === 'paused' ? uiText("You are offline. Search when connected.") : uiText("Searching…")
           }}
         </p>
-        <p v-else-if="references.isError.value" role="alert">
-          参考检索失败。<button class="btn" @click="references.refetch()">重试检索</button>
+        <p v-else-if="references.isError.value" role="alert"> {{ uiText("Reference search failed.") }}<button class="btn" @click="references.refetch()">{{ uiText("Retry search") }}</button>
         </p>
         <template v-else
-          ><p>{{ references.data.value?.notice }}</p>
-          <p v-if="!references.data.value?.items.length">暂无参考结果</p>
+          ><p>{{ formatDisplay(references.data.value?.notice) }}</p>
+          <p v-if="!references.data.value?.items.length">{{ uiText("No reference results") }}</p>
           <article v-for="hit in references.data.value?.items" :key="hit.id">
             <h3>{{ hit.title }}</h3>
             <p class="catalog-copy">{{ hit.excerpt }}</p>
-            <p class="subtle">引用 ID：{{ hit.id }} · {{ hit.source }} · {{ hit.notice }}</p>
+            <p class="subtle">{{ uiText("Citation ID: {0} · {1} · {2}", [hit.id, hit.source, hit.notice]) }}</p>
           </article></template
         >
       </aside>

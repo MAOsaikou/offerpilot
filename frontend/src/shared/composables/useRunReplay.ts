@@ -1,3 +1,4 @@
+import { localizedText, translate as uiText } from '@/shared/utils/language'
 import { computed, onScopeDispose, ref } from 'vue'
 import { createPinia } from 'pinia'
 import { getAgentWorkbench } from '@/shared/api/agent'
@@ -12,7 +13,7 @@ export function useRunReplay() {
   const position = ref(0)
   const loading = ref(false)
   const playing = ref(false)
-  const error = ref('')
+  const error = localizedText()
   const speed = ref(1)
   let generation = 0
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -70,10 +71,10 @@ export function useRunReplay() {
       const history = await getAgentWorkbench(id)
       if (version !== generation) return
       events.value = [...history].sort((a, b) => a.id - b.id)
-      if (!history.length) error.value = '本轮没有可回放事件。'
+      if (!history.length) error.value = () => (uiText("No replayable events in this run."))
     } catch (failure) {
       if (version === generation)
-        error.value = failure instanceof Error ? failure.message : '回放读取失败，请重试。'
+        error.value = () => (failure instanceof Error ? failure.message : uiText("Could not load replay. Please retry."))
     } finally {
       if (version === generation) loading.value = false
     }

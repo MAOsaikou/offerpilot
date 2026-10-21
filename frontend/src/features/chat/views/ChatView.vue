@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { checkPrivacyText } from '@/shared/api/privacy-settings'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -18,7 +20,7 @@ import { getPreferences } from '@/shared/api/preferences'
 import type { PatchDecision } from '@/shared/types/optimization'
 import type { CareerTargetSelection } from '@/shared/types/cards'
 const replay = useRunReplay()
-const privacyWarning = ref('')
+const privacyWarning = localizedText()
 const route = useRoute()
 const router = useRouter()
 const chat = useConversationChat()
@@ -38,14 +40,14 @@ const {
   activeRun,
   remoteRunId,
 } = chat
-const modes: { value: AgentMode; label: string }[] = [
-  { value: 'AUTO', label: '智能助手' },
-  { value: 'CAREER_DISCOVERY', label: '职业探索' },
-  { value: 'RESUME', label: '简历指导' },
-  { value: 'JOB', label: '岗位分析' },
-  { value: 'INTERVIEWER', label: '面试练习' },
-  { value: 'COACH', label: '成长教练' },
-]
+const modes = computed<{ value: AgentMode; label: string }[]>(() => [
+  { value: 'AUTO', label: uiText("AI assistant") },
+  { value: 'CAREER_DISCOVERY', label: uiText("Career discovery") },
+  { value: 'RESUME', label: uiText("Resume coach") },
+  { value: 'JOB', label: uiText("Job analysis") },
+  { value: 'INTERVIEWER', label: uiText("Interview practice") },
+  { value: 'COACH', label: uiText("Growth coach") },
+])
 const displayedMessages = computed(() =>
   viewMessages.value.map((message) => {
     if (!replay.runId.value || message.role !== 'assistant' || message.runId !== replay.runId.value)
@@ -82,7 +84,7 @@ watch(
   (ids) => {
     if (
       ids.some((id) => typeof id === 'string') &&
-      !modes.some((m) => m.value === route.query.mode)
+      !modes.value.some((m) => m.value === route.query.mode)
     )
       mode.value = 'RESUME'
   },
@@ -145,7 +147,7 @@ watch(
     await chat.open(id)
     seed.value = typeof route.query.prompt === 'string' ? route.query.prompt : ''
     mode.value =
-      modes.find((m) => m.value === route.query.mode)?.value ||
+      modes.value.find((m) => m.value === route.query.mode)?.value ||
       (route.query.optimizationReportId || route.query.diagnosisReportId
         ? 'RESUME'
         : current.value?.mode || 'AUTO')
@@ -188,7 +190,7 @@ async function onSend(content: string, images: ChatImage[] = []) {
         privacyWarning.value = (await checkPrivacyText(content)).warning ?? ''
       } catch {
         privacyWarning.value =
-          '隐私风险检查暂不可用；模型端仍按你的脱敏设置处理。建议在设置中确认已开启。'
+          () => (uiText("The privacy risk check is unavailable. Your masking preferences still apply when sending to the model. Check that masking is enabled in settings."))
       }
     }
     const submittedMode = mode.value
@@ -286,7 +288,7 @@ async function editLastQuestion() {
 async function adoptTarget(selection: CareerTargetSelection) {
   if (busy.value || missingConversation.value) return
   panelOpen.value = true
-  const content = `请将「${selection.name}」设为目标职业`
+  const content = uiText("Set “{0}” as my target career", [selection.name])
   lastAttempt.value = content
   // Reuse the chat approval flow: this starts a WRITE step, never PUTs the profile from the card.
   await chat.send(
@@ -302,7 +304,7 @@ async function adoptTarget(selection: CareerTargetSelection) {
 async function adoptGrowth(taskTitles: string[]) {
   if (busy.value || missingConversation.value || !taskTitles.length) return
   panelOpen.value = true
-  const content = `同步成长任务：我确认已完成「${taskTitles.join('」、「')}」`
+  const content = uiText("Sync growth tasks: I confirm that I have completed “{0}”", [taskTitles.join('」、「')])
   lastAttempt.value = content
   await chat.send(
     content,
@@ -331,11 +333,11 @@ async function applyPatches(decision: PatchDecision, payload: unknown) {
     card.batchId !== decision.batchId ||
     !/^[A-Za-z0-9_-]{1,100}$/.test(decision.batchId)
   ) {
-    error.value = '无法关联这批建议的简历、版本或批次，请从对应简历重新打开改写建议。'
+    error.value = uiText("The resume, version or batch for these suggestions could not be identified. Reopen the rewrite suggestions from the resume.")
     return
   }
   panelOpen.value = true
-  const content = '请采纳所选的简历改写建议'
+  const content = uiText("Accept the selected resume rewrite suggestions")
   lastAttempt.value = content
   await chat.send(
     content,
@@ -389,8 +391,8 @@ async function remove(id: string) {
     <div class="chat-layout persistent-chat">
       <div class="chat-main">
         <ChatToolbar
-          :title="current?.title || '新对话'"
-          :status="mock ? 'Mock 演示' : '自动保存'"
+          :title="current?.title || uiText('New chat')"
+          :status="mock ? uiText('Mock demo') : uiText('Autosave')"
           :history-open="historyOpen"
           :panel-open="panelOpen"
           @toggle-history="historyOpen = !historyOpen"
@@ -399,24 +401,18 @@ async function remove(id: string) {
         <div ref="scrollArea" class="chat-scroll" aria-live="polite" aria-relevant="additions text">
           <div class="chat-column">
             <p v-if="privacyWarning" class="helper-note" role="status">
-              {{ privacyWarning }} <RouterLink to="/settings/privacy">隐私设置</RouterLink>
+              {{ privacyWarning }} <RouterLink to="/settings/privacy">{{ uiText("Privacy settings") }}</RouterLink>
             </p>
-            <p v-if="typeof route.query.jobId === 'string'" class="helper-note">
-              已关联选定岗位和简历版本。可发送匹配或定向改写请求，生成建议后仍需逐条核对采纳；搜索新岗位按本轮条件执行。
-              <RouterLink :to="'/jobs/' + encodeURIComponent(route.query.jobId)"
-                >返回岗位</RouterLink
+            <p v-if="typeof route.query.jobId === 'string'" class="helper-note"> {{ uiText("The selected job and resume version are linked. Request matching or a targeted rewrite, then review each suggestion before accepting it. New job searches use the current request's conditions.") }} <RouterLink :to="'/jobs/' + encodeURIComponent(route.query.jobId)"
+                >{{ uiText("Back to job") }}</RouterLink
               >
             </p>
-            <p v-if="typeof route.query.applicationId === 'string'" class="helper-note">
-              已关联这条求职记录。可只读查看进度，或请求更新下一步行动；聊天写入仍需你批准。
-              <RouterLink
+            <p v-if="typeof route.query.applicationId === 'string'" class="helper-note"> {{ uiText("This application is linked. View progress or request a next-action update. Chat changes require your approval.") }} <RouterLink
                 :to="{ path: '/board', query: { application: route.query.applicationId } }"
-                >返回机会详情</RouterLink
+                >{{ uiText("Back to application") }}</RouterLink
               >
             </p>
-            <p v-if="route.query.optimizationReportId" class="helper-note">
-              已关联这批改写建议。讨论会读取保存结果；明确要求重新生成时才调用改写模型，可在卡片选择建议并批准审批后采纳，也可到简历页确认。
-              <RouterLink
+            <p v-if="route.query.optimizationReportId" class="helper-note"> {{ uiText("These rewrite suggestions are linked. Discussion reads saved results. A rewrite model runs only when you explicitly request regeneration. Select suggestions and approve them in chat, or confirm them on the resume page.") }} <RouterLink
                 v-if="typeof route.query.resumeId === 'string'"
                 :to="{
                   path: '/resumes/' + encodeURIComponent(route.query.resumeId),
@@ -426,15 +422,13 @@ async function remove(id: string) {
                     optimizationReportId: route.query.optimizationReportId,
                   },
                 }"
-                >查看改写建议</RouterLink
+                >{{ uiText("View rewrite suggestions") }}</RouterLink
               >
             </p>
-            <p v-if="route.query.diagnosisReportId" class="helper-note">
-              已关联选定版本的简历诊断报告。发送消息后，AI 会读取报告继续讨论。
-              <RouterLink
+            <p v-if="route.query.diagnosisReportId" class="helper-note"> {{ uiText("The diagnosis for the selected resume version is linked. Send a message to discuss it with AI.") }} <RouterLink
                 v-if="typeof route.query.resumeId === 'string'"
                 :to="'/resumes/' + encodeURIComponent(route.query.resumeId)"
-                >返回简历</RouterLink
+                >{{ uiText("Back to resume") }}</RouterLink
               >
             </p>
             <button
@@ -442,63 +436,49 @@ async function remove(id: string) {
               class="btn text older"
               :disabled="loading"
               @click="older"
-            >
-              加载更早消息
-            </button>
-            <p v-if="loading" class="subtle" role="status">正在加载记录…</p>
+            > {{ uiText("Load earlier messages") }} </button>
+            <p v-if="loading" class="subtle" role="status">{{ uiText("Loading history…") }}</p>
             <section
               v-if="replay.runId.value"
               class="panel form-stack mb-4"
-              aria-label="运行回放"
+              :aria-label="uiText('Run replay')"
               aria-live="polite"
             >
-              <h3>历史运行回放</h3>
-              <p v-if="replay.loading.value" role="status">正在读取事件…</p>
-              <p v-if="replay.error.value" role="alert">{{ replay.error.value }}</p>
-              <p v-if="replay.partial.value">旧运行未保存正文或卡片事件，只能回放已记录过程。</p>
-              <p>{{ replay.position.value }} / {{ replay.events.value.length }} 个事件</p>
+              <h3>{{ uiText("Historical run replay") }}</h3>
+              <p v-if="replay.loading.value" role="status">{{ uiText("Loading events…") }}</p>
+              <p v-if="replay.error.value" role="alert">{{ formatDisplay(replay.error.value) }}</p>
+              <p v-if="replay.partial.value">{{ uiText("This older run has no saved text or card events. Only recorded steps can be replayed.") }}</p>
+              <p>{{ uiText("{0} of {1} events", [replay.position.value, replay.events.value.length]) }}</p>
               <div class="flex flex-wrap gap-2">
                 <button
                   class="btn"
                   :disabled="replay.loading.value || replay.complete.value"
                   @click="replay.play"
-                >
-                  播放
-                </button>
-                <button class="btn" :disabled="!replay.playing.value" @click="replay.pause">
-                  暂停
-                </button>
+                > {{ uiText("Play") }} </button>
+                <button class="btn" :disabled="!replay.playing.value" @click="replay.pause"> {{ uiText("Pause") }} </button>
                 <button
                   class="btn"
                   :disabled="replay.loading.value || replay.complete.value"
                   @click="replay.step"
-                >
-                  下一事件
-                </button>
-                <button class="btn" :disabled="replay.loading.value" @click="replay.seek(0)">
-                  从头开始
-                </button>
+                > {{ uiText("Next event") }} </button>
+                <button class="btn" :disabled="replay.loading.value" @click="replay.seek(0)"> {{ uiText("Restart") }} </button>
                 <button
                   v-if="replay.error.value"
                   class="btn"
                   @click="replay.open(replay.runId.value)"
-                >
-                  重新读取
-                </button>
+                > {{ uiText("Reload") }} </button>
                 <label
-                  >速度
-                  <select v-model="replay.speed.value">
+                  >{{ uiText("Speed") }} <select v-model="replay.speed.value">
                     <option :value="0.5">0.5×</option>
                     <option :value="1">1×</option>
                     <option :value="2">2×</option>
                     <option :value="4">4×</option>
                   </select></label
                 >
-                <button class="btn" @click="replay.close">退出回放</button>
+                <button class="btn" @click="replay.close">{{ uiText("Exit replay") }}</button>
               </div>
               <label
-                >事件进度
-                <input
+                >{{ uiText("Event progress") }} <input
                   type="range"
                   min="0"
                   :max="replay.events.value.length"
@@ -539,14 +519,9 @@ async function remove(id: string) {
                     : undefined,
                 )
               "
-            >
-              重新加载
-            </button>
+            > {{ uiText("Reload #2") }} </button>
           </div>
-          <div v-if="remoteRunId && !sending" class="helper-note">
-            这段对话仍在生成，记录会自动更新。<button class="btn text" @click="chat.stop()">
-              停止生成
-            </button>
+          <div v-if="remoteRunId && !sending" class="helper-note"> {{ uiText("This conversation is still generating. Records update automatically.") }}<button class="btn text" @click="chat.stop()"> {{ uiText("Stop generation") }} </button>
           </div>
           <button
             v-if="
@@ -556,17 +531,12 @@ async function remove(id: string) {
             "
             class="btn text"
             @click="editLastQuestion"
-          >
-            重新编辑上条问题
-          </button>
-          <div v-if="matchingSelection" class="helper-note">
-            本次发送将匹配所选岗位与简历。<button
+          > {{ uiText("Edit previous question") }} </button>
+          <div v-if="matchingSelection" class="helper-note"> {{ uiText("This message will match the selected job and resume.") }}<button
               class="btn text"
               :disabled="busy"
               @click="clearMatchAction"
-            >
-              改为普通提问
-            </button>
+            > {{ uiText("Ask a general question instead") }} </button>
           </div>
           <Composer
             :key="current?.id || 'new'"
@@ -583,20 +553,20 @@ async function remove(id: string) {
             @stop="chat.stop"
           >
             <template #tools>
-              <select v-model="mode" class="tool-select" :disabled="busy" aria-label="对话模式">
+              <select v-model="mode" class="tool-select" :disabled="busy" :aria-label="uiText('Chat mode')">
                 <option v-for="m in modes" :key="m.value" :value="m.value">{{ m.label }}</option>
               </select>
-              <select v-model="tier" class="tool-select" :disabled="busy" aria-label="模型档位">
-                <option value="FLASH" title="DeepSeek Flash 响应快">快速</option>
-                <option value="PRO" title="DeepSeek Pro 推理更强">深度</option>
+              <select v-model="tier" class="tool-select" :disabled="busy" :aria-label="uiText('Model tier')">
+                <option value="FLASH" :title="uiText('DeepSeek Flash responds quickly')">{{ uiText("Fast") }}</option>
+                <option value="PRO" :title="uiText('DeepSeek Pro offers stronger reasoning')">{{ uiText("Deep") }}</option>
               </select>
             </template>
           </Composer>
           <p class="chat-footnote">
             {{
               mock
-                ? 'Mock 脚本演示，内容只在当前页面可见。'
-                : '历史保存在服务端，上下文最多参考最近 10 轮完整对话。图片只在发送的这一轮交给模型。'
+                ? uiText("Mock scripted demo. Content is only visible on this page.")
+                : uiText("History is saved on the server. Context includes up to 10 recent completed exchanges. Images are sent to the model for the current exchange only.")
             }}
           </p>
         </div>

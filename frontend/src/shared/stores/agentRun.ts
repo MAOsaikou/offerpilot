@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { assertNever } from '@/shared/utils/assertNever'
@@ -284,12 +285,12 @@ export const useAgentRunStore = defineStore('agentRun', () => {
     for (const step of run.steps) {
       if (step.status !== 'RUNNING' && step.status !== 'PENDING') continue
       step.status = status === 'FAILED' && step.status === 'RUNNING' ? 'FAILED' : 'SKIPPED'
-      step.summary = status === 'CANCELLED' ? '运行已取消' : '运行已结束，步骤未完成'
+      step.summary = status === 'CANCELLED' ? uiText("Run canceled") : uiText("Run ended before this step completed")
     }
     for (const call of run.toolCalls) {
       if (call.status !== 'RUNNING') continue
       call.status = status === 'CANCELLED' ? 'CANCELLED' : 'FAILED'
-      call.resultPreview = status === 'CANCELLED' ? '运行已取消' : '运行已结束，未收到工具结果'
+      call.resultPreview = status === 'CANCELLED' ? uiText("Run canceled") : uiText("Run ended without a tool result")
     }
   }
 

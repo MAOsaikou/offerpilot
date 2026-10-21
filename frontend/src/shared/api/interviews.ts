@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import { runGeneration } from './generationTasks'
 import {
   apiRequest,
@@ -79,7 +80,7 @@ export async function exportInterviewRecap(id: string): Promise<void> {
   if (!response.ok) throw await toApiError(response)
   const text = await response.text()
   assertResponseIdentity(response)
-  downloadText('面试复盘.md', text, 'text/markdown;charset=utf-8')
+  downloadText(uiText("interview-review.md"), text, 'text/markdown;charset=utf-8')
 }
 
 export const getInterviewReport = (id: string, signal?: AbortSignal) =>

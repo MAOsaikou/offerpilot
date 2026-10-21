@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 export type DiffLine = { kind: 'same' | 'add' | 'del'; text: string }
 
 /** Line diff by longest common subsequence. Inputs beyond the cap are shown as a whole replacement. */
@@ -31,12 +32,12 @@ export function diffLines(before: string, after: string, cap = 1500): DiffLine[]
   return out
 }
 
-const SECTION_LABELS: Record<string, string> = {
-  education: '教育',
-  experience: '经历',
-  projects: '项目',
-  skills: '技能',
-}
+const sectionLabels = (): Record<string, string> => ({
+  education: uiText("Education section"),
+  experience: uiText("Experience section"),
+  projects: uiText("Projects"),
+  skills: uiText("Skills"),
+})
 /**
  * Stable, field-labelled text of a structured resume for comparison. Saved plain text keeps the
  * uploaded document's layout for the first version, so diffing it against later versions would show
@@ -51,18 +52,18 @@ export function resumeLines(structure: {
   const lines: string[] = []
   const value = (v: unknown) => (Array.isArray(v) ? v.join('、') : String(v ?? ''))
   const labels: Record<string, string> = {
-    name: '姓名',
-    phone: '电话',
-    email: '邮箱',
-    city: '城市',
-    links: '链接',
+    name: uiText("Name"),
+    phone: uiText("Phone"),
+    email: uiText("Email"),
+    city: uiText("City"),
+    links: uiText("Links"),
   }
   for (const [key, label] of Object.entries(labels)) {
     const v = value(structure.basics?.[key])
     if (v) lines.push(`${label}：${v}`)
   }
-  if (structure.summary) lines.push(`自我评价：${structure.summary}`)
-  for (const [section, label] of Object.entries(SECTION_LABELS)) {
+  if (structure.summary) lines.push(uiText('Self-evaluation: {0}', [structure.summary]))
+  for (const [section, label] of Object.entries(sectionLabels())) {
     const entries = (structure[section] as Record<string, unknown>[] | undefined) ?? []
     entries.forEach((entry, index) => {
       for (const [field, v] of Object.entries(entry)) {
@@ -72,6 +73,6 @@ export function resumeLines(structure: {
       }
     })
   }
-  for (const cert of structure.certificates ?? []) if (cert) lines.push(`证书：${cert}`)
+  for (const cert of structure.certificates ?? []) if (cert) lines.push(uiText('Certificate: {0}', [cert]))
   return lines.join('\n')
 }

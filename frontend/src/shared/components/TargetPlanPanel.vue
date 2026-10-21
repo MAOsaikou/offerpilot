@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useAuthStore } from '@/shared/stores/auth'
@@ -11,18 +13,18 @@ import {
 const props = defineProps<{ enabled: boolean; target: string; city: string }>()
 const auth = useAuthStore()
 const plan = ref<TargetPlan | null>(null)
-const error = ref(''),
+const error = localizedText(),
   loading = ref(false),
   busy = ref(false)
 const online = ref(navigator.onLine)
 const current = computed(() =>
   plan.value?.target === props.target && plan.value?.city === props.city ? plan.value : null,
 )
-const levels: Record<string, string> = {
-  POSSESSED: '已具备材料',
-  PARTIAL: '部分材料',
-  MISSING: '缺少材料',
-}
+const levels = computed<Record<string, string>>(() => ({
+  POSSESSED: uiText("Materials available"),
+  PARTIAL: uiText("Partial materials"),
+  MISSING: uiText("Missing materials"),
+}))
 let generation = 0
 async function load() {
   if (!props.enabled || loading.value) return
@@ -34,7 +36,7 @@ async function load() {
     if (revision === generation) plan.value = value
   } catch (cause) {
     if (revision === generation)
-      error.value = cause instanceof Error ? cause.message : '联动读取失败'
+      error.value = () => (cause instanceof Error ? cause.message : uiText("Could not load coordinated suggestions"))
   } finally {
     if (revision === generation) loading.value = false
   }
@@ -51,7 +53,7 @@ async function decide(retry = false) {
     if (revision === generation) plan.value = value
   } catch (cause) {
     if (revision === generation)
-      error.value = cause instanceof Error ? cause.message : '操作失败，请重新读取'
+      error.value = () => (cause instanceof Error ? cause.message : uiText("Operation failed. Please reload."))
   } finally {
     if (revision === generation) busy.value = false
   }
@@ -86,46 +88,39 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <section v-if="target" class="panel form-stack" aria-label="目标职业联动">
-    <h2>面向「{{ target }}」的下一步</h2>
-    <p v-if="!online" role="status">当前离线，恢复后可读取和确认建议。</p>
-    <p v-if="loading" role="status">正在读取联动建议…</p>
+  <section v-if="target" class="panel form-stack" :aria-label="uiText('Career goal coordination')">
+    <h2>{{ uiText("Next steps for “{0}”", [target]) }}</h2>
+    <p v-if="!online" role="status">{{ uiText("You are offline. Reconnect to load and confirm suggestions.") }}</p>
+    <p v-if="loading" role="status">{{ uiText("Loading coordinated suggestions…") }}</p>
     <div v-if="error" role="alert">
-      {{ error }} <button class="btn" :disabled="loading || !online" @click="load">重新读取</button>
+      {{ error }} <button class="btn" :disabled="loading || !online" @click="load">{{ uiText("Reload") }}</button>
     </div>
-    <p v-if="!current && !loading && !error">
-      目标保存后会自动搜索岗位、分析技能差距并整理学习建议。已有目标可通过下方入口继续。
-    </p>
-    <p v-if="current && ['PENDING', 'RUNNING'].includes(current.status)" role="status">
-      正在按已保存目标搜索岗位和整理建议，完成后会发送站内通知。
-    </p>
+    <p v-if="!current && !loading && !error"> {{ uiText("Saving a goal automatically searches jobs, analyzes skill gaps and prepares learning suggestions. Continue with an existing goal below.") }} </p>
+    <p v-if="current && ['PENDING', 'RUNNING'].includes(current.status)" role="status"> {{ uiText("Searching jobs and preparing suggestions for your saved goal. You will receive a notification when ready.") }} </p>
     <template v-if="current?.result">
       <p v-if="current.notice" role="status">{{ current.notice }}</p>
-      <h3>岗位搜索结果</h3>
-      <p v-if="!current.result.jobs?.items.length">暂无可展示岗位；可调整关键词继续搜索。</p>
-      <p v-if="current.result.jobs?.meta?.partial">本次岗位搜索结果不完整，请到岗位页重试。</p>
+      <h3>{{ uiText("Job search results") }}</h3>
+      <p v-if="!current.result.jobs?.items.length">{{ uiText("No jobs to display. Adjust keywords to continue searching.") }}</p>
+      <p v-if="current.result.jobs?.meta?.partial">{{ uiText("These job search results are incomplete. Retry on the jobs page.") }}</p>
       <ul v-if="current.result.jobs?.items.length">
         <li v-for="job in current.result.jobs.items.slice(0, 5)" :key="job.id">
           <RouterLink :to="'/jobs/' + encodeURIComponent(job.id)"
             >{{ job.title }} · {{ job.company }}</RouterLink
-          ><span v-if="job.source === 'LOCAL_SNAPSHOT'">（离线历史快照）</span>
+          ><span v-if="job.source === 'LOCAL_SNAPSHOT'">{{ uiText("(Offline historical snapshot)") }}</span>
         </li>
       </ul>
-      <h3>技能差距</h3>
+      <h3>{{ uiText("Skill gaps") }}</h3>
       <p v-if="current.result.skillGap">{{ current.result.skillGap.notice }}</p>
       <ul>
         <li v-for="skill in current.result.skillGap?.skills" :key="skill.name">
-          {{ skill.name }}：{{ levels[skill.level] ?? skill.level }}
+          {{ skill.name }}：{{ formatDisplay(levels[skill.level] ?? skill.level) }}
         </li>
       </ul>
-      <h3>学习路线建议</h3>
+      <h3>{{ uiText("Suggested learning route") }}</h3>
       <p>{{ current.result.learning?.summary }}</p>
       <ol>
-        <li v-for="week in current.result.learning?.roadmap?.weeks" :key="week.index">
-          第 {{ week.index }} 周 · {{ week.theme }}
-          <p v-for="item in week.items" :key="item.id">
-            {{ item.title }} · 建议 {{ item.hours }} 小时
-          </p>
+        <li v-for="week in current.result.learning?.roadmap?.weeks" :key="week.index"> {{ uiText("Week {0} · {1}", [week.index, week.theme]) }} <p v-for="item in week.items" :key="item.id">
+            {{ uiText("{0} · Suggested time: {1} hours", [item.title, item.hours]) }} </p>
         </li>
       </ol>
       <button
@@ -133,32 +128,28 @@ onBeforeUnmount(() => {
         class="btn primary"
         :disabled="busy || !online"
         @click="decide()"
-      >
-        确认采用这份后续建议
-      </button>
-      <span v-if="current.status === 'CONFIRMED'" class="tag">已确认采用</span>
+      > {{ uiText("Confirm adoption of these next steps") }} </button>
+      <span v-if="current.status === 'CONFIRMED'" class="tag">{{ uiText("Adoption confirmed") }}</span>
       <button
         v-if="current.status === 'FAILED'"
         class="btn"
         :disabled="busy || !online"
         @click="decide(true)"
-      >
-        重试生成联动
-      </button>
-      <p class="subtle">确认只保存采用意愿；任务完成状态和投递记录需按实际进展填写。</p>
+      > {{ uiText("Retry coordinated suggestions") }} </button>
+      <p class="subtle">{{ uiText("Confirmation records your intent only. Update task completion and applications according to actual progress.") }}</p>
     </template>
     <div class="target-links">
       <RouterLink :to="{ path: '/jobs', query: { q: target, location: city } }" class="btn"
-        >继续搜索目标岗位</RouterLink
+        >{{ uiText("Continue searching target jobs") }}</RouterLink
       >
-      <RouterLink to="/career#skill-gap" class="btn">查看技能差距</RouterLink>
+      <RouterLink to="/career#skill-gap" class="btn">{{ uiText("View skill gaps") }}</RouterLink>
       <RouterLink
         :to="{
           path: '/chat',
-          query: { mode: 'COACH', prompt: '请按我已保存的目标职业分析技能差距并建议学习路线。' },
+          query: { mode: 'COACH', prompt: uiText('Analyze skill gaps and suggest a learning route for my saved target career.') },
         }"
         class="btn"
-        >与教练讨论学习路线</RouterLink
+        >{{ uiText("Discuss learning route with coach") }}</RouterLink
       >
     </div>
   </section>

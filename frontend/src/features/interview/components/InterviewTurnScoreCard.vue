@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 import { computed } from 'vue'
 import type { InterviewTurnScorePayload } from '@/shared/types/cards'
 const props = defineProps<{ payload: InterviewTurnScorePayload }>()
@@ -14,12 +16,12 @@ const valid = computed(
 )
 </script>
 <template>
-  <section class="panel form-stack min-w-0 break-words" aria-label="单题面试评分">
-    <h3>单题面试评分</h3>
-    <p v-if="!valid" role="alert">评分数据不可用，请重新评分。</p>
+  <section class="panel form-stack min-w-0 break-words" :aria-label="uiText('Single-question interview score')">
+    <h3>{{ uiText("Single-question interview score") }}</h3>
+    <p v-if="!valid" role="alert">{{ uiText("Score data is unavailable. Please request scoring again.") }}</p>
     <template v-else
-      ><p>第 {{ payload.turnIndex + 1 }} 题 · {{ payload.score ?? '未评分' }} / 100</p>
-      <p>{{ payload.brief || '暂无评分说明' }}</p>
+      ><p>{{ uiText("Question {0} · {1} / 100", [payload.turnIndex + 1, payload.score ?? uiText("Not scored")]) }}</p>
+      <p>{{ payload.brief || uiText("No scoring explanation yet") }}</p>
     </template>
   </section>
 </template>
