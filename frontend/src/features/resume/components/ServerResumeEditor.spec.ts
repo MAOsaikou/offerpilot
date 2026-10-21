@@ -41,7 +41,7 @@ function fixture(version = 'v1', name = 'Original'): ServerResume {
       parentVersionId: null,
       source: 'UPLOAD',
       structured: {
-        basics: { name, phone: '', email: '', city: '', links: [] },
+        basics: { name, title: '', phone: '', email: '', city: '', links: [] },
         education: [],
         experience: [],
         projects: [],
@@ -93,6 +93,29 @@ async function edit(value: string) {
 function button(text: string) {
   return [...root.querySelectorAll('button')].find((b) => b.textContent?.trim() === text)!
 }
+
+it('旧版本缺少头衔时显示空串且无未保存修改，编辑后原文进入保存并重新显示', async () => {
+  const legacy = fixture('v2')
+  delete legacy.currentVersion!.structured.basics.title
+  cache.setQueryData(['resume', 'rs1'], legacy)
+  await nextTick()
+  const input = [...root.querySelectorAll('label')]
+    .find((label) => label.textContent?.includes('头衔 / 求职意向'))!
+    .querySelector('input')!
+  expect(input.value).toBe('')
+  expect(button('保存新版本').disabled).toBe(true)
+  input.value = 'Java 开发实习生'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  await nextTick()
+  expect(button('保存新版本').disabled).toBe(false)
+  const saved = fixture('v3')
+  saved.currentVersion!.structured.basics.title = input.value
+  vi.mocked(saveResume).mockResolvedValue(saved)
+  button('保存新版本').click()
+  await vi.waitFor(() => expect(button('保存新版本').disabled).toBe(true))
+  expect(vi.mocked(saveResume).mock.calls[0]?.[2].basics.title).toBe('Java 开发实习生')
+  expect(input.value).toBe('Java 开发实习生')
+})
 
 async function loadLists() {
   const loaded = fixture('v2')

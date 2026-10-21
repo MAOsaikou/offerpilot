@@ -10,10 +10,13 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 
 class ResumePdfRendererTest {
@@ -24,6 +27,7 @@ class ResumePdfRendererTest {
     ObjectNode fixture() throws Exception {
         ObjectNode root = (ObjectNode) json.readTree(ResumeStructure.SCHEMA);
         ((ObjectNode) root.path("basics")).put("name", "林小雨").put("phone", "13800000000")
+            .put("title", "Java 开发实习生")
             .put("email", "lin@example.com").put("city", "杭州").withArray("links").add("https://example.com");
         ((ObjectNode) root.path("education").get(0)).put("school", "浙江大学").put("degree", "本科")
             .put("major", "计算机科学").put("start", "2020-09").put("end", "2024-06").put("gpa", "3.8/4.0");
@@ -47,6 +51,7 @@ class ResumePdfRendererTest {
                 "https://example.com", "本科", "计算机科学", "2020-09", "2024-06", "3.8/4.0", "示例公司", "开发工程师", "至今",
                 "校园服务平台", "负责人", "Java", "交付项目成果", "后端", "Spring Boot", "英语六级", "个人摘要", "教育经历", "工作经历", "项目经历", "专业技能", "证书",
                 "<script>alert('原样文本')</script>");
+            assertThat(text.indexOf("Java 开发实习生")).isBetween(text.indexOf("林小雨") + 1, text.indexOf("13800000000") - 1);
             assertThat(document.getPage(0).getMediaBox().getWidth()).isEqualTo(PDRectangle.A4.getWidth());
             assertThat(document.getPage(0).getMediaBox().getHeight()).isEqualTo(PDRectangle.A4.getHeight());
             assertThat(document.getPage(0).getResources().getFontNames()).isNotEmpty();
@@ -70,6 +75,7 @@ class ResumePdfRendererTest {
             String text = new PDFTextStripper().getText(c);
             assertThat(text).contains("林小雨", "https://example.com", "浙江大学", "3.8/4.0", "示例公司", "第11项成果",
                 "校园服务平台", "Spring Boot", "英语六级", "<script>alert('原样文本')</script>");
+            assertThat(text.indexOf("Java 开发实习生")).isBetween(text.indexOf("林小雨") + 1, text.indexOf("13800000000") - 1);
             assertThat(text.indexOf("专业技能")).isLessThan(text.indexOf("教育经历"));
             assertThat(c.getNumberOfPages()).as("compact %d vs classic %d", c.getNumberOfPages(), k.getNumberOfPages()).isEqualTo(1);
             assertThat(k.getNumberOfPages()).isGreaterThan(1);
@@ -107,5 +113,70 @@ class ResumePdfRendererTest {
         Path invalid = Files.writeString(temp.resolve("invalid.ttf"), "not a font");
         assertThatThrownBy(() -> new ResumePdfRenderer(invalid.toString(), "").render("简历", fixture(), "classic"))
             .isInstanceOf(BusinessException.class).hasMessageContaining("中文字体");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"。", "，", "；", "、", "：", "）", "】", "》", "」", "』", "”", "’", "！", "？"})
+    void keepsClosingPunctuationOffLineStart(String mark) throws Exception {
+        String text = "甲乙丙丁" + mark + "后续";
+        try (var document = new org.apache.pdfbox.pdmodel.PDDocument(); var font = ResumePdfFont.open("", false)) {
+            font.embed(document, List.of(text));
+            var lines = ResumePdfRenderer.wrap(text, font, 11, width("甲乙丙丁", font));
+            assertThat(lines).containsExactly("甲乙丙", "丁" + mark + "后续");
+            assertThat(String.join("", lines)).isEqualTo(text);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"（", "【", "《", "「", "『", "“", "‘"})
+    void keepsOpeningPunctuationOffLineEnd(String mark) throws Exception {
+        String text = "甲乙丙" + mark + "丁戊";
+        try (var document = new org.apache.pdfbox.pdmodel.PDDocument(); var font = ResumePdfFont.open("", false)) {
+            font.embed(document, List.of(text));
+            var lines = ResumePdfRenderer.wrap(text, font, 11, width("甲乙丙丁", font));
+            assertThat(lines).containsExactly("甲乙丙", mark + "丁戊");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"TypeScript", "bge-m3", "Spring", "Boot", "https://example.test/v1?q=demo&x=a,b$#ref", "1.2.3"})
+    void wrapsLatinWordsUrlsAndVersionsAsWholeUnits(String word) throws Exception {
+        String prefix = "甲乙丙丁戊己庚辛";
+        String text = prefix + word + "后续";
+        try (var document = new org.apache.pdfbox.pdmodel.PDDocument(); var font = ResumePdfFont.open("", false)) {
+            font.embed(document, List.of(text));
+            float maxWidth = Math.max(width(prefix, font), width(word, font)) + 1;
+            var lines = ResumePdfRenderer.wrap(text, font, 11, maxWidth);
+            assertThat(lines.get(0)).isEqualTo(prefix);
+            assertThat(lines.get(1)).startsWith(word);
+            assertThat(String.join("", lines)).isEqualTo(text);
+        }
+    }
+
+    @Test void breaksAtSpacesAndPreservesParagraphsAndOverlongWordContent() throws Exception {
+        String longWord = "https://example.test/" + "longsegment".repeat(8);
+        String text = "Spring Boot\n\n" + longWord;
+        try (var document = new org.apache.pdfbox.pdmodel.PDDocument(); var font = ResumePdfFont.open("", false)) {
+            font.embed(document, List.of(text));
+            float maxWidth = width("Spring ", font) + .1f;
+            var lines = ResumePdfRenderer.wrap(text, font, 11, maxWidth);
+            assertThat(lines.subList(0, 3)).containsExactly("Spring ", "Boot", "");
+            var forced = lines.subList(3, lines.size());
+            assertThat(forced.size()).isGreaterThan(1);
+            assertThat(String.join("", forced)).isEqualTo(longWord);
+            assertThat(forced).allSatisfy(line -> assertThat(width(line, font)).isLessThanOrEqualTo(maxWidth + .01f));
+        }
+    }
+
+    @Test void exportsLegacyVersionsWithoutTitle() throws Exception {
+        var root = fixture();
+        ((ObjectNode) root.path("basics")).remove("title");
+        try (var document = Loader.loadPDF(renderer.render("示例简历", root, "classic"))) {
+            assertThat(new PDFTextStripper().getText(document)).contains("林小雨").doesNotContain("Java 开发实习生");
+        }
+    }
+
+    private static float width(String text, ResumePdfFont font) {
+        return (float) text.codePoints().mapToDouble(point -> font.width(point, 11)).sum();
     }
 }

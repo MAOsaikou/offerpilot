@@ -10,7 +10,7 @@ import java.util.Set;
 public final class ResumeStructure {
     private ResumeStructure() {}
     public static final String SCHEMA = """
-        {"basics":{"name":"","phone":"","email":"","city":"","links":[]},
+        {"basics":{"name":"","title":"","phone":"","email":"","city":"","links":[]},
         "education":[{"school":"","degree":"","major":"","start":"","end":"","gpa":""}],
         "experience":[{"org":"","title":"","start":"","end":"","bullets":[]}],
         "projects":[{"name":"","role":"","start":"","end":"","tech":[],"bullets":[]}],
@@ -27,7 +27,10 @@ public final class ResumeStructure {
         require(root != null && root.isObject() && root.toString().length() <= 100_000);
         fields(root, Set.of("basics", "education", "experience", "projects", "skills", "certificates", "summary", "confidence"));
         JsonNode basics = root.path("basics");
-        object(basics, Set.of("name", "phone", "email", "city", "links"));
+        require(basics.isObject());
+        // Older saved versions and clients may omit the optional title.
+        if (!basics.has("title")) ((com.fasterxml.jackson.databind.node.ObjectNode) basics).put("title", "");
+        object(basics, Set.of("name", "title", "phone", "email", "city", "links"));
         for (var section : SECTIONS.entrySet()) {
             JsonNode array = root.path(section.getKey());
             require(array.isArray() && array.size() <= 50);

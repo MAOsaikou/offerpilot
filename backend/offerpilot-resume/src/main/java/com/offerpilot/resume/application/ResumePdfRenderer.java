@@ -74,6 +74,7 @@ public class ResumePdfRenderer {
         String name = text(basics, "name");
         float body = style.bodySize(), gap = style.scale();
         add(blocks, name.isBlank() ? title : name, style.nameSize(), true, 0, 8 * gap, false);
+        add(blocks, text(basics, "title"), body, false, 0, 3 * gap, false);
         List<String> contact = new ArrayList<>(List.of(text(basics, "phone"), text(basics, "email"), text(basics, "city")));
         // Compact keeps links on the contact line to save vertical space.
         if (style.compact()) for (JsonNode link : basics.path("links")) contact.add(clean(link.asText()));
@@ -149,6 +150,62 @@ public class ResumePdfRenderer {
             .replaceAll("[\\p{Cntrl}&&[^\\n]]", "").strip();
     }
 
+    private static final String NO_LINE_START = "。，、；：！？）］｝】》〉」』”’…,.!?;:)]}";
+    private static final String NO_LINE_END = "（［｛【《〈「『“‘([{";
+
+    /** Wrap at Chinese/word boundaries, keeping punctuation with its neighbouring text. */
+    static List<String> wrap(String text, ResumePdfFont font, float size, float maxWidth) {
+        List<String> lines = new ArrayList<>();
+        for (String paragraph : text.split("\n", -1)) {
+            int[] points = paragraph.codePoints().toArray();
+            double[] widths = new double[points.length + 1];
+            for (int i = 0; i < points.length; i++) widths[i + 1] = widths[i] + font.width(points[i], size);
+            if (points.length == 0) lines.add("");
+            for (int start = 0; start < points.length;) {
+                int fit = start;
+                while (fit < points.length && widths[fit + 1] - widths[start] <= maxWidth) fit++;
+                // Always consume a code point, even if the available width is narrower than a glyph.
+                fit = Math.max(start + 1, fit);
+                int end = fit;
+                while (end > start && !canBreak(points, end)) end--;
+                if (end == start) {
+                    int wordStart = fit, wordEnd = fit;
+                    while (wordStart > start && wordPoint(points[wordStart - 1])) wordStart--;
+                    while (wordEnd < points.length && wordPoint(points[wordEnd])) wordEnd++;
+                    if (widths[wordEnd] - widths[wordStart] > maxWidth) {
+                        // Only a word wider than the whole line may be split internally.
+                        end = fit;
+                        while (end < points.length && !punctuationBreak(points, end)) end++;
+                    } else {
+                        // A short indivisible phrase/closing mark may hang beyond the margin.
+                        end = fit;
+                        while (end < points.length && !canBreak(points, end)) end++;
+                    }
+                }
+                lines.add(new String(points, start, end - start));
+                start = end;
+            }
+        }
+        return lines;
+    }
+
+    private static boolean canBreak(int[] points, int at) {
+        return at == points.length || (punctuationBreak(points, at)
+            && !(wordPoint(points[at - 1]) && wordPoint(points[at])));
+    }
+    private static boolean punctuationBreak(int[] points, int at) {
+        int before = at - 1, after = at;
+        while (before >= 0 && Character.isWhitespace(points[before])) before--;
+        while (after < points.length && Character.isWhitespace(points[after])) after++;
+        return (before < 0 || NO_LINE_END.indexOf(points[before]) < 0)
+            && (after == points.length || NO_LINE_START.indexOf(points[after]) < 0);
+    }
+    private static boolean wordPoint(int point) {
+        // Keep printable ASCII runs intact, including URL paths, queries and fragments.
+        return (point >= '!' && point <= '~') || Character.isDigit(point)
+            || Character.UnicodeScript.of(point) == Character.UnicodeScript.LATIN;
+    }
+
     private static final class Layout implements AutoCloseable {
         private final float MARGIN;
         private final Style style;
@@ -198,22 +255,6 @@ public class ResumePdfRenderer {
                 content.endText();
             }
             y -= block.gap();
-        }
-        private static List<String> wrap(String text, ResumePdfFont font, float size, float maxWidth) {
-            List<String> lines = new ArrayList<>();
-            for (String paragraph : text.split("\n", -1)) {
-                StringBuilder line = new StringBuilder();
-                float width = 0;
-                for (int point : paragraph.codePoints().toArray()) {
-                    float advance = font.width(point, size);
-                    if (width + advance > maxWidth && !line.isEmpty()) {
-                        lines.add(line.toString()); line.setLength(0); width = 0;
-                    }
-                    line.appendCodePoint(point); width += advance;
-                }
-                lines.add(line.toString());
-            }
-            return lines;
         }
         @Override public void close() throws IOException { if (content != null) content.close(); }
     }

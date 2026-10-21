@@ -85,6 +85,7 @@ function populate() {
     draft.value = JSON.parse(
       JSON.stringify(resume.value.currentVersion.structured),
     ) as ResumeStructure
+    draft.value.basics.title ??= ''
     original.value = JSON.stringify(draft.value)
     baseVersion.value = resume.value.currentVersion.id
   }
@@ -214,6 +215,7 @@ async function showHistory() {
 function restore(version: ResumeVersion) {
   if (dirty.value && !window.confirm('用此版本替换尚未保存的编辑内容吗？')) return
   draft.value = JSON.parse(JSON.stringify(version.structured)) as ResumeStructure
+  draft.value.basics.title ??= ''
   tab.value = '内容'
   message.value = '已载入历史版本，点击保存将创建新版本。'
 }
@@ -307,6 +309,7 @@ const sections = [
 ]
 const basics = [
   { key: 'name' as const, label: '姓名' },
+  { key: 'title' as const, label: '头衔 / 求职意向' },
   { key: 'phone' as const, label: '电话' },
   { key: 'email' as const, label: '邮箱' },
   { key: 'city' as const, label: '城市' },
