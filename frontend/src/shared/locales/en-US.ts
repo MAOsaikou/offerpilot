@@ -2551,4 +2551,94 @@ export default {
   'Combined ranking score: {0} (initial rank score + approved research/salary constraint adjustments; not a probability)':
     'Combined ranking score: {0} (initial rank score + approved research/salary constraint adjustments; not a probability)',
   'Title / job objective': 'Title / job objective',
+  'First, tell me a little about yourself: what is your major, and what year are you in?':
+    'First, tell me a little about yourself: what is your major, and what year are you in?',
+  'What do you most often do in your free time that makes you lose track of time?':
+    'What do you most often do in your free time that makes you lose track of time?',
+  'Describe an experience that gave you a strong sense of achievement. What exactly did you do?':
+    'Describe an experience that gave you a strong sense of achievement. What exactly did you do?',
+  'Which activities do you enjoy most: building things, investigating how things work, creating and expressing yourself, helping others, organizing projects, or keeping things in order? Give an example if you can.':
+    'Which activities do you enjoy most: building things, investigating how things work, creating and expressing yourself, helping others, organizing projects, or keeping things in order? Give an example if you can.',
+  'What role do you usually play in a team? How would classmates or friends describe you?':
+    'What role do you usually play in a team? How would classmates or friends describe you?',
+  'What matters most to you when choosing a job? For example: growth, income, stability, interest, impact, or work-life balance.':
+    'What matters most to you when choosing a job? For example: growth, income, stability, interest, impact, or work-life balance.',
+  'Finally, what are your practical preferences: preferred city, expected monthly salary, and how much overtime you can accept? It is fine if you have not decided yet.':
+    'Finally, what are your practical preferences: preferred city, expected monthly salary, and how much overtime you can accept? It is fine if you have not decided yet.',
+  'Repair a wobbly bookshelf so it is sturdy and usable':
+    'Repair a wobbly bookshelf so it is sturdy and usable',
+  'Assemble a small device by following a diagram':
+    'Assemble a small device by following a diagram',
+  'Observe and care for plants outdoors': 'Observe and care for plants outdoors',
+  'Use tools to turn materials into a physical object':
+    'Use tools to turn materials into a physical object',
+  'Find out why a household device is not working':
+    'Find out why a household device is not working',
+  'Design a small experiment to test an idea': 'Design a small experiment to test an idea',
+  'Compare several sets of data to find patterns': 'Compare several sets of data to find patterns',
+  'Investigate the causes behind a phenomenon': 'Investigate the causes behind a phenomenon',
+  'Reason through a difficult problem with no ready-made answer':
+    'Reason through a difficult problem with no ready-made answer',
+  'Read about a new technology to understand how it works':
+    'Read about a new technology to understand how it works',
+  'Draw different scenes for a story': 'Draw different scenes for a story',
+  'Express an emotion through sound or melody': 'Express an emotion through sound or melody',
+  'Redesign an everyday object to make it more interesting':
+    'Redesign an everyday object to make it more interesting',
+  'Write a short piece in your own personal style':
+    'Write a short piece in your own personal style',
+  'Edit a video that communicates your ideas': 'Edit a video that communicates your ideas',
+  'Patiently teach someone a new skill': 'Patiently teach someone a new skill',
+  'Listen to a friend and help them work through a concern':
+    'Listen to a friend and help them work through a concern',
+  'Organize an activity to help people in the community':
+    'Organize an activity to help people in the community',
+  'Help new students learn how to settle into campus life':
+    'Help new students learn how to settle into campus life',
+  'Explain complex ideas so others can understand them':
+    'Explain complex ideas so others can understand them',
+  'Persuade teammates to support a new proposal': 'Persuade teammates to support a new proposal',
+  'Lead a group in turning an activity idea into reality':
+    'Lead a group in turning an activity idea into reality',
+  'Introduce a product to potential users': 'Introduce a product to potential users',
+  'Bring different opinions together to agree on a shared plan':
+    'Bring different opinions together to agree on a shared plan',
+  'Look for an opportunity to start a small project':
+    'Look for an opportunity to start a small project',
+  'File disorganized materials according to a set of rules':
+    'File disorganized materials according to a set of rules',
+  'Check a spreadsheet for missing information and errors':
+    'Check a spreadsheet for missing information and errors',
+  'Create clear steps to keep work organized': 'Create clear steps to keep work organized',
+  'Keep and organize records of income and expenses for an activity':
+    'Keep and organize records of income and expenses for an activity',
+  'Check a batch of work against agreed standards':
+    'Check a batch of work against agreed standards',
+  'Personal services': 'Personal services',
+  Data: 'Data',
+  'Testing and quality': 'Testing and quality',
+  'Algorithms and artificial intelligence': 'Algorithms and artificial intelligence',
+  'Software development': 'Software development',
+  'Operations and security': 'Operations and security',
+  Healthcare: 'Healthcare',
+  'Business and finance': 'Business and finance',
+  'Security and public safety': 'Security and public safety',
+  'Architecture and engineering': 'Architecture and engineering',
+  'Education and libraries': 'Education and libraries',
+  Law: 'Law',
+  'Social services': 'Social services',
+  'Management and administration': 'Management and administration',
+  'Natural and social sciences': 'Natural and social sciences',
+  'Arts, design and media': 'Arts, design and media',
+  'Administrative and office support': 'Administrative and office support',
+  'Computing and mathematics': 'Computing and mathematics',
+  'Transport and logistics': 'Transport and logistics',
+  Sales: 'Sales',
+  'Job seeker': 'Job seeker',
+  'Jobs MCP': 'Jobs MCP',
+  'Search MCP': 'Search MCP',
+  'GitHub MCP': 'GitHub MCP',
+  'Enter your public GitHub username. A token is optional.':
+    'Enter your public GitHub username. A token is optional.',
+  'No data yet: no trusted salary source': 'No data yet: no trusted salary source',
 } as const

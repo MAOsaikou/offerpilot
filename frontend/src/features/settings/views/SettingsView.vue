@@ -107,7 +107,7 @@ function exportWorkspace() {
       <div class="form-grid">
         <label class="field"
           >{{ uiText('What should we call you?')
-          }}<input v-model="workspace.state.name" maxlength="40" /></label
+          }}<input v-model="workspace.displayName" maxlength="40" /></label
         ><label class="field"
           >{{ uiText('Target career') }}<input v-model="workspace.state.target" maxlength="100"
         /></label>

@@ -10,6 +10,7 @@ import {
   refreshMcpServer,
   callMcpTool,
   mcpStatus,
+  mcpProviderName,
   type McpConnection,
 } from '@/shared/api/mcp'
 import { identitySignal } from '@/shared/utils/authSession'
@@ -124,7 +125,7 @@ onMounted(load)
     </button>
     <p v-if="!busy && !servers.length && !error">{{ uiText('No connections yet.') }}</p>
     <article v-for="server in servers" :key="server.provider" class="panel form-stack">
-      <h2>{{ server.name }} · {{ mcpStatus(server.status) }}</h2>
+      <h2>{{ mcpProviderName(server) }} · {{ mcpStatus(server.status) }}</h2>
       <p v-if="server.refreshedAt" class="subtle">
         {{ uiText('Last refreshed: {0}', [new Date(server.refreshedAt).toLocaleString(language)]) }}
       </p>

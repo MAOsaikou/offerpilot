@@ -1,3 +1,4 @@
+import { setLanguage } from '@/shared/utils/language'
 vi.mock('@/shared/components/BackgroundTaskStatus.vue', () => ({
   default: { template: '<div />' },
 }))
@@ -167,4 +168,25 @@ it('asks the new clarification immediately and resumes base questions after answ
   await flush()
   expect(saveAssessmentAnswer).toHaveBeenLastCalledWith(7, '我最近做过一个小程序')
   expect(root.querySelector('.current')?.textContent).toBe('课余？')
+})
+
+afterEach(() => setLanguage('zh-CN'))
+
+it('switches base prompts live and saves original answer indexes and user prose', async () => {
+  await mount()
+  setLanguage('en-US')
+  await nextTick()
+  expect(root.textContent).toContain('what is your major, and what year are you in?')
+  const text = root.querySelector('textarea')!
+  text.value = '用户的回答原文'
+  text.dispatchEvent(new Event('input'))
+  root.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }))
+  await flush()
+  expect(saveAssessmentAnswer).toHaveBeenCalledWith(0, '用户的回答原文')
+  expect(root.textContent).toContain('lose track of time')
+  expect(root.textContent).toContain('用户的回答原文')
+  setLanguage('zh-CN')
+  await nextTick()
+  expect(root.textContent).toContain('专业？')
+  expect(root.textContent).toContain('课余？')
 })

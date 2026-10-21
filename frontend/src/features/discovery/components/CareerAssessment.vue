@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { formatDisplay, translate as uiText } from '@/shared/utils/language'
 
+import { assessmentQuestionText } from '@/shared/utils/assessmentText'
+
 import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
 
 import { computed, onBeforeUnmount, ref } from 'vue'
@@ -51,7 +53,9 @@ onBeforeUnmount(() => (disposed = true))
 const answered = computed(
   () => state.value?.answers.slice(0, 7).filter((a) => a.trim()).length ?? 0,
 )
-const questions = computed(() => state.value?.questions ?? [])
+const questions = computed(
+  () => state.value?.questions.map((text, index) => assessmentQuestionText(index, text)) ?? [],
+)
 const transcript = computed(() =>
   questions.value
     .map((question, index) => ({ question, index }))
@@ -423,6 +427,7 @@ async function restoreTask() {
 <style scoped>
 .assessment-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 12px;

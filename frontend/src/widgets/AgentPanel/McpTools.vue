@@ -3,7 +3,13 @@ import { localizedText, translate as uiText } from '@/shared/utils/language'
 
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { listMcpServers, refreshMcpServer, mcpStatus, type McpConnection } from '@/shared/api/mcp'
+import {
+  listMcpServers,
+  refreshMcpServer,
+  mcpProviderName,
+  mcpStatus,
+  type McpConnection,
+} from '@/shared/api/mcp'
 import type { ToolCallView } from '@/shared/stores/agentRun'
 import { identitySignal } from '@/shared/utils/authSession'
 const props = defineProps<{ toolCalls: ToolCallView[] }>()
@@ -83,7 +89,7 @@ onMounted(load)
       :key="server.provider"
       class="rounded-xl border border-border/60 p-2"
     >
-      <p>{{ server.name }} · {{ mcpStatus(server.status) }}</p>
+      <p>{{ mcpProviderName(server) }} · {{ mcpStatus(server.status) }}</p>
       <ul v-if="server.tools.length" class="mt-1 space-y-1">
         <li
           v-for="tool in server.tools"

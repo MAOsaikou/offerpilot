@@ -265,6 +265,15 @@ it('switches knowledge tabs and filters live but preserves catalog entries', asy
   await nextTick()
   expect(root.textContent).toContain('General question bank')
   expect(root.textContent).toContain('Career category')
+  const family = root.querySelector<HTMLOptionElement>('option[value="医疗健康"]')!
+  expect(family.textContent?.trim()).toBe('Healthcare')
+  ;(family.parentElement as HTMLSelectElement).value = '医疗健康'
+  family.parentElement!.dispatchEvent(new Event('change'))
+  await settle()
+  expect(api.listBuiltinOccupations).toHaveBeenLastCalledWith(
+    expect.objectContaining({ family: '医疗健康' }),
+    expect.any(AbortSignal),
+  )
   expect(root.textContent).toContain('Industry reports (planned)')
   expect(root.textContent).toContain('护士')
   expect(root.textContent).toContain('核验交接')

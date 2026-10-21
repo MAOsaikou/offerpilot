@@ -80,7 +80,7 @@ function choose(role: string) {
 }
 </script>
 <template>
-  <section class="page-stack">
+  <section class="page-stack overflow-safe">
     <PageHeading
       :title="uiText('My career profile')"
       :description="

@@ -373,6 +373,7 @@ it.each([
   await nextTick()
   expect(root.textContent).toContain(en)
   if (path === '/discover') {
+    expect(root.querySelector('.page-stack')?.classList.contains('overflow-safe')).toBe(true)
     const interest = root.querySelector<HTMLInputElement>('.chip input')!
     expect(interest.value).toBe('技术研发')
     expect(interest.checked).toBe(true)

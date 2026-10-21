@@ -93,3 +93,22 @@ it('keeps settings tabs navigable after switching language in place', async () =
   await nextTick()
   expect(root.querySelector('.tabs .selected')?.textContent?.trim()).toBe('模型选择')
 })
+
+it('localizes the default profile name without persisting translated defaults', async () => {
+  const { workspace } = await mount('/settings')
+  workspace.state.name = '求职者'
+  const name = root.querySelector<HTMLInputElement>('input[maxlength="40"]')!
+  setLanguage('en-US')
+  await nextTick()
+  expect(name.value).toBe('Job seeker')
+  expect(workspace.state.name).toBe('求职者')
+  setLanguage('zh-CN')
+  await nextTick()
+  expect(name.value).toBe('求职者')
+  name.value = '用户自定姓名'
+  name.dispatchEvent(new Event('input'))
+  setLanguage('en-US')
+  await nextTick()
+  expect(name.value).toBe('用户自定姓名')
+  expect(workspace.state.name).toBe('用户自定姓名')
+})

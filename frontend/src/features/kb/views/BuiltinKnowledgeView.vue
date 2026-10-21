@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatDisplay, translate as uiText } from '@/shared/utils/language'
+import { translateLabel, formatDisplay, translate as uiText } from '@/shared/utils/language'
 
 import { computed, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
@@ -106,6 +106,12 @@ function submit() {
   filters.page = 1
   if (same) void active.value.refetch()
 }
+const UNSOURCED_SALARY = '暂无数据：尚无可信薪资来源'
+function salaryNoticeText(notice: string): string {
+  return notice === UNSOURCED_SALARY
+    ? uiText('No data yet: no trusted salary source')
+    : formatDisplay(notice)
+}
 </script>
 <template>
   <section class="page-stack builtin-catalog">
@@ -153,7 +159,7 @@ function submit() {
       </div>
       <article v-else-if="detail.data.value" class="panel form-stack">
         <h2>{{ formatDisplay(detail.data.value.name) }}</h2>
-        <p>{{ formatDisplay(detail.data.value.family) }}</p>
+        <p>{{ translateLabel(detail.data.value.family) }}</p>
         <p class="catalog-copy">{{ formatDisplay(detail.data.value.description) }}</p>
         <h3>
           {{
@@ -182,7 +188,7 @@ function submit() {
         </ul>
         <p v-else>{{ uiText('No skill data available') }}</p>
         <h3>{{ uiText('Salary') }}</h3>
-        <p>{{ formatDisplay(detail.data.value.salaryNotice) }}</p>
+        <p>{{ salaryNoticeText(detail.data.value.salaryNotice) }}</p>
         <pre v-if="detail.data.value.salaryRange" class="catalog-copy">{{
           formatDisplay(JSON.stringify(detail.data.value.salaryRange, null, 2))
         }}</pre>
@@ -255,8 +261,8 @@ function submit() {
             >{{ uiText('Career category')
             }}<select v-model="filters.family">
               <option value="">{{ uiText('All categories') }}</option>
-              <option v-for="family in facets.data.value?.families" :key="family">
-                {{ family }}
+              <option v-for="family in facets.data.value?.families" :key="family" :value="family">
+                {{ translateLabel(family) }}
               </option>
             </select></label
           >
@@ -345,9 +351,9 @@ function submit() {
                 item.name
               }}</RouterLink>
             </h2>
-            <p>{{ item.family }} · {{ item.hollandCode }}</p>
+            <p>{{ translateLabel(item.family) }} · {{ item.hollandCode }}</p>
             <p class="catalog-copy">{{ item.description }}</p>
-            <p>{{ item.salaryNotice }}</p>
+            <p>{{ salaryNoticeText(item.salaryNotice) }}</p>
             <p class="subtle">{{ item.source }} · {{ item.license }}</p>
           </article>
         </div>
