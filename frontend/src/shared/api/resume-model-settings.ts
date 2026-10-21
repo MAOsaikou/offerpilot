@@ -1,3 +1,4 @@
+import { sourceText } from '@/shared/utils/language'
 import { normalizeModelTier } from '../types/model-tier'
 import { apiRequest } from './client'
 
@@ -20,7 +21,7 @@ export interface ResumeModelSettings {
 export const getResumeModelSettings = async () => {
   const settings = await apiRequest<ResumeModelSettings>('/resume-model-settings')
   const legacy = (id: string) =>
-    ['CHEAP', 'ECONOMY', '经济', 'BALANCED'].includes(id.trim().toUpperCase())
+    ['CHEAP', 'ECONOMY', sourceText('Economy'), 'BALANCED'].includes(id.trim().toUpperCase())
       ? normalizeModelTier(id)
       : id
   return {

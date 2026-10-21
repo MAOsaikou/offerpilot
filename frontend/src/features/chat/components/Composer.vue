@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import {
@@ -19,7 +21,7 @@ interface Pending {
 }
 const pending = ref<Pending[]>([])
 const uploading = ref(0)
-const attachError = ref('')
+const attachError = localizedText()
 const picker = ref<HTMLInputElement | null>(null)
 const ready = computed(() => pending.value.flatMap((p) => (p.image ? [p.image] : [])))
 async function pick(event: Event) {
@@ -29,15 +31,15 @@ async function pick(event: Event) {
   attachError.value = ''
   for (const file of files) {
     if (pending.value.length >= CHAT_IMAGE_MAX_COUNT) {
-      attachError.value = `每条消息最多 ${CHAT_IMAGE_MAX_COUNT} 张图片`
+      attachError.value = () => uiText('Up to {0} images per message', [CHAT_IMAGE_MAX_COUNT])
       break
     }
     if (!CHAT_IMAGE_TYPES.includes(file.type)) {
-      attachError.value = '仅支持 PNG、JPG、WebP 图片'
+      attachError.value = () => uiText('Only PNG, JPG and WebP images are supported')
       continue
     }
     if (file.size > CHAT_IMAGE_MAX_BYTES) {
-      attachError.value = '图片不能超过 5MB'
+      attachError.value = () => uiText('Images must be 5 MB or smaller')
       continue
     }
     const item: Pending = {
@@ -52,7 +54,8 @@ async function pick(event: Event) {
       const live = pending.value.find((p) => p.key === item.key)
       if (live) live.image = image
     } catch (error) {
-      attachError.value = error instanceof Error ? error.message : '图片上传失败'
+      attachError.value = () =>
+        error instanceof Error ? error.message : uiText('Image upload failed')
       remove(item.key)
     } finally {
       uploading.value--
@@ -103,15 +106,21 @@ function keydown(event: KeyboardEvent) {
       v-model="draft"
       rows="2"
       maxlength="4000"
-      aria-label="对话内容"
-      placeholder="说说你的目标，或写下现在遇到的问题"
+      :aria-label="uiText('Message')"
+      :placeholder="uiText('Share your goal or describe the problem you are facing')"
       :disabled="disabled"
       @keydown="keydown"
     />
-    <div v-if="pending.length" class="composer-images" aria-label="待发送的图片">
+    <div v-if="pending.length" class="composer-images" :aria-label="uiText('Images to send')">
       <figure v-for="item in pending" :key="item.key" :class="{ uploading: !item.image }">
         <img :src="item.preview" :alt="item.name" />
-        <button type="button" :aria-label="`移除 ${item.name}`" @click="remove(item.key)">×</button>
+        <button
+          type="button"
+          :aria-label="uiText('Remove {0}', [item.name])"
+          @click="remove(item.key)"
+        >
+          ×
+        </button>
       </figure>
     </div>
     <p v-if="attachError" class="composer-error" role="alert">{{ attachError }}</p>
@@ -129,24 +138,26 @@ function keydown(event: KeyboardEvent) {
           type="button"
           class="composer-attach"
           :disabled="disabled || streaming || pending.length >= CHAT_IMAGE_MAX_COUNT"
-          title="添加图片（PNG/JPG/WebP，≤5MB，最多 3 张）"
+          :title="uiText('Add images (PNG/JPG/WebP, up to 5 MB each, 3 maximum)')"
           @click="picker?.click()"
         >
-          <AppIcon name="plus" :size="14" />图片
+          <AppIcon name="plus" :size="14" />{{ uiText('Image') }}
         </button>
         <slot name="tools" />
       </div>
-      <span v-if="draft.length > 3500" class="composer-count num">{{ draft.length }}/4000</span>
-      <span class="composer-hint">Enter 发送，Shift + Enter 换行</span>
+      <span v-if="draft.length > 3500" class="composer-count num"
+        >{{ formatDisplay(draft.length) }}/4000</span
+      >
+      <span class="composer-hint">{{ uiText('Enter to send, Shift + Enter for a new line') }}</span>
       <button v-if="streaming" type="button" class="btn composer-stop" @click="emit('stop')">
-        <AppIcon name="stop" :size="14" />停止接收
+        <AppIcon name="stop" :size="14" />{{ uiText('Stop receiving') }}
       </button>
       <button
         v-else
         type="button"
         class="btn primary composer-send"
         :disabled="disabled || !draft.trim() || uploading > 0"
-        aria-label="发送"
+        :aria-label="uiText('Send')"
         @click="submit"
       >
         <AppIcon name="send" :size="18" />

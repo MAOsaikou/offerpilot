@@ -1,3 +1,4 @@
+import { setLanguage } from '@/shared/utils/language'
 vi.mock('@/shared/components/BackgroundTaskStatus.vue', () => ({
   default: { template: '<div />' },
 }))
@@ -888,4 +889,26 @@ it('renders saved per-question dimensions, quoted evidence and improved answers 
   expect(root.textContent).toContain('结果：【补充真实结果】')
   expect(root.textContent).toContain('重答并说明真实结果')
   expect(root.textContent).toContain('已评分1/5题')
+})
+
+afterEach(() => setLanguage('zh-CN'))
+
+it('switches interview form labels live and keeps the transport kind unchanged', async () => {
+  await mount('/interviews')
+  await vi.waitFor(() => expect(root.textContent).toContain('服务端工程师'))
+  setLanguage('en-US')
+  await nextTick()
+  expect(root.textContent).toContain('Create a mock interview')
+  expect(root.textContent).toContain('Behavioral')
+  expect(root.textContent).toContain('Question mix')
+  expect(root.textContent).toContain('服务端工程师')
+  const general = [...root.querySelectorAll('option')].find(
+    (option) => option.textContent === 'General',
+  )!
+  expect(general.value).toBe('综合')
+  expect((general.parentElement as HTMLSelectElement).value).toBe('综合')
+  setLanguage('zh-CN')
+  await nextTick()
+  expect(root.textContent).toContain('创建模拟面试')
+  expect(createInterview).not.toHaveBeenCalled()
 })

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { language, translate as uiText } from '@/shared/utils/language'
+
 import { computed } from 'vue'
 import { renderMarkdown } from '@/shared/utils/markdown'
 import { highlightRevision } from '@/shared/utils/codeHighlight'
@@ -15,6 +17,7 @@ const emit = defineEmits<{ cite: [reference: string] }>()
 const html = computed(() => {
   // 语法高亮异步就绪后重新渲染
   void highlightRevision.value
+  void language.value
   return renderMarkdown(props.text, {
     streaming: props.streaming,
     citationIndexes: props.citationIndexes,
@@ -24,12 +27,12 @@ async function copyCode(button: HTMLElement) {
   const code = button.closest('.code-block')?.querySelector('pre')?.textContent ?? ''
   try {
     await navigator.clipboard.writeText(code)
-    button.textContent = '已复制'
+    button.textContent = uiText('Copied')
   } catch {
-    button.textContent = '复制失败'
+    button.textContent = uiText('Copy failed')
   }
   window.setTimeout(() => {
-    button.textContent = '复制'
+    button.textContent = uiText('Copy')
   }, 1500)
 }
 function onClick(event: MouseEvent) {

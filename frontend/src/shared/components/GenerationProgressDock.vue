@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useGenerationTasks } from '@/shared/stores/generationTasks'
@@ -8,7 +10,7 @@ const auth = useAuthStore()
 const store = useGenerationTasks()
 const open = ref(false)
 const cancellingId = ref('')
-const cancelError = ref('')
+const cancelError = localizedText()
 // Completion notices auto-collapse so the dock never sits on top of fresh results.
 const NOTICE_TTL_MS = 6000
 let noticeTimer: ReturnType<typeof setTimeout> | undefined
@@ -51,7 +53,8 @@ async function cancelTask(id: string, kind: string, entity?: string) {
       await store.refresh()
     }
   } catch (cause) {
-    cancelError.value = cause instanceof Error ? cause.message : '取消失败，请重试'
+    cancelError.value = () =>
+      cause instanceof Error ? cause.message : uiText('Could not cancel. Please retry.')
   } finally {
     cancellingId.value = ''
   }
@@ -61,24 +64,34 @@ async function cancelTask(id: string, kind: string, entity?: string) {
   <aside
     class="generation-dock"
     :class="{ 'generation-dock--compact': compact }"
-    aria-label="后台生成进度"
+    :aria-label="uiText('Background generation progress')"
   >
     <p v-if="store.notice" role="status" aria-live="polite">
       {{ store.notice }}
-      <button class="btn" aria-label="关闭任务通知" @click="store.notice = ''">关闭</button>
+      <button
+        class="btn"
+        :aria-label="uiText('Close task notifications')"
+        @click="store.notice = ''"
+      >
+        {{ uiText('Off') }}
+      </button>
     </p>
     <header class="generation-dock__head">
-      <strong>{{ compact ? '后台任务' : `后台任务 · ${store.active.length} 进行中` }}</strong>
+      <strong>{{
+        compact
+          ? uiText('Background tasks')
+          : uiText('Background tasks · {0} active', [store.active.length])
+      }}</strong>
       <button type="button" class="btn" :aria-expanded="open" @click="open = !open">
-        {{ open ? '收起' : '展开' }}
+        {{ open ? uiText('Collapse') : uiText('Expand') }}
       </button>
     </header>
     <template v-if="open">
       <p v-if="store.error || cancelError" class="generation-dock__error" role="alert">
         {{ cancelError || store.error }}
       </p>
-      <button class="btn" @click="store.refresh">刷新任务</button>
-      <p v-if="!store.tasks.length">暂无后台任务</p>
+      <button class="btn" @click="store.refresh">{{ uiText('Refresh tasks') }}</button>
+      <p v-if="!store.tasks.length">{{ uiText('No background tasks') }}</p>
       <ul class="generation-dock__list">
         <li v-for="task in store.tasks" :key="task.id">
           <div class="generation-dock__row">
@@ -89,10 +102,10 @@ async function cancelTask(id: string, kind: string, entity?: string) {
               :disabled="cancellingId === task.id"
               @click="cancelTask(task.id, task.kind, task.entityId)"
             >
-              取消
+              {{ uiText('Cancel') }}
             </button>
           </div>
-          <p class="subtle">{{ task.error || task.stage || '正在执行' }}</p>
+          <p class="subtle">{{ task.error || task.stage || uiText('Running') }}</p>
         </li>
       </ul>
     </template>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, translate as uiText } from '@/shared/utils/language'
+
 import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
 
 import { computed, onBeforeUnmount, ref } from 'vue'
@@ -21,14 +23,14 @@ const emit = defineEmits<{
   changed: [assessment: AssessmentConfirmed | null]
 }>()
 const LETTERS: RiasecLetter[] = ['R', 'I', 'A', 'S', 'E', 'C']
-const LABELS: Record<RiasecLetter, string> = {
-  R: '实际型 · 动手做出东西',
-  I: '研究型 · 钻研弄懂原理',
-  A: '艺术型 · 创作与表达',
-  S: '社会型 · 帮助与影响他人',
-  E: '企业型 · 组织推动与说服',
-  C: '常规型 · 有序规范与细致',
-}
+const LABELS = computed<Record<RiasecLetter, string>>(() => ({
+  R: uiText('Realistic · Build things hands-on'),
+  I: uiText('Investigative · Explore how things work'),
+  A: uiText('Artistic · Create and express yourself'),
+  S: uiText('Social · Help and influence others'),
+  E: uiText('Enterprising · Organize, lead and persuade'),
+  C: uiText('Conventional · Work with order and precision'),
+}))
 const MIN_ANSWERS = 4
 
 const state = ref<CareerAssessment>()
@@ -193,7 +195,7 @@ function confirm() {
 }
 
 function restart() {
-  if (!window.confirm('清空测评回答和画像，重新开始？')) return
+  if (!window.confirm(uiText('Clear your assessment answers and profile and start again?'))) return
   editing.value = false
   chatting.value = false
   void run(resetCareerAssessment, () => emit('changed', null))
@@ -211,54 +213,70 @@ async function restoreTask() {
       @completed="restoreTask"
     />
     <div class="assessment-head">
-      <h2 id="assessment-title">对话式职业测评</h2>
-      <span v-if="state" class="tag">{{ answered }} / {{ questions.length }} 题</span>
+      <h2 id="assessment-title">{{ uiText('Conversational career assessment') }}</h2>
+      <span v-if="state" class="tag">{{
+        uiText('Question {0} of {1}', [answered, questions.length])
+      }}</span>
     </div>
-    <p v-if="loading" role="status" class="subtle">正在读取测评…</p>
+    <p v-if="loading" role="status" class="subtle">{{ uiText('Loading assessment…') }}</p>
     <div v-if="error" role="alert" class="error-banner">
       {{ error }}
-      <button v-if="!state" class="btn text" @click="load">重试</button>
+      <button v-if="!state" class="btn text" @click="load">{{ uiText('Retry') }}</button>
     </div>
 
     <template v-if="phase === 'chat'">
       <p class="subtle">
-        不用做 60 道题。回答几个关于你的问题（每次一个），AI 会推断你的 Holland
-        兴趣与性格特质，并请你确认、修正。
+        {{
+          uiText(
+            'No need to answer 60 questions. Answer a few questions about yourself, one at a time. AI will suggest Holland interests and personality traits for you to confirm or adjust.',
+          )
+        }}
       </p>
-      <p class="subtle">7 个基础问题；回答较短或模糊时最多补问 5 次，总轮数不超过 12。</p>
+      <p class="subtle">
+        {{
+          uiText(
+            'Seven core questions, with up to five follow-ups for brief or unclear answers. No more than 12 exchanges in total.',
+          )
+        }}
+      </p>
       <ol class="transcript">
         <li v-for="{ question, index } in transcript" :key="index">
           <p class="bubble ask">{{ question }}</p>
           <p v-if="state!.answers[index]" class="bubble reply">
-            {{ state!.answers[index] }}
+            {{ formatDisplay(state!.answers[index]) }}
             <button type="button" class="btn text" :disabled="busy" @click="revise(index)">
-              修改
+              {{ uiText('Edit') }}
             </button>
           </p>
-          <p v-else class="subtle">已跳过</p>
+          <p v-else class="subtle">{{ uiText('Skipped') }}</p>
         </li>
       </ol>
       <form v-if="!finishedQuestions" class="form-stack" @submit.prevent="send">
         <p class="bubble ask current">{{ questions[step] }}</p>
         <label class="field"
-          >你的回答<textarea
+          >{{ uiText('Your answer')
+          }}<textarea
             v-model="draft"
             rows="3"
             maxlength="1000"
             :disabled="busy"
-            placeholder="说说具体的事，比一个标签更有用。"
+            :placeholder="uiText('A specific experience says more than a label.')"
           />
         </label>
         <div class="card-footer">
-          <button type="button" class="btn" :disabled="busy" @click="skip">跳过这题</button>
+          <button type="button" class="btn" :disabled="busy" @click="skip">
+            {{ uiText('Skip this question') }}
+          </button>
           <button class="btn primary" :disabled="busy || !draft.trim()">
-            {{ busy ? '正在保存…' : '发送' }}
+            {{ busy ? uiText('Saving…') : uiText('Send') }}
           </button>
         </div>
       </form>
       <div class="card-footer">
         <span class="subtle">{{
-          answered < MIN_ANSWERS ? `至少回答 ${MIN_ANSWERS} 题后可生成画像` : '可以生成画像了'
+          answered < MIN_ANSWERS
+            ? uiText('Answer at least {0} questions to generate a profile', [MIN_ANSWERS])
+            : uiText('Your profile is ready to generate')
         }}</span>
         <button
           type="button"
@@ -267,7 +285,7 @@ async function restoreTask() {
           :aria-busy="busy"
           @click="infer"
         >
-          {{ busy ? '正在分析…' : '生成我的画像' }}
+          {{ busy ? uiText('Analyzing…') : uiText('Generate my profile') }}
         </button>
       </div>
     </template>
@@ -276,14 +294,18 @@ async function restoreTask() {
       <p class="helper-note">
         {{
           state?.inference?.source === 'rule'
-            ? 'AI 暂不可用，下面是按关键词规则得出的初步画像，请重点核对。'
-            : 'AI 根据你的原话推断了下面的画像。它可能不准，请拖动分数、删改特质后再确认。'
+            ? uiText(
+                'AI is unavailable. This preliminary profile uses keyword rules. Please review it carefully.',
+              )
+            : uiText(
+                'AI inferred this profile from your words. It may be inaccurate. Adjust scores and edit traits before confirming.',
+              )
         }}
       </p>
       <p v-if="state?.inference?.summary" class="assessment-summary">
         {{ state.inference.summary }}
       </p>
-      <h3>兴趣倾向 · 当前兴趣码 {{ code }}</h3>
+      <h3>{{ uiText('Interests · Current interest code: {0}', [code]) }}</h3>
       <div v-for="letter in LETTERS" :key="letter" class="riasec-row">
         <label :for="`riasec-${letter}`">{{ letter }} {{ LABELS[letter] }}</label>
         <input
@@ -300,77 +322,98 @@ async function restoreTask() {
           「{{ state.inference.riasecEvidence[letter] }}」
         </p>
       </div>
-      <h3>性格与工作风格</h3>
+      <h3>{{ uiText('Personality and work style') }}</h3>
       <ul class="trait-list">
         <li v-for="(trait, index) in traits" :key="trait.name" class="trait">
           <strong>{{ trait.name }}</strong>
           <span class="subtle">{{
-            trait.evidence ? `置信度 ${Math.round(trait.confidence * 100)}%` : '自己补充'
+            trait.evidence
+              ? uiText('Confidence: {0}%', [Math.round(trait.confidence * 100)])
+              : uiText('Add your own')
           }}</span>
           <button
             type="button"
             class="btn text"
-            :aria-label="`删除特质 ${trait.name}`"
+            :aria-label="uiText('Delete trait {0}', [trait.name])"
             :disabled="busy"
             @click="traits.splice(index, 1)"
           >
-            删除
+            {{ uiText('Delete') }}
           </button>
-          <p v-if="trait.evidence" class="evidence">依据：「{{ trait.evidence }}」</p>
+          <p v-if="trait.evidence" class="evidence">
+            {{ uiText('Evidence: “{0}”', [trait.evidence]) }}
+          </p>
         </li>
       </ul>
       <form class="inline-form" @submit.prevent="addTrait">
         <input
           v-model="newTrait"
           maxlength="12"
-          placeholder="补充一个特质，如「抗压」"
-          aria-label="补充特质"
+          :placeholder="uiText('Add a trait, such as resilience')"
+          :aria-label="uiText('Add a trait')"
           :disabled="busy || traits.length >= 8"
         />
-        <button class="btn" :disabled="busy || !newTrait.trim() || traits.length >= 8">添加</button>
+        <button class="btn" :disabled="busy || !newTrait.trim() || traits.length >= 8">
+          {{ uiText('Add') }}
+        </button>
       </form>
-      <h3>现实条件</h3>
+      <h3>{{ uiText('Practical constraints') }}</h3>
       <div class="form-grid">
         <label class="field"
-          >意向城市<input v-model="constraints.city" maxlength="50" :disabled="busy"
+          >{{ uiText('Preferred city')
+          }}<input v-model="constraints.city" maxlength="50" :disabled="busy"
         /></label>
         <label class="field"
-          >期望月薪<input v-model="constraints.salary" maxlength="50" :disabled="busy"
+          >{{ uiText('Expected monthly salary')
+          }}<input v-model="constraints.salary" maxlength="50" :disabled="busy"
         /></label>
         <label class="field"
-          >加班接受度<input v-model="constraints.overtime" maxlength="50" :disabled="busy"
+          >{{ uiText('Overtime preference')
+          }}<input v-model="constraints.overtime" maxlength="50" :disabled="busy"
         /></label>
       </div>
       <div class="card-footer">
-        <button type="button" class="btn" :disabled="busy" @click="revise(0)">回去改回答</button>
+        <button type="button" class="btn" :disabled="busy" @click="revise(0)">
+          {{ uiText('Edit my answers') }}
+        </button>
         <button type="button" class="btn primary" :disabled="busy" @click="confirm">
-          {{ busy ? '正在保存…' : '确认画像' }}
+          {{ busy ? uiText('Saving…') : uiText('Confirm profile') }}
         </button>
       </div>
     </template>
 
     <template v-else-if="phase === 'done' && state?.confirmed">
       <p class="success-banner" role="status">
-        画像已确认：兴趣码 <strong>{{ state.confirmed.code || '未分化' }}</strong
+        {{ uiText('Profile confirmed. Interest code:') }}
+        <strong>{{ state.confirmed.code || uiText('Undifferentiated') }}</strong
         >。{{
-          state.confirmed.code ? '职业推荐会优先使用这份画像。' : '请补充兴趣信息后再推荐职业。'
+          state.confirmed.code
+            ? uiText('Career recommendations will prioritize this profile.')
+            : uiText('Add your interests before requesting career recommendations.')
         }}
       </p>
       <p class="subtle">
         {{ state.confirmed.traits.map((t) => t.name).join(' · ') }}
       </p>
       <div class="card-footer">
-        <button type="button" class="btn text" :disabled="busy" @click="restart">重新测评</button>
+        <button type="button" class="btn text" :disabled="busy" @click="restart">
+          {{ uiText('Retake assessment') }}
+        </button>
         <button type="button" class="btn" :disabled="busy" @click="startCorrection('confirmed')">
-          修正画像
+          {{ uiText('Edit profile') }}
         </button>
         <RouterLink
           class="btn primary"
           :to="{
             path: '/chat',
-            query: { mode: 'CAREER_DISCOVERY', prompt: '根据我确认的测评画像推荐职业方向' },
+            query: {
+              mode: 'CAREER_DISCOVERY',
+              prompt: uiText(
+                'Recommend career directions based on my confirmed assessment profile',
+              ),
+            },
           }"
-          >查看适合我的职业</RouterLink
+          >{{ uiText('Explore suitable careers') }}</RouterLink
         >
       </div>
     </template>

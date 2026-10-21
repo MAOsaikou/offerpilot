@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDateTime, localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { sessionRevision } from '@/shared/utils/authSession'
 import {
@@ -22,8 +24,8 @@ const data = ref<GitHubEvidence>(),
   token = ref(''),
   removeToken = ref(false)
 const busy = ref(false),
-  error = ref(''),
-  message = ref(''),
+  error = localizedText(),
+  message = localizedText(),
   selected = ref<GitHubProject>(),
   confirmed = ref(false)
 let controller = new AbortController()
@@ -46,7 +48,9 @@ async function run(action: (signal: AbortSignal) => Promise<void>) {
   try {
     await action(request.signal)
   } catch (e) {
-    if (!request.signal.aborted) error.value = e instanceof Error ? e.message : '操作失败，请重试'
+    if (!request.signal.aborted)
+      error.value = () =>
+        e instanceof Error ? e.message : uiText('Operation failed. Please retry. #2')
   } finally {
     if (!request.signal.aborted) busy.value = false
   }
@@ -104,7 +108,7 @@ function save() {
     data.value = result
     removeToken.value = false
     selected.value = undefined
-    message.value = '设置已保存，请点击抓取公开仓库。'
+    message.value = () => uiText('Settings saved. Fetch public repositories to continue.')
   })
 }
 function refresh(force: boolean) {
@@ -125,7 +129,7 @@ function disconnect() {
     token.value = ''
     selected.value = undefined
     removeToken.value = false
-    message.value = '已移除 GitHub 设置、凭据与缓存。'
+    message.value = () => uiText('GitHub settings, credentials and cache removed.')
   })
 }
 function preview(project: GitHubProject) {
@@ -158,7 +162,10 @@ function adopt() {
       emit('adopted', result)
       selected.value = undefined
       confirmed.value = false
-      message.value = '项目建议已存为简历新版本，请在编辑器中补充个人贡献。'
+      message.value = () =>
+        uiText(
+          'Project suggestion saved as a new resume version. Add your personal contribution in the editor.',
+        )
     } finally {
       emit('adoptionBusy', false)
     }
@@ -166,23 +173,34 @@ function adopt() {
 }
 </script>
 <template>
-  <section class="panel form-stack min-w-0" aria-label="GitHub 技能实证">
-    <h2>GitHub 技能实证</h2>
+  <section class="panel form-stack min-w-0" :aria-label="uiText('GitHub skill evidence')">
+    <h2>{{ uiText('GitHub skill evidence') }}</h2>
     <p class="helper-note">
-      只读取公开仓库。README 亮点会发送给 FLASH 模型；仓库归属不证明你的个人贡献，请采纳前核对。
+      {{
+        uiText(
+          'Reads public repositories only. README highlights are sent to FLASH. Repository ownership does not prove personal contribution. Review before accepting.',
+        )
+      }}
     </p>
-    <p v-if="busy" role="status">正在处理 GitHub 请求…</p>
+    <p v-if="busy" role="status">{{ uiText('Processing GitHub request…') }}</p>
     <p v-if="error" class="error-banner" role="alert">
-      {{ error }} <button class="btn" :disabled="busy" @click="load">重新读取</button>
+      {{ error }} <button class="btn" :disabled="busy" @click="load">{{ uiText('Reload') }}</button>
     </p>
     <p v-if="message" role="status">{{ message }}</p>
     <form class="form-stack" @submit.prevent="save">
       <fieldset :disabled="busy" class="form-stack min-w-0">
         <label class="field"
-          >公开 GitHub 用户名<input v-model="username" maxlength="39" required autocomplete="off"
+          >{{ uiText('Public GitHub username')
+          }}<input v-model="username" maxlength="39" required autocomplete="off"
         /></label>
         <label class="field"
-          >可选 Token（{{ data?.tokenConfigured ? '已配置，不回显；留空保留' : '未配置；可留空' }}）
+          >{{
+            uiText('Optional token ({0})', [
+              data?.tokenConfigured
+                ? uiText('Configured, never displayed; leave blank to keep')
+                : uiText('Not configured; optional'),
+            ])
+          }}
           <input
             v-model="token"
             type="password"
@@ -192,13 +210,20 @@ function adopt() {
           />
         </label>
         <label
-          ><input v-model="removeToken" type="checkbox" @change="token = ''" />移除已保存
-          Token</label
+          ><input v-model="removeToken" type="checkbox" @change="token = ''" />{{
+            uiText('Remove saved token')
+          }}</label
         >
         <p class="helper-note">
-          Token 加密存储，不保存在浏览器。建议仅授予公开仓库读取权限；更换用户名会移除旧 Token。
+          {{
+            uiText(
+              'Tokens are encrypted on the server and never stored in the browser. Grant only public repository read access. Changing username removes the old token.',
+            )
+          }}
         </p>
-        <button class="btn" type="submit" :disabled="!username.trim()">保存 GitHub 设置</button>
+        <button class="btn" type="submit" :disabled="!username.trim()">
+          {{ uiText('Save GitHub settings') }}
+        </button>
       </fieldset>
     </form>
     <div class="flex flex-wrap gap-2">
@@ -207,45 +232,65 @@ function adopt() {
         :disabled="busy || settingsDirty || !data?.username"
         @click="refresh(false)"
       >
-        抓取公开仓库（优先缓存）
+        {{ uiText('Fetch public repositories (prefer cache)') }}
       </button>
       <button
         class="btn"
         :disabled="busy || settingsDirty || !data?.username"
         @click="refresh(true)"
       >
-        强制刷新
+        {{ uiText('Force refresh') }}
       </button>
       <button class="btn" :disabled="busy || !data?.username" @click="disconnect">
-        移除 GitHub 连接
+        {{ uiText('Remove GitHub connection') }}
       </button>
     </div>
-    <p v-if="settingsDirty" class="helper-note">请先保存 GitHub 设置，再抓取或采纳项目建议。</p>
+    <p v-if="settingsDirty" class="helper-note">
+      {{ uiText('Save GitHub settings before fetching or accepting project suggestions.') }}
+    </p>
     <p v-if="data" class="helper-note" role="status">{{ data.notice }}</p>
     <template v-if="data?.snapshot">
       <p>
-        抓取时间：{{ data.fetchedAt }} · 有效至：{{ data.expiresAt }}
-        <strong v-if="data.stale">历史缓存，需刷新</strong>
+        {{
+          uiText('Fetched: {0} · Valid until: {1}', [
+            formatDateTime(data.fetchedAt),
+            formatDateTime(data.expiresAt),
+          ])
+        }}
+        <strong v-if="data.stale">{{ uiText('Historical cache; refresh needed') }}</strong>
       </p>
       <p>
-        {{ data.snapshot.repositories.length }} 个公开仓库 · Star {{ data.snapshot.stars }} ·
-        近90天本人提交 {{ data.snapshot.commits90d }}（达到分页上限时为下界）
+        {{
+          uiText(
+            '{0} public repositories · {1} stars · {2} personal commits in 90 days (a lower bound if pagination is capped)',
+            [data.snapshot.repositories.length, data.snapshot.stars, data.snapshot.commits90d],
+          )
+        }}
       </p>
       <p v-if="data.snapshot.repositoriesTruncated">
-        本次仅统计已完整抓取的 {{ data.snapshot.repositories.length }} 个仓库，未覆盖全部仓库。
+        {{
+          uiText(
+            'Only the {0} fully fetched repositories are counted; not all repositories are covered.',
+            [data.snapshot.repositories.length],
+          )
+        }}
       </p>
       <p class="break-words">
-        语言分布（字节）：{{
-          Object.entries(data.snapshot.languages)
-            .map(([name, bytes]) => `${name} ${bytes}`)
-            .join(' · ') || '暂无语言数据'
+        {{
+          uiText('Language distribution (bytes): {0}', [
+            Object.entries(data.snapshot.languages)
+              .map(([name, bytes]) => `${name} ${bytes}`)
+              .join(' · ') || uiText('No language data'),
+          ])
         }}
       </p>
       <p v-if="!data.snapshot.repositories.length">
         {{
           data.snapshot.repositoriesTruncated
-            ? '本次未完整抓取到仓库，请稍后重试或配置 Token。'
-            : '该用户暂无公开仓库。'
+            ? uiText(
+                'Repositories were not fully fetched this time. Try again later or configure a token.',
+              )
+            : uiText('This user has no public repositories.')
         }}
       </p>
       <article
@@ -258,43 +303,59 @@ function adopt() {
           <span v-if="project.fork">（fork）</span>
         </h3>
         <p>
-          Star {{ project.stars }} · 近90天本人提交 {{ project.commitsTruncated ? '≥' : ''
-          }}{{ project.commits90d }}
+          {{
+            uiText('{0} stars · {1}{2} personal commits in 90 days', [
+              project.stars,
+              project.commitsTruncated ? '≥' : '',
+              project.commits90d,
+            ])
+          }}
         </p>
         <p class="break-words">
           {{
             Object.entries(project.languages)
-              .map(([name, bytes]) => `${name} ${bytes}字节`)
-              .join(' · ') || '暂无语言数据'
+              .map(([name, bytes]) => uiText('{0} {1} bytes', [name, bytes]))
+              .join(' · ') || uiText('No language data')
           }}
         </p>
         <ul v-if="project.highlights.length">
           <li v-for="quote in project.highlights" :key="quote" class="break-words">{{ quote }}</li>
         </ul>
-        <p v-else>暂无可用 README 亮点；不补造项目描述。</p>
+        <p v-else>
+          {{ uiText('No usable README highlights. No project descriptions are invented.') }}
+        </p>
         <button
           v-if="resumeId && project.highlights.length"
           class="btn"
           :disabled="busy || settingsDirty || data.stale || adoptionDisabled"
           @click="preview(project)"
         >
-          作为简历项目建议
+          {{ uiText('Suggest as a resume project') }}
         </button>
       </article>
       <p v-if="resumeId && adoptionDisabled" class="helper-note">
-        请先保存或撤销简历草稿，再采纳项目建议。
+        {{ uiText('Save or discard your resume draft before accepting a project suggestion.') }}
       </p>
-      <section v-if="selected" class="form-stack" aria-label="确认 GitHub 项目建议">
-        <h3>核对后新增项目：{{ selected.name }}</h3>
-        <p>项目公开说明（个人贡献需自行补充）：{{ selected.url }}</p>
+      <section
+        v-if="selected"
+        class="form-stack"
+        :aria-label="uiText('Confirm GitHub project suggestion')"
+      >
+        <h3>{{ uiText('Project to add after review: {0}', [selected.name]) }}</h3>
+        <p>
+          {{
+            uiText('Public project description (add your own contribution): {0}', [selected.url])
+          }}
+        </p>
         <ul>
           <li v-for="quote in selected.highlights" :key="quote" class="break-words">{{ quote }}</li>
         </ul>
         <label
-          ><input
-            v-model="confirmed"
-            type="checkbox"
-          />我已核对原文与项目关联；这些是项目说明，我会补充自己的贡献，不将仓库指标当作个人成果。</label
+          ><input v-model="confirmed" type="checkbox" />{{
+            uiText(
+              'I checked the source and project association. These are project descriptions. I will add my own contribution and will not present repository metrics as personal achievements.',
+            )
+          }}</label
         >
         <div class="flex flex-wrap gap-2">
           <button
@@ -302,9 +363,11 @@ function adopt() {
             :disabled="busy || settingsDirty || !confirmed || adoptionDisabled"
             @click="adopt"
           >
-            确认添加并保存新版本
+            {{ uiText('Confirm addition and save new version') }}
           </button>
-          <button class="btn" :disabled="busy" @click="selected = undefined">取消</button>
+          <button class="btn" :disabled="busy" @click="selected = undefined">
+            {{ uiText('Cancel') }}
+          </button>
         </div>
       </section>
     </template>

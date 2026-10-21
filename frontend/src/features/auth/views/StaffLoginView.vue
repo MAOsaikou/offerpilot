@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { RouterLink } from 'vue-router'
@@ -14,7 +16,7 @@ const email = ref('')
 const password = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
-const error = ref('')
+const error = localizedText()
 
 async function submit() {
   if (loading.value) return
@@ -25,7 +27,8 @@ async function submit() {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/staff'
     router.push(redirect)
   } catch (ex) {
-    error.value = ex instanceof Error ? ex.message : '登录失败，请稍后重试'
+    error.value = () =>
+      ex instanceof Error ? ex.message : uiText('Sign-in failed. Please try again later.')
   } finally {
     loading.value = false
   }
@@ -37,17 +40,17 @@ async function submit() {
       <div class="brand-row">
         <BrandMark :size="32" />
         <span class="brand-name">OfferPilot</span>
-        <span class="brand-caption">职航</span>
+        <span class="brand-caption">{{ uiText('OfferPilot') }}</span>
       </div>
       <div class="auth-panel">
         <header class="panel-head">
-          <h1>登录客服端</h1>
-          <p class="panel-sub">仅限客服人员登录，管理用户端账号的启用与禁用。</p>
+          <h1>{{ uiText('Staff sign-in #3') }}</h1>
+          <p class="panel-sub">{{ uiText('Staff only. Manage user account access.') }}</p>
         </header>
 
         <form class="auth-form" :aria-busy="loading" novalidate @submit.prevent="submit">
           <label class="field">
-            <span class="field-label">客服邮箱</span>
+            <span class="field-label">{{ uiText('Staff email') }}</span>
             <input
               v-model="email"
               type="email"
@@ -59,7 +62,7 @@ async function submit() {
           </label>
 
           <label class="field">
-            <span class="field-label">密码</span>
+            <span class="field-label">{{ uiText('Password') }}</span>
             <span class="field-control">
               <input
                 v-model="password"
@@ -67,12 +70,12 @@ async function submit() {
                 name="password"
                 autocomplete="current-password"
                 required
-                placeholder="请输入密码"
+                :placeholder="uiText('Enter your password')"
               />
               <button
                 type="button"
                 class="eye-toggle"
-                :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+                :aria-label="showPassword ? uiText('Hide password') : uiText('Show password')"
                 @click="showPassword = !showPassword"
               >
                 <AppIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
@@ -84,13 +87,21 @@ async function submit() {
 
           <button class="btn primary submit-btn" type="submit" :disabled="loading">
             <span v-if="loading" class="spinner" aria-hidden="true" />
-            {{ loading ? '登录中…' : '进入工作台' }}
+            {{ loading ? uiText('Signing in…') : uiText('Open dashboard') }}
           </button>
         </form>
 
         <footer class="panel-foot">
-          <p class="subtle">客服账号由管理员开通，不支持自行注册。</p>
-          <RouterLink to="/login" class="secondary-link"> 返回用户端登录 </RouterLink>
+          <p class="subtle">
+            {{
+              uiText(
+                'Staff accounts are created by administrators. Self-registration is unavailable.',
+              )
+            }}
+          </p>
+          <RouterLink to="/login" class="secondary-link">
+            {{ uiText('Back to user sign-in') }}
+          </RouterLink>
         </footer>
       </div>
     </div>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, localizedText, translate as uiText } from '@/shared/utils/language'
+
 import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
 import { generationResult } from '@/shared/api/generationTasks'
 
@@ -30,7 +32,7 @@ function addFiles(files: File[]) {
   if (parsing.value || !files.length) return
   error.value = ''
   if (screenshots.value.length + files.length > 3) {
-    error.value = '最多选择同一岗位的 3 张连续截图。'
+    error.value = () => uiText('Select up to 3 consecutive screenshots of the same job.')
     return
   }
   const invalid = files.map(validateJobScreenshot).find(Boolean)
@@ -64,7 +66,7 @@ onBeforeUnmount(() => {
 })
 const parsing = ref(false)
 const saving = ref(false)
-const error = ref('')
+const error = localizedText()
 const parsed = ref<JobImportParse | null>(null)
 const form = ref<JobImportFields | null>(null)
 
@@ -157,12 +159,13 @@ async function restoreTask(id: string) {
           if (revision !== previewRevision) return
           restoredPreviews.value.push(URL.createObjectURL(blob))
         } catch {
-          error.value = '草稿已恢复，截图预览暂不可用，请稍后刷新重试。'
+          error.value = () =>
+            uiText('Draft restored. Screenshot previews are unavailable; refresh later to retry.')
         }
       }
     }
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '草稿恢复失败'
+    error.value = () => (cause instanceof Error ? cause.message : uiText('Could not restore draft'))
   }
 }
 </script>
@@ -175,80 +178,113 @@ async function restoreTask(id: string) {
   >
     <BackgroundTaskStatus kind="JOB_IMPORT" :entity-id="'current'" @completed="restoreTask" />
     <div class="section-heading">
-      <h2 id="job-import-title">导入岗位</h2>
+      <h2 id="job-import-title">{{ uiText('Import job') }}</h2>
       <button type="button" class="btn" :aria-expanded="open" @click="open = !open">
-        {{ open ? '收起' : '粘贴 JD 或网址 / 截图' }}
+        {{ open ? uiText('Collapse') : uiText('Paste description or URL / Screenshots') }}
       </button>
     </div>
     <p class="subtle">
-      在其他招聘站看到的岗位，搜索里没有？粘贴岗位描述、填写网址或上传截图。核对无误后保存，就能像搜索结果一样生成匹配报告、加入看板。导入的岗位只有你自己可见。
+      {{
+        uiText(
+          'Found a job elsewhere? Paste its description, enter a URL or upload screenshots. Review and save it to generate match reports and add it to your board. Imported jobs are private to you.',
+        )
+      }}
     </p>
     <template v-if="open">
       <div v-if="!form" class="form-stack">
-        <fieldset class="mode-switch" :disabled="parsing" aria-label="导入方式">
-          <label><input v-model="mode" type="radio" value="text" /> 粘贴文本</label>
-          <label><input v-model="mode" type="radio" value="url" /> 岗位网址</label>
-          <label><input v-model="mode" type="radio" value="screenshot" /> 截图</label>
+        <fieldset class="mode-switch" :disabled="parsing" :aria-label="uiText('Import method')">
+          <label
+            ><input v-model="mode" type="radio" value="text" /> {{ uiText('Paste text') }}</label
+          >
+          <label><input v-model="mode" type="radio" value="url" /> {{ uiText('Job URL') }}</label>
+          <label
+            ><input v-model="mode" type="radio" value="screenshot" />
+            {{ uiText('Screenshots') }}</label
+          >
         </fieldset>
         <label v-if="mode === 'text'" class="field"
-          >岗位描述<textarea
+          >{{ uiText('Job description')
+          }}<textarea
             v-model="text"
             rows="8"
             maxlength="20000"
-            placeholder="从招聘页复制岗位名称、职责、要求等内容（至少 30 字）"
+            :placeholder="
+              uiText(
+                'Copy the job title, responsibilities and requirements from the listing (at least 30 characters)',
+              )
+            "
           />
         </label>
         <template v-else-if="mode === 'url'">
           <label class="field"
-            >岗位网址<input
+            >{{ uiText('Job URL')
+            }}<input
               v-model="url"
               type="url"
               maxlength="2000"
               placeholder="https://jobs.example.com/position/123"
           /></label>
           <p class="subtle">
-            只能读取公开网页。需要登录或依靠浏览器脚本渲染的招聘站读不到正文，这种情况请改用粘贴文本。
+            {{
+              uiText(
+                'Only public pages can be read. Pages requiring sign-in or browser scripts may not work. Paste the text instead.',
+              )
+            }}
           </p>
         </template>
         <div
           v-else
           class="form-stack screenshot-input"
           tabindex="0"
-          aria-label="选择或粘贴岗位截图"
+          :aria-label="uiText('Select or paste job screenshots')"
         >
           <p class="subtle">
-            选择或在此粘贴同一岗位的连续截图，按阅读顺序添加。支持 PNG / JPG / WebP，单张 ≤5MB，最多
-            3 张。仅本人可读。
+            {{
+              uiText(
+                'Add consecutive screenshots of the same job in reading order. PNG / JPG / WebP, up to 5 MB each, 3 maximum. Only you can view them.',
+              )
+            }}
           </p>
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp"
             multiple
             :disabled="parsing"
-            aria-label="选择岗位截图"
+            :aria-label="uiText('Select job screenshots')"
             @change="chooseFiles"
           />
           <p v-if="!screenshots.length" class="subtle">
-            尚未选择截图，请确保岗位名称、职责与要求清晰可见。
+            {{
+              uiText(
+                'No screenshots selected. Make sure the title, responsibilities and requirements are legible.',
+              )
+            }}
           </p>
           <ol v-else class="screenshot-list">
             <li v-for="(image, index) in screenshots" :key="image.preview">
-              <img :src="image.preview" :alt="'截图 ' + (index + 1) + '：' + image.file.name" />
-              <span>{{ index + 1 }}. {{ image.file.name }}</span>
+              <img
+                :src="image.preview"
+                :alt="uiText('Screenshots') + (index + 1) + '：' + image.file.name"
+              />
+              <span>{{ formatDisplay(index + 1) }}. {{ image.file.name }}</span>
               <button
                 type="button"
                 class="btn"
                 :disabled="parsing"
-                :aria-label="'删除截图 ' + (index + 1)"
+                :aria-label="uiText('Remove screenshot') + (index + 1)"
                 @click="removeImage(index)"
               >
-                删除
+                {{ uiText('Delete') }}
               </button>
             </li>
           </ol>
           <div v-if="uploading" role="status">
-            正在上传 {{ uploaded }} / {{ screenshots.length }} 张
-            <progress :value="uploaded" :max="screenshots.length" aria-label="截图上传进度" />
+            {{ uiText('Uploading {0} of {1} images', [uploaded, screenshots.length]) }}
+            <progress
+              :value="uploaded"
+              :max="screenshots.length"
+              :aria-label="uiText('Screenshot upload progress')"
+            />
           </div>
         </div>
         <div class="card-footer">
@@ -259,7 +295,9 @@ async function restoreTask(id: string) {
             :aria-busy="parsing"
             @click="parse"
           >
-            {{ uploading ? '正在上传…' : parsing ? '正在解析…' : '解析岗位' }}
+            {{
+              uploading ? uiText('Uploading…') : parsing ? uiText('Parsing…') : uiText('Parse job')
+            }}
           </button>
         </div>
       </div>
@@ -267,10 +305,16 @@ async function restoreTask(id: string) {
         <p class="helper-note" role="status">
           {{
             parsed?.sourceKind === 'screenshot'
-              ? '已从截图逐行转写并摘录字段。转写可能有遗漏或识别错误，请对照截图核对后保存。'
+              ? uiText(
+                  'Text was transcribed and fields extracted from the screenshots. There may be omissions or recognition errors. Compare with the screenshots before saving.',
+                )
               : parsed?.draft.parser === 'model'
-                ? 'AI 已从原文摘录下列字段，原文中找不到的内容都已丢弃。请核对后保存。'
-                : 'AI 暂不可用，下列内容是按「职责 / 要求」等标题拆分的原文。请核对后保存。'
+                ? uiText(
+                    'AI extracted these fields from the source and discarded unsupported content. Review before saving.',
+                  )
+                : uiText(
+                    'AI is unavailable. The content below was split using headings such as Responsibilities and Requirements. Review before saving.',
+                  )
           }}
         </p>
         <div v-if="parsed?.sourceKind === 'screenshot'" class="screenshot-list">
@@ -280,66 +324,86 @@ async function restoreTask(id: string) {
               : screenshots.map((image) => image.preview)"
             :key="preview"
             :src="preview"
-            :alt="'核对截图 ' + (index + 1)"
+            :alt="uiText('Review screenshots') + ' ' + (index + 1)"
           />
         </div>
         <p v-if="parsed?.securityNotices?.length" class="security-note" role="alert">
-          原文里有疑似写给 AI 的指令（{{
-            parsed.securityNotices.join('、')
-          }}）。系统只把它当作岗位文本，不会执行；请核对字段后再保存。
+          {{
+            uiText(
+              'The source contains possible instructions to AI ({0}). They are treated only as job text and will not be executed. Review the fields before saving.',
+              [parsed.securityNotices.join('、')],
+            )
+          }}
         </p>
         <div class="import-grid">
           <label class="field"
-            >岗位名称<input v-model="form.title" required maxlength="100"
+            >{{ uiText('Job title') }}<input v-model="form.title" required maxlength="100"
           /></label>
           <label class="field"
-            >公司<input v-model="form.company" maxlength="100" placeholder="原文未写明"
+            >{{ uiText('Company')
+            }}<input
+              v-model="form.company"
+              maxlength="100"
+              :placeholder="uiText('Not specified in source')"
           /></label>
           <label class="field"
-            >城市<input v-model="form.locations" maxlength="100" placeholder="原文未写明"
+            >{{ uiText('City')
+            }}<input
+              v-model="form.locations"
+              maxlength="100"
+              :placeholder="uiText('Not specified in source')"
           /></label>
           <label class="field"
-            >部门<input v-model="form.department" maxlength="100" placeholder="原文未写明"
+            >{{ uiText('Department')
+            }}<input
+              v-model="form.department"
+              maxlength="100"
+              :placeholder="uiText('Not specified in source')"
           /></label>
           <label class="field"
-            >招聘类型<select v-model="form.nature">
-              <option value="campus">校招</option>
-              <option value="intern">实习</option>
-              <option value="social">社招</option>
+            >{{ uiText('Recruitment type')
+            }}<select v-model="form.nature">
+              <option value="campus">{{ uiText('Graduate') }}</option>
+              <option value="intern">{{ uiText('Internship') }}</option>
+              <option value="social">{{ uiText('Experienced hire') }}</option>
             </select></label
           >
         </div>
         <label class="field"
-          >岗位职责<textarea v-model="form.description" rows="6" maxlength="30000" />
+          >{{ uiText('Responsibilities')
+          }}<textarea v-model="form.description" rows="6" maxlength="30000" />
         </label>
         <label class="field"
-          >任职要求<textarea v-model="form.requirement" rows="6" maxlength="30000" />
+          >{{ uiText('Requirements')
+          }}<textarea v-model="form.requirement" rows="6" maxlength="30000" />
         </label>
         <p v-if="form.skills.length" class="subtle">
-          原文提到的技能：<span v-for="skill in form.skills" :key="skill" class="tag">{{
-            skill
-          }}</span>
+          {{ uiText('Skills mentioned in the source:')
+          }}<span v-for="skill in form.skills" :key="skill" class="tag">{{ skill }}</span>
         </p>
-        <p v-if="form.url" class="subtle">来源网址：{{ form.url }}</p>
+        <p v-if="form.url" class="subtle">{{ uiText('Source URL: {0}', [form.url]) }}</p>
         <p v-if="!form.description.trim() && !form.requirement.trim()" class="error-banner">
-          职责和要求至少保留一项，匹配分析需要依据。
+          {{ uiText('Keep at least responsibilities or requirements as evidence for matching.') }}
         </p>
         <div class="card-footer">
-          <button type="button" class="btn" :disabled="saving" @click="restart">重新导入</button>
+          <button type="button" class="btn" :disabled="saving" @click="restart">
+            {{ uiText('Import again') }}
+          </button>
           <button class="btn primary" :disabled="!canSave" :aria-busy="saving">
-            {{ saving ? '正在保存…' : '保存并查看匹配' }}
+            {{ saving ? uiText('Saving…') : uiText('Save and view match') }}
           </button>
         </div>
       </form>
       <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
     </template>
     <div v-if="imported.data.value?.length" class="imported-list">
-      <h3>我导入的岗位</h3>
+      <h3>{{ uiText('My imported jobs') }}</h3>
       <ul>
         <li v-for="job in imported.data.value" :key="job.id">
           <RouterLink :to="'/jobs/' + job.id">{{ job.title }}</RouterLink>
           <span class="subtle"
-            >{{ job.company || '公司未写明' }} · {{ job.locations || '城市未写明' }}</span
+            >{{ job.company || uiText('Company not specified') }} ·
+            {{ job.locations || uiText('City not specified') }}</span
           >
         </li>
       </ul>

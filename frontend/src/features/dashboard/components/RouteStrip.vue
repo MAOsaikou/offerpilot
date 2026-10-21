@@ -1,12 +1,19 @@
 <script setup lang="ts">
+import {
+  formatDisplay,
+  translateLabel,
+  sourceText,
+  translate as uiText,
+} from '@/shared/utils/language'
+
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { Stage } from '@/shared/types/workspace'
 
 const props = defineProps<{ stops: { stage: Stage; count: number }[]; loading?: boolean }>()
 
-const route = computed(() => props.stops.filter((s) => s.stage !== '已结束'))
-const ended = computed(() => props.stops.find((s) => s.stage === '已结束')?.count ?? 0)
+const route = computed(() => props.stops.filter((s) => s.stage !== sourceText('Closed')))
+const ended = computed(() => props.stops.find((s) => s.stage === sourceText('Closed'))?.count ?? 0)
 const furthest = computed(() =>
   route.value.reduce((last, stop, index) => (stop.count > 0 ? index : last), -1),
 )
@@ -30,17 +37,18 @@ const progress = computed(() =>
         :aria-current="index === furthest ? 'step' : undefined"
       >
         <span class="route-node" aria-hidden="true" />
-        <strong class="route-count">{{ loading ? '—' : stop.count }}</strong>
-        <span class="route-label">{{ stop.stage }}</span>
+        <strong class="route-count">{{ formatDisplay(loading ? '—' : stop.count) }}</strong>
+        <span class="route-label">{{ translateLabel(stop.stage) }}</span>
       </li>
     </ol>
-    <p v-if="loading" class="subtle" role="status">正在读取看板…</p>
+    <p v-if="loading" class="subtle" role="status">{{ uiText('Loading application board…') }}</p>
     <p v-else-if="furthest < 0" class="subtle">
-      收藏第一个岗位，航线就从这里开始。<RouterLink to="/jobs" class="route-link"
-        >搜索岗位</RouterLink
-      >
+      {{ uiText('Save your first job to start your journey.')
+      }}<RouterLink to="/jobs" class="route-link">{{ uiText('Search jobs') }}</RouterLink>
     </p>
-    <p v-else-if="ended" class="subtle">另有 {{ ended }} 个机会已结束。</p>
+    <p v-else-if="ended" class="subtle">
+      {{ uiText('{0} other opportunities are closed.', [ended]) }}
+    </p>
   </div>
 </template>
 <style scoped>

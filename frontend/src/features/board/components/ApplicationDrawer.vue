@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, formatDate, language, translate as uiText } from '@/shared/utils/language'
+
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
@@ -8,7 +10,7 @@ import { exportResumePdf } from '@/shared/api/resumes'
 import { exportInterviewRecap } from '@/shared/api/interviews'
 import { useBoard } from '@/shared/composables/useBoard'
 import {
-  applicationStages,
+  applicationStageLabels as applicationStages,
   type ApplicationEvent,
   type ApplicationStatus,
 } from '@/shared/types/board'
@@ -84,20 +86,25 @@ async function openReport() {
     if (active) evaluation.value = report.evaluation
   })
 }
-const rewriteStates: Record<string, string> = {
-  RUNNING: '生成中',
-  SUCCEEDED: '已完成',
-  FAILED: '失败',
-  CANCELLED: '已取消',
-}
-const interviewStates: Record<string, string> = { IN_PROGRESS: '练习中', COMPLETED: '已完成' }
+const rewriteStates = computed<Record<string, string>>(() => ({
+  RUNNING: uiText('Generating'),
+  SUCCEEDED: uiText('Completed'),
+  FAILED: uiText('Failed'),
+  CANCELLED: uiText('Canceled'),
+}))
+const interviewStates = computed<Record<string, string>>(() => ({
+  IN_PROGRESS: uiText('In practice'),
+  COMPLETED: uiText('Completed'),
+}))
 
 function eventText(event: ApplicationEvent) {
   if (event.kind === 'STATUS_CHANGED')
     return `${applicationStages[event.fromStatus!]} → ${applicationStages[event.toStatus!]}`
   if (event.kind === 'CREATED') return `${event.detail} · ${applicationStages[event.toStatus!]}`
-  if (event.kind === 'NOTE_EDITED') return `更新备注：${event.detail || '已清空'}`
-  if (event.kind === 'NEXT_ACTION_EDITED') return `下一步：${event.detail || '已清空'}`
+  if (event.kind === 'NOTE_EDITED')
+    return uiText('Notes updated: {0}', [event.detail || uiText('Cleared')])
+  if (event.kind === 'NEXT_ACTION_EDITED')
+    return uiText('Next action: {0}', [event.detail || uiText('Cleared')])
   return event.detail
 }
 </script>
@@ -111,31 +118,43 @@ function eventText(event: ApplicationEvent) {
       @cancel.prevent="emit('close')"
     >
       <header class="drawer-heading">
-        <h2 id="application-detail-title">机会工作区</h2>
-        <button class="btn" aria-label="关闭机会详情" @click="emit('close')">关闭</button>
+        <h2 id="application-detail-title">{{ uiText('Application workspace') }}</h2>
+        <button
+          class="btn"
+          :aria-label="uiText('Close application details')"
+          @click="emit('close')"
+        >
+          {{ uiText('Off') }}
+        </button>
       </header>
-      <p v-if="query.isPending.value" role="status">正在加载机会详情…</p>
+      <p v-if="query.isPending.value" role="status">{{ uiText('Loading application details…') }}</p>
       <div v-else-if="query.isError.value" class="error-banner" role="alert">
-        {{ query.error.value?.message
-        }}<button class="btn" @click="query.refetch()">重试加载详情</button>
+        {{ formatDisplay(query.error.value?.message)
+        }}<button class="btn" @click="query.refetch()">
+          {{ uiText('Retry loading details') }}
+        </button>
       </div>
       <div v-else-if="query.data.value && app" class="form-stack">
         <section>
-          <p class="subtle">{{ app.job.company }} · {{ app.job.locations || '地点未提供' }}</p>
+          <p class="subtle">
+            {{ app.job.company }} · {{ app.job.locations || uiText('Location not provided') }}
+          </p>
           <h3>{{ app.job.title }}</h3>
           <div class="artifact-actions">
-            <RouterLink :to="'/jobs/' + app.jobId" class="btn">查看岗位 / 去匹配</RouterLink>
+            <RouterLink :to="'/jobs/' + app.jobId" class="btn">{{
+              uiText('View job / Match resume')
+            }}</RouterLink>
             <RouterLink
               :to="{
                 path: '/chat',
                 query: {
                   applicationId: app.id,
                   mode: 'JOB',
-                  prompt: '查看这条求职记录，并帮我考虑下一步行动',
+                  prompt: uiText('Review this application and help me plan the next step'),
                 },
               }"
               class="btn"
-              >在聊天中讨论跟进</RouterLink
+              >{{ uiText('Discuss follow-up in chat') }}</RouterLink
             >
           </div>
         </section>
@@ -147,23 +166,28 @@ function eventText(event: ApplicationEvent) {
           @submit.prevent="save"
         >
           <label class="field"
-            >当前阶段<select v-model="status" :disabled="board.busy.value">
+            >{{ uiText('Current stage')
+            }}<select v-model="status" :disabled="board.busy.value">
               <option v-for="(label, value) in applicationStages" :key="value" :value="value">
                 {{ label }}
               </option>
             </select></label
           >
           <label class="field"
-            >下一步行动<textarea
+            >{{ uiText('Next action')
+            }}<textarea
               v-model="nextAction"
               maxlength="1000"
               rows="2"
               :disabled="board.busy.value"
-              placeholder="例如：核对改写后的简历，准备项目 STAR 复盘"
+              :placeholder="
+                uiText('For example: review the rewritten resume and prepare a STAR project story')
+              "
             />
           </label>
           <label class="field"
-            >行动日期<input
+            >{{ uiText('Action date')
+            }}<input
               v-model="nextActionAt"
               type="date"
               min="0001-01-01"
@@ -171,47 +195,53 @@ function eventText(event: ApplicationEvent) {
               :disabled="board.busy.value"
           /></label>
           <label class="field"
-            >跟进备注<textarea
-              v-model="note"
-              maxlength="2000"
-              rows="3"
-              :disabled="board.busy.value"
-            />
+            >{{ uiText('Follow-up notes')
+            }}<textarea v-model="note" maxlength="2000" rows="3" :disabled="board.busy.value" />
           </label>
           <p v-if="board.error.value" class="error-banner" role="alert">
-            {{ board.error.value }}。草稿已保留，可重试。
+            {{ uiText('{0}. Your draft is retained. Please retry.', [board.error.value]) }}
           </p>
           <button class="btn primary" :disabled="!dirty || board.busy.value">
-            {{ board.busy.value ? '正在保存…' : '保存跟进' }}
+            {{ board.busy.value ? uiText('Saving…') : uiText('Save follow-up') }}
           </button>
-          <p v-if="dirty" class="subtle">有未保存的修改。</p>
+          <p v-if="dirty" class="subtle">{{ uiText('You have unsaved changes.') }}</p>
         </form>
-        <section class="panel form-stack" aria-label="岗位匹配报告">
-          <h3>岗位匹配 · A–F 评估</h3>
+        <section class="panel form-stack" :aria-label="uiText('Job match report')">
+          <h3>{{ uiText('Job match · A–F assessment') }}</h3>
           <template v-if="query.data.value.latestMatch">
             <p>
-              最近评估：{{ query.data.value.latestMatch.grade }} ·
-              {{ query.data.value.latestMatch.createdAt.slice(0, 10) }}
+              {{
+                uiText('Latest assessment: {0} · {1}', [
+                  query.data.value.latestMatch.grade,
+                  formatDate(query.data.value.latestMatch.createdAt),
+                ])
+              }}
             </p>
             <ul v-if="query.data.value.latestMatch.topGaps.length">
               <li v-for="gap in query.data.value.latestMatch.topGaps" :key="gap">{{ gap }}</li>
             </ul>
-            <p v-else class="subtle">报告未列出缺口，投递前仍需核对原文。</p>
+            <p v-else class="subtle">
+              {{ uiText('No gaps were listed. Check the original requirements before applying.') }}
+            </p>
             <div class="artifact-actions">
-              <button class="btn" :disabled="actionBusy" @click="openReport">打开 A–F 报告</button
+              <button class="btn" :disabled="actionBusy" @click="openReport">
+                {{ uiText('Open A–F report') }}</button
               ><button
                 class="btn"
                 :disabled="actionBusy"
                 @click="action(() => exportJobEvalMarkdown(query.data.value!.latestMatch!.id))"
               >
-                下载评估.md
+                {{ uiText('Download assessment.md') }}
               </button>
             </div>
             <div v-if="evaluation" class="form-stack">
               <p>{{ evaluation.summary }}</p>
               <dl class="evaluation-dimensions">
                 <template v-for="dimension in evaluation.dimensions" :key="dimension.code"
-                  ><dt>{{ dimension.code }} · {{ dimension.name }} · {{ dimension.score }}/100</dt>
+                  ><dt>
+                    {{ dimension.code }} · {{ dimension.name }} ·
+                    {{ formatDisplay(dimension.score) }}/100
+                  </dt>
                   <dd>{{ dimension.reason }}</dd></template
                 >
               </dl>
@@ -219,16 +249,17 @@ function eventText(event: ApplicationEvent) {
             </div>
           </template>
           <p v-else class="subtle">
-            还没有匹配报告 →
-            <RouterLink :to="'/jobs/' + app.jobId">去匹配</RouterLink>，先看要求覆盖与证据缺口。
+            {{ uiText('No match report yet.') }}
+            <RouterLink :to="'/jobs/' + app.jobId">{{ uiText('Match resume') }}</RouterLink
+            >{{ uiText(' to review requirement coverage and evidence gaps.') }}
           </p>
         </section>
         <section class="panel form-stack">
-          <h3>定向改写与简历 PDF</h3>
+          <h3>{{ uiText('Targeted rewrites and resume PDF') }}</h3>
           <article v-for="resume in query.data.value.resumeOptimizations" :key="resume.id">
             <p>
-              {{ resume.createdAt.slice(0, 10) }} ·
-              {{ rewriteStates[resume.status] || '状态待更新' }}
+              {{ formatDate(resume.createdAt) }} ·
+              {{ rewriteStates[resume.status] || uiText('Status pending refresh') }}
             </p>
             <div class="artifact-actions">
               <RouterLink
@@ -242,85 +273,109 @@ function eventText(event: ApplicationEvent) {
                   },
                 }"
                 class="btn"
-                >{{ resume.status === 'SUCCEEDED' ? '打开改写建议' : '查看改写记录' }}</RouterLink
+                >{{
+                  resume.status === 'SUCCEEDED'
+                    ? uiText('Open rewrite suggestions')
+                    : uiText('View rewrite history')
+                }}</RouterLink
               ><button
                 v-if="resume.pdfAvailable"
                 class="btn"
                 :disabled="actionBusy"
                 @click="action(() => exportResumePdf(resume.resumeId))"
               >
-                下载当前简历 PDF
+                {{ uiText('Download current resume PDF') }}
               </button>
             </div>
           </article>
           <p v-if="query.data.value.resumeOptimizations.length" class="subtle">
-            PDF 导出当前保存版本；改写建议需核对并采纳后才会进入保存版本。
+            {{
+              uiText(
+                'PDF export uses the saved version. Review and accept rewrite suggestions to include them in the saved version.',
+              )
+            }}
           </p>
           <p v-if="!query.data.value.resumeOptimizations.length" class="subtle">
-            尚无可确认属于此岗位的改写版本 →
-            <RouterLink :to="'/jobs/' + app.jobId">按此岗位改写简历</RouterLink>，核对并采纳后导出
-            PDF。已有改写记录仍可在简历页查看。
+            {{ uiText('No rewrite is confirmed for this job.') }}
+            <RouterLink :to="'/jobs/' + app.jobId">{{
+              uiText('Rewrite resume for this job')
+            }}</RouterLink
+            >{{
+              uiText(
+                ', review and accept changes, then export a PDF. Previous rewrites remain on the resume page.',
+              )
+            }}
           </p>
         </section>
         <section class="panel form-stack">
-          <h3>面试练习与复盘</h3>
+          <h3>{{ uiText('Interview practice and review') }}</h3>
           <RouterLink
             class="btn"
             :to="{ path: '/interviews', query: { jobId: app.jobId, role: app.job.title } }"
-            >针对该岗位模拟面试</RouterLink
+            >{{ uiText('Practice for this job') }}</RouterLink
           >
           <article v-for="interview in query.data.value.interviews" :key="interview.id">
             <p>
-              {{ interview.createdAt.slice(0, 10) }} ·
-              {{ interviewStates[interview.status] || '状态待更新' }} ·
-              {{ interview.overallScore ?? '尚未评分' }}
+              {{ formatDate(interview.createdAt) }} ·
+              {{ interviewStates[interview.status] || uiText('Status pending refresh') }} ·
+              {{ interview.overallScore ?? uiText('Not yet scored') }}
             </p>
             <div class="artifact-actions">
-              <RouterLink :to="'/interviews/' + interview.id" class="btn">打开面试室</RouterLink
+              <RouterLink :to="'/interviews/' + interview.id" class="btn">{{
+                uiText('Open interview room')
+              }}</RouterLink
               ><button
                 v-if="interview.recapExportUrl"
                 class="btn"
                 :disabled="actionBusy"
                 @click="action(() => exportInterviewRecap(interview.id))"
               >
-                下载复盘.md
+                {{ uiText('Download review.md') }}
               </button>
             </div>
           </article>
           <p v-if="!query.data.value.interviews.length" class="subtle">
-            尚无可确认属于此岗位的面试 →
+            {{ uiText('No interview is confirmed for this job.') }}
             <RouterLink
               :to="{ path: '/interviews', query: { jobId: app.jobId, role: app.job.title } }"
-              >去练习面试</RouterLink
-            >，用真实项目回答并复盘。
+              >{{ uiText('Practice an interview') }}</RouterLink
+            >{{ uiText(' using real project experience, then review your answers.') }}
           </p>
-          <h4>STAR 故事</h4>
+          <h4>{{ uiText('STAR stories') }}</h4>
           <p v-for="story in query.data.value.starStories" :key="story.id">{{ story.title }}</p>
           <p v-if="!query.data.value.starStories.length" class="subtle">
-            此岗位尚无关联的 STAR 故事。面试复盘中的真实回答可确认入库。
+            {{
+              uiText(
+                'No STAR stories are linked to this job. Confirm real answers from interview reviews to save them here.',
+              )
+            }}
           </p>
         </section>
-        <p class="helper-note">{{ query.data.value.linkageNote }}</p>
-        <p v-if="actionBusy" role="status">正在读取材料…</p>
-        <p v-if="actionError" class="error-banner" role="alert">{{ actionError }}。请重试。</p>
+        <p class="helper-note">{{ formatDisplay(query.data.value.linkageNote) }}</p>
+        <p v-if="actionBusy" role="status">{{ uiText('Loading materials…') }}</p>
+        <p v-if="actionError" class="error-banner" role="alert">
+          {{ uiText('{0}. Please retry. #2', [actionError]) }}
+        </p>
         <section class="panel form-stack">
-          <h3>跟进时间线</h3>
+          <h3>{{ uiText('Follow-up timeline') }}</h3>
           <ol v-if="query.data.value.timeline.length" class="timeline">
             <li v-for="event in query.data.value.timeline" :key="event.id">
               <time :datetime="event.createdAt">{{
-                new Date(event.createdAt).toLocaleString('zh-CN')
+                new Date(event.createdAt).toLocaleString(language)
               }}</time>
               <p>{{ eventText(event) }}</p>
               <small>{{
                 event.actor === 'AGENT'
-                  ? '聊天审批'
+                  ? uiText('Chat approval')
                   : event.actor === 'SYSTEM'
-                    ? '系统记录'
-                    : '手动跟进'
+                    ? uiText('System record')
+                    : uiText('Manual follow-up')
               }}</small>
             </li>
           </ol>
-          <p v-else class="subtle">暂时没有事件。保存阶段或行动后，进度会记录在这里。</p>
+          <p v-else class="subtle">
+            {{ uiText('No events yet. Save a stage or next action to record progress here.') }}
+          </p>
         </section>
       </div>
     </dialog>

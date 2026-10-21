@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { generationResult } from '@/shared/api/generationTasks'
 import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
 
@@ -38,7 +40,7 @@ onMounted(() => {
   window.addEventListener('offline', updateOnline)
 })
 const error = ref('')
-const comparisonError = ref('')
+const comparisonError = localizedText()
 const comparison = ref<CareerComparison | null>(null)
 const comparing = ref(false)
 const choice = ref('')
@@ -51,7 +53,8 @@ let controller = new AbortController()
 let compareController: AbortController | undefined
 let generation = 0
 let compareGeneration = 0
-const message = (cause: unknown) => (cause instanceof Error ? cause.message : '请求失败，请重试')
+const message = (cause: unknown) =>
+  cause instanceof Error ? cause.message : uiText('Request failed. Please retry.')
 async function load() {
   const current = ++generation
   controller.abort()
@@ -129,7 +132,7 @@ async function loadComparison() {
     selected.value.length > 3 ||
     new Set(selected.value).size !== selected.value.length
   ) {
-    comparisonError.value = '请选择 2–3 个不同职业'
+    comparisonError.value = () => uiText('Select 2–3 different careers')
     return
   }
   comparing.value = true
@@ -178,7 +181,7 @@ const chatLink = computed(() => ({
     minSalaryK: constraints.value.minSalaryK?.toString(),
     avoidOvertime: String(constraints.value.avoidOvertime),
     research: String(constraints.value.research),
-    prompt: '请按我选择的约束重排推荐，并保存为新修订。',
+    prompt: uiText('Reorder recommendations using my constraints and save a new revision.'),
   },
 }))
 async function restoreTask(id: string) {
@@ -203,27 +206,43 @@ async function restoreTask(id: string) {
       :entity-id="'current'"
       @completed="restoreTask"
     />
-    <h2 id="recommend-title">职业推荐与对比</h2>
-    <p class="subtle">依据已有职业画像与目录。补充约束后保存新修订，可从链接恢复。</p>
-    <p v-if="!online" role="status">当前离线，恢复连接后可重试；未提交的约束保留在本页。</p>
-    <p v-if="loading" role="status">正在读取推荐…</p>
+    <h2 id="recommend-title">{{ uiText('Career recommendations and comparison') }}</h2>
+    <p class="subtle">
+      {{
+        uiText(
+          'Based on your career profile and the catalog. Add constraints to save a new revision that can be restored from its link.',
+        )
+      }}
+    </p>
+    <p v-if="!online" role="status">
+      {{ uiText('You are offline. Retry when connected. Unsaved constraints stay on this page.') }}
+    </p>
+    <p v-if="loading" role="status">{{ uiText('Loading recommendations…') }}</p>
     <div v-if="error" role="alert">
-      {{ error }} <button class="btn" @click="load">重新读取</button>
+      {{ error }} <button class="btn" @click="load">{{ uiText('Reload') }}</button>
     </div>
     <p v-if="!loading && !revision">
-      还没有推荐修订，请先完善<RouterLink to="/discover">职业画像</RouterLink>再生成。
+      {{ uiText('No recommendation revisions yet. Complete your')
+      }}<RouterLink to="/discover">{{ uiText('career profile') }}</RouterLink
+      >{{ uiText(' before generating recommendations.') }}
     </p>
     <button class="btn" :disabled="loading || busy || !online" @click="save(false)">
-      {{ revision ? '按最新画像重新推荐' : '生成职业推荐' }}
+      {{
+        revision
+          ? uiText('Recommend using latest profile')
+          : uiText('Generate career recommendations')
+      }}
     </button>
     <template v-if="revision">
       <form class="form-stack" @submit.prevent="save(true)">
         <div class="form-grid">
           <label class="field"
-            >意向城市<input v-model="constraints.city" maxlength="100" :disabled="busy"
+            >{{ uiText('Preferred city')
+            }}<input v-model="constraints.city" maxlength="100" :disabled="busy"
           /></label>
           <label class="field"
-            >期望月薪下限（k 元）<input
+            >{{ uiText('Minimum monthly salary (CNY thousands)')
+            }}<input
               :value="constraints.minSalaryK"
               type="number"
               min="1"
@@ -239,29 +258,36 @@ async function restoreTask(id: string) {
         </div>
         <label
           ><input v-model="constraints.avoidOvertime" type="checkbox" :disabled="busy" />
-          不想加班</label
+          {{ uiText('Avoid overtime') }}</label
         >
         <label
           ><input v-model="constraints.research" type="checkbox" :disabled="busy" />
-          偏研究（按研究型兴趣强度加权）</label
+          {{ uiText('Prefer research (weighted by investigative interest)') }}</label
         >
         <p class="helper-note">
-          目录没有城市覆盖和工时数据，这两项会记录为待核实。薪资仅按有来源的目录区间比较；当前内置目录暂无可信薪资数据，缺失时不调分。
+          {{
+            uiText(
+              'The catalog lacks city coverage and working hours; both remain unverified. Salary comparisons use sourced ranges only. The built-in catalog currently lacks reliable salary data, so missing values do not affect ranking.',
+            )
+          }}
         </p>
         <button class="btn primary" :disabled="busy || !online">
-          {{ busy ? '正在保存…' : '保存约束并重排' }}
+          {{ busy ? uiText('Saving…') : uiText('Save constraints and reorder') }}
         </button>
-        <RouterLink v-if="!busy" :to="chatLink" class="btn">在对话中确认重排</RouterLink>
+        <RouterLink v-if="!busy" :to="chatLink" class="btn">{{
+          uiText('Confirm reordering in chat')
+        }}</RouterLink>
       </form>
       <p role="status">
-        服务端重排计算 {{ revision.elapsedMs }} ms<span v-if="revision.explanationFallback">
-          · 已使用预算内简短规则解释</span
+        {{ uiText('Server ranking time: {0} ms', [revision.elapsedMs])
+        }}<span v-if="revision.explanationFallback">
+          {{ uiText('· Using a short rule-based explanation within budget') }}</span
         >
       </p>
       <RouterLink
         v-if="revision.parentId"
         :to="{ query: { ...route.query, revision: revision.parentId } }"
-        >查看上一修订</RouterLink
+        >{{ uiText('View previous revision') }}</RouterLink
       >
       <ol class="form-stack">
         <li
@@ -269,13 +295,13 @@ async function restoreTask(id: string) {
           :key="item.occupation.occupationId"
           class="recommend-row"
         >
-          <strong>{{ item.rank }}. {{ item.occupation.name }}</strong>
+          <strong>{{ formatDisplay(item.rank) }}. {{ item.occupation.name }}</strong>
           <span v-if="revision.parentId" class="tag" data-rank-delta>{{
             item.rankDelta > 0
-              ? '↑ 上升 ' + item.rankDelta
+              ? uiText('↑ Moved up') + ' ' + item.rankDelta
               : item.rankDelta < 0
-                ? '↓ 下降 ' + Math.abs(item.rankDelta)
-                : '名次未变'
+                ? uiText('↓ Moved down') + ' ' + Math.abs(item.rankDelta)
+                : uiText('Rank unchanged')
           }}</span>
           <p>{{ item.changeReason }}</p>
           <CareerCardFacts :details="item.details" :match="item.occupation.match" />
@@ -286,15 +312,16 @@ async function restoreTask(id: string) {
               :disabled="!selected.includes(item.occupation.occupationId) && selected.length >= 3"
               @change="select(item.occupation.occupationId)"
             />
-            对比 {{ item.occupation.name }}</label
+            {{ uiText('Compare {0}', [item.occupation.name]) }}</label
           >
         </li>
       </ol>
     </template>
-    <h3>选择 2–3 个职业对比</h3>
+    <h3>{{ uiText('Compare 2–3 careers') }}</h3>
     <label class="field"
-      >添加目录职业<select v-model="choice" :disabled="loading || selected.length >= 3">
-        <option value="">请选择</option>
+      >{{ uiText('Add a career from the catalog')
+      }}<select v-model="choice" :disabled="loading || selected.length >= 3">
+        <option value="">{{ uiText('Please select') }}</option>
         <option v-for="entry in catalog" :key="entry.occupationId" :value="entry.occupationId">
           {{ entry.name }}
         </option>
@@ -305,37 +332,49 @@ async function restoreTask(id: string) {
       :disabled="!choice || selected.length >= 3 || selected.includes(choice)"
       @click="addChoice"
     >
-      添加对比
+      {{ uiText('Add to comparison') }}
     </button>
     <div class="selection-list">
       <button v-for="id in selected" :key="id" class="btn" @click="select(id)">
-        移除 {{ catalog.find((entry) => entry.occupationId === id)?.name ?? '所选职业' }}
+        {{
+          uiText('Remove {0}', [
+            catalog.find((entry) => entry.occupationId === id)?.name ?? uiText('Selected careers'),
+          ])
+        }}
       </button>
     </div>
     <p role="status">
-      已选 {{ selected.length }} / 3 个职业<span v-if="comparing">，正在读取对比…</span>
+      {{ uiText('{0} of 3 careers selected', [selected.length])
+      }}<span v-if="comparing">{{ uiText(', loading comparison…') }}</span>
     </p>
     <p v-if="comparisonError" role="alert">
-      {{ comparisonError }} <button class="btn" @click="loadComparison">重试对比</button>
+      {{ comparisonError }}
+      <button class="btn" @click="loadComparison">{{ uiText('Retry comparison') }}</button>
     </p>
     <template v-if="comparison">
       <p class="subtle">
-        雷达为职业目录的六维兴趣强度（0–100），不代表你的能力。完整值与资料如下；暂无数据留空说明。
+        {{
+          uiText(
+            'The radar shows catalog interest dimensions (0–100), not your abilities. See the full values and sources below. Missing data is labeled explicitly.',
+          )
+        }}
       </p>
       <CareerRadar :comparison="comparison" />
       <div
         class="comparison-table"
         tabindex="0"
         role="region"
-        aria-label="职业对比数据，可横向滚动"
+        :aria-label="uiText('Career comparison data. Scroll horizontally to view.')"
       >
         <table>
           <caption>
-            职业对比：目录原始数据与当前画像兴趣匹配
+            {{
+              uiText('Career comparison: catalog data and current profile interest match')
+            }}
           </caption>
           <thead>
             <tr>
-              <th scope="col">维度</th>
+              <th scope="col">{{ uiText('Dimension') }}</th>
               <th
                 v-for="occupation in comparison.occupations"
                 :key="occupation.occupationId"
@@ -353,36 +392,39 @@ async function restoreTask(id: string) {
               </td>
             </tr>
             <tr>
-              <th scope="row">兴趣匹配 (r+1)/2</th>
+              <th scope="row">{{ uiText('Interest match (r+1)/2') }}</th>
               <td v-for="occupation in comparison.occupations" :key="occupation.occupationId">
                 {{
                   occupation.match == null
-                    ? '请先完善画像'
+                    ? uiText('Complete your profile first')
                     : Math.round(occupation.match * 100) + '%'
                 }}
               </td>
             </tr>
             <tr>
-              <th scope="row">校招薪资</th>
+              <th scope="row">{{ uiText('Graduate salary') }}</th>
               <td v-for="occupation in comparison.occupations" :key="occupation.occupationId">
-                {{ occupation.salaryRange?.campus ?? '暂无数据' }}
+                {{ occupation.salaryRange?.campus ?? uiText('No data available') }}
                 {{ occupation.salaryRange?.source }}
               </td>
             </tr>
             <tr>
-              <th scope="row">核心技能要求</th>
+              <th scope="row">{{ uiText('Core skill requirements') }}</th>
               <td v-for="occupation in comparison.occupations" :key="occupation.occupationId">
-                {{ occupation.coreSkills.map((skill) => skill.name).join('；') || '暂无数据' }}
+                {{
+                  occupation.coreSkills.map((skill) => skill.name).join('；') ||
+                  uiText('No data available')
+                }}
               </td>
             </tr>
             <tr>
-              <th scope="row">成长路径</th>
+              <th scope="row">{{ uiText('Career path') }}</th>
               <td v-for="occupation in comparison.occupations" :key="occupation.occupationId">
-                {{ occupation.growthPath || '暂无数据' }}
+                {{ occupation.growthPath || uiText('No data available') }}
               </td>
             </tr>
             <tr>
-              <th scope="row">目录来源</th>
+              <th scope="row">{{ uiText('Catalog source') }}</th>
               <td v-for="occupation in comparison.occupations" :key="occupation.occupationId">
                 {{ occupation.source }}
               </td>

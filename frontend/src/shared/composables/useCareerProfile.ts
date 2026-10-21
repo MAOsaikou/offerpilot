@@ -1,3 +1,4 @@
+import { localizedText, translate as uiText } from '@/shared/utils/language'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   getCareerProfile,
@@ -30,7 +31,7 @@ export function useCareerProfile() {
   const profile = ref(emptyProfile())
   const loading = ref(true)
   const ready = ref(false)
-  const error = ref('')
+  const error = localizedText()
   const dirty = { profile: ref(false), tasks: ref(false) }
   const revisions = { profile: 0, tasks: 0 }
   const pending = computed(() => dirty.profile.value || dirty.tasks.value)
@@ -57,7 +58,10 @@ export function useCareerProfile() {
       ready.value = true
     } catch (cause) {
       if (current === generation && !disposed)
-        error.value = cause instanceof Error ? cause.message : '无法读取职业档案，请重试'
+        error.value = () =>
+          cause instanceof Error
+            ? cause.message
+            : uiText('Could not load career profile. Please retry.')
     } finally {
       if (current === generation && !disposed) loading.value = false
     }
@@ -85,7 +89,8 @@ export function useCareerProfile() {
         if (!pending.value) error.value = ''
       } catch (cause) {
         if (current === generation && !disposed && revision === revisions[kind])
-          error.value = cause instanceof Error ? cause.message : '保存失败，请重试'
+          error.value = () =>
+            cause instanceof Error ? cause.message : uiText('Could not save. Please retry.')
       }
     })
   }
@@ -116,7 +121,8 @@ export function useCareerProfile() {
     timer = undefined
     if (dirty.profile.value) enqueue('profile')
     await writes
-    if (dirty.profile.value) throw new Error(error.value || '请先重试保存职业画像')
+    if (dirty.profile.value)
+      throw new Error(error.value || uiText('Retry saving your career profile first'))
     cityBeforeAssessment = profile.value.city
   }
 

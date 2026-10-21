@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDisplay, formatNumber, language, translate as uiText } from '@/shared/utils/language'
+
 import { computed, ref, nextTick } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useBoard } from '@/shared/composables/useBoard'
@@ -13,22 +15,33 @@ const selected = ref<{
   status: MatchRequirement['status']
 }>()
 const evidencePanel = ref<HTMLElement>()
-const labels = { MET: '有明确证据', PARTIAL: '部分体现', MISSING: '简历未体现' }
-const statuses = [
-  { status: 'MET', label: '明确' },
-  { status: 'PARTIAL', label: '部分' },
-  { status: 'MISSING', label: '未体现' },
-] as const
+const labels = computed(() => ({
+  MET: uiText('Explicit evidence'),
+  PARTIAL: uiText('Partially demonstrated'),
+  MISSING: uiText('Not shown in resume'),
+}))
+const statuses = computed(
+  () =>
+    [
+      { status: 'MET', label: uiText('Explicit') },
+      { status: 'PARTIAL', label: uiText('Partial') },
+      { status: 'MISSING', label: uiText('Not shown') },
+    ] as const,
+)
 const coverage = computed(() => {
   const counts = { MET: 0, PARTIAL: 0, MISSING: 0 }
   for (const item of data.value.requirements) counts[item.status]++
-  return statuses.map((item) => ({ ...item, count: counts[item.status] }))
+  return statuses.value.map((item) => ({ ...item, count: counts[item.status] }))
 })
 function evidence(item: MatchRequirement, side: 'jd' | 'resume') {
   if (side === 'jd')
     selected.value = {
-      title: '分析时的岗位原文',
-      text: `岗位：${data.value.jobSnapshot.title}\n职责：\n${data.value.jobSnapshot.description}\n要求：\n${data.value.jobSnapshot.requirement}`,
+      title: uiText('Original job text used for analysis'),
+      text: uiText('Job: {0} Responsibilities: {1} Requirements: {2}', [
+        data.value.jobSnapshot.title,
+        data.value.jobSnapshot.description,
+        data.value.jobSnapshot.requirement,
+      ]),
       quote: item.jdQuote,
       status: item.status,
     }
@@ -40,7 +53,7 @@ function evidence(item: MatchRequirement, side: 'jd' | 'resume') {
       else value = undefined
     }
     selected.value = {
-      title: '分析时的简历原文',
+      title: uiText('Original resume text used for analysis'),
       text: typeof value === 'string' ? value : item.resumeQuote,
       quote: item.resumeQuote,
       status: item.status,
@@ -69,7 +82,7 @@ const excerpt = computed(() => {
         path: '/resumes/' + data.resumeId,
         query: { tab: 'optimize', jobId: data.jobId, resumeVersionId: data.resumeVersionId },
       }"
-      >按此岗位改写</RouterLink
+      >{{ uiText('Rewrite for this job') }}</RouterLink
     >
     <div class="card-footer">
       <button
@@ -82,29 +95,35 @@ const excerpt = computed(() => {
         "
         @click="board.favorite(data.jobId)"
       >
-        {{ board.saved(data.jobId) ? '已加入看板' : '加入看板' }}
+        {{ board.saved(data.jobId) ? uiText('On your board') : uiText('Add to board') }}
       </button>
-      <p v-if="board.error.value" role="alert">{{ board.error.value }}</p>
+      <p v-if="board.error.value" role="alert">{{ formatDisplay(board.error.value) }}</p>
       <p v-if="board.query.isError.value" role="alert">
-        看板读取失败。<button class="btn" @click="board.query.refetch()">重试看板</button>
+        {{ uiText('Could not load board.')
+        }}<button class="btn" @click="board.query.refetch()">{{ uiText('Retry board') }}</button>
       </p>
     </div>
     <div class="section-heading">
       <div>
-        <p class="subtle">岗位要求的简历证据覆盖率</p>
-        <h2>{{ data.score }} / 100</h2>
+        <p class="subtle">{{ uiText('Resume evidence coverage of job requirements') }}</p>
+        <h2>{{ formatDisplay(data.score) }} / 100</h2>
       </div>
-      <span class="tag">{{ data.resumeTitle }} · 版本 {{ data.resumeVersionNo }}</span>
+      <span class="tag">{{
+        uiText('{0} · Version {1}', [data.resumeTitle, data.resumeVersionNo])
+      }}</span>
     </div>
     <p>{{ data.summary }}</p>
     <p class="helper-note">
-      此分数按本报告提取的要求计算：明确体现计 1，部分体现计 0.5，未体现计
-      0。它不是录用概率，也不能证明实际能力；请结合官网完整要求判断。
+      {{
+        uiText(
+          "This score uses extracted requirements: explicit evidence counts as 1, partial as 0.5 and missing as 0. It is not a hiring probability or proof of ability. Review the full requirements on the company's website.",
+        )
+      }}
     </p>
-    <section class="coverage-summary" aria-label="岗位要求证据覆盖概览">
+    <section class="coverage-summary" :aria-label="uiText('Job requirement evidence coverage')">
       <div class="coverage-counts">
         <span v-for="item in coverage" :key="item.status" :data-status="item.status">
-          {{ item.label }} <strong>{{ item.count }}</strong> 项
+          {{ item.label }} <strong>{{ formatDisplay(item.count) }}</strong> {{ uiText('items') }}
         </span>
       </div>
       <div v-if="data.requirements.length" class="coverage-bar" aria-hidden="true">
@@ -115,7 +134,9 @@ const excerpt = computed(() => {
           :style="{ flexGrow: item.count }"
         ></span>
       </div>
-      <p v-else class="subtle">本报告暂无可展示的要求证据。</p>
+      <p v-else class="subtle">
+        {{ uiText('No requirement evidence to display in this report.') }}
+      </p>
     </section>
     <article
       v-for="(item, index) in data.requirements"
@@ -124,25 +145,46 @@ const excerpt = computed(() => {
       :data-status="item.status"
     >
       <div class="section-heading">
-        <h3>{{ index + 1 }}. {{ item.requirement }}</h3>
+        <h3>{{ formatDisplay(index + 1) }}. {{ item.requirement }}</h3>
         <span class="tag status-chip">{{ labels[item.status] }}</span>
       </div>
       <p>{{ item.reason }}</p>
       <button class="evidence-link" @click="evidence(item, 'jd')">
-        岗位依据：<span class="evidence-quote">{{ item.jdQuote }}</span>
+        {{ uiText('Job evidence:') }}<span class="evidence-quote">{{ item.jdQuote }}</span>
       </button>
       <button v-if="item.resumeQuote" class="evidence-link" @click="evidence(item, 'resume')">
-        简历依据：<span class="evidence-quote">{{ item.resumeQuote }}</span>
+        {{ uiText('Resume evidence:') }}<span class="evidence-quote">{{ item.resumeQuote }}</span>
       </button>
-      <p v-else class="subtle">所选简历中未找到可引用的证据。</p>
-      <p><strong>准备建议：</strong>{{ item.suggestion }}</p>
+      <p v-else class="subtle">
+        {{ uiText('No citable evidence was found in the selected resume.') }}
+      </p>
+      <p>
+        <strong>{{ uiText('Preparation tips:') }}</strong
+        >{{ item.suggestion }}
+      </p>
     </article>
-    <section v-if="data.unverifiedRequirements?.length" aria-label="未核实要求" class="helper-note">
-      <h4>未核实 {{ data.unverifiedCount ?? data.unverifiedRequirements.length }} 项 · 不计分</h4>
-      <p>以下条目的原文依据未通过校验，无法判断覆盖程度；请核对完整岗位与简历。</p>
+    <section
+      v-if="data.unverifiedRequirements?.length"
+      :aria-label="uiText('Unverified requirements')"
+      class="helper-note"
+    >
+      <h4>
+        {{
+          uiText('{0} unverified items · Not scored', [
+            data.unverifiedCount ?? data.unverifiedRequirements.length,
+          ])
+        }}
+      </h4>
+      <p>
+        {{
+          uiText(
+            'Original evidence for these items failed validation. Coverage cannot be assessed. Check the full job and resume.',
+          )
+        }}
+      </p>
       <ul>
         <li v-for="(item, index) in data.unverifiedRequirements" :key="index">
-          {{ item.requirement }} · 未核实
+          {{ uiText('{0} · Unverified', [item.requirement]) }}
         </li>
       </ul>
     </section>
@@ -156,7 +198,9 @@ const excerpt = computed(() => {
     >
       <div class="section-heading">
         <h3>{{ selected.title }}</h3>
-        <button class="btn" @click="selected = undefined">收起原文</button>
+        <button class="btn" @click="selected = undefined">
+          {{ uiText('Hide original text') }}
+        </button>
       </div>
       <p class="prose-content">
         {{ excerpt.before
@@ -167,10 +211,25 @@ const excerpt = computed(() => {
       </p>
     </section>
     <p class="subtle">
-      生成于 {{ new Date(data.createdAt).toLocaleString('zh-CN') }} · 模型 {{ data.model
+      {{
+        uiText('Generated {0} · Model {1}', [
+          new Date(data.createdAt).toLocaleString(language),
+          data.model,
+        ])
       }}<template v-if="data.durationMs != null">
-        · 生成耗时 {{ (data.durationMs / 1000).toFixed(2) }} 秒</template
-      >。报告保留当时资料，后续编辑简历不会改写此报告。
+        {{
+          uiText('· Generation took {0} seconds', [
+            formatNumber(data.durationMs / 1000, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            }),
+          ])
+        }}</template
+      >{{
+        uiText(
+          '. This report keeps the materials as they were. Later resume edits do not change it.',
+        )
+      }}
     </p>
   </article>
 </template>

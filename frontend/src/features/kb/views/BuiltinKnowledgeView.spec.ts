@@ -1,3 +1,4 @@
+import { setLanguage } from '@/shared/utils/language'
 import { createApp, nextTick, type App } from 'vue'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -253,4 +254,21 @@ it('shows explicit offline and detail error recovery', async () => {
   expect(root.textContent).toContain('职业详情读取失败')
   await click('重试详情')
   expect(root.textContent).toContain('主动倾听')
+})
+
+afterEach(() => setLanguage('zh-CN'))
+
+it('switches knowledge tabs and filters live but preserves catalog entries', async () => {
+  await mount()
+  expect(root.textContent).toContain('护士')
+  setLanguage('en-US')
+  await nextTick()
+  expect(root.textContent).toContain('General question bank')
+  expect(root.textContent).toContain('Career category')
+  expect(root.textContent).toContain('Industry reports (planned)')
+  expect(root.textContent).toContain('护士')
+  expect(root.textContent).toContain('核验交接')
+  setLanguage('zh-CN')
+  await nextTick()
+  expect(root.textContent).toContain('通用题库')
 })

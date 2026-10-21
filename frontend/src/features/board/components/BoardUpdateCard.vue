@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { formatDate, translate as uiText } from '@/shared/utils/language'
+
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { asPayload } from '@/shared/utils/payload'
@@ -8,14 +10,14 @@ const props = defineProps<{ payload: unknown }>()
 
 const data = computed(() => asPayload<BoardUpdatePayload>(props.payload, 'application'))
 
-const statusLabel: Record<ApplicationStatus, string> = {
-  TODO: '待投递',
-  APPLIED: '已投递',
-  WRITTEN_TEST: '笔试',
-  INTERVIEW: '面试',
+const statusLabel = computed<Record<ApplicationStatus, string>>(() => ({
+  TODO: uiText('To apply'),
+  APPLIED: uiText('Applied'),
+  WRITTEN_TEST: uiText('Written test'),
+  INTERVIEW: uiText('Interview'),
   OFFER: 'Offer',
-  CLOSED: '已结束',
-}
+  CLOSED: uiText('Closed'),
+}))
 </script>
 
 <template>
@@ -28,14 +30,18 @@ const statusLabel: Record<ApplicationStatus, string> = {
 
     <div class="min-w-0 flex-1">
       <p class="text-sm">
-        {{ data.change === 'CREATED' ? '已加入求职看板' : '看板已更新' }}
+        {{
+          data.change === 'CREATED' ? uiText('Added to application board') : uiText('Board updated')
+        }}
       </p>
       <p class="mt-0.5 truncate text-xs text-muted-foreground">
         {{ data.application.company }} · {{ data.application.title }}
       </p>
       <p v-if="data.application.nextAction" class="mt-1 text-xs text-muted-foreground break-words">
-        下一步：{{ data.application.nextAction
-        }}<span v-if="data.application.nextActionAt"> · {{ data.application.nextActionAt }}</span>
+        {{ uiText('Next action: {0}', [data.application.nextAction])
+        }}<span v-if="data.application.nextActionAt">
+          · {{ formatDate(data.application.nextActionAt) }}</span
+        >
       </p>
     </div>
 
@@ -47,7 +53,7 @@ const statusLabel: Record<ApplicationStatus, string> = {
       :to="{ name: 'board', query: { application: data.application.id } }"
       class="shrink-0 text-xs text-primary transition-opacity hover:opacity-80"
     >
-      去看板
+      {{ uiText('Open board') }}
     </RouterLink>
   </article>
 </template>

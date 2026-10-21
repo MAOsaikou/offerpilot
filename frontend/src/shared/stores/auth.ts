@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import { computed, onScopeDispose, watch } from 'vue'
 import { defineStore } from 'pinia'
 import {
@@ -137,7 +138,7 @@ export const useAuthStore = defineStore('auth', () => {
         getStoredGuest() !== initialGuest ||
         loginRequired() !== initialLoginRequired
       )
-        throw new Error('身份已切换，请重新选择访客体验')
+        throw new Error(uiText('Identity changed. Please select guest mode again.'))
       if (getStoredGuest()) return resumeGuest()
       localStorage.setItem('offerpilot-storage-check', '1')
       localStorage.removeItem('offerpilot-storage-check')

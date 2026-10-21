@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
+import { translateLabel, sourceText, translate as uiText } from '@/shared/utils/language'
+
 import { ref } from 'vue'
 import { sessionRevision } from '@/shared/utils/authSession'
 import { RouterLink } from 'vue-router'
@@ -39,30 +43,37 @@ function assessmentChanged(assessment: AssessmentConfirmed | null) {
   applyAssessment(assessment)
   questionnaireRevision.value++
 }
-const interests = ['技术研发', '产品策划', '数据分析', '创意设计', '沟通协作', '研究探索']
-const directions = [
-  {
-    title: '技术研发',
-    role: '软件开发工程师',
-    icon: 'jobs',
-    desc: '享受拆解问题，用代码搭建可用的产品。',
-    skills: '编程基础 · 工程实践 · 系统思维',
-  },
-  {
-    title: '产品与设计',
-    role: '产品经理',
-    icon: 'discover',
-    desc: '关注人的需求，乐于把模糊的想法变成方案。',
-    skills: '用户研究 · 需求分析 · 表达沟通',
-  },
-  {
-    title: '数据与洞察',
-    role: '数据分析师',
-    icon: 'career',
-    desc: '对数字背后的规律保持好奇，用证据回答问题。',
-    skills: 'SQL · 统计基础 · 可视化',
-  },
+const interests = [
+  sourceText('Technology and engineering'),
+  sourceText('Product planning'),
+  sourceText('Data analysis'),
+  sourceText('Creative design'),
+  sourceText('Communication and collaboration'),
+  sourceText('Research and exploration'),
 ]
+const directions = computed(() => [
+  {
+    title: uiText('Technology and engineering'),
+    role: uiText('Software engineer'),
+    icon: 'jobs',
+    desc: uiText('Enjoy breaking down problems and building useful products with code.'),
+    skills: uiText('Programming fundamentals · Engineering practice · Systems thinking'),
+  },
+  {
+    title: uiText('Product and design'),
+    role: uiText('Product manager'),
+    icon: 'discover',
+    desc: uiText("Understand people's needs and turn vague ideas into practical solutions."),
+    skills: uiText('User research · Requirements analysis · Communication'),
+  },
+  {
+    title: uiText('Data and insights'),
+    role: uiText('Data analyst'),
+    icon: 'career',
+    desc: uiText('Explore patterns in numbers and answer questions with evidence.'),
+    skills: uiText('SQL · Statistics fundamentals · Visualization'),
+  },
+])
 function choose(role: string) {
   profile.value.target = role
   saveProfile(0)
@@ -71,23 +82,34 @@ function choose(role: string) {
 <template>
   <section class="page-stack">
     <PageHeading
-      title="我的职业画像"
-      description="从专业、兴趣和性格三个维度认识自己，把方向变成下一步行动。"
+      :title="uiText('My career profile')"
+      :description="
+        uiText(
+          'Explore your education, interests and personality, then turn direction into action.',
+        )
+      "
       ><RouterLink
         :to="{
           path: '/chat',
-          query: { mode: 'CAREER_DISCOVERY', prompt: '请通过提问帮助我梳理职业兴趣和能力。' },
+          query: {
+            mode: 'CAREER_DISCOVERY',
+            prompt: uiText('Ask me questions to help explore my career interests and abilities.'),
+          },
         }"
         class="btn primary"
-        >开始对话探索</RouterLink
+        >{{ uiText('Explore in conversation') }}</RouterLink
       ></PageHeading
     >
-    <p v-if="loading" role="status" class="subtle">正在读取职业档案…</p>
+    <p v-if="loading" role="status" class="subtle">{{ uiText('Loading career profile…') }}</p>
     <div v-if="error" role="alert" class="error-banner">
-      {{ error }} <button class="btn text" @click="retry">重试</button>
+      {{ error }} <button class="btn text" @click="retry">{{ uiText('Retry') }}</button>
     </div>
     <p v-if="ready" role="status" class="subtle">
-      {{ pending ? '职业档案尚未保存' : '职业档案已与服务器同步' }}
+      {{
+        pending
+          ? uiText('Career profile is not yet saved')
+          : uiText('Career profile synced with the server')
+      }}
     </p>
     <TargetPlanPanel :enabled="ready && !pending" :target="profile.target" :city="profile.city" />
     <ProfileUpdates
@@ -97,83 +119,105 @@ function choose(role: string) {
     />
     <div class="split-content">
       <section class="panel form-stack">
-        <h2>职业方向</h2>
+        <h2>{{ uiText('Career direction') }}</h2>
         <div class="form-grid">
           <label class="field"
-            >目标方向<input
+            >{{ uiText('Target career')
+            }}<input
               v-model="profile.target"
               :disabled="!ready || evidenceBusy"
               maxlength="100"
-              placeholder="例如：前端开发工程师"
+              :placeholder="uiText('For example: frontend engineer')"
               @input="saveProfile()" /></label
           ><label class="field"
-            >意向城市<input
+            >{{ uiText('Preferred city')
+            }}<input
               v-model="profile.city"
               :disabled="!ready || evidenceBusy"
               maxlength="100"
-              placeholder="例如：杭州、上海"
+              :placeholder="uiText('For example: Hangzhou, Shanghai')"
               @input="saveProfile()"
           /></label>
         </div>
-        <p class="subtle">文字编辑会自动保存。保存失败时保留本页草稿，请点击重试。</p>
+        <p class="subtle">
+          {{
+            uiText(
+              'Text edits save automatically. If saving fails, your draft stays on this page. Click retry.',
+            )
+          }}
+        </p>
       </section>
       <aside class="panel form-stack">
         <span class="stat-icon"><AppIcon name="discover" /></span>
-        <h2>探索没有标准答案</h2>
+        <h2>{{ uiText('There is no single right answer') }}</h2>
         <p class="subtle">
-          回想一件让你投入的事：你在做什么？其中哪一部分让你有成就感？这些具体经历，比一个简单的标签更有价值。
+          {{
+            uiText(
+              'Recall something that absorbed your attention. What were you doing? What felt rewarding? Specific experiences say more than a simple label.',
+            )
+          }}
         </p>
         <div class="helper-note">
-          开启长期记忆时，目标、城市、专业和兴趣码会同步到记忆；仅用已有记忆补充空白项。可在设置中管理或关闭。
+          {{
+            uiText(
+              'When long-term memory is enabled, your goal, city, major and interest code are synced to memory. Existing memories only fill empty fields. Manage or disable memory in settings.',
+            )
+          }}
         </div>
-        <RouterLink to="/career" class="btn">把方向变成行动</RouterLink>
+        <RouterLink to="/career" class="btn">{{ uiText('Turn direction into action') }}</RouterLink>
       </aside>
     </div>
     <div class="profile-panels">
       <section class="panel form-stack" aria-labelledby="education-title">
-        <span class="tag">01 · 学习积累</span>
-        <h2 id="education-title">专业与课程</h2>
+        <span class="tag">{{ uiText('01 · Education') }}</span>
+        <h2 id="education-title">{{ uiText('Major and courses') }}</h2>
         <label class="field"
-          >专业<input
+          >{{ uiText('Major')
+          }}<input
             v-model="profile.major"
             name="major"
             :disabled="!ready || evidenceBusy"
             maxlength="100"
-            placeholder="例如：软件工程"
+            :placeholder="uiText('For example: software engineering')"
             @input="saveProfile()"
         /></label>
         <label class="field"
-          >课程（每行一门）<textarea
+          >{{ uiText('Courses (one per line)')
+          }}<textarea
             v-model="profile.courses"
             name="courses"
             :disabled="!ready || evidenceBusy"
             rows="5"
             maxlength="3000"
-            placeholder="数据结构与算法&#10;数据库原理"
+            :placeholder="uiText('Data Structures and Algorithms / Database Fundamentals')"
             @input="saveProfile()"
           />
         </label>
-        <p class="subtle">写下与你的方向有关的课程、实验或选修经历，没想好可以先留空。</p>
+        <p class="subtle">
+          {{ uiText('Add relevant courses, labs or electives. You can leave this blank for now.') }}
+        </p>
       </section>
       <section class="panel form-stack" aria-labelledby="interests-title">
-        <span class="tag">02 · 喜欢与擅长</span>
-        <h2 id="interests-title">兴趣与技能</h2>
+        <span class="tag">{{ uiText('02 · Interests and strengths') }}</span>
+        <h2 id="interests-title">{{ uiText('Interests and skills') }}</h2>
         <p v-if="profile.assessment" class="helper-note">
-          已确认的 Holland 兴趣码：<strong>{{ profile.assessment.code || '未分化' }}</strong>
+          {{ uiText('Confirmed Holland interest code:')
+          }}<strong>{{ profile.assessment.code || uiText('Undifferentiated') }}</strong>
         </p>
         <label class="field"
-          >已有技能<textarea
+          >{{ uiText('Current skills')
+          }}<textarea
             v-model="profile.skills"
             name="skills"
             :disabled="!ready || evidenceBusy"
             rows="4"
             maxlength="3000"
-            placeholder="你会什么？有哪些实践经历？"
+            :placeholder="uiText('What can you do? What have you practiced?')"
             @input="saveProfile()"
           />
         </label>
         <div class="field">
-          感兴趣的领域
+          {{ uiText('Areas of interest') }}
           <div class="chips">
             <label
               v-for="interest in interests"
@@ -186,22 +230,23 @@ function choose(role: string) {
                 :value="interest"
                 :disabled="!ready || evidenceBusy"
                 @change="saveProfile(0)"
-              />{{ interest }}</label
+              />{{ translateLabel(interest) }}</label
             >
           </div>
         </div>
       </section>
       <section class="panel form-stack personality-panel" aria-labelledby="personality-title">
-        <span class="tag">03 · 做事方式与选择</span>
-        <h2 id="personality-title">性格与价值观</h2>
+        <span class="tag">{{ uiText('03 · Work style and choices') }}</span>
+        <h2 id="personality-title">{{ uiText('Personality and values') }}</h2>
         <label class="field"
-          >价值观（每行一项）<textarea
+          >{{ uiText('Values (one per line)')
+          }}<textarea
             v-model="profile.valuesText"
             name="valuesText"
             :disabled="!ready || evidenceBusy"
             rows="3"
             maxlength="1000"
-            placeholder="持续成长&#10;工作生活平衡"
+            :placeholder="uiText('Continuous growth / Work-life balance')"
             @input="saveProfile()"
           />
         </label>
@@ -211,7 +256,13 @@ function choose(role: string) {
           :before-confirm="flushProfile"
           @confirmed="personalityConfirmed"
         />
-        <p v-else class="subtle">{{ loading ? '正在读取性格画像…' : '请先重试读取职业画像。' }}</p>
+        <p v-else class="subtle">
+          {{
+            loading
+              ? uiText('Loading personality profile…')
+              : uiText('Retry loading your career profile first.')
+          }}
+        </p>
       </section>
     </div>
     <CareerQuestionnaire
@@ -227,8 +278,8 @@ function choose(role: string) {
       />
     </div>
     <div class="section-heading">
-      <h2>从这些方向开始了解</h2>
-      <span class="subtle">通用职业参考</span>
+      <h2>{{ uiText('Start exploring these directions') }}</h2>
+      <span class="subtle">{{ uiText('General career references') }}</span>
     </div>
     <div class="card-grid">
       <article v-for="direction in directions" :key="direction.title" class="panel job-card">
@@ -237,7 +288,11 @@ function choose(role: string) {
         <p class="subtle">{{ direction.desc }}</p>
         <p class="tag">{{ direction.skills }}</p>
         <button class="btn" :disabled="!ready || evidenceBusy" @click="choose(direction.role)">
-          {{ profile.target === direction.role ? '当前目标' : '设为探索目标' }}
+          {{
+            profile.target === direction.role
+              ? uiText('Current goal')
+              : uiText('Set as exploration goal')
+          }}
         </button>
       </article>
     </div>
