@@ -44,4 +44,11 @@ class CareerAssessmentStateTest {
         assertThat(service.addFollowup("alice",0,"不知道","再问一个？")).isEqualTo(twelve);
         verify(jdbc,never()).update(startsWith("UPDATE career_assessments SET followups"),any(),any());
     }
+
+    @org.junit.jupiter.api.Test void everyBaseQuestionAsksExactlyOneQuestion() {
+        for (String q : CareerAssessmentService.QUESTIONS) {
+            long marks = q.chars().filter(c -> c == '？' || c == '?').count();
+            org.assertj.core.api.Assertions.assertThat(marks).as(q).isEqualTo(1);
+        }
+    }
 }
