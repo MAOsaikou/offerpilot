@@ -87,6 +87,7 @@ function populate() {
     draft.value = JSON.parse(
       JSON.stringify(resume.value.currentVersion.structured),
     ) as ResumeStructure
+    draft.value.basics.title ??= ''
     original.value = JSON.stringify(draft.value)
     baseVersion.value = resume.value.currentVersion.id
   }
@@ -225,6 +226,7 @@ async function showHistory() {
 function restore(version: ResumeVersion) {
   if (dirty.value && !window.confirm(uiText('Replace unsaved edits with this version?'))) return
   draft.value = JSON.parse(JSON.stringify(version.structured)) as ResumeStructure
+  draft.value.basics.title ??= ''
   tab.value = 'Content'
   message.value = () => uiText('Historical version loaded. Saving will create a new version.')
 }
@@ -327,6 +329,7 @@ const sections = computed(() => [
 ])
 const basics = computed(() => [
   { key: 'name' as const, label: uiText('Name') },
+  { key: 'title' as const, label: uiText('Title / job objective') },
   { key: 'phone' as const, label: uiText('Phone') },
   { key: 'email' as const, label: uiText('Email') },
   { key: 'city' as const, label: uiText('City') },

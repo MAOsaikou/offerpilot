@@ -1,7 +1,14 @@
 import { translate as uiText } from '@/shared/utils/language'
 export type ResumeEntry = Record<string, string | string[]>
 export interface ResumeStructure {
-  basics: { name: string; phone: string; email: string; city: string; links: string[] }
+  basics: {
+    name: string
+    title?: string
+    phone: string
+    email: string
+    city: string
+    links: string[]
+  }
   education: ResumeEntry[]
   experience: ResumeEntry[]
   projects: ResumeEntry[]

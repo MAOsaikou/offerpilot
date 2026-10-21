@@ -2550,4 +2550,5 @@ export default {
     'Candidates combine occupation text and interest recall, ordered by interest match (descending). Interest match = (Pearson r + 1) / 2.',
   'Combined ranking score: {0} (initial rank score + approved research/salary constraint adjustments; not a probability)':
     'Combined ranking score: {0} (initial rank score + approved research/salary constraint adjustments; not a probability)',
+  'Title / job objective': 'Title / job objective',
 } as const

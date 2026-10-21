@@ -2439,4 +2439,5 @@ export default {
     '候选结合职业文本与兴趣召回，展示顺序按兴趣匹配度降序；兴趣匹配度为 (Pearson r + 1) / 2。',
   'Combined ranking score: {0} (initial rank score + approved research/salary constraint adjustments; not a probability)':
     '综合排序分：{0}（初始名次分 + 已批准的研究/薪资约束调整，非概率）',
+  'Title / job objective': '头衔 / 求职意向',
 } as const
