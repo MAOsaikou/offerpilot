@@ -12,6 +12,8 @@ import java.util.function.BiFunction;
 /** One wall-clock budget for parsing, both recalls and persistence. No unbounded request fanout. */
 @Service
 public class JobSearchPipeline {
+    static final long SEARCH_BUDGET_MS = 7700;
+    static long deadline() { return System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(SEARCH_BUDGET_MS); }
     private final JobSearchWork work; private final JobSearchParser parser; private final JobLocalSearch local;
     private final JobSource source; private final ObjectMapper json;
     public JobSearchPipeline(JobSearchWork work,JobSearchParser parser,JobLocalSearch local,JobSource source,ObjectMapper json) {
@@ -21,7 +23,10 @@ public class JobSearchPipeline {
         return search(owner,query,site,nature,location,save,false);
     }
     JsonNode search(String owner,String query,String site,String nature,String location,BiFunction<JsonNode,String,JsonNode> save,boolean structured) {
-        long start=System.nanoTime(), deadline=start+TimeUnit.MILLISECONDS.toNanos(7700);
+        return search(owner,query,site,nature,location,save,structured,deadline());
+    }
+    JsonNode search(String owner,String query,String site,String nature,String location,BiFunction<JsonNode,String,JsonNode> save,boolean structured,long deadline) {
+        long start=deadline-TimeUnit.MILLISECONDS.toNanos(SEARCH_BUDGET_MS);
         var progress=new AtomicReference<ObjectNode>(empty());
         Future<ObjectNode> task;
         try { task=work.submit(()->execute(owner,query,site,nature,location,save,deadline,progress,structured)); }

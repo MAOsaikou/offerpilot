@@ -40,13 +40,21 @@ public class JobSearchForChat {
     }
 
     public ObjectNode search(String query, String site, String nature, String location) {
+        long deadline = JobSearchPipeline.deadline();
         if (query == null || query.isBlank() || query.length() > 100 || site == null || site.length() > 60
                 || location == null || location.length() > 60 || nature == null || !Set.of("campus", "intern", "social", "all").contains(nature))
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "搜索条件无效，请提供岗位关键词并检查城市、企业与招聘类型");
         String resolvedSite = SITE_ALIASES.getOrDefault(site.strip(), site.strip());
         if (!resolvedSite.isEmpty()) {
             JsonNode selected = null;
-            for (JsonNode candidate : jobs.sites().path("sites")) {
+            JsonNode directory;
+            try { directory = jobs.sites(deadline-java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(1700)); }
+            catch (BusinessException ex) {
+                if (ex.errorCode() != ErrorCode.TOOL_FAILED) throw ex;
+                // A failed directory must not discard available LOCAL_DB matches.
+                return card(jobs.search(query.strip(),resolvedSite,nature,location.strip(),deadline),query.strip(),resolvedSite,nature,location.strip());
+            }
+            for (JsonNode candidate : directory.path("sites")) {
                 if (resolvedSite.equalsIgnoreCase(candidate.path("id").asText()) || resolvedSite.equalsIgnoreCase(candidate.path("name").asText())) {
                     selected = candidate;
                     break;
@@ -61,7 +69,7 @@ public class JobSearchForChat {
             }
             resolvedSite = selected.path("id").asText();
         }
-        return card(jobs.search(query.strip(), resolvedSite, nature, location.strip()),query.strip(),resolvedSite,nature,location.strip());
+        return card(jobs.search(query.strip(), resolvedSite, nature, location.strip(),deadline),query.strip(),resolvedSite,nature,location.strip());
     }
 
     public record Prepared(ObjectNode preview, java.util.function.Supplier<ObjectNode> persist) {}

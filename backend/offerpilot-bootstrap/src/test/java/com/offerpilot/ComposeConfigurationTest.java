@@ -31,9 +31,17 @@ class ComposeConfigurationTest {
             assertNoCycle(service.getKey(), services, new HashSet<>());
         }
         var backend = ComposeConfigurationTest.<String, Object>map(services.get("backend").get("environment"));
-        assertThat(backend).containsEntry("EMBEDDING_BASE_URL", "${EMBEDDING_BASE_URL:-http://ollama:11434}")
+        assertThat(backend).containsEntry("JOBS_LIVE_TIMEOUT_MS", "${JOBS_LIVE_TIMEOUT_MS:-6500}")
+                .containsEntry("EMBEDDING_BASE_URL", "${EMBEDDING_BASE_URL:-http://ollama:11434}")
                 .containsEntry("LLM_MODEL_EMBEDDING", "${LLM_MODEL_EMBEDDING:-bge-m3}")
                 .containsEntry("LLM_EMBEDDING_DIMENSIONS", "${LLM_EMBEDDING_DIMENSIONS:-1024}");
+        assertThat(ComposeConfigurationTest.<String, Object>map(services.get("jobs-mcp").get("environment")))
+                .containsEntry("JOBS_LIVE_TIMEOUT_MS", "${JOBS_LIVE_TIMEOUT_MS:-6500}")
+                .containsEntry("SITE_TIMEOUT_MS", "${SITE_TIMEOUT_MS:-6000}");
+        Map<String, Object> application = yaml.load(Files.readString(Path.of("src/main/resources/application.yml")));
+        var offerpilot = ComposeConfigurationTest.<String, Object>map(application.get("offerpilot"));
+        assertThat(ComposeConfigurationTest.<String, Object>map(offerpilot.get("mcp")))
+                .containsEntry("jobs-timeout-ms", "${JOBS_LIVE_TIMEOUT_MS:6500}");
         assertThat(services.get("ollama")).doesNotContainKey("ports");
         var volumes = ComposeConfigurationTest.<String, Object>map(config.get("volumes"));
         assertThat(volumes).containsKey("ollama_data");

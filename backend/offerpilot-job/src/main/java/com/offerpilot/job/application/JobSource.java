@@ -35,10 +35,14 @@ public class JobSource {
     }
 
     public JsonNode sites() {
+        return sites(Long.MAX_VALUE);
+    }
+    JsonNode sites(long deadline) {
         if (mode == Mode.LOCAL) return snapshot.sites();
         try {
-            var result = live.call("list_sites", Map.of());
-            if (!result.path("sites").isArray()) throw new BusinessException(ErrorCode.TOOL_FAILED);
+            var result = deadline == Long.MAX_VALUE ? live.call("list_sites", Map.of())
+                    : live.call("list_sites", Map.of(), java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(deadline-System.nanoTime()));
+            if (result == null || !result.path("sites").isArray()) throw new BusinessException(ErrorCode.TOOL_FAILED);
             return result;
         } catch (BusinessException ex) {
             if (mode == Mode.LIVE || ex.errorCode() != ErrorCode.TOOL_FAILED) throw ex;
@@ -50,7 +54,7 @@ public class JobSource {
         if (mode == Mode.LOCAL) return local(args, null);
         try {
             var result = live.call("search_jobs", args);
-            if (!result.path("jobs").isArray() || !result.path("_meta").isObject())
+            if (result == null || !result.path("jobs").isArray() || !result.path("_meta").isObject())
                 throw new BusinessException(ErrorCode.TOOL_FAILED);
             var meta = result.path("_meta");
             boolean allFailed = meta.path("sites").size() > 0
