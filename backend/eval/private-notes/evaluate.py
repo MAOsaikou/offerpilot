@@ -35,7 +35,7 @@ class Client:
         if envelope:
             if value.get('code') != 0:
                 raise ValueError('Application request failed')
-            return value['data']
+            return value.get('data')
         return value
 
 
