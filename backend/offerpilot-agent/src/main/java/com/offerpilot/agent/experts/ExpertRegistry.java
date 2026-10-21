@@ -111,7 +111,8 @@ public class ExpertRegistry {
     }
 
     private Mono<ExpertResult> withStories(String owner, PlanStep step, Mono<ExpertResult> work) {
-        if (starContext == null) return work;
+        if (starContext == null || java.util.Set.of("noteGuidance", "interviewGuidance")
+                .contains(String.valueOf(step.inputs().get("action")))) return work;
         if (step.agent() != ExpertType.INTERVIEWER && step.agent() != ExpertType.COACH) return work;
         String query = storyQuery(step);
         return work.flatMap(result -> {
@@ -123,7 +124,9 @@ public class ExpertRegistry {
                 if (card.payload() instanceof InterviewCoachForChat.Turn turn) id = turn.sessionId();
             }
             if (id == null) return Mono.just(result);
-            return starContext.attachInterview(owner, id, query, result);
+            return starContext.attachInterview(owner, id, query, result)
+                    .onErrorResume(BusinessException.class, ex -> ex.errorCode() == ErrorCode.INTERVIEW_NOT_FOUND
+                            ? Mono.just(result) : Mono.error(ex));
         });
     }
 
@@ -379,13 +382,21 @@ public class ExpertRegistry {
                 inputs.put("action", "completedInterview");
             }
             return new PlanStep(step.id(), step.title(), step.agent(), inputs, step.dependsOn());
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(Schedulers.boundedElastic()).onErrorResume(BusinessException.class, ex -> {
+            if (ex.errorCode() != ErrorCode.INTERVIEW_NOT_FOUND) return Mono.error(ex);
+            var inputs = new java.util.LinkedHashMap<String, Object>();
+            inputs.put("action", "interviewGuidance");
+            if (step.inputs().containsKey("noteQuery")) inputs.put("noteQuery", step.inputs().get("noteQuery"));
+            return Mono.just(new PlanStep(step.id(), "面试练习指引", step.agent(), inputs, step.dependsOn()));
+        });
     }
 
     public Mono<ExpertResult> execute(String owner, Map<String, Object> context, String runId, PlanStep step,
                                       Map<String, String> upstreamOutputs, com.offerpilot.llm.ModelTier tier) {
         if (writingBoard(step) || writingCareer(step) || writingInterview(step) || writingCoach(step) || writingPatches(step) || writingStarStory(step)) return Mono.error(new IllegalStateException("写入必须先审批"));
-        var work = executeRead(owner, context, runId, step, upstreamOutputs, tier);
+        var work = executeRead(owner, context, runId, step, upstreamOutputs, tier)
+                .onErrorResume(BusinessException.class, ex -> step.agent() == ExpertType.INTERVIEWER && ex.errorCode() == ErrorCode.INTERVIEW_NOT_FOUND
+                        ? Mono.just(ExpertResult.text("没有可用的面试会话，本轮未执行面试操作。请开始一场模拟面试，或直接提问获取文字建议。")) : Mono.error(ex));
         Mono<ExpertResult> enriched = step.agent() == ExpertType.COACH || step.agent() == ExpertType.INTERVIEWER
                 || (step.agent() == ExpertType.RESUME && "advice".equals(step.inputs().get("action")))
                 ? withNotes(owner, step, work) : work;
@@ -410,6 +421,10 @@ public class ExpertRegistry {
             }).subscribeOn(Schedulers.boundedElastic());
         }
         if (step.agent() == ExpertType.INTERVIEWER) {
+            if ("noteGuidance".equals(step.inputs().get("action")))
+                return Mono.just(ExpertResult.text("请根据检索到的笔记回顾原回答并给出改进建议。"));
+            if ("interviewGuidance".equals(step.inputs().get("action")))
+                return Mono.just(ExpertResult.text("没有可用的面试会话，本轮没有保存或推进答案。可以说「开始一场模拟面试」来开始练习，或直接提问获取文字建议。"));
             if (interviews == null) return Mono.just(ExpertResult.text("文字面试服务暂不可用，请稍后重试。"));
             if ("completedInterview".equals(step.inputs().get("action")))
                 return Mono.just(ExpertResult.text("这场面试已完成，本轮没有保存或推进答案。你可以请求评分、复盘，或开始一场新面试。"));

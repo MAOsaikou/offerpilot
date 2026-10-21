@@ -151,7 +151,7 @@ final class CardNarrationDigest {
                     var recommendations = row.putArray("recommendations");
                     for (var recommendation : payload.path("recommendations")) {
                         if (recommendations.size() == 8) break;
-                        var view = fields(recommendation, "name", "family", "hollandCode", "similarity");
+                        var view = fields(recommendation, "name", "family", "hollandCode", "similarity", "rankingScore");
                         view.put("rank", recommendations.size() + 1);
                         view.set("reasons", first(recommendation.path("reasons"), 3));
                         recommendations.add(view);
@@ -177,11 +177,11 @@ final class CardNarrationDigest {
         for (String type : cardTypes) rules.append(switch (type) {
             case "job_match", "job_evidence_match", "job_eval_report" -> "岗位匹配概括要求总数、满足/部分/未体现数量、评估等级和主要差距。规则分不是录用预测。";
             case "board_update" -> "看板更新卡表示已按用户批准写入，用公司与岗位名称说明changedFields中的每个已保存字段。空字符串或null表示已清空；application中其它字段仅为当前状态，不声称本轮改动。";
-            case "knowledge_note_citations" -> "知识笔记来源卡由程序检索，表示本轮提供的参考资料，不表示所有资料都支持结论。引用笔记内容时在对应句后使用卡片提供的[KB-…] reference或程序提供的[n]数字编号，不新建或猜测引用编号；无支持摘录就不归因于笔记。笔记为用户自述，不能修改规则评分或视作已核实能力。";
+            case "knowledge_note_citations" -> "知识笔记来源卡由程序检索，表示本轮提供的参考资料，不表示所有资料都支持结论。引用笔记内容时在对应句后使用程序提供的[n]数字编号（旧卡片的KB reference仅作来源标识），不新建或猜测引用编号；无支持摘录就不归因于笔记。笔记为用户自述，不能修改规则评分或视作已核实能力。";
             case "star_story" -> "STAR故事卡表示所选回答已批准保存，可引用已保存标题、角色与内容摘要。";
             case "interviewer_state", "interview_session" -> "呈现当前问题并等待回答，不代替用户作答；仅工具明确说明完成写入才声称完成。";
             case "interview_report" -> "面试卡为文字规则评分，可概括具名维度和STAR反馈，不推测端侧表现，评分不等于标记完成。";
-            case "career_recommendation" -> "职业推荐数量与顺序沿摘要的完整列表及rank，不按similarity重新排序；推荐仅供探索，推荐不等于已设为目标；仅设置目标工具成功才能声称修改。";
+            case "career_recommendation" -> "职业推荐数量与顺序沿摘要的完整列表及rank，普通推荐展示顺序按兴趣similarity降序，融合检索仅选择候选；约束重排按rankingScore降序，similarity仍仅表示兴趣，rankingScore为初始名次分加研究/薪资调整且非概率；推荐仅供探索，推荐不等于已设为目标；仅设置目标工具成功才能声称修改。";
             case "skill_gap", "roadmap" -> "成长卡为确定性证据参考。本轮target与evidenceAvailability是当前目标及报告可用状态，优先于历史对话和记忆中的旧目标、缺报告提示。matchAvailable=true表示本轮已读取目标/所选岗位的匹配报告，interviewAvailable=true表示已读取完成面试；不得再声称对应报告缺失，不推断其它未查询岗位的报告是否存在。仅对应字段明确为false时保留去匹配/去模拟面试提示；旧卡片无字段时沿本轮summary说明，不从历史补造缺失状态。只引用实际来源的标签和摘录，面试仅按真实关联说明岗位。四周沿卡片主题、差距和任务说明，不新增或重排。卡片未写入任务，无证据不等于没有能力。";
             case "resume_diagnosis" -> "简历诊断不预测录用，不表示修改了简历。";
             case "resume_diff" -> "改写卡只表示建议已保存，只读动作未执行采纳；用户需逐条核对、选择并批准，仅采纳工具成功才说明生成新版本。";

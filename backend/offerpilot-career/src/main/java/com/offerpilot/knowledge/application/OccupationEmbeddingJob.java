@@ -75,6 +75,7 @@ public class OccupationEmbeddingJob implements ApplicationRunner {
                     "SELECT embedding IS NULL FROM occupations WHERE id=?", Boolean.class, entry.id()))) pending.add(entry);
         }
         int embedded = 0;
+        if (!enabled) log.info("职业向量索引已关闭（occupation-embed.enabled=false），仅维护全文索引");
         if (enabled) {
             for (int offset = 0; offset < pending.size(); offset += BATCH_SIZE) {
                 var batch = pending.subList(offset, Math.min(offset + BATCH_SIZE, pending.size()));

@@ -231,7 +231,7 @@ function adopt() {
         {{ data.snapshot.repositories.length }} 个公开仓库 · Star {{ data.snapshot.stars }} ·
         近90天本人提交 {{ data.snapshot.commits90d }}（达到分页上限时为下界）
       </p>
-      <p v-if="data.snapshot.repositoriesTruncated">仓库超过20个，仅统计最近推送的20个。</p>
+      <p v-if="data.snapshot.repositoriesTruncated">本次仅统计已完整抓取的 {{ data.snapshot.repositories.length }} 个仓库，未覆盖全部仓库。</p>
       <p class="break-words">
         语言分布（字节）：{{
           Object.entries(data.snapshot.languages)
@@ -239,7 +239,9 @@ function adopt() {
             .join(' · ') || '暂无语言数据'
         }}
       </p>
-      <p v-if="!data.snapshot.repositories.length">该用户暂无公开仓库。</p>
+      <p v-if="!data.snapshot.repositories.length">
+        {{ data.snapshot.repositoriesTruncated ? '本次未完整抓取到仓库，请稍后重试或配置 Token。' : '该用户暂无公开仓库。' }}
+      </p>
       <article
         v-for="project in data.snapshot.repositories"
         :key="project.name"

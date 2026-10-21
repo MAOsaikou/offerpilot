@@ -71,8 +71,9 @@ public class GitHubEvidenceService {
             String token = stored.encrypted() == null ? null : cipher.decrypt(owner, stored.encrypted());
             var source = client.fetch(stored.username(), token);
             Map<String, List<String>> quotes;
-            String state = "READY", notice = scope();
-            try { quotes = highlights.extract(owner, source); }
+            String state = source.notice().isEmpty() ? "READY" : "STATISTICS_ONLY";
+            String notice = scope(token != null) + " " + source.notice();
+            try { quotes = source.notice().isEmpty() ? highlights.extract(owner, source) : Map.of(); }
             catch (RuntimeException ex) { quotes = Map.of(); state = "STATISTICS_ONLY"; notice += " README 亮点提炼不可用，已降级为仅统计。"; }
             var projects = new ArrayList<Project>();
             var languages = new TreeMap<String, Long>(); long stars = 0; int commits = 0;
@@ -144,5 +145,5 @@ public class GitHubEvidenceService {
         if (jdbc.queryForList("SELECT id FROM users WHERE id=? FOR UPDATE", owner).isEmpty()) throw new BusinessException(ErrorCode.UNAUTHENTICATED);
     }
     private static BusinessException invalid(String message) { return new BusinessException(ErrorCode.VALIDATION_FAILED, message); }
-    private static String scope() { return "统计最近推送的至多20个公开自有仓库（含 fork）；语言按字节数，Star 为所统计仓库获星数之和；近90天提交仅默认分支且 author 为该用户名，每仓库最多100条，达到上限标记为下界。仓库归属不证明个人贡献或技能熟练度。"; }
+    private static String scope(boolean authenticated) { return "统计最近推送的至多" + (authenticated ? 20 : 15) + "个公开自有仓库（含 fork）；语言按字节数，Star 为所统计仓库获星数之和；近90天提交仅默认分支且 author 为该用户名，每仓库最多100条，达到上限标记为下界。仓库归属不证明个人贡献或技能熟练度。"; }
 }

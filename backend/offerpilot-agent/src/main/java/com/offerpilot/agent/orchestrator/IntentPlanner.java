@@ -162,6 +162,8 @@ public class IntentPlanner {
             return resolveActions(new Decision("single", ExpertType.RESUME, 1.0, false, null,
                     single(content, ExpertType.RESUME, safeContext)), content, history, tier, onUsage, safeContext);
         }
+        if (safeContext.isEmpty() && InterviewIntentParser.noteReviewRequest(content))
+            return Mono.just(new Decision("chitchat", null, 1.0, false, null, null));
         if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.INTERVIEWER)
                 && (safeContext.containsKey("interviewAction") || safeContext.containsKey("interviewSessionId")
                     || content.contains("面试") && InterviewIntentParser.scoringRequest(content))) {

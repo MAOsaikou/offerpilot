@@ -88,8 +88,52 @@ class RestGitHubClientTest {
             responses.add(new Reply(200,"{}")); responses.add(new Reply(200,"["+String.join(",",Collections.nCopies(100,"{}"))+"]")); responses.add(new Reply(404,""));
         }
         replies(responses.toArray(Reply[]::new));
-        var snapshot = new RestGitHubClient(http,new ObjectMapper()).fetch("fixture",null);
+        var snapshot = new RestGitHubClient(http,new ObjectMapper()).fetch("fixture","fixture_only");
         assertThat(snapshot.repositoriesTruncated()).isTrue(); assertThat(snapshot.repositories()).hasSize(20);
         assertThat(snapshot.repositories()).allMatch(GitHubClient.Repository::commitsTruncated);
+    }
+
+    private String repositories(int count) {
+        return java.util.stream.IntStream.range(0, count).mapToObj(i ->
+                "{\"private\":false,\"stargazers_count\":1,\"full_name\":\"fixture/r"+i+"\"}")
+                .collect(java.util.stream.Collectors.joining(",", "[", "]"));
+    }
+    @Test void anonymousFetchStaysBelowHourlyLimitEvenWithoutRateLimitHeaders() {
+        var responses = new ArrayList<Reply>();
+        responses.add(new Reply(200, repositories(16)));
+        for (int i=0; i<15; i++) responses.addAll(List.of(new Reply(200,"{}"),new Reply(200,"[]"),new Reply(404,"")));
+        replies(responses.toArray(Reply[]::new));
+        var snapshot = new RestGitHubClient(http,new ObjectMapper()).fetch("fixture",null);
+        assertThat(snapshot.repositories()).hasSize(15);
+        assertThat(snapshot.repositoriesTruncated()).isTrue();
+        assertThat(requests).hasSize(46);
+    }
+    @Test void remainingHeaderStopsBeforeNextRepositoryAndReservesFiveRequests() {
+        replies(new Reply(200,repositories(3),Map.of("X-RateLimit-Remaining",List.of("8"))),
+                new Reply(200,"{\"Java\":10}"),new Reply(200,"[{}]"),new Reply(404,""));
+        var snapshot = new RestGitHubClient(http,new ObjectMapper()).fetch("fixture",null);
+        assertThat(snapshot.repositories()).hasSize(1);
+        assertThat(snapshot.notice()).contains("预算", "完整抓取");
+        assertThat(snapshot.repositoriesTruncated()).isTrue();
+        assertThat(requests).hasSize(4);
+    }
+    @Test void laterHeadersCanShrinkBudgetWithoutDiscardingACompletedRepository() {
+        replies(new Reply(200,repositories(3)),new Reply(200,"{}"),new Reply(200,"[]"),
+                new Reply(404,"",Map.of("X-RateLimit-Remaining",List.of("5"))));
+        var snapshot = new RestGitHubClient(http,new ObjectMapper()).fetch("fixture",null);
+        assertThat(snapshot.repositories()).hasSize(1);
+        assertThat(snapshot.notice()).isNotBlank();
+        assertThat(requests).hasSize(4);
+    }
+    @Test void midFetchRateLimitKeepsOnlyCompletedRepositoriesForEitherCredentialMode() {
+        for (String token : new String[]{null,"fixture_only"}) {
+            replies(new Reply(200,repositories(3)),new Reply(200,"{\"Java\":10}"),new Reply(200,"[{}]"),new Reply(404,""),
+                    new Reply(200,"{\"Python\":99}"),new Reply(429,"sensitive"));
+            var snapshot = new RestGitHubClient(http,new ObjectMapper()).fetch("fixture",token);
+            assertThat(snapshot.repositories()).extracting(GitHubClient.Repository::name).containsExactly("fixture/r0");
+            assertThat(snapshot.repositories().get(0).languages()).containsOnlyKeys("Java");
+            assertThat(snapshot.repositoriesTruncated()).isTrue();
+            assertThat(snapshot.notice()).contains("中途限流").doesNotContain("sensitive");
+        }
     }
 }

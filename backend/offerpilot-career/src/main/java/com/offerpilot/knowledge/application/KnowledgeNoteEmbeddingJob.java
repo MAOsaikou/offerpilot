@@ -64,7 +64,7 @@ public class KnowledgeNoteEmbeddingJob {
                         UPDATE knowledge_notes SET index_status=?,index_error=?
                         WHERE id=? AND revision=? AND embedding_attempts=? AND embedding IS NULL
                         """, entry.attempt() >= 3 ? "FAILED" : "QUEUED",
-                        entry.attempt() >= 3 ? "向量索引暂时失败，全文检索仍可用；保存笔记可重试" : null,
+                        entry.attempt() >= 3 ? "向量索引暂时失败，全文检索仍可用；保存笔记可重试" : "向量索引调用失败，稍后自动重试；全文检索仍可用",
                         entry.id(), entry.revision(), entry.attempt());
                 continue;
             }

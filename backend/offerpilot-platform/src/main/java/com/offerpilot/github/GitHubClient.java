@@ -8,7 +8,11 @@ import java.util.Map;
 public interface GitHubClient {
     record Repository(String name, String url, boolean fork, long stars, Map<String, Long> languages,
                       int commits90d, boolean commitsTruncated, String readme) {}
-    record Snapshot(List<Repository> repositories, boolean repositoriesTruncated, Instant since) {}
+    record Snapshot(List<Repository> repositories, boolean repositoriesTruncated, Instant since, String notice) {
+        public Snapshot(List<Repository> repositories, boolean repositoriesTruncated, Instant since) {
+            this(repositories, repositoriesTruncated, since, "");
+        }
+    }
     Snapshot fetch(String username, String token);
 
     final class Failure extends RuntimeException {

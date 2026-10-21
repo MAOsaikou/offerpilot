@@ -78,4 +78,19 @@ class GitHubEvidenceServiceTest {
         verify(jdbc).update(contains("INSERT INTO github_evidence"),eq("owner"),eq("changed"),isNull(),anyString());
         verifyNoInteractions(cipher,client);
     }
+
+    @Test void partialFetchPersistsItsRealStatisticsAndNotice() throws Exception {
+        stored(null,null);
+        when(client.fetch("fixture",null)).thenReturn(new GitHubClient.Snapshot(List.of(
+                new GitHubClient.Repository("fixture/p","https://github.com/fixture/p",false,8,Map.of("Java",20L),3,false,"README")),
+                true,Instant.now(),"中途限流，仅保留完整抓取仓库"));
+        service.refresh("owner",true);
+        var encoded = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(jdbc).update(contains("snapshot=?::jsonb"),encoded.capture(),eq("STATISTICS_ONLY"),contains("中途限流"),eq("owner"),eq("rev"));
+        var saved = json.readTree(encoded.getValue());
+        assertThat(saved.path("repositories")).hasSize(1);
+        assertThat(saved.path("repositoriesTruncated").asBoolean()).isTrue();
+        assertThat(saved.path("stars").asInt()).isEqualTo(8);
+        verifyNoInteractions(highlights);
+    }
 }
