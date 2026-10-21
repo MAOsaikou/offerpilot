@@ -1,0 +1,29 @@
+{
+  "kind": "SYNTHETIC_FIXTURE",
+  "version": 1,
+  "description": "虚构私有笔记与人工相关性标注，不是真实用户数据，不代表实际用户质量。",
+  "notes": [
+    {"id":"redis","owner":"A","title":"缓存穿透复盘","category":"技术积累","content":"合成夹具：课程项目查询不存在的商品，采用布隆过滤器与短时空值缓存处理缓存穿透。缓存雪崩使用随机过期时间；热点失效使用互斥重建。没有测量性能提升。"},
+    {"id":"transaction","owner":"A","title":"订单事务笔记","category":"技术积累","content":"合成夹具：订单服务把本地事务与消息发送分开。事务消息需要核对提交状态；消费端使用业务唯一键去重。没有使用分布式全局锁。"},
+    {"id":"board","owner":"A","title":"投递记录去重练习","category":"项目经历","content":"合成夹具：用户和岗位构成复合唯一键。重复加入投递看板使用数据库冲突忽略并读取已保存记录，不重复新增创建事件。"},
+    {"id":"star","owner":"A","title":"项目表达练习","category":"求职心得","content":"合成夹具：讲述项目时按背景、任务、行动、结果组织，只陈述自己实际负责的接口设计。结果没有可靠数字就描述可核实变化，不编造百分比。"},
+    {"id":"sql","owner":"A","title":"慢查询排查","category":"技术积累","content":"合成夹具：先查看执行计划，检查索引与过滤行数。联合索引关注最左前缀，避免对索引列做函数运算。没有线上时延数据。"},
+    {"id":"thread","owner":"A","title":"线程池拒绝策略","category":"技术积累","content":"合成夹具：有界队列限制等待任务，线程池满后明确拒绝或降级。阻塞请求需要超时和取消传播，不能无限创建线程。"},
+    {"id":"frontend","owner":"A","title":"表单保存失败","category":"项目经历","content":"合成夹具：Vue 页面保存失败保留用户草稿，重试时提交同一份输入。身份切换丢弃迟到响应。未提交的输入不宣称已经保存。"},
+    {"id":"foreign","owner":"B","title":"星桥暗号与缓存穿透","category":"技术积累","content":"合成夹具：另一个用户的私有笔记含星桥暗号和 Redis 缓存穿透。该资料只对用户 B 可见，不得出现在用户 A 的检索结果中。"}
+  ],
+  "questions": [
+    {"id":"q1","owner":"A","query":"缓存穿透怎么处理？","relevant":["redis"]},
+    {"id":"q2","owner":"A","query":"不存在的商品请求一直打数据库怎么办？","relevant":["redis"]},
+    {"id":"q3","owner":"A","query":"消息重复消费和本地事务如何协调？","relevant":["transaction"]},
+    {"id":"q4","owner":"A","query":"并发重复加入同一个岗位如何去重？","relevant":["board"]},
+    {"id":"q5","owner":"A","query":"没有准确的效果数字怎样介绍项目结果？","relevant":["star"]},
+    {"id":"q6","owner":"A","query":"联合索引与慢查询怎么排查？","relevant":["sql"]},
+    {"id":"q7","owner":"A","query":"请求过载时怎样限制等待任务？","relevant":["thread"]},
+    {"id":"q8","owner":"A","query":"保存失败后重试，怎么避免丢失表单内容？","relevant":["frontend"]},
+    {"id":"q9","owner":"A","query":"数据库唯一键在投递去重和消息去重中的用途","relevant":["board","transaction"]},
+    {"id":"q10","owner":"B","query":"星桥暗号","relevant":["foreign"]},
+    {"id":"q11","owner":"A","query":"星桥暗号是什么","relevant":[],"forbidden":["foreign"]},
+    {"id":"q12","owner":"A","query":"这份笔记有量子芯片制造流程吗","relevant":[]}
+  ]
+}

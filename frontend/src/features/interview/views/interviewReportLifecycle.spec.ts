@@ -101,6 +101,7 @@ beforeEach(() => {
       if (path === '/applications') return response([])
       if (path.startsWith('/star-stories'))
         return response(path.includes('candidates') ? [] : { items: [] })
+      if (path.includes('/learning-plans/updates/from-interview/')) return response([])
       if (path.includes('/learning-plans/from-interview/')) return response({ id: 'lp_inline' })
       throw new Error('Unexpected API: ' + path)
     }),

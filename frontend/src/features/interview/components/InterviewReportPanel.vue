@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import InterviewReportCard from './InterviewReportCard.vue'
+import InterviewPlanUpdatePanel from './InterviewPlanUpdatePanel.vue'
 import { generateInterviewReport, getInterviewReport } from '@/shared/api/interviews'
 import { createReportLearningPlan } from '@/shared/api/learningPlans'
 import { useGenerationTasks } from '@/shared/stores/generationTasks'
@@ -118,6 +119,7 @@ async function createPlan() {
     <template v-else-if="report.data.value && (hasReport || !canGenerate)">
       <InterviewReportCard :payload="report.data.value" inline />
       <p class="helper-note">报告已保存，可随时从面试历史查看。</p>
+      <InterviewPlanUpdatePanel :key="sessionId" :report-id="sessionId" />
       <div class="report-actions">
         <button
           class="btn primary"

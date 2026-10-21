@@ -2,7 +2,6 @@ package com.offerpilot.artifact;
 
 import com.offerpilot.career.application.InterviewLearningSource;
 import com.offerpilot.interview.application.InterviewService;
-import com.offerpilot.interview.application.InterviewRubric;
 import com.offerpilot.common.error.*;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +14,6 @@ public class InterviewLearningBridge implements InterviewLearningSource {
         if (!session.completed()) throw new BusinessException(ErrorCode.VALIDATION_FAILED, "请先完成面试再生成学习计划。");
         var report = interviews.report(owner, reportId);
         return new Report(session.id(), session.role(), report.recommendedLearning().stream()
-                .map(item -> new Topic(item.topic(), item.reason(), item.estimatedHours())).toList());
+                .map(item -> new Topic(item.topic(), item.reason(), item.estimatedHours())).toList(), session.jobId());
     }
 }
