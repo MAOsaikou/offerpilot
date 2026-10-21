@@ -54,7 +54,11 @@ vi.mock('@/shared/api/interviews', () => ({
   updateInterview: vi.fn(),
 }))
 vi.mock('@/shared/api/resumes', () => ({ listResumes: vi.fn(), listResumeVersions: vi.fn() }))
-vi.mock('@/shared/api/learningPlans', () => ({ createReportLearningPlan: vi.fn() }))
+vi.mock('@/shared/api/learningPlans', () => ({
+  createReportLearningPlan: vi.fn(),
+  previewInterviewPlanUpdates: vi.fn(async () => []),
+  confirmInterviewPlanUpdate: vi.fn(),
+}))
 vi.mock('@/shared/api/starStories', () => ({
   listStarStoryCandidates: vi.fn(),
   listStarStories: vi.fn(),

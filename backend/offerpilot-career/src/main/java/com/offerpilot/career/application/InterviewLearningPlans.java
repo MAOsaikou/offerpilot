@@ -22,6 +22,7 @@ public class InterviewLearningPlans {
     @Transactional
     public Plan create(String owner, String reportId) {
         // Same owned session lock as answer/progress writes; retries and concurrent clicks converge.
+        lockOwner(owner);
         var report = source.read(owner, reportId);
         var existing = list(owner).stream().filter(p -> p.reportId().equals(reportId)).findFirst();
         if (existing.isPresent()) return existing.get();
@@ -30,10 +31,14 @@ public class InterviewLearningPlans {
         String id = IdGenerator.next("lp");
         String start = LocalDate.now(ZoneId.of("Asia/Shanghai")).toString();
         try {
-            jdbc.update("INSERT INTO interview_learning_plans(id,user_id,report_id,roadmap,start_date) VALUES (?,?,?,?::jsonb,?::date) ON CONFLICT(user_id,report_id) DO NOTHING",
-                    id, owner, reportId, json.writeValueAsString(roadmap), start);
+            jdbc.update("INSERT INTO interview_learning_plans(id,user_id,report_id,roadmap,start_date,target_role,target_job_id) VALUES (?,?,?,?::jsonb,?::date,?,?) ON CONFLICT(user_id,report_id) DO NOTHING",
+                    id, owner, reportId, json.writeValueAsString(roadmap), start, report.role(), report.jobId());
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) { throw new IllegalStateException(e); }
         return list(owner).stream().filter(p -> p.reportId().equals(reportId)).findFirst().orElseThrow();
+    }
+    void lockOwner(String owner) {
+        if (jdbc.queryForList("SELECT id FROM users WHERE id=? FOR NO KEY UPDATE", String.class, owner).isEmpty())
+            throw new BusinessException(ErrorCode.UNAUTHENTICATED);
     }
     @Transactional(readOnly=true)
     public List<Plan> list(String owner) {

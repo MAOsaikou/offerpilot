@@ -137,7 +137,8 @@ try {
     let tasks = [],
       starts = 0,
       state = 'running',
-      saved = false
+      saved = false,
+      planUpdates = 0
     await page.route('**/api/v1/**', async (route) => {
       const request = route.request(),
         url = new URL(request.url()),
@@ -194,6 +195,41 @@ try {
       if (path.startsWith('/star-stories'))
         return ok(path.includes('candidates') ? [] : { items: [], limit: 30 })
       if (path === '/applications') return ok([])
+      if (path === '/career/learning-plans/updates/from-interview/iv_inline')
+        return ok(
+          planUpdates
+            ? []
+            : [
+                {
+                  planId: 'lp_existing',
+                  reportId: 'iv_inline',
+                  targetRole: '新媒体运营',
+                  fingerprint: 'a'.repeat(64),
+                  additions: [
+                    {
+                      index: 1,
+                      theme: '补充报告短板',
+                      items: [
+                        {
+                          id: 'update-fixture',
+                          title: '活动效果验证',
+                          hours: 1,
+                          resources: ['合成接口夹具：第1题缺少验证'],
+                          dueAt: null,
+                          done: false,
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+        )
+      if (path === '/career/learning-plans/lp_existing/updates/from-interview/iv_inline/confirm') {
+        expect(request.method()).toBe('POST')
+        expect(request.postDataJSON()).toEqual({ fingerprint: 'a'.repeat(64) })
+        planUpdates++
+        return ok({ id: 'lp_existing' })
+      }
       if (path === '/career/learning-plans/from-interview/iv_inline') return ok({ id: 'lp_inline' })
       // Shell-only endpoints have no effect on interview/report generation.
       if (path === '/auth/quota' || path === '/auth/me') return ok({})
@@ -246,6 +282,16 @@ try {
     expect(dockBox.width).toBeLessThan(200)
     expect(dockBox.height).toBeLessThan(60)
     await shot('report')
+    const updates = panel.getByRole('region', { name: '计划更新建议', exact: true })
+    await expect(updates.getByText('合成接口夹具：第1题缺少验证', { exact: false })).toBeVisible()
+    expect(planUpdates).toBe(0)
+    await shot('plan-update-preview')
+    await updates.getByRole('button', { name: '确认更新此计划' }).click()
+    await expect(
+      updates.getByText('计划已更新，新增任务待学习。已有任务和完成记录已保留。'),
+    ).toBeVisible()
+    expect(planUpdates).toBe(1)
+    await shot('plan-update-confirmed')
     await panel.getByRole('button', { name: '一键生成学习计划' }).click()
     await expect(panel.getByRole('link', { name: '查看学习计划' })).toHaveAttribute(
       'href',

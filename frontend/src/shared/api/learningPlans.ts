@@ -36,3 +36,21 @@ export async function exportLearningCalendar(id: string, signal?: AbortSignal) {
     throw new Error('日程格式错误，请重试。')
   downloadText('学习计划.ics', text, 'text/calendar;charset=utf-8')
 }
+
+export interface LearningPlanUpdate {
+  planId: string
+  reportId: string
+  targetRole: string
+  fingerprint: string
+  additions: RoadmapPayload['weeks']
+}
+export const previewInterviewPlanUpdates = (reportId: string, signal?: AbortSignal) =>
+  apiRequest<LearningPlanUpdate[]>(
+    `/career/learning-plans/updates/from-interview/${encodeURIComponent(reportId)}`,
+    { signal },
+  )
+export const confirmInterviewPlanUpdate = (proposal: LearningPlanUpdate, signal?: AbortSignal) =>
+  apiRequest<LearningPlan>(
+    `/career/learning-plans/${encodeURIComponent(proposal.planId)}/updates/from-interview/${encodeURIComponent(proposal.reportId)}/confirm`,
+    { method: 'POST', body: JSON.stringify({ fingerprint: proposal.fingerprint }), signal },
+  )
