@@ -84,23 +84,51 @@ it('shows all catalog fields, two user facts and explicit missing values for old
 it('explains descending interest scores for ordinary recommendations', () => {
   view = mountForTest(Card, {
     payload: {
-      hollandCode: 'ICR', interestsUsed: ['技术研发'], ordering: 'interest',
+      hollandCode: 'ICR',
+      interestsUsed: ['技术研发'],
+      ordering: 'interest',
       recommendations: [
-        { occupationId: 'a', name: '后端', family: '研发', hollandCode: 'ICR', similarity: .925, reasons: [] },
-        { occupationId: 'b', name: '数据库', family: '数据', hollandCode: 'CIE', similarity: .790, reasons: [] },
+        {
+          occupationId: 'a',
+          name: '后端',
+          family: '研发',
+          hollandCode: 'ICR',
+          similarity: 0.925,
+          reasons: [],
+        },
+        {
+          occupationId: 'b',
+          name: '数据库',
+          family: '数据',
+          hollandCode: 'CIE',
+          similarity: 0.79,
+          reasons: [],
+        },
       ],
     },
   })
   expect(view.root.textContent).toContain('按兴趣匹配度降序')
   expect(view.root.textContent).toContain('Pearson')
-  expect(view.root.textContent!.indexOf('后端')).toBeLessThan(view.root.textContent!.indexOf('数据库'))
+  expect(view.root.textContent!.indexOf('后端')).toBeLessThan(
+    view.root.textContent!.indexOf('数据库'),
+  )
 })
 it('shows the actual constraint ranking score separately from interest similarity', () => {
   view = mountForTest(Card, {
     payload: {
-      hollandCode: '', interestsUsed: ['已保存推荐'],
+      hollandCode: '',
+      interestsUsed: ['已保存推荐'],
       recommendations: [
-        { occupationId: 'a', name: '后端', family: '研发', hollandCode: '', similarity: .8, rankingScore: 1.2345, rankDelta: 1, reasons: [] },
+        {
+          occupationId: 'a',
+          name: '后端',
+          family: '研发',
+          hollandCode: '',
+          similarity: 0.8,
+          rankingScore: 1.2345,
+          rankDelta: 1,
+          reasons: [],
+        },
       ],
     },
   })

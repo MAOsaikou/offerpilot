@@ -39,7 +39,10 @@ const valid = computed(
       class="btn"
       >打开本轮推荐与对比</RouterLink
     >
-    <p v-if="payload.recommendations.length && payload.ordering === 'interest'" class="mt-2 text-sm text-muted-foreground">
+    <p
+      v-if="payload.recommendations.length && payload.ordering === 'interest'"
+      class="mt-2 text-sm text-muted-foreground"
+    >
       候选结合职业文本与兴趣召回，展示顺序按兴趣匹配度降序；兴趣匹配度为 (Pearson r + 1) / 2。
     </p>
     <ol v-if="payload.recommendations.length" class="mt-3 space-y-3">
@@ -55,7 +58,8 @@ const valid = computed(
           >
         </div>
         <p v-if="item.rankingScore != null" class="mt-2 text-sm">
-          综合排序分：{{ item.rankingScore.toFixed(4) }}（初始名次分 + 已批准的研究/薪资约束调整，非概率）
+          综合排序分：{{ item.rankingScore.toFixed(4) }}（初始名次分 +
+          已批准的研究/薪资约束调整，非概率）
         </p>
         <p v-if="item.rankDelta != null" class="mt-2 text-sm">
           {{
