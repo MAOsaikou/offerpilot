@@ -29,7 +29,7 @@ public final class ToolContracts {
         for (String a : List.of("continueInterview", "answerInterview")) write(ExpertType.INTERVIEWER,a,"sessionId answer nextQuestion expectedUpdatedAt", "answer");
         write(ExpertType.INTERVIEWER,"completeInterview", "sessionId expectedUpdatedAt", "");
         write(ExpertType.INTERVIEWER,"saveStarStory", "sessionId questionIndex", "sessionId questionIndex");
-        for (String a : List.of("scoreInterview", "generateReport", "completedInterview", "recallStarStories")) read(ExpertType.INTERVIEWER,a,"sessionId");
+        for (String a : List.of("scoreInterview", "generateReport", "completedInterview", "recallStarStories", "noteGuidance", "interviewGuidance")) read(ExpertType.INTERVIEWER,a,"sessionId");
         for (ExpertType e : ExpertType.values()) {
             read(e,"clarify","question");
             read(e,"default","request");

@@ -102,14 +102,15 @@ public class CareerWriteTools {
         return com.offerpilot.llm.UsageJournal.callable(() -> {
             if ("rerankCareers".equals(step.inputs().get("action"))) {
                 var saved = reranks.rerank(owner, (String) decision.args().get("revisionId"), constraints(decision.args()));
-                var items = saved.items().stream().map(item -> Map.of(
-                        "occupationId", item.occupation().occupationId(), "name", item.occupation().name(),
-                        "family", item.occupation().family(), "hollandCode", "", "similarity", item.occupation().match(),
-                        "reasons", java.util.List.of(item.changeReason()), "rankDelta", item.rankDelta(),
-                        "changeReason", item.changeReason(), "details", item.details()==null ? java.util.Map.of() : item.details())).toList();
+                var items = saved.items().stream().map(item -> Map.ofEntries(
+                        Map.entry("occupationId", item.occupation().occupationId()), Map.entry("name", item.occupation().name()),
+                        Map.entry("family", item.occupation().family()), Map.entry("hollandCode", ""), Map.entry("similarity", item.occupation().match()),
+                        Map.entry("rankingScore", item.score()), Map.entry("reasons", java.util.List.of(item.changeReason())),
+                        Map.entry("rankDelta", item.rankDelta()), Map.entry("changeReason", item.changeReason()),
+                        Map.entry("details", item.details()==null ? java.util.Map.of() : item.details()))).toList();
                 return ExpertResult.card("已按批准的约束保存新推荐修订；未修改职业档案。",
                         saved.id(), "career_recommendation", Map.of("hollandCode", "", "interestsUsed", java.util.List.of("已保存推荐"),
-                                "recommendations", items, "revisionId", saved.id(), "elapsedMs", saved.elapsedMs()));
+                                "ordering", "constraints", "recommendations", items, "revisionId", saved.id(), "elapsedMs", saved.elapsedMs()));
             }
             validate(decision.args());
             var saved = careers.adopt(owner, (String) decision.args().get("occupationId"), (String) decision.args().get("name"));

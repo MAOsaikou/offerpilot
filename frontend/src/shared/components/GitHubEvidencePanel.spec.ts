@@ -180,3 +180,31 @@ it('dirty resume disables adoption while keeping statistics readable', async () 
   expect(button('作为简历项目建议').disabled).toBe(true)
   expect(host.textContent).toContain('请先保存或撤销简历草稿')
 })
+
+it('shows partial statistics and the actual completed repository count after rate limiting', async () => {
+  const partial = fixture()
+  partial.status = 'STATISTICS_ONLY'
+  partial.tokenConfigured = false
+  partial.notice = 'GitHub 请求预算不足或中途限流，仅保留已完整抓取的仓库'
+  partial.snapshot!.repositories[0]!.highlights = []
+  vi.mocked(api.getGitHubEvidence).mockResolvedValue(partial)
+  mount()
+  await flush()
+  expect(host.textContent).toContain('中途限流')
+  expect(host.textContent).toContain('已完整抓取的 1 个仓库')
+  expect(host.textContent).toContain('fixture/project')
+  expect(host.textContent).not.toContain('仅统计最近推送的20个')
+})
+
+it('does not claim there are no public repositories when the budget prevented all detail requests', async () => {
+  const partial = fixture()
+  partial.status = 'STATISTICS_ONLY'
+  partial.notice = 'GitHub 请求预算不足'
+  partial.snapshot!.repositories = []
+  partial.snapshot!.repositoriesTruncated = true
+  vi.mocked(api.getGitHubEvidence).mockResolvedValue(partial)
+  mount()
+  await flush()
+  expect(host.textContent).toContain('本次未完整抓取到仓库')
+  expect(host.textContent).not.toContain('该用户暂无公开仓库')
+})

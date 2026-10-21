@@ -28,6 +28,12 @@ public class KnowledgeNoteService {
     }
     private String pendingStatus() { return indexingEnabled && embeddings.configured() ? "QUEUED" : "READY"; }
 
+    private String pendingError() {
+        if (!indexingEnabled) return "向量索引已关闭，当前仅全文检索";
+        if (!embeddings.configured()) return "向量模型未启用或未配置，当前仅全文检索";
+        return null;
+    }
+
     public record Draft(String title, String content, String category) {}
     public record Note(String id, String title, String content, String category, String createdAt, String updatedAt,
                        String sourceFileId, String sourceFilename, boolean sourceTruncated, String indexStatus, String indexError) {}
@@ -56,9 +62,9 @@ public class KnowledgeNoteService {
         validate(draft);
         String id = "knt_" + UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO knowledge_notes(id,user_id,title,content,category,tsv,index_status)
-                VALUES (?,?,?,?,?,to_tsvector('simple',?),?)
-                """, id, owner, draft.title().strip(), draft.content().strip(), draft.category(), fulltext(draft), pendingStatus());
+                INSERT INTO knowledge_notes(id,user_id,title,content,category,tsv,index_status,index_error)
+                VALUES (?,?,?,?,?,to_tsvector('simple',?),?,?)
+                """, id, owner, draft.title().strip(), draft.content().strip(), draft.category(), fulltext(draft), pendingStatus(), pendingError());
         return get(owner, id);
     }
 
@@ -68,9 +74,9 @@ public class KnowledgeNoteService {
         int changed = jdbc.update("""
                 UPDATE knowledge_notes SET title=?,content=?,category=?,tsv=to_tsvector('simple',?),
                     updated_at=clock_timestamp(),revision=revision+1,embedding=NULL,embedding_next_attempt_at=now(),
-                    index_status=?,index_error=NULL,embedding_attempts=0
+                    index_status=?,index_error=?,embedding_attempts=0
                 WHERE user_id=? AND id=?
-                """, draft.title().strip(), draft.content().strip(), draft.category(), fulltext(draft), pendingStatus(), owner, id);
+                """, draft.title().strip(), draft.content().strip(), draft.category(), fulltext(draft), pendingStatus(), pendingError(), owner, id);
         if (changed == 0) throw new BusinessException(ErrorCode.KNOWLEDGE_NOTE_NOT_FOUND);
         return get(owner, id);
     }

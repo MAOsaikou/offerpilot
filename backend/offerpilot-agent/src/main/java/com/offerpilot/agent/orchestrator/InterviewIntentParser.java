@@ -27,6 +27,7 @@ public final class InterviewIntentParser {
                     "面试会话标识无效，请重新选择练习。");
         var args = new LinkedHashMap<String, Object>();
         String action = context.get("interviewAction") instanceof String s && ACTIONS.contains(s) ? s : null;
+        if (action == null && noteReviewRequest(content)) action = "noteGuidance";
         if (action == null && scoringRequest(content)) action = "scoreInterview";
         if (action == null && step.inputs().get("action") instanceof String proposed && ACTIONS.contains(proposed)) action = proposed;
         if (action == null) {
@@ -72,6 +73,15 @@ public final class InterviewIntentParser {
             args.put("nextQuestion", content.strip().matches("(?:请)?(?:下一题|跳过追问|跳过本题)[。！!]?"));
         }
         return new PlanStep(step.id(), action.equals("scoreInterview") ? "面试 STAR 评分卡" : "文字模拟面试", step.agent(), args, step.dependsOn());
+    }
+    /** A retrospective question about authored material is a read, never an interview answer. */
+    public static boolean noteReviewRequest(String content) {
+        String text = content.strip();
+        return text.matches("(?s).*(?:笔记|记过|记的|记录里).*")
+                && (text.matches("(?s).*[？?].*")
+                    || text.matches("(?s).*(?:哪些|什么|怎么|如何|有没有|吗).*")
+                        && !text.matches("(?s).*(?:记录了|记了|写了|参考.*回答).*(?:如何|怎么).*"))
+                && !PRACTICE.matcher(text).matches() && !ASK_FIRST.matcher(text).matches();
     }
     public static boolean scoringRequest(String content) {
         String text = content.strip();

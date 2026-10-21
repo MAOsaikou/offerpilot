@@ -2074,5 +2074,7 @@ export default {
   "Domain knowledge": "Domain knowledge",
   "My career goal is {0}. My current skills are {1}. Please help me create an actionable learning plan.": "My career goal is {0}. My current skills are {1}. Please help me create an actionable learning plan.",
   "I am preparing for an interview for {0}. Please help me practice project experience questions.": "I am preparing for an interview for {0}. Please help me practice project experience questions.",
-  "{0} · {1} questions, with optional follow-ups": "{0} · {1} questions, with optional follow-ups"
+  "{0} · {1} questions, with optional follow-ups": "{0} · {1} questions, with optional follow-ups",
+  "Only the {0} fully fetched repositories are counted; not all repositories are covered.": "Only the {0} fully fetched repositories are counted; not all repositories are covered.",
+  "Repositories were not fully fetched this time. Try again later or configure a token.": "Repositories were not fully fetched this time. Try again later or configure a token."
 } as const

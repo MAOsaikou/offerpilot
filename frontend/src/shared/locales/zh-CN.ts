@@ -2074,5 +2074,7 @@ export default {
   "Domain knowledge": "专业",
   "My career goal is {0}. My current skills are {1}. Please help me create an actionable learning plan.": "我的目标是{0}，已有技能：{1}。请帮我制定可执行的学习计划。",
   "I am preparing for an interview for {0}. Please help me practice project experience questions.": "我正在准备{0}的面试，请帮我练习回答项目经历类问题。",
-  "{0} · {1} questions, with optional follow-ups": "{0} · {1} 道问题，可按需追加追问"
+  "{0} · {1} questions, with optional follow-ups": "{0} · {1} 道问题，可按需追加追问",
+  "Only the {0} fully fetched repositories are counted; not all repositories are covered.": "本次仅统计已完整抓取的 {0} 个仓库，未覆盖全部仓库。",
+  "Repositories were not fully fetched this time. Try again later or configure a token.": "本次未完整抓取到仓库，请稍后重试或配置 Token。"
 } as const

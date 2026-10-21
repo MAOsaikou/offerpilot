@@ -54,6 +54,7 @@ export interface CareerProfileConfirmPayload {
 }
 
 export interface CareerRecommendationPayload {
+  ordering?: 'interest' | 'constraints'
   revisionId?: string
   elapsedMs?: number
   hollandCode: string
@@ -64,6 +65,7 @@ export interface CareerRecommendationPayload {
     family: string | null
     hollandCode: string
     similarity: number
+    rankingScore?: number
     rankDelta?: number
     changeReason?: string
     details?: CareerCardDetails

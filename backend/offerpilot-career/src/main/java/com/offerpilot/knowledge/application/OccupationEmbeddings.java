@@ -53,7 +53,7 @@ public class OccupationEmbeddings {
 
     private List<float[]> embedDocuments(List<String> documents) {
         if (!configured()) {
-            log.warn("职业向量不可用：embedding 已关闭或未配置 Bailian Key；保留全文索引与规则推荐");
+            log.warn("职业向量不可用：embedding 已关闭或未配置 embedding 凭据；保留全文索引与规则推荐");
             return List.of();
         }
         try {

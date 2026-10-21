@@ -217,12 +217,18 @@ function adopt() {
       </p>
       <p>
         {{ uiText("{0} public repositories · {1} stars · {2} personal commits in 90 days (a lower bound if pagination is capped)", [data.snapshot.repositories.length, data.snapshot.stars, data.snapshot.commits90d]) }} </p>
-      <p v-if="data.snapshot.repositoriesTruncated">{{ uiText("More than 20 repositories. Only the 20 most recently pushed are counted.") }}</p>
+      <p v-if="data.snapshot.repositoriesTruncated">{{ uiText("Only the {0} fully fetched repositories are counted; not all repositories are covered.", [data.snapshot.repositories.length]) }}</p>
       <p class="break-words"> {{ uiText("Language distribution (bytes): {0}", [Object.entries(data.snapshot.languages)
             .map(([name, bytes]) => `${name} ${bytes}`)
             .join(' · ') || uiText("No language data")]) }}
       </p>
-      <p v-if="!data.snapshot.repositories.length">{{ uiText("This user has no public repositories.") }}</p>
+      <p v-if="!data.snapshot.repositories.length">
+        {{
+          data.snapshot.repositoriesTruncated
+            ? uiText("Repositories were not fully fetched this time. Try again later or configure a token.")
+            : uiText("This user has no public repositories.")
+        }}
+      </p>
       <article
         v-for="project in data.snapshot.repositories"
         :key="project.name"
