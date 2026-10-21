@@ -98,7 +98,7 @@ server.js ── 解析 MCP 协议，路由到对应工具
 handleSearch() ── 决定查哪些站点 → 查缓存 → 未命中则并发查询
   │
   ▼
-searchAcrossSites() ── 工作池：最多 6 个并发，每站 8 秒超时，失败只记录
+searchAcrossSites() ── 工作池：最多 6 个并发，每站 6 秒超时，失败只记录
   │
   ▼
 searchSite() ── 调用 jobhunt-cli；空结果且带关键词时降级重试
@@ -171,15 +171,15 @@ Agent 拿到的是「部分结果 + 明确的缺失说明」，比整次失败�
 | `PORT` | `7001` | 监听端口 |
 | `CACHE_TTL_SECONDS` | `600` | 缓存有效期 |
 | `MAX_PARALLEL_SITES` | `6` | 跨站点并发上限 |
-| `SITE_TIMEOUT_MS` | `8000` | 单站点超时 |
+| `SITE_TIMEOUT_MS` | `6000` | 单站点超时 |
 | `JOBS_SOURCE_MODE` | `AUTO` | LIVE / LOCAL / AUTO，旧 ALL/未知值 WARN 后按 AUTO |
-| `JOBS_LIVE_TIMEOUT_MS` | `10000` | 整次多站查询预算，含排队 |
+| `JOBS_LIVE_TIMEOUT_MS` | `6500` | 整次多站查询预算，含排队 |
 
-`deploy/docker-compose.yml` 向后端和本服务同时透传模式与整次查询预算。
+`deploy/docker-compose.yml` 向后端和本服务同时透传模式与整次查询预算，并向本服务透传单站预算。
 
 ### 离线快照与构建
 
-默认 AUTO 优先官网，抛错/超时/全部失败/空结果伴随失败站点时回退；健康空结果不回退，有岗位的部分成功保留官网结果。LIVE 保留原行为（失败站点在 skipped，全部失败仍返回元数据供后端报错）；LOCAL 在 search_jobs/list_sites/get_job_detail 路径不调用网络。预算到期停止后续排队站点，jobhunt-cli 公共接口不能取消已发出的底层 fetch，调用方仍按预算返回。仅官网成功且无 skipped 的查询进入10分钟缓存，避免缓存故障阻止恢复。
+默认 AUTO 优先官网，抛错/超时/全部失败/空结果伴随失败站点时回退；健康空结果不回退，有岗位的部分成功保留官网结果。LIVE 保留原行为（失败站点在 skipped，全部失败仍返回元数据供后端报错）；LOCAL 在 search_jobs/list_sites/get_job_detail 路径不调用网络。总预算到期立即返回已完成站点的部分结果（含 partial/timedOut/fallbackReason=LIVE_TIMEOUT）；没有结果时AUTO回退快照、LIVE报错。预算到期停止后续排队站点并清理等待计时器，jobhunt-cli 公共接口不能取消已发出的底层 fetch，调用方仍按预算返回。仅官网成功且无 skipped 的查询进入10分钟缓存，避免缓存故障阻止恢复。
 
 唯一数据文件：`backend/offerpilot-job/src/main/resources/jobs/snapshot.json`（相对仓库根），2026-10-10，40 条/8 企业，人工整理的示例岗位快照，非实时数据。ID=snapshot-*，url 为空。`_meta.source=LOCAL_SNAPSHOT`，含 snapshotDate/sourceDescription；AUTO 另有 fallbackReason。关键词按空白分词后要求每个词命中标题/企业/类别/职责/要求/skills，标题权重较高，稳定 ID 次序；site/sites、nature、location、category 和 limit 生效。快照默认搜索全部8家；显式 site/sites 严格保留。limit 最多50，不新增分页。
 
@@ -223,7 +223,7 @@ docker compose -f deploy/docker-compose.yml build jobs-mcp
 
 - LIVE 数据来自**企业官网公开招聘接口**，经 `jobhunt-cli` 适配器访问；LOCAL/AUTO 回退为人工整理示例快照，非实时数据。
 - 不做登录态操作，不抓取需要授权或明确禁止抓取的内容。
-- 跨站点并发上限 6、单站超时 8 秒、结果缓存 10 分钟，均为减少对目标站点的压力。
+- 跨站点并发上限 6、单站超时 6 秒、结果缓存 10 分钟，均为减少对目标站点的压力。
 
 ## 八、已知边界
 

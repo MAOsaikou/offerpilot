@@ -16,6 +16,21 @@ import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 class JobsMcpClientTimeoutTest {
+    @Test void defaultLiveBudgetAndPropertyOverrideAreBound() {
+        for (var properties : java.util.List.of(Map.<String,Object>of(),
+                Map.<String,Object>of("offerpilot.mcp.jobs-timeout-ms", "125"),
+                Map.<String,Object>of("JOBS_LIVE_TIMEOUT_MS", "125"))) {
+            try (var context = new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+                context.getEnvironment().getPropertySources().addFirst(
+                        new org.springframework.core.env.MapPropertySource("test", properties));
+                context.registerBean(ObjectMapper.class, () -> new ObjectMapper());
+                context.register(JobsMcpClient.class);
+                context.refresh();
+                assertThat(ReflectionTestUtils.getField(context.getBean(JobsMcpClient.class), "timeoutMs"))
+                        .isEqualTo(properties.isEmpty() ? 6500L : 125L);
+            }
+        }
+    }
     @Test void wholeProtocolCallHasBoundedTimeout() throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         var executor = Executors.newSingleThreadExecutor();

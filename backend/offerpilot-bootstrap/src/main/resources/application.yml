@@ -220,7 +220,7 @@ offerpilot:
   jobs:
     source-mode: ${JOBS_SOURCE_MODE:AUTO}
   mcp:
-    jobs-timeout-ms: ${JOBS_LIVE_TIMEOUT_MS:10000}
+    jobs-timeout-ms: ${JOBS_LIVE_TIMEOUT_MS:6500}
     jobs-url: ${JOBS_MCP_URL:http://localhost:7001}
     search-url: ${SEARCH_MCP_URL:}
     search-api-key: ${SEARCH_MCP_API_KEY:}

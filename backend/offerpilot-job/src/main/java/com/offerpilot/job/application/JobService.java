@@ -23,6 +23,10 @@ public class JobService implements JobDescriptionForChat {
     }
     public JobService(JobSource source, JdbcTemplate jdbc, ObjectMapper json) { this.source=source; this.jdbc=jdbc; this.json=json; }
     public JsonNode sites() { return source.sites(); }
+    JsonNode sites(long deadline) { return source.sites(deadline); }
+    JsonNode search(String query,String site,String nature,String location,long deadline) {
+        return search(query,site,nature,location,this::save,false,deadline);
+    }
     public JsonNode search(String query, String site, String nature, String location) {
         return search(query,site,nature,location,this::save,false);
     }
@@ -79,9 +83,13 @@ public class JobService implements JobDescriptionForChat {
     }
     private JsonNode search(String query,String site,String nature,String location,
             java.util.function.BiFunction<JsonNode,String,JsonNode> sink,boolean structured) {
+        return search(query,site,nature,location,sink,structured,JobSearchPipeline.deadline());
+    }
+    private JsonNode search(String query,String site,String nature,String location,
+            java.util.function.BiFunction<JsonNode,String,JsonNode> sink,boolean structured,long deadline) {
         if (query == null || query.isBlank() || query.length()>100 || site.length()>60 || location.length()>60
                 || !Set.of("campus","intern","social","all").contains(nature)) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
-        if (pipeline != null) return pipeline.search(com.offerpilot.llm.quota.LlmUserContext.current(),query,site,nature,location,sink,structured);
+        if (pipeline != null) return pipeline.search(com.offerpilot.llm.quota.LlmUserContext.current(),query,site,nature,location,sink,structured,deadline);
         Map<String,Object> args = new LinkedHashMap<>();
         args.put("query",query.strip()); args.put("nature",nature); args.put("limit",30);
         if (!site.isBlank()) args.put("site",site);

@@ -58,13 +58,53 @@ class JobDiscoveryTest {
         var local=mock(JobLocalSearch.class); var source=mock(JobSource.class);
         when(local.search(any(),any())).thenReturn(new JobLocalSearch.Result(List.of(job("job_a","","LOCAL_DB")),false));
         var interrupted=new CountDownLatch(1);
+        when(source.sites(anyLong())).thenAnswer(call -> {
+            Thread.sleep(350);
+            return json.readTree("{\"sites\":[{\"id\":\"didi\"}]}");
+        });
         when(source.search(anyMap())).thenAnswer(call->{ try { new CountDownLatch(1).await(30,TimeUnit.SECONDS); } catch(InterruptedException ex) { interrupted.countDown(); Thread.currentThread().interrupt(); } return null; });
         long start=System.nanoTime();
-        var result=new JobSearchPipeline(work,parser,local,source,json).search("owner","Java","","all","",(raw,nature)->raw);
+        var pipeline=new JobSearchPipeline(work,parser,local,source,json);
+        var jobs=new JobService(source,mock(org.springframework.jdbc.core.JdbcTemplate.class),json,pipeline);
+        var result=new JobSearchForChat(jobs,json).search("Java","滴滴","all","");
         assertThat(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)).isLessThan(8000);
         assertThat(result.path("items")).hasSize(1); assertThat(result.path("meta").path("partial").asBoolean()).isTrue();
+        assertThat(result.path("items").get(0).path("retrievalSource").asText()).isEqualTo("LOCAL_DB");
+        assertThat(result.path("meta").path("durationMs").asLong()).isGreaterThanOrEqualTo(7400).isLessThan(8000);
         assertThat(result.path("meta").path("timedOut").asBoolean()).isTrue();
         assertThatCode(()->assertThat(interrupted.await(1,TimeUnit.SECONDS)).isTrue()).doesNotThrowAnyException();
+    }
+    @Test void totalTimeoutPreservesPublishedJobsWhenPersistenceHangs() {
+        var local=mock(JobLocalSearch.class); var source=mock(JobSource.class);
+        when(local.search(any(),any())).thenReturn(new JobLocalSearch.Result(List.of(job("stored","","LOCAL_DB")),false));
+        var remote=json.createObjectNode();
+        remote.putArray("jobs").addObject().put("id","remote").put("site","fixture").put("title","Java");
+        when(source.search(anyMap())).thenReturn(remote);
+        var result=new JobSearchPipeline(work,parser,local,source,json).search("owner","Java","","all","",(raw,nature)-> {
+            try { new CountDownLatch(1).await(); } catch(InterruptedException ex) { Thread.currentThread().interrupt(); }
+            return raw;
+        },true,System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(400));
+        assertThat(result.path("items")).hasSize(1);
+        assertThat(result.path("meta").path("timedOut").asBoolean()).isTrue();
+        assertThat(result.path("meta").path("warnings").toString()).contains("SEARCH_TIMEOUT");
+    }
+    @Test void hungUpstreamWithoutLocalMatchesReturnsHonestUnavailableImmediatelyAtDeadline() {
+        var local=mock(JobLocalSearch.class); var source=mock(JobSource.class);
+        when(local.search(any(),any())).thenReturn(new JobLocalSearch.Result(List.of(),false));
+        when(source.search(anyMap())).thenAnswer(call -> {
+            try { new CountDownLatch(1).await(); } catch(InterruptedException ex) { Thread.currentThread().interrupt(); }
+            return null;
+        });
+        long start=System.nanoTime();
+        var result=new JobSearchPipeline(work,parser,local,source,json).search("owner","Java","","all","",(raw,nature)->raw,
+                true,start+TimeUnit.MILLISECONDS.toNanos(400));
+        assertThat(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start)).isLessThan(1000);
+        assertThat(result.path("items")).isEmpty();
+        assertThat(result.path("meta").path("timedOut").asBoolean()).isTrue();
+        var jobs=mock(JobService.class);
+        when(jobs.search(eq("Java"),eq(""),eq("all"),eq(""),anyLong())).thenReturn(result);
+        assertThatThrownBy(() -> new JobSearchForChat(jobs,json).search("Java","","all",""))
+                .hasMessageContaining("岗位来源均不可用");
     }
     @Test void canonicalUrlKeepsJobIdQueryParameters() {
         assertThat(JobSearchPipeline.identity(job("a","https://example.test/jobs?jobId=1&utm_source=x","LOCAL_DB")))

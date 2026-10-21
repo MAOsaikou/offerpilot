@@ -78,8 +78,9 @@ services:
       PORT: 7001
       CACHE_TTL_SECONDS: 600
       MAX_PARALLEL_SITES: 6
+      SITE_TIMEOUT_MS: ${SITE_TIMEOUT_MS:-6000}
       JOBS_SOURCE_MODE: ${JOBS_SOURCE_MODE:-AUTO}
-      JOBS_LIVE_TIMEOUT_MS: ${JOBS_LIVE_TIMEOUT_MS:-10000}
+      JOBS_LIVE_TIMEOUT_MS: ${JOBS_LIVE_TIMEOUT_MS:-6500}
     ports: ["127.0.0.1:${JOBS_MCP_HOST_PORT:-7001}:7001"]
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -120,7 +121,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       JOBS_SOURCE_MODE: ${JOBS_SOURCE_MODE:-AUTO}
-      JOBS_LIVE_TIMEOUT_MS: ${JOBS_LIVE_TIMEOUT_MS:-10000}
+      JOBS_LIVE_TIMEOUT_MS: ${JOBS_LIVE_TIMEOUT_MS:-6500}
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://ollama:11434}
