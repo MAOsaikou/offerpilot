@@ -16,7 +16,7 @@ final class CardCitations {
         for (var card: cards) {
             JsonNode data=JSON.valueToTree(card.payload());
             if ("knowledge_note_citations".equals(card.cardType())) {
-                for(var item:data.path("items")) add(sources,index,item.path("noteId").asText(),item.path("title").asText(),item.path("excerpt").asText(),null,"knowledge_notes");
+                for(var item:data.path("items")) add(sources,index,item.path("noteId").asText(),item.path("title").asText(),item.path("excerpt").asText(),null,"notes");
             }
             if ("career_recommendation".equals(card.cardType())) {
                 for(var recommendation:data.path("recommendations")) for(var item:recommendation.path("citations"))

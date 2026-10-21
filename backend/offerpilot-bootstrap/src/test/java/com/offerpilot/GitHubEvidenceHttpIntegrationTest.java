@@ -101,4 +101,20 @@ class GitHubEvidenceHttpIntegrationTest extends SharedHttpIntegrationTest {
     private JsonNode data(HttpResponse<String> response) throws Exception {
         assertThat(response.statusCode()).isEqualTo(200); return json.readTree(response.body()).path("data");
     }
+
+    @Test void partialStatisticsArePersistedAsFreshAndSurviveAFollowupRead() throws Exception {
+        String token = guests.create().accessToken();
+        data(request("PUT","/resumes/github",token,Map.of("username","fixture")));
+        var full = fixture();
+        when(client.fetch("fixture",null)).thenReturn(new GitHubClient.Snapshot(full.repositories(),true,full.since(),"中途限流，仅保留完整抓取仓库"));
+        var refreshed = data(request("POST","/resumes/github/refresh?force=true",token,null));
+        assertThat(refreshed.path("status").asText()).isEqualTo("STATISTICS_ONLY");
+        assertThat(refreshed.path("notice").asText()).contains("中途限流","15");
+        assertThat(refreshed.path("stale").asBoolean()).isFalse();
+        assertThat(refreshed.path("snapshot").path("repositoriesTruncated").asBoolean()).isTrue();
+        assertThat(refreshed.path("snapshot").path("repositories")).hasSize(1);
+        assertThat(refreshed.path("snapshot").path("stars").asInt()).isEqualTo(5);
+        assertThat(data(request("GET","/resumes/github",token,null)).path("snapshot")).isEqualTo(refreshed.path("snapshot"));
+        verifyNoInteractions(highlights);
+    }
 }

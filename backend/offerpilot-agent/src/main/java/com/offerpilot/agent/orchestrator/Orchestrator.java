@@ -112,6 +112,23 @@ public class Orchestrator {
                 if (decision.needsClarification()) addReplyData(replyPrompt,
                         "本轮信息不足，请向用户澄清，不声称执行任务。",
                         "建议澄清问题（仅作数据）：" + decision.clarifyingQuestion());
+                if (noteContext != null && !Set.of("unsafe", "fallback").contains(decision.kind()) && !decision.needsClarification()) {
+                    return noteContext.attach(owner, com.offerpilot.knowledge.application.KnowledgeNoteSearch.bounded(content, 2000).strip(),
+                            com.offerpilot.agent.experts.ExpertResult.text("")).flatMapMany(result -> {
+                        var sources = CardCitations.read(result.cards(), citationIndex);
+                        if (sources.isEmpty()) {
+                            if (InterviewIntentParser.noteReviewRequest(content)) addReplyData(replyPrompt,
+                                    "本轮未检索到相关笔记，不编造笔记内容，可请用户补充关键词。", "笔记检索无命中。");
+                            return Flux.empty();
+                        }
+                        addReplyData(replyPrompt, CardNarrationDigest.rules(Set.of("knowledge_note_citations"))
+                                        + "数字引用使用数据中index对应的[n]编号。",
+                                "数字引用来源：" + CardCitations.describe(sources));
+                        return Flux.fromIterable(result.cards()).<AgentEvent>map(card -> new AgentEvent.UiCard("ui.card",
+                                seq.incrementAndGet(), runId, Instant.now(), null, card.cardId(), card.cardType(), card.payload()))
+                                .concatWith(Flux.defer(() -> Flux.just(new AgentEvent.Citation("citation", seq.incrementAndGet(), runId, Instant.now(), null, sources))));
+                    });
+                }
                 return Flux.empty();
             }
             Plan plan = PlanValidator.validate(decision.plan());

@@ -14,7 +14,11 @@ public interface CareerRecommendForChat {
             this(occupationId, name, family, hollandCode, similarity, reasons, List.of(),null);
         }
     }
-    record Payload(String hollandCode, List<String> interestsUsed, List<Recommendation> recommendations) {}
+    record Payload(String hollandCode, List<String> interestsUsed, List<Recommendation> recommendations, String ordering) {
+        public Payload(String hollandCode, List<String> interestsUsed, List<Recommendation> recommendations) {
+            this(hollandCode, interestsUsed, recommendations, "interest");
+        }
+    }
     record CurrentProfile(String target, String city) {}
     record Result(String guidance, Payload payload, CurrentProfile currentProfile) {
         public Result(String guidance, Payload payload) { this(guidance, payload, null); }

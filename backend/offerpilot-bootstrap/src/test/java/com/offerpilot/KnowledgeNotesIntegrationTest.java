@@ -239,6 +239,7 @@ class KnowledgeNotesIntegrationTest extends SharedHttpIntegrationTest {
         assertThat(worker.indexPending()).isZero();
         assertThat(jdbc.queryForObject("SELECT embedding_attempts FROM knowledge_notes WHERE id=?", Integer.class, note.id())).isEqualTo(1);
         assertThat(notes.get(owner, note.id()).indexStatus()).isEqualTo("QUEUED");
+        assertThat(notes.get(owner, note.id()).indexError()).contains("调用失败", "自动重试");
         for (int i = 0; i < 2; i++) {
             jdbc.update("UPDATE knowledge_notes SET embedding_next_attempt_at=now() WHERE id=?", note.id());
             assertThat(worker.indexPending()).isZero();
@@ -285,5 +286,72 @@ class KnowledgeNotesIntegrationTest extends SharedHttpIntegrationTest {
         when(provider.embed(anyList())).thenReturn(List.of());
         assertThat(hybrid.search(owner, "Redis", 10).items()).extracting(KnowledgeNoteSearch.Hit::id).containsExactly(own.id());
         assertThat(hybrid.search(owner, "Redis", 10).vectorAvailable()).isFalse();
+    }
+
+    @Test void longChineseChatQueriesReuseLexicalSearchAndNeverReadAnotherOwnersNotes() {
+        String owner = owner(), other = owner();
+        var note = notes.create(owner,new KnowledgeNoteService.Draft("Redis 缓存击穿复盘",
+                "我答了互斥锁重建缓存（SETNX + 过期时间）和逻辑过期异步刷新两种方案。", "面试复盘"));
+        notes.create(other,new KnowledgeNoteService.Draft("Redis 缓存击穿私有记录","其他用户的缓存击穿方案", "技术积累"));
+        assertThat(note.indexError()).contains("向量索引已关闭"); // test profile explicitly disables the worker
+        var forChat = new KnowledgeNotesForChat(search);
+        for (String query : List.of("缓存击穿", "我笔记里记的缓存击穿解决方案有哪些？", "根据我的笔记，我上次面试缓存击穿是怎么答的？还要怎么改进？")) {
+            assertThat(search.search(owner,query,3).items()).extracting(KnowledgeNoteSearch.Hit::id).containsExactly(note.id());
+            assertThat(forChat.retrieve(owner,query)).singleElement().satisfies(c -> {
+                assertThat(c.noteId()).isEqualTo(note.id());
+                assertThat(c.excerpt()).contains("SETNX", "逻辑过期");
+            });
+        }
+    }
+
+    @Test void localOpenAiCompatibleEmbeddingWrites1024DimensionsAndEnablesHybridSearch() throws Exception {
+        // Local protocol fixture, not an Ollama/model quality evaluation.
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        server.createContext("/v1/embeddings", exchange -> {
+            try {
+                var request = JSON.readTree(exchange.getRequestBody());
+                assertThat(request.path("model").asText()).isEqualTo("bge-m3");
+                var data = JSON.createArrayNode();
+                int count = request.path("input").isArray() ? request.path("input").size() : 1;
+                for (int i=0;i<count;i++) {
+                    var item = data.addObject().put("object","embedding").put("index",i);
+                    var vector = item.putArray("embedding");
+                    for (int dim=0;dim<1024;dim++) vector.add(dim==0 ? 1.0 : 0.0);
+                }
+                byte[] body = JSON.writeValueAsBytes(Map.of("object","list","data",data,"model","bge-m3","usage",Map.of("prompt_tokens",1,"total_tokens",1)));
+                exchange.getResponseHeaders().add("Content-Type","application/json");
+                exchange.sendResponseHeaders(200,body.length); exchange.getResponseBody().write(body); calls.incrementAndGet();
+            } finally { exchange.close(); }
+        });
+        server.start();
+        try {
+            String base = "http://127.0.0.1:"+server.getAddress().getPort();
+            var api = org.springframework.ai.openai.api.OpenAiApi.builder().baseUrl(base).apiKey("ollama").embeddingsPath("/v1/embeddings").build();
+            var model = new org.springframework.ai.openai.OpenAiEmbeddingModel(api,org.springframework.ai.document.MetadataMode.EMBED,
+                    org.springframework.ai.openai.OpenAiEmbeddingOptions.builder().model("bge-m3").dimensions(1024).build());
+            var factory = new org.springframework.beans.factory.support.DefaultListableBeanFactory();
+            factory.registerSingleton("localFixture",model);
+            var env = new org.springframework.mock.env.MockEnvironment().withProperty("spring.ai.model.embedding","openai")
+                    .withProperty("spring.ai.openai.embedding.api-key","ollama").withProperty("spring.ai.openai.embedding.base-url",base)
+                    .withProperty("spring.ai.openai.embedding.options.model","bge-m3");
+            var provider = new OccupationEmbeddings(factory.getBeanProvider(org.springframework.ai.embedding.EmbeddingModel.class),env);
+            assertThat(provider.configured()).isTrue();
+            assertThat(provider.fingerprint()).isEqualTo("bge-m3@local");
+            String owner = owner();
+            var configuredNotes = new KnowledgeNoteService(jdbc,provider,true);
+            var note = configuredNotes.create(owner,DRAFT);
+            assertThat(note.indexStatus()).isEqualTo("QUEUED");
+            assertThat(new KnowledgeNoteEmbeddingJob(jdbc,provider,true).indexPending()).isEqualTo(1);
+            assertThat(notes.get(owner,note.id()).indexStatus()).isEqualTo("READY");
+            assertThat(notes.get(owner,note.id()).indexError()).isNull();
+            assertThat(jdbc.queryForObject("SELECT vector_dims(embedding) FROM knowledge_notes WHERE id=?",Integer.class,note.id())).isEqualTo(1024);
+            var hit = new KnowledgeNoteSearch(jdbc,provider).search(owner,"缓存失效",3);
+            assertThat(hit.vectorAvailable()).isTrue();
+            assertThat(hit.items()).singleElement().satisfies(item -> {
+                assertThat(item.lexicalMatch()).isTrue(); assertThat(item.vectorMatch()).isTrue();
+            });
+            assertThat(calls.get()).isEqualTo(2);
+        } finally { server.stop(0); }
     }
 }

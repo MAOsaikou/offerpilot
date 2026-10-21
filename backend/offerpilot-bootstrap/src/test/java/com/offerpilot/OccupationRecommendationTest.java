@@ -74,7 +74,7 @@ abstract class OccupationRecommendationTest {
         assertThat(top.stream().limit(5).map(OccupationRecommender.Ranked::id)).containsAnyOf("occ_backend_dev", "occ_fullstack_dev", "occ_devops_cloud", "occ_test_dev", "occ_security_engineer");
         assertThat(top.stream().limit(3).map(OccupationRecommender.Ranked::name)).doesNotContain("假肢与矫形器师", "兽医", "口腔修复科医生");
         assertThat(top).anySatisfy(item -> {
-            assertThat(item.retrievalReason()).contains("职业库文本中匹配");
+            assertThat(item.retrievalReason()).contains("职业库文本中召回候选");
             assertThat(item.citations()).hasSize(1);
         });
         assertThat(recommender.rankHybrid(derived.profile(), query, 8)).isEqualTo(top);

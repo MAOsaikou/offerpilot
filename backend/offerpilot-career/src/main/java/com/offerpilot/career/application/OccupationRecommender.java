@@ -94,12 +94,14 @@ public class OccupationRecommender {
                     .sorted(Comparator.<Ranked>comparingDouble(item -> scores.get(item.id())).reversed()
                             .thenComparing(Ranked::name).thenComparing(Ranked::id)).toList());
             rules.stream().filter(item -> !hits.containsKey(item.id())).forEach(ordered::add);
-            return ordered.stream().limit(limit).map(item -> {
+            return ordered.stream().limit(limit)
+                    .sorted(Comparator.comparingDouble(Ranked::similarity).reversed()
+                            .thenComparing(Ranked::name).thenComparing(Ranked::id)).map(item -> {
                         var hit = hits.get(item.id());
                         if (hit == null) return item;
                         String reason = hit.vectorMatch()
-                                ? "与你的描述/目标及已保存兴趣、技能在职业库语义检索中匹配，并按兴趣画像重排"
-                                : "与你的描述/目标及已保存兴趣、技能在职业库文本中匹配，并按兴趣画像重排";
+                                ? "与你的描述/目标及已保存兴趣、技能在职业库语义检索中召回候选；展示结果按兴趣相似度降序排列"
+                                : "与你的描述/目标及已保存兴趣、技能在职业库文本中召回候选；展示结果按兴趣相似度降序排列";
                         return new Ranked(item.id(), item.name(), item.family(), item.hollandCode(), item.similarity(),
                                 List.of(new Citation(hit.id(), hit.name(), hit.excerpt())), reason);
                     }).toList();

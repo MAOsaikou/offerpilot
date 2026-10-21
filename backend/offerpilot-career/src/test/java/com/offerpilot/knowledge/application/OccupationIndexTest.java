@@ -78,7 +78,7 @@ class OccupationIndexTest {
         assertThatThrownBy(() -> OccupationEmbeddings.literal(new float[1024])).isInstanceOf(IllegalArgumentException.class);
     }
 
-    @Test void lexicalOnlyAndVectorRetrievalBothFuseWithoutChangingSimilarity() {
+    @Test void lexicalAndVectorCandidateSelectionKeepInterestScoresInDisplayedOrder() {
         var profile = new com.offerpilot.career.application.RiasecProfile(1, 2, 0, 0, 0, 1);
         var retrieval = mock(OccupationHybridRetriever.class);
         var rules = List.of(new OccupationRecommender.Ranked("a", "工程师", "技术", "IRC", 1),
@@ -91,14 +91,15 @@ class OccupationIndexTest {
             when(retrieval.search("Java", 4)).thenReturn(new OccupationHybridRetriever.Retrieval(List.of(
                     new OccupationHybridRetriever.Hit("b", "分析师", "数据", "ICR", .01, "SQL", true, vectors)), vectors));
             var fused = recommender.rankHybrid(profile, "Java", 2);
-            assertThat(fused).extracting(OccupationRecommender.Ranked::id).containsExactly("b", "a");
-            assertThat(fused.get(0).similarity()).isEqualTo(.75);
-            assertThat(fused.get(0).citations()).singleElement().satisfies(c -> assertThat(c.excerpt()).isEqualTo("SQL"));
-            assertThat(fused.get(1).citations()).isEmpty();
+            assertThat(fused).isSortedAccordingTo(java.util.Comparator.comparingDouble(OccupationRecommender.Ranked::similarity).reversed());
+            assertThat(fused).extracting(OccupationRecommender.Ranked::id).containsExactly("a", "b");
+            assertThat(fused.get(1).similarity()).isEqualTo(.75);
+            assertThat(fused.get(1).citations()).singleElement().satisfies(c -> assertThat(c.excerpt()).isEqualTo("SQL"));
+            assertThat(fused.get(0).citations()).isEmpty();
         }
         when(retrieval.search("Java", 4)).thenReturn(new OccupationHybridRetriever.Retrieval(List.of(
                 new OccupationHybridRetriever.Hit("b", "分析师", "数据", "ICR", .01, "SQL", false, true)), true));
-        assertThat(recommender.rankHybrid(profile, "Java", 2).get(0).retrievalReason())
+        assertThat(recommender.rankHybrid(profile, "Java", 2).get(1).retrievalReason())
                 .contains("语义检索").doesNotContain("文本中匹配");
         assertThat(recommender.rankHybrid(profile, " ", 2)).isEqualTo(rules);
         when(retrieval.search("Java", 4)).thenReturn(new OccupationHybridRetriever.Retrieval(List.of(), false));
@@ -107,7 +108,7 @@ class OccupationIndexTest {
         assertThat(recommender.rankHybrid(profile, "Java", 2)).isEqualTo(rules);
     }
 
-    @Test void semanticTopHitIsNotBuriedByADistantInterestPrior() {
+    @Test void semanticTopHitRemainsInCandidateSetAndDisplayedScoresAreDescending() {
         var catalog = new java.util.ArrayList<OccupationRecommender.Ranked>();
         for (int i = 0; i < 60; i++) catalog.add(new OccupationRecommender.Ranked("o" + i, "职业" + i, "技术", "IRC", 1 - i / 100.0));
         var jdbc = mock(JdbcTemplate.class);
@@ -120,7 +121,7 @@ class OccupationIndexTest {
                 new OccupationHybridRetriever.Hit("o2", "职业2", "技术", "IRC", .02, "客户端", false, true)), true));
         var fused = new OccupationRecommender(jdbc, retrieval)
                 .rankHybrid(new com.offerpilot.career.application.RiasecProfile(1, 2, 0, 0, 0, 1), "想写安卓和 iOS 应用", 3);
-        assertThat(fused).extracting(OccupationRecommender.Ranked::id).containsExactly("o45", "o2", "o0");
+        assertThat(fused).extracting(OccupationRecommender.Ranked::id).containsExactly("o0", "o2", "o45");
     }
 
     @Test void hanBigramsAndLatinTokensAreGenericAndQuerySyntaxCannotEscape() {
@@ -130,5 +131,45 @@ class OccupationIndexTest {
                 .containsExactly("java", "工程", "程师", "sql");
         assertThat(OccupationDocument.lexicalQuery("Java') | ! SQL:*")).isEqualTo("'java' | 'sql'");
         assertThat(OccupationDocument.lexicalQuery("😀！？")).isEmpty();
+    }
+
+    @Test void localOllamaCredentialIsIndependentOfChatKeysAndTestProfile() {
+        @SuppressWarnings("unchecked") ObjectProvider<EmbeddingModel> provider = mock(ObjectProvider.class);
+        var env = new MockEnvironment().withProperty("spring.ai.model.embedding","openai")
+                .withProperty("spring.ai.openai.api-key","sk-not-configured")
+                .withProperty("spring.ai.openai.embedding.api-key","ollama")
+                .withProperty("spring.ai.openai.embedding.base-url","http://127.0.0.1:11434")
+                .withProperty("spring.ai.openai.embedding.options.model","bge-m3");
+        env.setActiveProfiles("test");
+        var embeddings = new OccupationEmbeddings(provider,env);
+        assertThat(embeddings.configured()).isTrue();
+        assertThat(embeddings.fingerprint()).isEqualTo("bge-m3@local");
+        env.withProperty("spring.ai.model.embedding","none");
+        assertThat(embeddings.configured()).isFalse();
+    }
+
+    @Test void firstNoteEmbeddingFailureIsVisibleBeforeFinalFailureAndKeepsOwnerContext() throws Exception {
+        var jdbc = mock(JdbcTemplate.class);
+        var embeddings = mock(OccupationEmbeddings.class);
+        when(embeddings.configured()).thenReturn(true);
+        when(embeddings.embed(anyList())).thenAnswer(call -> {
+            assertThat(com.offerpilot.llm.quota.LlmUserContext.current()).isEqualTo("owner");
+            return List.of();
+        });
+        var rs = mock(java.sql.ResultSet.class);
+        when(rs.getString("id")).thenReturn("note"); when(rs.getString("user_id")).thenReturn("owner");
+        when(rs.getLong("revision")).thenReturn(2L);
+        when(rs.getString("title")).thenReturn("缓存击穿"); when(rs.getString("content")).thenReturn("互斥锁重建");
+        when(rs.getString("category")).thenReturn("技术积累");
+        when(jdbc.query(anyString(), org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<Object>>any()))
+                .thenAnswer(call -> List.of(((org.springframework.jdbc.core.RowMapper<?>)call.getArgument(1)).mapRow(rs,0)));
+        var worker = new KnowledgeNoteEmbeddingJob(jdbc,embeddings,true);
+        when(rs.getInt("embedding_attempts")).thenReturn(1);
+        assertThat(worker.indexPending()).isZero();
+        verify(jdbc).update(contains("UPDATE knowledge_notes SET index_status=?"),eq("QUEUED"),contains("自动重试"),eq("note"),eq(2L),eq(1));
+        when(rs.getInt("embedding_attempts")).thenReturn(3);
+        assertThat(worker.indexPending()).isZero();
+        verify(jdbc).update(contains("UPDATE knowledge_notes SET index_status=?"),eq("FAILED"),contains("保存笔记可重试"),eq("note"),eq(2L),eq(3));
+        assertThat(com.offerpilot.llm.quota.LlmUserContext.current()).isNull();
     }
 }
