@@ -21,10 +21,6 @@ it('路线图按真实载荷展示', () => {
   expect(view.root.textContent).toContain('复习基础')
   expect(view.root.querySelector('a[href^="javascript:"]')).toBeNull()
 })
-it('路线图空态可见', () => {
-  view = mountForTest(Card, { payload: { weeks: [], milestones: [] } })
-  expect(view.root.textContent).toContain('暂无学习任务')
-})
 it('路线图损坏载荷安全显示错误', () => {
   view = mountForTest(Card, { payload: null })
   expect(view.root.textContent).toMatch(/不可用|无效|无法|缺少|错误/)

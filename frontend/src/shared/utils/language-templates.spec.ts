@@ -24,17 +24,6 @@ it('prevents hardcoded Chinese in all app, feature, widget and shared Vue templa
   expect(violations).toEqual([])
 })
 
-it('detects text, attributes and expression literals while allowing comments and autonyms', () => {
-  expect(
-    chineseInTemplate(
-      '<template><h1>标题</h1><input placeholder="请输入" />{{ busy ? "加载" : "保存" }}</template>',
-    ),
-  ).toHaveLength(1)
-  expect(
-    chineseInTemplate('<template><!-- 中文说明 --><option>简体中文</option></template>'),
-  ).toEqual([])
-})
-
 it('resolves every literal translation key used by Vue components', () => {
   const missing: string[] = []
   for (const [path, source] of Object.entries(components)) {

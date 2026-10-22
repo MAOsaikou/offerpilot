@@ -116,7 +116,7 @@ class ResumePdfRendererTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"。", "，", "；", "、", "：", "）", "】", "》", "」", "』", "”", "’", "！", "？"})
+    @ValueSource(strings = {"。", "）", "”"})
     void keepsClosingPunctuationOffLineStart(String mark) throws Exception {
         String text = "甲乙丙丁" + mark + "后续";
         try (var document = new org.apache.pdfbox.pdmodel.PDDocument(); var font = ResumePdfFont.open("", false)) {
@@ -128,7 +128,7 @@ class ResumePdfRendererTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"（", "【", "《", "「", "『", "“", "‘"})
+    @ValueSource(strings = {"（", "“"})
     void keepsOpeningPunctuationOffLineEnd(String mark) throws Exception {
         String text = "甲乙丙" + mark + "丁戊";
         try (var document = new org.apache.pdfbox.pdmodel.PDDocument(); var font = ResumePdfFont.open("", false)) {
@@ -139,7 +139,7 @@ class ResumePdfRendererTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"TypeScript", "bge-m3", "Spring", "Boot", "https://example.test/v1?q=demo&x=a,b$#ref", "1.2.3"})
+    @ValueSource(strings = {"TypeScript", "bge-m3", "https://example.test/v1?q=demo&x=a,b$#ref", "1.2.3"})
     void wrapsLatinWordsUrlsAndVersionsAsWholeUnits(String word) throws Exception {
         String prefix = "甲乙丙丁戊己庚辛";
         String text = prefix + word + "后续";

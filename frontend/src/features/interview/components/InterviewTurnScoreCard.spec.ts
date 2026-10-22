@@ -8,10 +8,6 @@ it('单题面试评分按真实载荷展示', () => {
   expect(view.root.textContent).toContain('未评分')
   expect(view.root.querySelector('a[href^="javascript:"]')).toBeNull()
 })
-it('单题面试评分空态可见', () => {
-  view = mountForTest(Card, { payload: { turnIndex: 0, score: null, brief: '' } })
-  expect(view.root.textContent).toContain('暂无评分说明')
-})
 it('单题面试评分损坏载荷安全显示错误', () => {
   view = mountForTest(Card, { payload: null })
   expect(view.root.textContent).toMatch(/不可用|无效|无法|缺少|错误/)

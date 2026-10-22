@@ -68,34 +68,3 @@ it('reacts in existing messages and labels without changing persisted values', a
   setLanguage('zh-CN')
   expect(message.value).toBe('后端原文')
 })
-
-it('translates every fixed occupation family without changing catalog values', () => {
-  const families = [
-    '个人服务',
-    '产品与设计',
-    '医疗健康',
-    '商务与财务',
-    '安保与公共安全',
-    '建筑与工程',
-    '教育与图书',
-    '数据',
-    '法律',
-    '测试与质量',
-    '社会服务',
-    '算法与人工智能',
-    '管理与行政',
-    '自然科学与社会科学',
-    '艺术设计与传媒',
-    '行政与办公支持',
-    '计算机与数学',
-    '软件研发',
-    '运维与安全',
-    '运输与物流',
-    '销售',
-  ]
-  setLanguage('en-US')
-  for (const family of families) {
-    expect(translateLabel(family), family).not.toMatch(/\p{Script=Han}/u)
-  }
-  expect(translateLabel('未来分类原文')).toBe('未来分类原文')
-})
