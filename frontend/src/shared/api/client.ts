@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 /**
  * API 客户端基础设施。
  * 响应包裹、错误码与追踪约定见 docs/05 §1.2 / §1.3。
@@ -6,8 +7,12 @@ import {
   ACCESS_TOKEN_KEY,
   GUEST_TOKEN_KEY,
   expireLoginIfNeeded,
+  clearLogin,
   getStoredToken,
+  identityOf,
   invalidateCredential,
+  replaceLoginToken,
+  tokenExpiresAt,
   loginRequired,
   identitySignal,
   saveGuest,
@@ -56,13 +61,15 @@ const responseSessions = new WeakMap<Response, AbortSignal>()
 
 function assertCredential(credential: string): void {
   const active = getStoredToken() || (loginRequired() ? null : localStorage.getItem(IDENTITY_KEY))
-  if (credential !== active) throw new ApiError('身份已切换，请重新读取数据', { code: 20001 })
+  // A refreshed access token belongs to the same identity; compare subjects, not token strings.
+  if (identityOf(credential) !== identityOf(active))
+    throw new ApiError(uiText('Identity changed. Please reload data.'), { code: 20001 })
 }
 
 export function assertResponseIdentity(response: Response): void {
   const credential = responseCredentials.get(response)
   if (responseSessions.get(response)?.aborted)
-    throw new ApiError('身份已切换，请重新读取数据', { code: 20001 })
+    throw new ApiError(uiText('Identity changed. Please reload data.'), { code: 20001 })
   if (credential) assertCredential(credential)
 }
 
@@ -109,7 +116,7 @@ async function guestToken(): Promise<string> {
       const body = await readApiData<{ accessToken: string }>(response)
       session.throwIfAborted()
       const token = body.accessToken
-      if (!token) throw new Error('无法建立访客身份，请重试')
+      if (!token) throw new Error(uiText('Could not establish guest identity. Please retry.'))
       saveGuest(token)
       return token
     })().finally(() => {
@@ -119,23 +126,72 @@ async function guestToken(): Promise<string> {
   return pendingIdentity
 }
 
+/** Refresh this long before expiry so clock skew and slow requests never present an expired token. */
+const REFRESH_MARGIN_MS = 2 * 60_000
+let pendingRefresh: Promise<void> | undefined
+
+/**
+ * AC-01: renew a soon-to-expire access token with the HttpOnly refresh cookie. Single-flight within
+ * the tab and serialized across tabs (Web Locks), re-checking after the lock because another tab may
+ * already have stored a fresh token. A 401 ends the session; network errors leave it to expiry.
+ */
+export function ensureFreshLogin(): Promise<void> | undefined {
+  const fresh = (token: string | null) => {
+    const expiry = token ? tokenExpiresAt(token) : null
+    return !token || (expiry !== null && expiry - Date.now() > REFRESH_MARGIN_MS)
+  }
+  // Synchronous fast path: callers that need no refresh must not yield (lock ordering relies on it).
+  if (fresh(getStoredToken())) return undefined
+  pendingRefresh ??= (async () => {
+    const run = async () => {
+      const current = getStoredToken()
+      if (fresh(current)) return
+      const response = await fetch(apiUrl('/auth/refresh'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: authHeaders(),
+      })
+      if (getStoredToken() !== current) return
+      if (response.ok) replaceLoginToken((await response.json()).data)
+      else if (response.status === 401) clearLogin()
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.locks)
+        await navigator.locks.request('offerpilot-refresh', run)
+      else await run()
+    } catch {
+      // Offline or server unavailable: keep the current state; expiry handling still applies.
+    } finally {
+      pendingRefresh = undefined
+    }
+  })()
+  return pendingRefresh
+}
+
 export async function authenticatedHeaders(
   extra: Record<string, string> = {},
 ): Promise<Record<string, string>> {
   if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK === 'true') return authHeaders(extra)
   // 已登录（邮箱密码）优先使用 JWT；否则回退到访客身份。
+  const refreshing = ensureFreshLogin()
+  if (refreshing) await refreshing
   expireLoginIfNeeded()
   const jwt = getStoredToken()
   if (jwt) return authHeaders({ ...extra, Authorization: `Bearer ${jwt}` })
   if (loginRequired())
-    throw new ApiError('身份已失效，请重新登录或明确选择继续原访客', { code: 20002, status: 401 })
+    throw new ApiError(
+      uiText(
+        'Your session has expired. Sign in again or explicitly resume your original guest session.',
+      ),
+      { code: 20002, status: 401 },
+    )
   // Web Locks also serialize the first visit across tabs where supported.
   const session = identitySignal()
   const readGuest = async () => {
     session.throwIfAborted()
     // Storage may already have changed before its cross-tab event is delivered.
     if (getStoredToken() || loginRequired())
-      throw new ApiError('身份已切换，请重新读取数据', { code: 20001 })
+      throw new ApiError(uiText('Identity changed. Please reload data.'), { code: 20001 })
     return guestToken()
   }
   const token =
@@ -158,7 +214,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
 /** 把非 2xx 响应映射成 ApiError，尽量读出服务端的 code / message / traceId */
 export async function toApiError(response: Response): Promise<ApiError> {
   let code = response.status
-  let message = response.statusText || '请求失败'
+  let message = response.statusText || uiText('Request failed')
   let traceId: string | undefined
 
   try {

@@ -9,6 +9,7 @@ public interface JobArtifacts {
     record Interview(String id, String status, Integer overallScore, String createdAt, String recapExportUrl) {}
     record Story(String id, String title, String sourceSessionId) {}
     record Linked(List<Resume> resumes, List<Interview> interviews, List<Story> stories) {}
+    default String interviewContext(String owner, String jobId) { return null; }
     void lockJob(String owner, String jobId);
     void linkJob(String owner, String jobId);
     void linkSession(String owner, String sessionId);

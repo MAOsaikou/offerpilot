@@ -31,6 +31,21 @@ public class ResumeExtractor {
         return extractResult(document).structured();
     }
     public record Result(JsonNode structured, JsonNode metadata) {}
+    private static final java.util.regex.Pattern NAME_WITH_ROLE = java.util.regex.Pattern.compile("^(.{2,}?)\\s*[（(]([^（）()]{2,12})[）)]$");
+    private static final java.util.regex.Pattern ROLE_WORD = java.util.regex.Pattern.compile(
+            "负责人|组长|队长|成员|主力|核心|开发|建模|设计|算法|测试|运营|产品|研究|分析|架构|前端|后端|全栈|实现|leader|developer|engineer|owner", java.util.regex.Pattern.CASE_INSENSITIVE);
+    /**
+     * RS-02: the common "项目名（角色）" heading is sometimes kept whole as the project name with an empty role.
+     * Only an empty role is filled, and only when the bracket holds a role word, so "导航系统（微信小程序）" stays intact.
+     */
+    static JsonNode splitProjectRoles(JsonNode structured) {
+        for (JsonNode project : structured.path("projects")) {
+            if (!(project instanceof com.fasterxml.jackson.databind.node.ObjectNode node) || !node.path("role").asText().isBlank()) continue;
+            var m = NAME_WITH_ROLE.matcher(node.path("name").asText().strip());
+            if (m.matches() && ROLE_WORD.matcher(m.group(2)).find()) node.put("name", m.group(1).strip()).put("role", m.group(2).strip());
+        }
+        return structured;
+    }
     public Result extractResult(ResumeDocumentReader.Document document) {
         return extractResult(document, null, null);
     }
@@ -76,8 +91,8 @@ public class ResumeExtractor {
         try {
             String normalized = output == null ? "" : output.strip();
             if (normalized.startsWith("```")) normalized = normalized.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "");
-            var structured = ResumeStructure.validate(json.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(normalized));
-            var metadata = json.createObjectNode().put("channel", document.channel()).put("promptVersion", "v2")
+            var structured = splitProjectRoles(ResumeStructure.validate(json.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(normalized)));
+            var metadata = json.createObjectNode().put("channel", document.channel()).put("promptVersion", "v6")
                 .put("model", gateway.modelName(tier)).put("tier", tier.name())
                 .put("durationMs", (System.nanoTime() - started) / 1_000_000).put("imageCount", media.size());
             if (usage.get() != null) {

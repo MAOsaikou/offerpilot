@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import {
+  formatDisplay,
+  formatDate,
+  language,
+  translateLabel,
+  translate as uiText,
+} from '@/shared/utils/language'
+
 import { computed, ref } from 'vue'
 import { useRouter, RouterLink } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
@@ -8,6 +16,7 @@ import { useWorkspace, learningTasks } from '@/shared/stores/workspace'
 import { useBoard } from '@/shared/composables/useBoard'
 import { applicationStages } from '@/shared/types/board'
 import RouteStrip from '../components/RouteStrip.vue'
+import PendingAgentWrites from '@/shared/components/PendingAgentWrites.vue'
 const workspace = useWorkspace()
 const board = useBoard()
 const router = useRouter()
@@ -43,21 +52,47 @@ const resumeCount = computed(() =>
 )
 const nextTask = computed(() => learningTasks.find((t) => !workspace.state.tasks.includes(t)))
 const progress = computed(() => (workspace.state.tasks.length / learningTasks.length) * 100)
-const today = new Date().toLocaleDateString('zh-CN', {
-  month: 'long',
-  day: 'numeric',
-  weekday: 'long',
-})
-const suggestions = [
-  { label: '梳理职业方向', text: '帮我梳理适合我的职业方向' },
-  { label: '打磨项目经历', text: '帮我优化简历里的项目经历' },
-  { label: '准备下一场面试', text: '帮我准备一场技术面试' },
-]
-const toolkit = [
-  { to: '/resumes', icon: 'resumes', title: '简历', desc: '上传解析，或继续编辑本地草稿' },
-  { to: '/interviews', icon: 'interviews', title: '模拟面试', desc: '从自我介绍开始练习表达' },
-  { to: '/kb', icon: 'kb', title: '知识库', desc: '记下每一次复盘' },
-]
+const today = computed(() =>
+  new Date().toLocaleDateString(language.value, {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  }),
+)
+const suggestions = computed(() => [
+  {
+    label: uiText('Explore career direction'),
+    text: uiText('Help me find suitable career directions'),
+  },
+  {
+    label: uiText('Improve project experience'),
+    text: uiText('Help me improve the project experience on my resume'),
+  },
+  {
+    label: uiText('Prepare for your next interview'),
+    text: uiText('Help me prepare for a technical interview'),
+  },
+])
+const toolkit = computed(() => [
+  {
+    to: '/resumes',
+    icon: 'resumes',
+    title: uiText('Resume'),
+    desc: uiText('Upload and parse a resume, or continue a local draft'),
+  },
+  {
+    to: '/interviews',
+    icon: 'interviews',
+    title: uiText('Mock interview'),
+    desc: uiText('Practice expressing yourself, starting with an introduction'),
+  },
+  {
+    to: '/kb',
+    icon: 'kb',
+    title: uiText('Knowledge library'),
+    desc: uiText('Keep a record of every reflection'),
+  },
+])
 function send() {
   if (prompt.value.trim())
     void router.push({ path: '/chat', query: { prompt: prompt.value.trim() } })
@@ -66,7 +101,7 @@ function send() {
 <template>
   <section class="page-stack dashboard">
     <header class="greeting">
-      <h1>你好，{{ workspace.state.name }}</h1>
+      <h1>{{ uiText('Hello, {0}', [workspace.displayName]) }}</h1>
       <p class="date-label">{{ today }}</p>
     </header>
 
@@ -76,11 +111,11 @@ function send() {
         <input
           v-model="prompt"
           maxlength="4000"
-          aria-label="告诉 AI 你的求职目标"
-          placeholder="问 OfferPilot：今天想解决什么？"
+          :aria-label="uiText('Tell AI about your career goals')"
+          :placeholder="uiText('Ask OfferPilot: what would you like to work on today?')"
           required
         />
-        <button class="btn primary" :disabled="!prompt.trim()">提问</button>
+        <button class="btn primary" :disabled="!prompt.trim()">{{ uiText('Ask') }}</button>
       </form>
       <div class="chips">
         <button
@@ -96,25 +131,28 @@ function send() {
       </div>
     </div>
 
+    <PendingAgentWrites />
     <section class="route-section">
       <div class="section-heading">
-        <h2>你的航线</h2>
-        <RouterLink to="/board">打开看板</RouterLink>
+        <h2>{{ uiText('Your journey') }}</h2>
+        <RouterLink to="/board">{{ uiText('Open board #2') }}</RouterLink>
       </div>
       <p v-if="board.query.isError.value" class="error-banner" role="alert">
-        {{ board.query.error.value?.message
-        }}<button class="btn" @click="board.query.refetch()">重试加载</button>
+        {{ formatDisplay(board.query.error.value?.message)
+        }}<button class="btn" @click="board.query.refetch()">{{ uiText('Retry loading') }}</button>
       </p>
       <RouteStrip v-else :stops="stops" :loading="board.query.isPending.value" />
     </section>
 
     <section class="panel next-panel">
       <div class="section-heading">
-        <h2>接下来要做</h2>
-        <RouterLink to="/board">查看全部机会</RouterLink>
+        <h2>{{ uiText('Coming up') }}</h2>
+        <RouterLink to="/board">{{ uiText('View all opportunities') }}</RouterLink>
       </div>
-      <p v-if="board.query.isPending.value" role="status">正在读取行动…</p>
-      <p v-else-if="board.query.isError.value" role="alert">行动加载失败，请在上方重试。</p>
+      <p v-if="board.query.isPending.value" role="status">{{ uiText('Loading actions…') }}</p>
+      <p v-else-if="board.query.isError.value" role="alert">
+        {{ uiText('Could not load actions. Please retry above.') }}
+      </p>
       <template v-else>
         <RouterLink
           v-for="app in dueActions"
@@ -126,15 +164,15 @@ function send() {
           <span
             ><strong>{{ app.nextAction }}</strong
             ><small
-              >{{ app.job.company }} · {{ app.job.title }} · {{ app.nextActionAt }}（{{
-                app.nextActionAt! < dueToday ? '已逾期' : '今天到期'
+              >{{ app.job.company }} · {{ app.job.title }} · {{ formatDate(app.nextActionAt!) }}（{{
+                app.nextActionAt! < dueToday ? uiText('Overdue') : uiText('Due today')
               }}）</small
             ></span
           >
           <AppIcon name="arrow" :size="18" />
         </RouterLink>
         <p v-if="!dueActions.length" class="subtle">
-          今天没有到期行动。在机会详情中安排下一步和日期。
+          {{ uiText('No actions are due today. Set a next step and date in application details.') }}
         </p>
       </template>
     </section>
@@ -142,23 +180,33 @@ function send() {
     <div class="dashboard-grid">
       <section class="panel next-panel">
         <div class="section-heading">
-          <h2>下一步</h2>
-          <RouterLink to="/career">成长路线</RouterLink>
+          <h2>{{ uiText('Next step') }}</h2>
+          <RouterLink to="/career">{{ uiText('Career growth') }}</RouterLink>
         </div>
-        <p class="subtle">目标方向</p>
-        <p class="target-title">{{ workspace.state.target || '还没有设定目标' }}</p>
+        <p class="subtle">{{ uiText('Target career') }}</p>
+        <p class="target-title">{{ workspace.state.target || uiText('No goal set yet') }}</p>
         <div class="focus-progress" role="presentation">
           <div :style="{ width: progress + '%' }" />
         </div>
         <p class="subtle">
-          已完成 <span class="num">{{ workspace.state.tasks.length }}</span> /
-          <span class="num">{{ learningTasks.length }}</span> 项成长行动。你有
-          <span class="num">{{ resumeCount ?? '—' }}</span> 份简历、
-          <span class="num">{{ workspace.state.interviews.length }}</span> 场面试练习。
+          {{
+            uiText(
+              '{0} of {1} growth actions completed. {2} resumes and {3} interview practice sessions.',
+              [
+                workspace.state.tasks.length,
+                learningTasks.length,
+                resumeCount ?? '—',
+                workspace.state.interviews.length,
+              ],
+            )
+          }}
         </p>
         <RouterLink to="/career" class="next-action">
           <span class="next-dot" aria-hidden="true" />
-          <span>{{ nextTask || '本轮行动已完成，回顾一下成长记录' }}</span>
+          <span>{{
+            (nextTask && translateLabel(nextTask)) ||
+            uiText('This round is complete. Review your progress.')
+          }}</span>
           <AppIcon name="arrow" :size="18" />
         </RouterLink>
         <div class="toolkit">
@@ -174,8 +222,8 @@ function send() {
 
       <section class="panel">
         <div class="section-heading">
-          <h2>收藏的机会</h2>
-          <RouterLink to="/jobs">搜索岗位</RouterLink>
+          <h2>{{ uiText('Saved opportunities') }}</h2>
+          <RouterLink to="/jobs">{{ uiText('Search jobs') }}</RouterLink>
         </div>
         <RouterLink
           v-for="(job, index) in savedJobs"
@@ -194,8 +242,14 @@ function send() {
           v-if="!board.query.isPending.value && !board.query.isError.value && !savedJobs.length"
           class="empty-state"
         >
-          <p>还没有收藏岗位。搜索企业官网的真实岗位，收藏后就会出现在航线上。</p>
-          <RouterLink to="/jobs" class="btn">搜索岗位</RouterLink>
+          <p>
+            {{
+              uiText(
+                'No saved jobs yet. Search real listings from company websites and save one to start tracking it.',
+              )
+            }}
+          </p>
+          <RouterLink to="/jobs" class="btn">{{ uiText('Search jobs') }}</RouterLink>
         </div>
       </section>
     </div>

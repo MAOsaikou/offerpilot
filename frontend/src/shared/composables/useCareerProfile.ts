@@ -1,9 +1,11 @@
+import { localizedText, translate as uiText } from '@/shared/utils/language'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   getCareerProfile,
   saveCareerProfile,
   saveCareerTasks,
   type CareerProfile,
+  type AssessmentConfirmed,
 } from '@/shared/api/career'
 import { useAuthStore } from '@/shared/stores/auth'
 import { identitySignal } from '@/shared/utils/authSession'
@@ -16,6 +18,10 @@ const emptyProfile = (): CareerProfile => ({
   city: '',
   skills: '',
   interests: [],
+  major: '',
+  courses: '',
+  valuesText: '',
+  assessment: null,
   completedTasks: [],
   updatedAt: null,
 })
@@ -25,7 +31,7 @@ export function useCareerProfile() {
   const profile = ref(emptyProfile())
   const loading = ref(true)
   const ready = ref(false)
-  const error = ref('')
+  const error = localizedText()
   const dirty = { profile: ref(false), tasks: ref(false) }
   const revisions = { profile: 0, tasks: 0 }
   const pending = computed(() => dirty.profile.value || dirty.tasks.value)
@@ -33,6 +39,7 @@ export function useCareerProfile() {
   let generation = 0
   let disposed = false
   let reader: AbortController | undefined
+  let cityBeforeAssessment = ''
 
   async function load() {
     const current = ++generation
@@ -51,7 +58,10 @@ export function useCareerProfile() {
       ready.value = true
     } catch (cause) {
       if (current === generation && !disposed)
-        error.value = cause instanceof Error ? cause.message : '无法读取职业档案，请重试'
+        error.value = () =>
+          cause instanceof Error
+            ? cause.message
+            : uiText('Could not load career profile. Please retry.')
     } finally {
       if (current === generation && !disposed) loading.value = false
     }
@@ -62,8 +72,9 @@ export function useCareerProfile() {
     const current = generation
     const revision = revisions[kind]
     const session = identitySignal()
-    const { target, city, skills, interests, completedTasks } = profile.value
-    const fields = { target, city, skills, interests: [...interests] }
+    const { target, city, skills, interests, major, courses, valuesText, completedTasks } =
+      profile.value
+    const fields = { target, city, skills, interests: [...interests], major, courses, valuesText }
     const completed = [...completedTasks]
     writes = writes.then(async () => {
       try {
@@ -78,7 +89,8 @@ export function useCareerProfile() {
         if (!pending.value) error.value = ''
       } catch (cause) {
         if (current === generation && !disposed && revision === revisions[kind])
-          error.value = cause instanceof Error ? cause.message : '保存失败，请重试'
+          error.value = () =>
+            cause instanceof Error ? cause.message : uiText('Could not save. Please retry.')
       }
     })
   }
@@ -102,6 +114,26 @@ export function useCareerProfile() {
     dirty.tasks.value = true
     revisions.tasks++
     enqueue('tasks')
+  }
+
+  async function flushProfile() {
+    clearTimeout(timer)
+    timer = undefined
+    if (dirty.profile.value) enqueue('profile')
+    await writes
+    if (dirty.profile.value)
+      throw new Error(error.value || uiText('Retry saving your career profile first'))
+    cityBeforeAssessment = profile.value.city
+  }
+
+  function applyAssessment(assessment: AssessmentConfirmed | null) {
+    profile.value.assessment = assessment
+    // Preserve any edits made while assessment confirmation was in flight.
+    if (assessment?.constraints.city && profile.value.city === cityBeforeAssessment) {
+      profile.value.city = assessment.constraints.city
+      // Requeue other edits made during confirmation with the confirmed city.
+      if (dirty.profile.value) saveProfile(0)
+    }
   }
 
   function retry() {
@@ -134,5 +166,16 @@ export function useCareerProfile() {
     reader?.abort()
   })
 
-  return { profile, loading, ready, error, pending, saveProfile, saveTasks, retry }
+  return {
+    profile,
+    loading,
+    ready,
+    error,
+    pending,
+    saveProfile,
+    saveTasks,
+    retry,
+    flushProfile,
+    applyAssessment,
+  }
 }

@@ -1,5 +1,7 @@
 # 后端本地启动（DeepSeek + PostgreSQL）
 
+AG-02：`AGENT_EARLY_READONLY_EXPERT` / `offerpilot.agent.early-readonly-expert` 与 `AGENT_RULE_FIRST_ROUTING` / `offerpilot.agent.rule-first-routing` 均默认 true；分别关闭恢复只读专家等待输入 gate、职业/岗位模型规划。SC-01/SC-03、配额与审批保持；规则岗位搜索可提前执行 MCP/本地检索与叙述，快照仅暂存内存；原输入 SC-01 放行后才 upsert 一次并下发正式 ID 卡片，命中/取消则丢弃。模型规划的搜索仍等待 gate。叙述使用岗位摘要，完整证据卡不变。边界、逐项只读审计和交错对照方法见 [聊天延迟评测](eval/chat-latency/README.md)。
+
 当前实现包括账号/访客认证、持久化聊天与专家编排、简历解析/诊断/岗位定向改写/采纳/PDF、岗位搜索与匹配、投递工作区、面试/STAR/复盘、职业推荐与成长路线、私有知识笔记和长期事实记忆。公开体验默认创建有期限和额度的独立访客沙箱。启动执行 V1–V26 迁移；旧分支迁移先按 [升级说明](../deploy/migrations/README.md) 对齐历史。职业与笔记支持全文及可选向量检索，未配置百炼 embedding 时降级；真实向量效果、真人评分与公网部署仍待验收。默认集成测试使用隔离 PostgreSQL/S3Mock 和本地模型协议桩，不调用真实模型。
 
 ## 最新主线真实模型验收
@@ -17,7 +19,7 @@ Windows 入口会复制当前后端源码（包括未提交修改）到新临时
 
 直接运行 Maven 时，`-Plive` 只开放编译和发现；仍需套件开关和真实 Key。`offerpilot.smoke.tier` 默认 FLASH，PRO 或 ALL 必须显式指定；所有七个方法统一遵守筛选。`offerpilot.smoke.max-calls` 默认 40，对本次 JVM 全套调用计数，达到上限后在供应商 IO 前拒绝。该计数不是 token 或账单金额。
 
-2026-10-12 百炼实测：`text-embedding-v4` 返回 1024 维向量，Spring AI 与业务适配器的 16 条短文本也通过（10+6 分片）；完整职业库语义质量仍待评测。dev 可在忽略的 `backend/.env.local` 设置 `BAILIAN_API_KEY`、`SPRING_AI_MODEL_EMBEDDING=openai`、`LLM_MODEL_EMBEDDING=text-embedding-v4`、`LLM_EMBEDDING_DIMENSIONS=1024`，重新构建并重启生效。首次开启会补齐职业库并启动笔记向量任务；仅测少量请求时先设置 `OCCUPATION_EMBED_ENABLED=false`、`NOTES_EMBED_ENABLED=false`。详见[验收记录](../docs/research/2026-10-12-本地验收与发布准备.md)。
+2026-10-12 百炼实测：`text-embedding-v4` 返回 1024 维向量，Spring AI 与业务适配器的 16 条短文本也通过（10+6 分片）；2026-10-16 完整职业库真实对照见[百炼实测](../docs/research/2026-10-16-occupation-rag-bailian-live.md)。dev 可在忽略的 `backend/.env.local` 设置 `BAILIAN_API_KEY`、`SPRING_AI_MODEL_EMBEDDING=openai`、`LLM_MODEL_EMBEDDING=text-embedding-v4`、`LLM_EMBEDDING_DIMENSIONS=1024`，重新构建并重启生效。首次开启会补齐职业库并启动笔记向量任务；仅测少量请求时先设置 `OCCUPATION_EMBED_ENABLED=false`、`NOTES_EMBED_ENABLED=false`。详见[验收记录](../docs/research/2026-10-12-本地验收与发布准备.md)。
 
 ## 1. 准备环境
 
@@ -80,11 +82,11 @@ PostgreSQL 镜像已包含 pgvector。Java 启动自动执行 Flyway V1–V26，
 
 ## 4. 启动后端
 
-双击根目录 `OfferPilot.cmd`，选择「1 启动全部」自动启动依赖、构建后端、启动前后端；日常改代码或 Key 后选择「5 重建并重启后端」。仅启动后端可执行 `OfferPilot.cmd -Action start-backend`。也可手动执行：
+双击根目录 `OfferPilot.cmd`，选择「1 启动全部」自动启动依赖、构建后端、启动前后端；日常改代码或 Key 后选择「5 重建并重启后端」。启动构建跳过测试编译与执行，测试单独按第 7 节运行。仅启动后端可执行 `OfferPilot.cmd -Action start-backend`。也可手动执行：
 
 ```powershell
 cd backend
-mvn -q -B -pl offerpilot-bootstrap -am package
+mvn -q -B -pl offerpilot-bootstrap -am '-Dmaven.test.skip=true' package
 java -jar offerpilot-bootstrap/target/offerpilot-bootstrap-0.1.0-SNAPSHOT.jar --spring.profiles.active=dev
 ```
 
@@ -141,7 +143,7 @@ curl.exe -N http://localhost:8081/api/v1/agent/chat -H "Content-Type: applicatio
 
 ## 7. 验证范围
 
-`mvn -q -B -pl offerpilot-bootstrap -am package` 包含流式事件、中文、用量、参数校验、缺 Key、空回复、超时、取消和错误不泄露测试，以及真实 HTTP + Spring AI DeepSeek 适配器集成测试。集成测试使用 `test` profile 和本机模拟供应商，不消耗真实 Key，不替代 dev 环境的数据库及真实 DeepSeek 验收。
+在 `backend/` 运行 `mvn -q -B test` 只编译和执行必要回归，覆盖身份、隐私、安全、审批、核心业务和流式状态，不启动容器。全量离线测试使用 `mvn -q -B -Pfull-test test`，需 Docker；显式 `-Dtest=测试类名` 可定向运行非默认类。真实模型评测另需 `-Plive` 及原有环境/Key 门禁。启动入口与 Docker 镜像打包均使用 `-Dmaven.test.skip=true`，跳过测试编译与执行。默认通过不代表 HTTP、数据库迁移、PDF 等按需集成已验收，也不替代 dev 环境的真实 DeepSeek 验收。
 
 ## 网页切换简历解析模型
 

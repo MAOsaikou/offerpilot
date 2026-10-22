@@ -172,5 +172,23 @@ class ResumeDiagnosisTest {
         ((ObjectNode)report.path("findings").get(0).path("evidence").get(0)).put("quote","负责缓存优化");
         assertThat(ResumeDiagnosisValidator.salvage(report,source).omittedItems()).isZero();
     }
+    @Test void savedReportUsesBoundVersionAndDropsUnlocatableItemsWithoutRenumberingOrMutation() throws Exception {
+        var oldVersion = source();
+        var newVersion = source(); newVersion.put("summary", "新版本负责数据库优化");
+        var report = (ObjectNode) json.readTree(REPORT);
+        report.put("schemaVersion", 2).put("versionId", "old-version");
+        ((ObjectNode) report.path("findings").get(0)).put("findingId", "f7");
+        report.withArray("strengths").addObject().put("message", "误引新版本").putArray("evidence")
+                .addObject().put("path", "/summary").put("quote", "新版本负责数据库优化");
+        String before = report.toString();
+        var verified = ResumeDiagnosisValidator.verifiedReport(report, oldVersion);
+        assertThat(verified.path("strengths")).isEmpty();
+        assertThat(verified.path("findings").get(0).path("findingId").asText()).isEqualTo("f7");
+        assertThat(verified.path("limitations").toString()).contains("省略 1 项");
+        assertThat(report.toString()).isEqualTo(before);
+        report.withArray("strengths").removeAll();
+        assertThatThrownBy(() -> ResumeDiagnosisValidator.verifiedReport(report, newVersion)).hasMessageContaining("未保存");
+        assertThat(ResumeDiagnosisValidator.verifiedReport(report, oldVersion).path("findings")).hasSize(1);
+    }
     private Flux<ChatResponse> response(String text) { return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage(text))))); }
 }

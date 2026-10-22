@@ -22,25 +22,69 @@ import java.util.function.Function;
 /** Per-subscription serial executor. ChatService owns persistence and cancellation. */
 @Component
 public class Orchestrator {
+    public static final String START_RULE_SEARCH_REPLY = Orchestrator.class.getName() + ".searchReply";
     private final IntentPlanner planner;
     private final ExpertRegistry experts;
+    @org.springframework.beans.factory.annotation.Value("${offerpilot.agent.max-tool-iterations:8}")
+    private int maxToolIterations = 8;
+    public void setMaxToolIterations(int limit) { maxToolIterations = Math.max(1, Math.min(8, limit)); }
+    private boolean earlyReadonlyExpert = true;
+    @org.springframework.beans.factory.annotation.Value("${offerpilot.agent.early-readonly-expert:true}")
+    void setEarlyReadonlyExpert(boolean enabled) { earlyReadonlyExpert = enabled; }
+
+    private com.offerpilot.agent.experts.KnowledgeNoteContext noteContext;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNoteContext(com.offerpilot.agent.experts.KnowledgeNoteContext notes) { noteContext = notes; }
 
     public Orchestrator(IntentPlanner planner, ExpertRegistry experts) {
         this.planner = planner;
         this.experts = experts;
     }
 
+    public boolean usesResumeAdviceFastPath(AgentMode mode, String content, List<Message> history,
+                                           Map<String, Object> context) {
+        return planner.usesResumeAdviceFastPath(mode, content, history, context);
+    }
+
+    public boolean usesRuleFirstRoute(AgentMode mode, String content, List<Message> history,
+                                     Map<String, Object> context) {
+        return planner.usesRuleFirstRoute(mode, content, history, context);
+    }
+
+    private Mono<Void> beforePlan(IntentPlanner.Decision decision, Map<String, Object> context, boolean earlyRuleSearch) {
+        // A closed allowlist, independent of display-level READ. Deterministic search stages snapshots
+        // in memory; its commit and card emission retain the original input gate.
+        // Mixed plans stay behind the original gate, including preparation and approval creation.
+        if (earlyRuleSearch || earlyReadonlyExpert && decision.plan() != null && !decision.plan().steps().isEmpty()
+                && decision.plan().steps().stream().allMatch(step -> experts.earlyReadOnly(step, context)))
+            return com.offerpilot.llm.ChatLatency.mono("early-expert", Mono.empty());
+        return com.offerpilot.llm.ChatLatency.mono("effects-gate", com.offerpilot.llm.ModelGateway.beforeEffects());
+    }
+
     public Flux<AgentEvent> run(AgentMode mode, String content, List<Message> history, ModelTier tier,
+                               String runId, AtomicInteger seq, List<Message> replyPrompt, Consumer<Usage> onUsage,
+                               String owner, Map<String, Object> context) {
+        Flux<AgentEvent> work = Flux.defer(() -> runWithContext(mode, content, history, tier, runId, seq,
+                replyPrompt, onUsage, owner, context));
+        // JOB and CAREER never consume private note context; avoid unused reads for explicit modes.
+        return noteContext == null || mode == AgentMode.JOB || mode == AgentMode.CAREER_DISCOVERY ? work
+                : noteContext.withPrefetch(owner, content, work);
+    }
+
+    private Flux<AgentEvent> runWithContext(AgentMode mode, String content, List<Message> history, ModelTier tier,
                                String runId, AtomicInteger seq, List<Message> replyPrompt, Consumer<Usage> onUsage,
                                String owner, Map<String, Object> context) {
         var selected=context==null ? Map.<String,Object>of() : context;
         if (selected.containsKey("jobId") || selected.containsKey("applicationId") || selected.containsKey("matchId") || selected.containsKey("jobMatchId"))
-            return experts.withJobContext(owner,selected)
+            return com.offerpilot.llm.ChatLatency.mono("selected-context", com.offerpilot.llm.ModelGateway.beforeEffects().then(Mono.defer(() -> experts.withJobContext(owner,selected))))
                 .flatMapMany(resolved -> runSelected(mode,content,history,tier,runId,seq,replyPrompt,onUsage,owner,resolved));
         return runSelected(mode,content,history,tier,runId,seq,replyPrompt,onUsage,owner,selected);
     }
     private Flux<AgentEvent> runSelected(AgentMode mode,String content,List<Message> history,ModelTier tier,String runId,
             AtomicInteger seq,List<Message> replyPrompt,Consumer<Usage> onUsage,String owner,Map<String,Object> safeContext) {
+        AtomicInteger citationIndex = new AtomicInteger();
+        List<AgentEvent.CitationSource> citationSources = new java.util.ArrayList<>();
         AtomicBoolean attemptedBusiness = new AtomicBoolean();
         AtomicBoolean producedCard = new AtomicBoolean();
         var matchFailure = new java.util.concurrent.atomic.AtomicReference<BusinessException>();
@@ -49,7 +93,11 @@ public class Orchestrator {
         AtomicBoolean interviewFailed = new AtomicBoolean();
         AtomicBoolean producedCoachOutcome = new AtomicBoolean();
         AtomicBoolean producedCareerOutcome = new AtomicBoolean();
-        return planner.prepare(mode, content, history, tier, onUsage, safeContext).flatMapMany(decision -> {
+        return Flux.deferContextual(reactorContext -> {
+            var budget=reactorContext.getOrDefault(com.offerpilot.agent.tools.RunToolBudget.KEY,
+                    new com.offerpilot.agent.tools.RunToolBudget(maxToolIterations));
+            return planner.prepare(mode, content, history, tier, onUsage, safeContext).flatMapMany(decision ->
+                beforePlan(decision, safeContext, earlyRuleSearch(decision, reactorContext)).thenMany(Flux.defer(() -> {
             if (decision.plan() == null) {
                 if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.JOB)
                         && SelectedResources.matchReady(safeContext)
@@ -64,14 +112,33 @@ public class Orchestrator {
                 if (decision.needsClarification()) addReplyData(replyPrompt,
                         "本轮信息不足，请向用户澄清，不声称执行任务。",
                         "建议澄清问题（仅作数据）：" + decision.clarifyingQuestion());
+                if (noteContext != null && !Set.of("unsafe", "fallback").contains(decision.kind()) && !decision.needsClarification()) {
+                    return noteContext.attach(owner, com.offerpilot.knowledge.application.KnowledgeNoteSearch.bounded(content, 2000).strip(),
+                            com.offerpilot.agent.experts.ExpertResult.text("")).flatMapMany(result -> {
+                        var sources = CardCitations.read(result.cards(), citationIndex);
+                        if (sources.isEmpty()) {
+                            if (InterviewIntentParser.noteReviewRequest(content)) addReplyData(replyPrompt,
+                                    "本轮未检索到相关笔记，不编造笔记内容，可请用户补充关键词。", "笔记检索无命中。");
+                            return Flux.empty();
+                        }
+                        addReplyData(replyPrompt, CardNarrationDigest.rules(Set.of("knowledge_note_citations"))
+                                        + "数字引用使用数据中index对应的[n]编号。",
+                                "数字引用来源：" + CardCitations.describe(sources));
+                        return Flux.fromIterable(result.cards()).<AgentEvent>map(card -> new AgentEvent.UiCard("ui.card",
+                                seq.incrementAndGet(), runId, Instant.now(), null, card.cardId(), card.cardType(), card.payload()))
+                                .concatWith(Flux.defer(() -> Flux.just(new AgentEvent.Citation("citation", seq.incrementAndGet(), runId, Instant.now(), null, sources))));
+                    });
+                }
                 return Flux.empty();
             }
             Plan plan = PlanValidator.validate(decision.plan());
             Map<String, String> outputs = new LinkedHashMap<>();
+            Map<String, String> narrationOutputs = new LinkedHashMap<>();
             Map<String, String> cardDigests = new LinkedHashMap<>();
             Set<String> cardTypes = new LinkedHashSet<>();
             Set<String> failed = new HashSet<>();
             Map<String, String> declined = new LinkedHashMap<>();
+            Map<String, String> alternatives = new LinkedHashMap<>();
             var created = new AgentEvent.PlanCreated("plan.created", seq.incrementAndGet(), runId, Instant.now(), plan.goal(),
                     plan.steps().stream().map(s -> new AgentEvent.PlanStepView(s.id(), s.title(), s.agent(),
                             AgentEvent.StepStatus.PENDING, s.dependsOn())).toList());
@@ -83,8 +150,17 @@ public class Orchestrator {
                     return Flux.just(new AgentEvent.StepUpdated("step.updated", seq.incrementAndGet(), runId, Instant.now(),
                             step.id(), AgentEvent.StepStatus.SKIPPED, "上游步骤失败，已跳过", 0));
                 }
+                if (!budget.acquire()) {
+                    failed.add(step.id());
+                    outputs.put(step.id(),"工具调用已达本轮上限，剩余任务未执行。可在下一轮继续。");
+                    addReplyData(replyPrompt,"本轮已到工具调用上限。说明已完成和未执行的任务，不再调用工具。",outputs.get(step.id()));
+                    return Flux.just(new AgentEvent.StepUpdated("step.updated",seq.incrementAndGet(),runId,Instant.now(),
+                            step.id(),AgentEvent.StepStatus.SKIPPED,outputs.get(step.id()),0));
+                }
                 Instant started = Instant.now();
                 String callId = runId + ":" + step.id();
+                // Set once the early rule-search narration has been handed to ChatService; only then must a failure abort the run.
+                var ruleNarrationStarted = new java.util.concurrent.atomic.AtomicBoolean();
                 boolean coachStep = step.agent() == ExpertType.COACH;
                 boolean patchWrite = experts.writingPatches(step);
                 boolean coachWrite = experts.writingCoach(step);
@@ -101,15 +177,17 @@ public class Orchestrator {
                 boolean willOptimize = experts.optimizing(step, safeContext);
                 boolean willAdvise = step.agent() == ExpertType.RESUME && "advice".equals(step.inputs().get("action"));
                 if (willWrite || willMatch || willDiagnose || willSearch || willOptimize || willRecommend || interviewStep || coachStep) attemptedBusiness.set(true);
+                boolean analysisWrite = experts.persistingAnalysis(step,safeContext);
                 String name = willWrite ? (String) step.inputs().get("action") : willSearch ? "search_jobs" : willMatch ? "matchJobToResume" : willOptimize ? "optimizeResumeForJob" : willDiagnose ? "diagnoseResume" : willAdvise ? "resumeGuidance" : interviewStep ? ("completedInterview".equals(step.inputs().get("action")) ? "interviewGuidance" : "scoreInterview") : careerStep ? "recommendCareers" : coachStep ? "planLearning" : "placeholder." + step.agent().name();
-                String running = willWrite ? (patchWrite ? "等待用户批准采纳简历改写" : coachWrite ? "等待用户批准同步成长任务" : starWrite ? "等待用户批准保存 STAR 故事" : interviewWrite ? "正在准备模拟面试，等待用户批准面试写入" : careerWrite ? "等待用户批准设置目标职业" : "等待用户批准看板写入") : willSearch ? "正在查询企业官网岗位" : willMatch ? (tier == ModelTier.PRO ? "深度模式较慢，正在分析原文证据（最多3分钟）" : "正在对照岗位要求与简历") : willOptimize ? "正在读取或生成改写建议，未修改简历" : willDiagnose ? "正在读取或生成简历诊断" : willAdvise ? "正在整理简历文字建议" : interviewStep ? ("completedInterview".equals(step.inputs().get("action")) ? "正在整理已完成面试的后续选项" : "正在生成面试评分卡") : careerStep ? "正在根据兴趣推荐职业" : coachStep ? "正在分析技能差距与学习路线" : "正在运行占位专家";
+                String running = willWrite ? (patchWrite ? "等待用户批准采纳简历改写" : coachWrite ? "等待用户批准同步成长任务" : starWrite ? "等待用户批准保存 STAR 故事" : interviewWrite ? "正在准备模拟面试，等待用户批准面试写入" : careerWrite && "rerankCareers".equals(name) ? "等待用户批准保存推荐重排" : careerWrite ? "等待用户批准设置目标职业" : "等待用户批准看板写入") : willSearch ? "正在查询企业官网岗位" : willMatch ? (tier == ModelTier.PRO ? "深度模式较慢，正在分析原文证据（最多3分钟）" : "正在对照岗位要求与简历") : willOptimize ? "正在读取或生成改写建议，未修改简历" : willDiagnose ? "正在读取或生成简历诊断" : willAdvise ? "正在整理简历文字建议" : interviewStep ? ("completedInterview".equals(step.inputs().get("action")) ? "正在整理已完成面试的后续选项" : "正在生成面试评分卡") : careerStep ? "正在根据兴趣推荐职业" : coachStep ? "正在分析技能差距与学习路线" : "正在运行占位专家";
                 Map<String, String> upstream = new LinkedHashMap<>();
                 step.dependsOn().forEach(id -> upstream.put(id, outputs.get(id)));
-                Function<Mono<ExpertResult>, Flux<AgentEvent>> finish = work -> work
+                Function<Mono<ExpertResult>, Flux<AgentEvent>> finish = work -> com.offerpilot.llm.ChatLatency.mono("expert-" + step.agent().name(), work)
                         .timeout(Duration.ofSeconds(willMatch ? (tier == ModelTier.PRO ? 210 : 90) : 120))
                         .switchIfEmpty(Mono.error(new IllegalStateException("专家未返回结果")))
-                        .flatMapMany(result -> {
+                        .map(ToolCardProjections::expand).flatMapMany(result -> {
                             outputs.put(step.id(), result.summary());
+                            narrationOutputs.put(step.id(),CardNarrationDigest.summary(result));
                             String digest = CardNarrationDigest.of(result.cards());
                             if (!"[]".equals(digest)) cardDigests.put(step.id(), digest);
                             result.cards().forEach(card -> cardTypes.add(card.cardType()));
@@ -121,26 +199,76 @@ public class Orchestrator {
                             String preview = result.summary() == null ? "" : result.summary();
                             boolean truncated = preview.length() > 500;
                             if (truncated) preview = com.offerpilot.common.text.TextBounds.truncate(preview, 500);
-                            return outcome(runId, seq, step.id(), callId, name, true, preview, truncated, result.cards(), started);
+                            var sources = CardCitations.read(result.cards(), citationIndex);
+                            citationSources.addAll(sources);
+                            return outcome(runId, seq, step.id(), callId, name, true, preview, truncated, result.cards(), started, result.summary(), sources);
                         });
                 return Flux.<AgentEvent>just(new AgentEvent.StepUpdated("step.updated", seq.incrementAndGet(), runId, started,
                                 step.id(), AgentEvent.StepStatus.RUNNING, running, null),
                         new AgentEvent.ToolCall("tool.call", seq.incrementAndGet(), runId, Instant.now(), step.id(), callId,
-                                name, Map.of("inputs", step.inputs(), "upstreamOutputs", upstream), willSearch ? "mcp:jobs-mcp" : "local", willWrite ? AgentEvent.ToolAccess.WRITE : AgentEvent.ToolAccess.READ))
+                                name, Map.of("inputs", step.inputs(), "upstreamOutputs", upstream), willSearch ? "mcp:jobs-mcp" : "local", willWrite || analysisWrite ? AgentEvent.ToolAccess.WRITE : AgentEvent.ToolAccess.READ))
                         .concatWith(Flux.defer(() -> {
-                            if (!willWrite) return finish.apply(willMatch ? experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream), tier)
-                                    : experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream)));
+                            com.offerpilot.agent.tools.ToolContracts.validate(step);
+                            var contract = com.offerpilot.agent.tools.ToolContracts.contract(step);
+                            boolean analysisTool = java.util.Set.of("match","diagnose","diagnosis","optimize").contains(contract.action());
+                            if (contract.access() != AgentEvent.ToolAccess.READ && !willWrite && !analysisTool)
+                                return Flux.error(new BusinessException(ErrorCode.TOOL_FAILED,"写入工具未接入审批，已拒绝执行"));
+                            if (!willWrite) {
+                                Mono<ExpertResult> work = Mono.defer(() -> willMatch ? experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream), tier)
+                                        : experts.execute(owner, safeContext, runId, step, Map.copyOf(upstream)));
+                                if (earlyRuleSearch(decision,reactorContext)) {
+                                    work=com.offerpilot.llm.ChatLatency.mono("rule-job-retrieval",experts.prepareRuleSearch(runId,step)).flatMap(prepared -> {
+                                        var narration=new ArrayList<Message>(replyPrompt);
+                                        addReplyData(narration,CardNarrationDigest.rules(Set.of("job_card")),
+                                                "报告摘要："+CardNarrationDigest.summary(prepared.preview())+"；已展示卡片的结构化明细："
+                                                        +CardNarrationDigest.of(prepared.preview().cards()));
+                                        java.util.function.Consumer<List<Message>> start=reactorContext.get(START_RULE_SEARCH_REPLY);
+                                        ruleNarrationStarted.set(true);
+                                        start.accept(List.copyOf(narration));
+                                        return com.offerpilot.llm.ChatLatency.mono("effects-gate",com.offerpilot.llm.ModelGateway.beforeEffects())
+                                                .then(com.offerpilot.llm.ModelGateway.inputSafetyPassed())
+                                                .flatMap(allowed -> allowed
+                                                        ? com.offerpilot.llm.UsageJournal.callable(prepared.persist()::get)
+                                                                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+                                                        : Mono.error(new BusinessException(ErrorCode.VALIDATION_FAILED,"输入安全检查未通过，未保存岗位快照")));
+                                    });
+                                }
+                                if(!analysisWrite) return finish.apply(work);
+                                Mono<ExpertResult> analysisWork=work;
+                                return Mono.fromCallable(() -> experts.requestAnalysis(owner,runId,step,safeContext))
+                                    .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic()).flatMapMany(ticket -> Flux.<AgentEvent>just(
+                                        new AgentEvent.ApprovalRequired("approval.required",seq.incrementAndGet(),runId,Instant.now(),step.id(),ticket.id(),
+                                            callId,name,ticket.args(),"此操作将生成并保存分析报告；原简历和投递状态不会改变，请核对所选资源后批准。断线后需重新发起。",
+                                            ticket.expiresAt(),List.of()))
+                                        .concatWith(ticket.await().flatMapMany(result -> Flux.<AgentEvent>just(
+                                            new AgentEvent.ApprovalResolved("approval.resolved",seq.incrementAndGet(),runId,Instant.now(),ticket.id(),result.decision()))
+                                            .concatWith(Flux.defer(() -> {
+                                                if(!"APPROVE".equals(result.decision())) {
+                                                    declined.put(step.id(),"TIMEOUT".equals(result.decision())?"分析审批已超时，未保存报告。":"你已拒绝，未生成或保存报告。");
+                                                    alternatives.put(step.id(),"可以先讨论分析目标，确认后重新发起。");
+                                                    return Flux.error(new BusinessException(ErrorCode.APPROVAL_REJECTED,declined.get(step.id())));
+                                                }
+                                                return finish.apply(analysisWork);
+                                            })))));
+                            }
                             return Mono.fromCallable(() -> patchWrite ? experts.requestPatch(owner, runId, step) : coachWrite ? experts.requestCoach(owner, runId, step) : starWrite ? experts.requestStarStory(owner, runId, step) : interviewWrite ? experts.requestInterview(owner, runId, step) : careerWrite ? experts.requestCareer(owner, runId, step) : experts.requestBoard(owner, runId, step))
                                     .subscribeOn(careerWrite || interviewWrite || starWrite || coachWrite || patchWrite ? reactor.core.scheduler.Schedulers.boundedElastic() : reactor.core.scheduler.Schedulers.immediate()).flatMapMany(ticket -> Flux.<AgentEvent>just(new AgentEvent.ApprovalRequired("approval.required", seq.incrementAndGet(), runId,
                                     Instant.now(), step.id(), ticket.id(), callId, name, ticket.args(),
-                                    (patchWrite ? "此操作将按所选补丁写入新的简历版本，原版本保留可查看；请核对后批准。" : coachWrite ? "此操作将把所选任务标记完成，并保留原有完成项；请确认这些任务已完成后批准。" : starWrite ? "此操作将把该题已验证的 STAR 回答保存到故事库，供后续面试练习引用；拒绝或超时均不保存。" : interviewWrite ? "此操作将创建面试、保存答案或更新会话状态，请核对后批准。" : careerWrite ? "此操作将把职业档案目标设为「" + ticket.args().get("name") + "」，请确认后批准。" : "此操作将修改求职看板，请确认状态、备注和下一步行动后批准。"), ticket.expiresAt(), careerWrite || interviewWrite || starWrite || coachWrite || patchWrite ? List.of() : List.of("status", "note", "nextAction", "nextActionAt")))
+                                    (patchWrite ? "此操作将按所选补丁写入新的简历版本，原版本保留可查看；请核对后批准。" : coachWrite ? "此操作将把所选任务标记完成，并保留原有完成项；请确认这些任务已完成后批准。" : starWrite ? "此操作将把该题已验证的 STAR 回答保存到故事库，供后续面试练习引用；拒绝或超时均不保存。" : interviewWrite ? "此操作将创建面试、保存答案或更新会话状态，请核对后批准。" : careerWrite && "rerankCareers".equals(name) ? "此操作将按所选约束保存新的推荐修订，保留上一修订；不会修改职业档案，请核对后批准。" : careerWrite ? "此操作将把职业档案目标设为「" + ticket.args().get("name") + "」，请确认后批准。" : "此操作将修改求职看板，请确认状态、备注和下一步行动后批准。"), ticket.expiresAt(), com.offerpilot.agent.application.ApprovalService.editableFields(name)))
                                     .concatWith(ticket.await().doOnNext(result -> {
-                                        if (!"APPROVE".equals(result.decision())) declined.put(step.id(), approvalSummary(name, result.decision()));
+                                        if (!"APPROVE".equals(result.decision())) {
+                                            declined.put(step.id(), approvalSummary(name, result.decision()));
+                                            alternatives.put(step.id(), com.offerpilot.agent.application.ApprovalService.alternative(name, ticket.args()));
+                                        }
                                     }).flatMapMany(decisionResult -> Flux.<AgentEvent>just(
                                             new AgentEvent.ApprovalResolved("approval.resolved", seq.incrementAndGet(), runId,
                                                     Instant.now(), ticket.id(), decisionResult.decision()))
                                             .concatWith(Flux.defer(() -> finish.apply(patchWrite ? experts.executePatch(owner, runId, step, decisionResult) : coachWrite ? experts.executeCoach(owner, step, decisionResult) : starWrite ? experts.executeStarStory(owner, runId, step, decisionResult) : interviewWrite ? experts.executeInterview(owner, runId, step, decisionResult) : careerWrite ? experts.executeCareer(owner, step, decisionResult) : experts.executeBoard(owner, runId, step, decisionResult)))))));
                         }).onErrorResume(ex -> {
+                            // A failed snapshot commit must never adopt the already started success narration.
+                            // A search that failed before narration started (e.g. all sources unavailable) is reported like the
+                            // ordinary path; only a failure after the success narration started must abort the run.
+                            if (earlyRuleSearch(decision,reactorContext) && ruleNarrationStarted.get()) return Flux.error(ex);
                             failed.add(step.id());
                             if (willMatch && ex instanceof BusinessException business) matchFailure.set(business);
                             if (interviewStep && !(ex instanceof BusinessException b && b.errorCode() == ErrorCode.APPROVAL_REJECTED))
@@ -152,7 +280,7 @@ public class Orchestrator {
                                 summary = declined.computeIfAbsent(step.id(), ignored -> approvalSummary(name, "REJECT"));
                             }
                             outputs.put(step.id(), summary);
-                            return outcome(runId, seq, step.id(), callId, name, false, summary, false, List.of(), started);
+                            return outcome(runId, seq, step.id(), callId, name, false, summary, false, List.of(), started, summary, List.of());
                         }));
             })), 1)).concatWith(Flux.defer(() -> {
                 if (interviewFailed.get())
@@ -163,12 +291,13 @@ public class Orchestrator {
                             "本轮匹配未完成：" + matchFailure.get().getMessage(), matchFailure.get().recoverable()) : new BusinessException(ErrorCode.MODEL_UNAVAILABLE,
                             "本轮匹配未完成：" + String.join("；", outputs.values())));
                 if (!declined.isEmpty()) addReplyData(replyPrompt,
-                        "用户拒绝或确认超时是正常的确认结果。明确说明该操作未执行、对应数据未改动，可重新发起。不要要求用户重新识别已选择的记录，不把拒绝描述为系统故障。其它操作按各自实际结果说明。",
-                        renderOutputs(declined));
+                        "用户拒绝或确认超时是正常的确认结果。明确说明该操作未执行、对应数据未改动，可重新发起。另给一句针对被拒绝操作的只读替代建议（例如先整理看板跟进草稿、比较职业目标、核对成长证据、预览简历修改、练习面试答案或检查 STAR 要素），不执行任何替代写操作。不要要求用户重新识别已选择的记录，不把拒绝描述为系统故障。其它操作按各自实际结果说明。",
+                        renderOutputs(declined) + "；只读替代建议：" + renderOutputs(alternatives));
                 if (!declined.isEmpty() && declined.keySet().containsAll(outputs.keySet())) return Flux.empty();
                 if (producedCard.get()) {
-                    addReplyData(replyPrompt, CardNarrationDigest.rules(cardTypes),
-                            "报告摘要：" + renderOutputs(outputs) + "；已展示卡片的结构化明细：" + renderOutputs(cardDigests) + "；失败或跳过的步骤：" + (failed.size() - declined.size()) + " 项");
+                    addReplyData(replyPrompt, CardNarrationDigest.rules(cardTypes)
+                                    + (citationSources.isEmpty() ? "" : "数字引用使用数据中index对应的[n]编号，只能引用支持本句的摘录，不猜测编号。"),
+                            "报告摘要：" + renderNarrationOutputs(outputs,narrationOutputs) + "；已展示卡片的结构化明细：" + renderOutputs(cardDigests) + (citationSources.isEmpty() ? "" : "；数字引用来源：" + CardCitations.describe(citationSources)) + "；失败或跳过的步骤：" + (failed.size() - declined.size()) + " 项");
                 } else if (!declined.isEmpty()) {
                     addReplyData(replyPrompt, "按各项操作的实际结果分别说明；只有明确成功的操作才能声称写入，用户拒绝或确认超时的操作未执行。",
                             "本轮结果：" + renderOutputs(outputs));
@@ -197,12 +326,20 @@ public class Orchestrator {
                 }
                 return Flux.empty();
             }));
+        })));
         });
+    }
+
+    private boolean earlyRuleSearch(IntentPlanner.Decision decision, reactor.util.context.ContextView context) {
+        return earlyReadonlyExpert && decision.ruleRoute() && decision.plan()!=null
+                && decision.plan().steps().size()==1 && experts.searching(decision.plan().steps().get(0))
+                && context.hasKey(START_RULE_SEARCH_REPLY) && com.offerpilot.llm.ModelGateway.hasInputSafetyGate(context);
     }
 
     private static String approvalSummary(String action, String decision) {
         String subject = switch (action) {
             case "createApplication", "updateApplicationStatus" -> "看板修改";
+            case "rerankCareers" -> "推荐重排保存";
             case "setCareerTarget" -> "职业目标设置";
             case "startInterview", "continueInterview", "answerInterview", "completeInterview" -> "面试写入";
             case "adoptGrowthPlan" -> "成长任务同步";
@@ -225,16 +362,32 @@ public class Orchestrator {
                 + escaped + "\n</orchestrator-data>"));
     }
 
+    private static String renderNarrationOutputs(Map<String,String> outputs,Map<String,String> narrationOutputs) {
+        var view=new LinkedHashMap<>(outputs);
+        narrationOutputs.forEach(view::put);
+        return renderOutputs(view);
+    }
+
     private static String renderOutputs(Map<String, String> outputs) {
         return outputs.values().stream().map(CardNarrationDigest::withoutIdentifiers)
                 .collect(java.util.stream.Collectors.joining("\n"));
     }
 
+    private static String toolSource(String name, List<ExpertResult.Card> cards) {
+        if (!"search_jobs".equals(name)) return "LOCAL";
+        boolean local = cards.stream().anyMatch(card -> card.payload() instanceof com.fasterxml.jackson.databind.JsonNode node
+                && "LOCAL_SNAPSHOT".equals(node.path("meta").path("source").asText()));
+        return local ? "LOCAL" : "MCP";
+    }
+
     private Flux<AgentEvent> outcome(String runId, AtomicInteger seq, String stepId, String callId, String name,
-                                     boolean ok, String summary, boolean truncated, List<ExpertResult.Card> cards, Instant started) {
+                                     boolean ok, String summary, boolean truncated, List<ExpertResult.Card> cards, Instant started, String fullSummary, List<AgentEvent.CitationSource> sources) {
         int elapsed = (int) Duration.between(started, Instant.now()).toMillis();
         Flux<AgentEvent> events = Flux.just(new AgentEvent.ToolResult("tool.result", seq.incrementAndGet(), runId, Instant.now(), stepId,
-                callId, name, ok, summary, elapsed, truncated));
+                callId, name, ok, summary, elapsed, truncated, Map.of("summary", fullSummary == null ? "" : fullSummary, "cards",
+                        cards.stream().map(card -> Map.of("cardType", card.cardType(), "payload", card.payload())).toList()),
+                toolSource(name, cards), "MCP".equals(toolSource(name, cards)) ? "jobs-mcp" : null));
+        if (!sources.isEmpty()) events = events.concatWith(Flux.just(new AgentEvent.Citation("citation", seq.incrementAndGet(),runId,Instant.now(),stepId,sources)));
         for (var card : cards) {
             events = events.concatWith(Flux.just(new AgentEvent.UiCard("ui.card", seq.incrementAndGet(), runId, Instant.now(),
                     stepId, card.cardId(), card.cardType(), card.payload())));

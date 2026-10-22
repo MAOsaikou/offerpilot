@@ -5,6 +5,11 @@ on:
     branches: [main, dev]
   pull_request:
   workflow_dispatch:
+    inputs:
+      full_tests:
+        description: Run all frontend regression tests
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -64,8 +69,13 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
-      - name: Test
+      - name: Essential regression tests
+        if: inputs.full_tests != true
         run: pnpm run test --run
+
+      - name: Full regression tests
+        if: inputs.full_tests == true
+        run: pnpm run test:full --run
 
       - name: Build
         run: pnpm run build

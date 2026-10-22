@@ -20,7 +20,9 @@ vi.mock('@/shared/api/auth', async (importOriginal) => ({
   })),
 }))
 
-vi.mock('@/shared/api/generationTasks', () => ({
+vi.mock('@/shared/api/generationTasks', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/shared/api/generationTasks')>()),
+  recentGenerationTasks: vi.fn(async () => []),
   listGenerationTasks: vi.fn(async () => []),
   cancelGenerationTask: vi.fn(async () => null),
 }))

@@ -21,9 +21,15 @@ import java.util.Objects;
 public class AccountDataDeletionService {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
-    private final AccountDataCleanup cleanup;
+    private final java.util.function.LongSupplier nanos;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private io.micrometer.core.instrument.MeterRegistry meters;
+    @org.springframework.beans.factory.annotation.Autowired
     public AccountDataDeletionService(JdbcTemplate jdbc, TransactionTemplate tx, AccountDataCleanup cleanup) {
-        this.jdbc = jdbc; this.tx = tx; this.cleanup = cleanup;
+        this(jdbc,tx,cleanup,System::nanoTime);
+    }
+    AccountDataDeletionService(JdbcTemplate jdbc, TransactionTemplate tx, AccountDataCleanup cleanup,java.util.function.LongSupplier nanos) {
+        this.jdbc = jdbc; this.tx = tx; this.nanos=nanos;
     }
     private record Deleted(int files, List<String> receipts) {}
     public void delete(String owner) {
@@ -34,9 +40,27 @@ public class AccountDataDeletionService {
         delete(owner, true);
     }
     private void delete(String owner, boolean expiredSandbox) {
+        long started = nanos.getAsLong();
+        try { deleteWithinBudget(owner,expiredSandbox,started); }
+        finally {
+            long duration=Math.max(0,nanos.getAsLong()-started);
+            if(meters!=null) meters.timer("offerpilot.account.deletion.duration").record(duration,java.util.concurrent.TimeUnit.NANOSECONDS);
+            LoggerFactory.getLogger(getClass()).info("Account deletion durationMs={}",duration/1_000_000);
+        }
+    }
+    private void deleteWithinBudget(String owner,boolean expiredSandbox,long started) {
+        long deadline = started + java.util.concurrent.TimeUnit.SECONDS.toNanos(25);
         Deleted deleted;
         for (int attempt = 0; ; attempt++) {
-            try { deleted = deleteRows(owner, expiredSandbox); break; }
+            try {
+                long remaining = deadline-nanos.getAsLong();
+                if(remaining<=0) throw timeout();
+                deleted = deleteRows(owner, expiredSandbox, Math.max(1,(int)java.util.concurrent.TimeUnit.NANOSECONDS.toSeconds(remaining)));
+                break;
+            }
+            catch (org.springframework.transaction.TransactionTimedOutException | org.springframework.dao.QueryTimeoutException ex) {
+                throw timeout();
+            }
             catch (PessimisticLockingFailureException ex) {
                 // A parser may hold a child row before acquiring its user FK lock.
                 // PostgreSQL rolls back the entire losing transaction, including receipts.
@@ -45,13 +69,19 @@ public class AccountDataDeletionService {
         }
         // The account must remain deleted even when external services are unavailable.
         LoggerFactory.getLogger(getClass()).info("Account data deleted subjectHash={} files={} at={}", hash(owner), deleted.files(), java.time.Instant.now());
-        for (String receipt : deleted.receipts()) {
-            try { cleanup.clean(receipt); }
-            catch (RuntimeException ex) { LoggerFactory.getLogger(getClass()).warn("Account data cleanup deferred receipt={}", receipt); }
-        }
+        LoggerFactory.getLogger(getClass()).info("Account deletion pendingReceipts={}",deleted.receipts().size());
     }
-    private Deleted deleteRows(String owner, boolean expiredSandbox) {
-        return Objects.requireNonNull(tx.execute(status -> {
+    private BusinessException timeout() {
+        if(meters!=null) meters.counter("offerpilot.account.deletion.timeout").increment();
+        return new BusinessException(ErrorCode.DATABASE_UNAVAILABLE,"删除超时，数据未提交，请重试");
+    }
+    private Deleted deleteRows(String owner, boolean expiredSandbox, int seconds) {
+        // A private template avoids changing shared transaction settings used by other requests.
+        var bounded = new TransactionTemplate(Objects.requireNonNull(tx.getTransactionManager()));
+        bounded.setTimeout(seconds);
+        return Objects.requireNonNull(bounded.execute(status -> {
+            jdbc.execute("SET LOCAL statement_timeout = '" + (seconds*1000) + "ms'");
+            jdbc.execute("SET LOCAL lock_timeout = '" + Math.min(seconds*1000,5000) + "ms'");
             var receipts = new ArrayList<String>();
             // Blocks new FK-backed writes before inventory; an authenticated request may already be in flight.
             var accounts = jdbc.queryForList("SELECT is_demo,('STAFF'=ANY(roles)) AS staff,status,demo_expires_at, (demo_expires_at<=now()) AS expired FROM users WHERE id=? FOR UPDATE", owner);

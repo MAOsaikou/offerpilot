@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Service SQL boundaries and real MVC/advice without database, sockets or Docker. */
 class InterviewServiceTest {
     final JdbcTemplate jdbc = mock(JdbcTemplate.class);
-    final InterviewService service = new InterviewService(jdbc, mock(com.offerpilot.common.artifact.JobArtifacts.class));
+    final InterviewService service = new InterviewService(jdbc, mock(com.offerpilot.common.artifact.JobArtifacts.class), mock(com.offerpilot.interview.application.InterviewFollowUps.class));
     final String owner = "owner-a";
     final String id = "iv_1";
     final InterviewService.Summary summary = new InterviewService.Summary(id, "工程师", "项目与经历", 0, false, "2026-10-09T00:00:00Z", "2026-10-09T00:00:00Z");
@@ -74,7 +74,7 @@ class InterviewServiceTest {
         assertInvalid(() -> service.create(owner, "工程师", "其他"));
         assertInvalid(() -> service.saveAnswer(owner, id, 0, "😀".repeat(12001)));
         assertInvalid(() -> service.saveAnswer(owner, id, 0, null));
-        for (int index : new int[] {-1, 5}) {
+        for (int index : new int[] {-1, 15}) {
             assertInvalid(() -> service.saveAnswer(owner, id, index, ""));
             assertInvalid(() -> service.update(owner, id, index, null));
         }
@@ -84,7 +84,7 @@ class InterviewServiceTest {
 
     @Test
     void rejectsInvalidAnswerIndexAndEmptyProgressAs400OverHttp() throws Exception {
-        for (String index : new String[] {"-1", "5", "abc", "2147483648"}) {
+        for (String index : new String[] {"-1", "15", "abc", "2147483648"}) {
             mvc.perform(put("/api/v1/interviews/iv_1/answers/" + index).header("Authorization", "Bearer b")
                     .contentType("application/json").content("{\"answerText\":\"\"}"))
                     .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(10001));

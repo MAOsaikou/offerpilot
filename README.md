@@ -115,7 +115,7 @@ flowchart LR
 | 快速 FLASH（默认）/ 规划 / 图片 | `deepseek-flash`（DeepSeek） |
 | 深度 PRO（仅文字） | `deepseek-v4-pro`（DeepSeek） |
 | 内部视觉备选 VISION_ALT | `deepseek-flash` |
-| Embedding（可选） | 百炼 `text-embedding-v4`（DeepSeek 无向量接口；未配置时降级） |
+| Embedding | 本地 Ollama `bge-m3`（1024 维，OpenAI 兼容 `/v1/embeddings`） |
 
 聊天仅「快速 / 深度」两档；旧 CHEAP 自动映射为 FLASH，供应商可通过环境变量覆盖。
 
@@ -147,13 +147,27 @@ flowchart LR
 
 ### 6.1 一键启动（Docker Compose）
 
+完整本地应用需要 Docker Compose v2、可用的模型 API Key 和足够内存。首次构建及下载 bge-m3 权重需要网络；离线启动必须预载镜像、构建产物及 Ollama 模型卷。新机器 10 分钟目标待实测，下载时间不作保证。
+
 ```bash
-git clone <repo-url> offerpilot && cd offerpilot
-cp .env.example .env            # 填入模型 API Key 等
-docker compose -f deploy/docker-compose.yml up -d
-# 前端: https://localhost（Caddy，本地为自签名证书）   后端 Swagger: https://localhost/swagger-ui.html
-# 职业库启动时自动灌入；体验旅程按下方 DEMO_ACCOUNT_* 配置自动初始化。
+cp .env.example .env
+# 编辑 .env：填写 DEEPSEEK_API_KEY；替换数据库、Redis、JWT 和加密密钥占位值。
+# JWT_SECRET 使用 openssl rand -base64 64；DATA_ENCRYPTION_KEY 使用 openssl rand -base64 32。
+python3 deploy/scripts/check_compose.py   # 无 Docker、无网络的静态配置检查
+# --env-file 供 Compose 插值；backend.env_file 默认读取同一根目录 .env。
+docker compose --env-file .env -f deploy/docker-compose.yml --profile full config --quiet
+docker compose --env-file .env -f deploy/docker-compose.yml --profile full up -d --build
+docker compose --env-file .env -f deploy/docker-compose.yml --profile full ps -a
+# ollama-init / frontend 应 exit 0，长期服务应 healthy；首次拉权重可能较慢。
+# 前端及健康检查：https://localhost（本地自签名证书，浏览器需信任本地 Caddy CA）
+# 信任 CA 后执行，TLS 校验保持开启：
+sh deploy/scripts/healthcheck.sh https://localhost
+# Swagger：https://localhost/swagger-ui.html
 ```
+
+未指定 `--profile full` 只启动基础依赖。默认 embedding 在容器内走 `http://ollama:11434/v1/embeddings`，模型 `bge-m3`；无需百炼 Key。查看失败原因可用相同参数执行 `logs backend ollama-init caddy`。健康检查只证明服务就绪，模型聊天及解析质量另行 live 验证。职业库启动时自动灌入；体验旅程需配置 `DEMO_ACCOUNT_*`。
+
+默认 S3Mock 仅供本地演示且不认证。共享或公网部署须按 [部署文档](docs/09-部署与运维.md) 替换为认证存储。
 
 ### 6.2 本地开发
 
@@ -165,14 +179,14 @@ docker compose -f deploy/docker-compose.yml up -d postgres redis minio jobs-mcp
 
 # 后端
 cd backend
-mvn -q -B -pl offerpilot-bootstrap -am package
+mvn -q -B -pl offerpilot-bootstrap -am -Dmaven.test.skip=true package
 java -jar offerpilot-bootstrap/target/offerpilot-bootstrap-0.1.0-SNAPSHOT.jar --spring.profiles.active=dev
 
 # 前端
 cd frontend && pnpm install && pnpm dev
 ```
 
-常规测试：在 `backend/` 运行 `SPRING_PROFILES_ACTIVE=test bash ./mvnw -q -pl offerpilot-bootstrap -am test`，在 `frontend/` 运行 `pnpm test -- --run`。后端默认不编译或发现 `*LiveEvaluation*`，保留 PII、离线红队、安全与关键 HTTP 集成测试；需要真实模型时加 `-Plive`，再设置目标套件原有的 `OFFERPILOT_RUN_LIVE_*` 开关和非空 `DEEPSEEK_API_KEY`（例如 `OFFERPILOT_RUN_LIVE_INTENT=true bash ./mvnw -q -Plive -pl offerpilot-bootstrap -am -Dtest=IntentLiveEvaluationTest -Dsurefire.failIfNoSpecifiedTests=false test`）。`-Plive` 本身不会启用收费调用。
+启动打包跳过测试编译与执行；测试单独运行。日常必要回归：在 `backend/` 运行 `bash ./mvnw -q -B test`，在 `frontend/` 运行 `pnpm run test --run`，默认只检查身份、隐私、安全、审批、核心业务和流式状态等关键路径，不启动容器或调用真实模型。全量离线回归分别使用 `SPRING_PROFILES_ACTIVE=test bash ./mvnw -q -B -Pfull-test test`（需 Docker）和 `pnpm run test:full --run`；CI 默认同样只运行必要回归，可手动勾选 `full_tests` 执行全量检查。需要真实模型时加 `-Plive`，再设置目标套件原有的 `OFFERPILOT_RUN_LIVE_*` 开关和非空 `DEEPSEEK_API_KEY`（例如 `OFFERPILOT_RUN_LIVE_INTENT=true bash ./mvnw -q -Plive -pl offerpilot-bootstrap -am -Dtest=IntentLiveEvaluationTest -Dsurefire.failIfNoSpecifiedTests=false test`）。`-Plive` 本身不会启用收费调用。未默认运行的测试仍保留为按需回归。
 
 ### 6.3 评审体验账号
 

@@ -29,6 +29,21 @@ public class MemoryChat {
     public MemoryChat(UserMemoryService memories, ApprovalService approvals, ObjectMapper json) {
         this.memories = memories; this.approvals = approvals; this.json = json;
     }
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.offerpilot.memory.application.AutomaticMemoryExtractor automatic;
+    public Flux<AgentEvent> collect(String owner, String runId) { return collect(owner,runId,() -> true); }
+    public Flux<AgentEvent> collect(String owner, String runId, java.util.function.BooleanSupplier active) {
+        if (automatic == null) return Flux.empty();
+        return com.offerpilot.llm.UsageJournal.<Void>callable(() -> {
+            if (!active.getAsBoolean() || !enabled(owner)) return null;
+            var source = memories.extractionSource(owner,runId);
+            if (source != null) {
+                var facts=automatic.extract(owner,source.text());
+                if (active.getAsBoolean()) memories.suggest(owner,runId,source,facts);
+            }
+            return null;
+        }).subscribeOn(Schedulers.boundedElastic()).onErrorComplete().thenMany(Flux.empty());
+    }
     public static boolean action(String action) { return ACTION.equals(action); }
     public static void validate(Map<String, Object> args) {
         if (args == null || !args.keySet().equals(Set.of("kind", "fact", "source"))) throw invalid();
@@ -59,13 +74,18 @@ public class MemoryChat {
     public MemoryCandidate.Candidate candidate(String owner, String content) {
         if (!enabled(owner)) return null;
         var candidate = MemoryCandidate.extract(content);
+        if (automatic != null && candidate != null && candidate.source() != UserMemoryService.Source.EXPLICIT) return null;
         if (candidate == null || candidate.source() == UserMemoryService.Source.SUGGESTED_ACCEPTED
                 && (memories.contains(owner, candidate.fact()) || memories.list(owner).items().size() >= UserMemoryService.CAP))
             return null;
         return candidate;
     }
     public Flux<AgentEvent> write(String owner, String runId, AtomicInteger seq, MemoryCandidate.Candidate candidate) {
-        return Mono.fromCallable(() -> {
+        return Flux.deferContextual(context -> {
+            var budget=context.getOrDefault(com.offerpilot.agent.tools.RunToolBudget.KEY,new com.offerpilot.agent.tools.RunToolBudget(8));
+            if(!budget.acquire()) return Flux.just(new AgentEvent.TextDelta("text.delta",seq.incrementAndGet(),runId,Instant.now(),null,
+                    "本轮工具调用已达上限，未保存记忆；可以在下一轮重新发起。"));
+            return Mono.fromCallable(() -> {
             // OFF while response was streaming suppresses the suggestion; OFF during approval is checked again at save.
             if (!enabled(owner) || candidate.source() == UserMemoryService.Source.SUGGESTED_ACCEPTED
                     && memories.contains(owner, candidate.fact())) return null;
@@ -79,14 +99,16 @@ public class MemoryChat {
             Flux<AgentEvent> start = Flux.defer(() -> Flux.just(
                     new AgentEvent.ToolCall("tool.call", seq.incrementAndGet(), runId, Instant.now(), null, callId, ACTION, ticket.args(), "local", AgentEvent.ToolAccess.WRITE),
                     new AgentEvent.ApprovalRequired("approval.required", seq.incrementAndGet(), runId, Instant.now(), null,
-                            ticket.id(), callId, ACTION, ticket.args(), reason, ticket.expiresAt(), List.of())));
+                            ticket.id(), callId, ACTION, ticket.args(), reason, ticket.expiresAt(), ApprovalService.editableFields(ACTION))));
             return start.concatWith(ticket.await().flatMapMany(decision -> {
                 Flux<AgentEvent> resolved = Flux.defer(() -> Flux.just(new AgentEvent.ApprovalResolved("approval.resolved",
                         seq.incrementAndGet(), runId, Instant.now(), ticket.id(), decision.decision())));
                 Mono<String> save = !"APPROVE".equals(decision.decision())
-                        ? Mono.just("TIMEOUT".equals(decision.decision()) ? "审批已超时，未保存记忆" : "你已拒绝，未保存记忆。可以重新发起。")
+                        ? Mono.just("TIMEOUT".equals(decision.decision()) ? "审批已超时，未保存记忆。可以先在本轮对话中使用这条偏好，需要保存时可重新发起。" : "你已拒绝，未保存记忆。可以先在本轮对话中使用这条偏好，需要保存时可重新发起。")
                         : Mono.fromCallable(() -> {
-                            java.util.Objects.requireNonNull(memories.saveApproved(owner, runId, candidate));
+                            var edited = new MemoryCandidate.Candidate(candidate.kind(), (String) decision.args().get("fact"), candidate.source());
+                            java.util.Objects.requireNonNull(edited.equals(candidate) ? memories.saveApproved(owner, runId, candidate)
+                                    : memories.saveApprovedExcerpt(owner, runId, edited, true));
                             return "记忆已保存，可在设置中管理。";
                         }).subscribeOn(Schedulers.boundedElastic());
                 return resolved.concatWith(save.map(summary -> (AgentEvent) new AgentEvent.ToolResult("tool.result",
@@ -94,8 +116,13 @@ public class MemoryChat {
                                 "APPROVE".equals(decision.decision()), summary, 0, false))
                         .onErrorResume(ex -> Mono.fromSupplier(() -> new AgentEvent.ToolResult("tool.result",
                                 seq.incrementAndGet(), runId, Instant.now(), null, callId, ACTION, false,
-                                ex instanceof com.offerpilot.common.error.BusinessException ? ex.getMessage() : "记忆保存失败，请在设置中重试", 0, false))));
+                                ex instanceof com.offerpilot.common.error.BusinessException ? ex.getMessage() : "记忆保存失败，请在设置中重试", 0, false))))
+                        .concatMap(event -> event instanceof AgentEvent.ToolResult result && !result.ok()
+                                && candidate.source() == UserMemoryService.Source.SUGGESTED_ACCEPTED
+                                ? Flux.just(event, new AgentEvent.TextDelta("text.delta", seq.incrementAndGet(), runId,
+                                    Instant.now(), null, "\n\n" + result.resultPreview())) : Flux.just(event));
             }));
+        });
         });
     }
 }

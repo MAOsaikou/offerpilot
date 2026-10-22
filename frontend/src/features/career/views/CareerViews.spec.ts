@@ -1,3 +1,7 @@
+import { setLanguage } from '@/shared/utils/language'
+vi.mock('@/shared/components/BackgroundTaskStatus.vue', () => ({
+  default: { template: '<div />' },
+}))
 /* eslint-disable vue/one-component-per-file -- isolated route fixtures */
 import { createApp, h, nextTick, type App } from 'vue'
 import { createPinia } from 'pinia'
@@ -16,6 +20,10 @@ const initial = (): CareerProfile => ({
   city: '上海',
   skills: 'SQL',
   interests: ['技术研发'],
+  major: '软件工程',
+  courses: '数据库',
+  valuesText: '成长',
+  assessment: null,
   completedTasks: [learningTasks[0]!],
   updatedAt: null,
 })
@@ -26,6 +34,26 @@ let failSave = false
 let holdTasks: Promise<void> | undefined
 const ownerOf = (request: Request) => request.headers.get('Authorization')!.slice(7)
 const server = setupServer(
+  http.get('*/api/v1/career/questionnaire', () =>
+    HttpResponse.json({
+      data: { questions: [], answers: {}, revision: 0, completed: false, scores: {}, code: '' },
+    }),
+  ),
+  http.get('*/api/v1/career/target-plan', () => HttpResponse.json({ data: null })),
+  http.get('*/api/v1/career/profile-suggestions', () => HttpResponse.json({ data: [] })),
+  http.get('*/api/v1/career/recommendations', () => HttpResponse.json({ data: null })),
+  http.get('*/api/v1/career/occupations', () => HttpResponse.json({ data: [] })),
+  http.get('*/api/v1/career/assessment', () =>
+    HttpResponse.json({
+      data: {
+        questions: ['专业？'],
+        answers: [''],
+        inference: null,
+        confirmed: null,
+        confirmedAt: null,
+      },
+    }),
+  ),
   http.get('*/api/v1/career/profile', ({ request }) =>
     HttpResponse.json({ data: profiles[ownerOf(request)] }),
   ),
@@ -115,6 +143,9 @@ it('loads the server profile, debounces text, saves interest and target, then re
     city: '上海',
     skills: 'SQL',
     interests: ['技术研发'],
+    major: '软件工程',
+    courses: '数据库',
+    valuesText: '成长',
   })
   root.querySelectorAll<HTMLInputElement>('.chip input')[2]!.click()
   await vi.waitFor(() => expect(profiles['career-owner']!.interests).toContain('数据分析'))
@@ -214,4 +245,147 @@ it('shows a load error and disables writes until retry succeeds', async () => {
     expect(root.querySelector<HTMLInputElement>('input[maxlength="100"]')!.disabled).toBe(false),
   )
   expect(profileWrites).toHaveLength(0)
+})
+
+it('edits all three panels, preserves failed drafts, and restores them after navigation', async () => {
+  await mount('/discover')
+  expect(root.textContent).toContain('专业与课程')
+  expect(root.textContent).toContain('兴趣与技能')
+  expect(root.textContent).toContain('性格与价值观')
+  expect(root.querySelector('a[href="#career-assessment"]')?.textContent).toContain('继续职业测评')
+  failSave = true
+  await edit('input[name="major"]', '统计学')
+  await edit('textarea[name="courses"]', '概率论\n数据挖掘')
+  await edit('textarea[name="valuesText"]', '成长\n平衡')
+  await vi.waitFor(() => expect(root.textContent).toContain('保存暂不可用'))
+  expect(root.querySelector<HTMLTextAreaElement>('textarea[name="courses"]')!.value).toBe(
+    '概率论\n数据挖掘',
+  )
+  failSave = false
+  clickButton('重试')
+  await vi.waitFor(() => expect(profiles['career-owner']!.major).toBe('统计学'))
+  await router.push('/career')
+  await router.push('/discover')
+  await vi.waitFor(() =>
+    expect(root.querySelector<HTMLInputElement>('input[name="major"]')?.value).toBe('统计学'),
+  )
+  expect(root.querySelector<HTMLTextAreaElement>('textarea[name="valuesText"]')!.value).toBe(
+    '成长\n平衡',
+  )
+})
+
+it('edits the confirmed projection through assessment confirm and refreshes both panels without reloading', async () => {
+  profiles['career-owner']!.assessment = {
+    riasec: { R: 20, I: 90, A: 10, S: 30, E: 60, C: 40 },
+    code: 'IEC',
+    traits: [{ name: '好奇', confidence: 0.8, evidence: '喜欢研究' }],
+    constraints: { city: '上海', salary: '', overtime: '' },
+  }
+  let confirms = 0
+  server.use(
+    http.put('*/api/v1/career/assessment/confirm', async ({ request }) => {
+      const body = (await request.json()) as {
+        riasec: Record<'R' | 'I' | 'A' | 'S' | 'E' | 'C', number>
+        traits: string[]
+        city: string
+        salary: string
+        overtime: string
+      }
+      confirms++
+      if (confirms === 1)
+        return HttpResponse.json({ code: 50000, message: '确认暂不可用' }, { status: 503 })
+      const confirmed = {
+        riasec: body.riasec,
+        code: 'SIC',
+        traits: body.traits.map((name) => ({ name, confidence: 1, evidence: '' })),
+        constraints: { city: body.city, salary: body.salary, overtime: body.overtime },
+      }
+      profiles['career-owner']!.assessment = confirmed
+      return HttpResponse.json({
+        data: { questions: [], answers: [], inference: null, confirmed, confirmedAt: 'now' },
+      })
+    }),
+  )
+  await mount('/discover')
+  expect(root.textContent).toContain('喜欢研究')
+  clickButton('编辑性格与约束')
+  await nextTick()
+  await edit('input[name="riasec-S"]', '95')
+  root
+    .querySelector<HTMLFormElement>('.personality-panel form')!
+    .dispatchEvent(new Event('submit', { cancelable: true }))
+  await vi.waitFor(() => expect(root.textContent).toContain('确认暂不可用'))
+  expect(root.querySelector<HTMLInputElement>('input[name="riasec-S"]')!.value).toBe('95')
+  root
+    .querySelector<HTMLFormElement>('.personality-panel form')!
+    .dispatchEvent(new Event('submit', { cancelable: true }))
+  await vi.waitFor(() => expect(root.textContent).toContain('SIC'))
+  expect(root.querySelector('input[name="riasec-S"]')).toBeNull()
+  expect(profileWrites).toHaveLength(0)
+})
+
+it('merges a confirmed city with course edits made while confirmation is in flight', async () => {
+  profiles['career-owner']!.assessment = {
+    riasec: { R: 20, I: 90, A: 10, S: 30, E: 60, C: 40 },
+    code: 'IEC',
+    traits: [],
+    constraints: { city: '杭州', salary: '', overtime: '' },
+  }
+  let release!: () => void
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started = false
+  server.use(
+    http.put('*/api/v1/career/assessment/confirm', async () => {
+      started = true
+      await held
+      const confirmed = profiles['career-owner']!.assessment!
+      profiles['career-owner']!.city = confirmed.constraints.city
+      return HttpResponse.json({
+        data: { questions: [], answers: [], inference: null, confirmed, confirmedAt: 'now' },
+      })
+    }),
+  )
+  await mount('/discover')
+  clickButton('编辑性格与约束')
+  await nextTick()
+  root
+    .querySelector<HTMLFormElement>('.personality-panel form')!
+    .dispatchEvent(new Event('submit', { cancelable: true }))
+  await vi.waitFor(() => expect(started).toBe(true))
+  await edit('textarea[name="courses"]', '确认期间补充的课程')
+  release()
+  await vi.waitFor(() => expect(profiles['career-owner']!.courses).toBe('确认期间补充的课程'))
+  expect(profiles['career-owner']!.city).toBe('杭州')
+  expect(profileWrites.at(-1)?.city).toBe('杭州')
+})
+
+afterEach(() => setLanguage('zh-CN'))
+
+it.each([
+  ['/discover', '我的职业画像', 'My career profile'],
+  ['/career', '把远方，拆成每一步', 'Turn your goals into steps'],
+])('switches %s live while keeping profile and task values unchanged', async (path, zh, en) => {
+  await mount(path)
+  expect(root.textContent).toContain(zh)
+  setLanguage('en-US')
+  await nextTick()
+  expect(root.textContent).toContain(en)
+  if (path === '/discover') {
+    expect(root.querySelector('.page-stack')?.classList.contains('overflow-safe')).toBe(true)
+    const interest = root.querySelector<HTMLInputElement>('.chip input')!
+    expect(interest.value).toBe('技术研发')
+    expect(interest.checked).toBe(true)
+    expect(root.textContent).toContain('Technology and engineering')
+    expect(root.querySelector<HTMLInputElement>('input[maxlength="100"]')!.value).toBe('服务端目标')
+  } else {
+    expect(root.textContent).toContain('Identify core skills for your target job')
+    expect(root.textContent).toContain('服务端目标')
+  }
+  expect(profileWrites).toEqual([])
+  expect(taskWrites).toEqual([])
+  setLanguage('zh-CN')
+  await nextTick()
+  expect(root.textContent).toContain(zh)
 })

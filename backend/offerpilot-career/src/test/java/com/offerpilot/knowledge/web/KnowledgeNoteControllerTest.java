@@ -28,7 +28,7 @@ class KnowledgeNoteControllerTest {
     private MockMvc mvc;
     @BeforeEach void setup() {
         validator = new LocalValidatorFactoryBean(); validator.afterPropertiesSet();
-        mvc = MockMvcBuilders.standaloneSetup(new KnowledgeNoteController(users, notes, search))
+        mvc = MockMvcBuilders.standaloneSetup(new KnowledgeNoteController(users, notes, search, mock(com.offerpilot.knowledge.application.KnowledgeDocuments.class)))
                 .setValidator(validator).setControllerAdvice(new GlobalExceptionHandler()).build();
     }
     @AfterEach void close() { validator.close(); }

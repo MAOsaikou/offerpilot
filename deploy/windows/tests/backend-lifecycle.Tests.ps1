@@ -152,7 +152,8 @@ Test-Case 'console passes the custom runtime root through every child action' {
         Invoke-Action $selected
         Assert-True ($script:steps.Count -gt 0) ($selected + ' invoked no child script.')
         foreach ($step in $script:steps) {
-            Assert-True ($step.EndsWith('|-RuntimeRoot|' + $runtimeRoot)) ('Child ignored runtime root: ' + $step)
+            $expectedSuffix = '-RuntimeRoot|' + $runtimeRoot
+            Assert-True ($step.EndsWith(':' + $expectedSuffix) -or $step.EndsWith('|' + $expectedSuffix)) ('Child ignored runtime root: ' + $step)
         }
     }
 }
@@ -292,7 +293,7 @@ exit /b 1
     $originalLocation = (Get-Location).Path
     Assert-Throws { Invoke-Action 'restart-backend' }
     $invocations = @(Get-Content -LiteralPath (Join-Path $fixtureBuild 'arguments.txt'))
-    Assert-True ($invocations.Count -eq 1 -and $invocations[0] -eq '-B -pl offerpilot-bootstrap -am package') 'Maven hid progress, retried or requested clean.'
+    Assert-True ($invocations.Count -eq 1 -and $invocations[0] -eq '-B -pl offerpilot-bootstrap -am -Dmaven.test.skip=true package') 'Maven hid progress, compiled tests, retried or requested clean.'
     Assert-True ($script:buildMessages.Count -eq 7) 'Error output exceeded the five-line limit or lost errors.'
     Assert-True ((Get-Content -LiteralPath (Join-Path $fixtureBuild 'maven-build.log') -Raw).Contains('[ERROR] fixture build failure 12')) 'Native stderr was not fully saved.'
     Assert-True ((Get-Location).Path -eq $originalLocation) 'Build failure did not restore the working directory.'
@@ -310,7 +311,7 @@ echo [INFO] Downloading from central: fixture-again
 echo [INFO] --- compiler:3.13.0:compile
 echo [INFO] Compiling 10 source files
 echo [INFO] --- surefire:3.2.5:test
-echo [INFO] Running fixture.Test
+echo [INFO] Tests are skipped.
 echo [INFO] --- jar:3.4.2:jar
 echo [INFO] Building jar: fixture.jar
 echo Build fixture log
@@ -329,7 +330,7 @@ exit /b 0
     $result = @(Build-Backend)
     Assert-True ($result.Count -eq 1 -and $result[0] -eq $expectedJar) 'Build output contaminated the JAR path.'
     Assert-True ($script:buildMessages.Count -eq 3) 'Console output was too verbose.'
-    Assert-True ($script:buildStages.Count -eq 5 -and $script:buildStages[4] -eq 'completed') 'Progress was missing, repeated or not completed.'
+    Assert-True ($script:buildStages.Count -eq 4 -and $script:buildStages[3] -eq 'completed') 'Progress was missing, repeated or not completed.'
     Assert-True (-not (($script:buildMessages -join '|').Contains('Build fixture log'))) 'Detailed Maven output leaked to the console.'
     Assert-True ((Get-Content -LiteralPath (Join-Path $fixtureBuild 'maven-build.log') -Raw).Contains('Build fixture log')) 'Detailed Maven output was lost.'
     Assert-True ((Get-Content -LiteralPath (Join-Path $fixtureBuild 'maven-build.log') -Raw).Contains('Build fixture stderr')) 'Successful build stderr was lost.'

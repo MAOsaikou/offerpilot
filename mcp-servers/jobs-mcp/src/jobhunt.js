@@ -11,6 +11,7 @@ import {
   listSites as cliListSites,
   searchJobs as cliSearchJobs,
 } from 'jobhunt-cli';
+import { DEFAULT_SITE_TIMEOUT_MS } from './config.js';
 
 /** OfferPilot 面向校招/实习，默认查校招；允许传中文。 */
 const NATURE_ALIASES = {
@@ -75,6 +76,7 @@ export function toJobCard(siteId, job) {
     nature: job.nature_code ?? '',
     locations: job.location_names ?? '',
     department: job.department_name ?? '',
+    deadline: job.deadline ?? job.end_date ?? '',
     updatedAt: job.updated_at ?? '',
     url: job.url ?? '',
     ...(job.description ? { description: job.description } : {}),
@@ -148,41 +150,54 @@ export async function getJobDetail(siteId, jobId, nature = DEFAULT_NATURE) {
 }
 
 /** 给单个站点的查询套一层超时，避免一个慢站点拖住整批查询。 */
-function withTimeout(promise, timeoutMs, label) {
+function withTimeout(promise, timeoutMs, label, signal) {
   let timer;
+  let abort;
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error(`${label} 超时（${timeoutMs}ms）`)), timeoutMs);
+    abort = () => reject(new Error('LIVE_TIMEOUT'));
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
   });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  return Promise.race([promise, timeout]).finally(() => {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+  });
 }
 
 /**
  * 并发查询多个站点。
  *
- * 文档要求：并行不超过 6 个站点，单站超时 8s，失败的站点记录在 skipped 里，
+ * 文档要求：并行不超过 6 个站点，单站超时 6s，失败的站点记录在 skipped 里，
  * 而不是让整次查询失败——这样 Agent 至少能拿到部分结果。
  */
-export async function searchAcrossSites(siteIds, options = {}, { concurrency = 6, timeoutMs = 8000, signal } = {}) {
+export async function searchAcrossSites(siteIds, options = {}, { concurrency = 6, timeoutMs = DEFAULT_SITE_TIMEOUT_MS, signal, onProgress, search = searchSite } = {}) {
   const jobs = [];
   const skipped = [];
   const degradedSites = [];
   const queue = [...siteIds];
+  const completed = new Set();
 
   async function worker() {
     while (queue.length > 0 && !signal?.aborted) {
       const siteId = queue.shift();
       try {
-        const result = await withTimeout(searchSite(siteId, options), timeoutMs, `${siteId} 查询`);
+        const result = await withTimeout(search(siteId, options), timeoutMs, `${siteId} 查询`, signal);
         jobs.push(...result.jobs);
         if (result.degraded) degradedSites.push(siteId);
       } catch (error) {
         skipped.push({ site: siteId, reason: error?.message ?? String(error) });
+      } finally {
+        completed.add(siteId);
+        onProgress?.({ jobs: [...jobs], degradedSites: [...degradedSites],
+          skipped: [...skipped, ...siteIds.filter(id => !completed.has(id)).map(site => ({ site, reason: 'LIVE_TIMEOUT' }))] });
       }
     }
   }
 
   const workers = Array.from({ length: Math.min(concurrency, siteIds.length) }, worker);
   await Promise.all(workers);
+  if (signal?.aborted) skipped.push(...queue.map(site => ({ site, reason: 'LIVE_TIMEOUT' })));
 
   return { jobs, skipped, degradedSites };
 }

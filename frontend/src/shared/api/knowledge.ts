@@ -1,13 +1,49 @@
-import { apiRequest } from './client'
+import { translate as uiText, sourceText } from '@/shared/utils/language'
+import {
+  apiRequest,
+  apiUrl,
+  authenticatedHeaders,
+  fetchWithIdentity,
+  readApiData,
+  assertResponseIdentity,
+  toApiError,
+} from './client'
 
-export const noteCategories = ['面试复盘', '技术积累', '项目经历', '求职心得'] as const
+export const noteCategories = [
+  sourceText('Interview review'),
+  sourceText('Technical learning'),
+  sourceText('Projects'),
+  sourceText('Job search insights'),
+] as const
 export type NoteCategory = (typeof noteCategories)[number]
 export interface KnowledgeDraft {
   title: string
   content: string
   category: NoteCategory
 }
-export interface KnowledgeNote extends KnowledgeDraft {
+export type IndexStatus = 'QUEUED' | 'INDEXING' | 'READY' | 'FAILED'
+export const indexStatusLabels: Record<IndexStatus, string> = {
+  get QUEUED() {
+    return uiText('Queued')
+  },
+  get INDEXING() {
+    return uiText('Indexing')
+  },
+  get READY() {
+    return uiText('Done')
+  },
+  get FAILED() {
+    return uiText('Failed')
+  },
+}
+interface DocumentStatus {
+  indexStatus?: IndexStatus
+  indexError?: string | null
+  sourceFilename?: string | null
+  sourceTruncated?: boolean
+}
+export interface KnowledgeNote extends KnowledgeDraft, DocumentStatus {
+  sourceFileId?: string | null
   id: string
   createdAt: string
   updatedAt: string
@@ -18,7 +54,7 @@ export interface KnowledgePage {
   page: number
   size: number
 }
-export interface KnowledgeHit {
+export interface KnowledgeHit extends DocumentStatus {
   id: string
   title: string
   category: NoteCategory
@@ -59,3 +95,39 @@ export const importKnowledgeNotes = (notes: KnowledgeImport[]) =>
     method: 'POST',
     body: JSON.stringify({ notes }),
   })
+
+export function validateKnowledgeFile(file: File): void {
+  if (!file.size) throw new Error(uiText('The file is empty. Choose a file containing text.'))
+  if (file.size > 10 * 1024 * 1024)
+    throw new Error(uiText('Resource files must be 10 MB or smaller'))
+  if (!/\.(pdf|md|txt)$/i.test(file.name))
+    throw new Error(uiText('Only PDF, MD and TXT files are supported'))
+}
+export async function uploadKnowledgeDocument(
+  file: File,
+  category?: NoteCategory,
+): Promise<KnowledgeNote> {
+  validateKnowledgeFile(file)
+  const body = new FormData()
+  body.append('file', file)
+  if (category) body.append('category', category)
+  const response = await fetchWithIdentity(apiUrl('/knowledge/notes/upload'), {
+    method: 'POST',
+    headers: await authenticatedHeaders(),
+    body,
+  })
+  if (!response.ok) throw await toApiError(response)
+  return readApiData<KnowledgeNote>(response)
+}
+export async function getKnowledgeOriginal(id: string): Promise<Blob> {
+  const response = await fetchWithIdentity(
+    apiUrl(`/knowledge/notes/${encodeURIComponent(id)}/file`),
+    {
+      headers: await authenticatedHeaders(),
+    },
+  )
+  if (!response.ok) throw await toApiError(response)
+  const blob = await response.blob()
+  assertResponseIdentity(response)
+  return blob
+}

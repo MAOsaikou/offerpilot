@@ -35,4 +35,27 @@ class InterviewIntentParserTest {
         assertThat(prepare("下一题", Map.of("interviewSessionId", "iv_1")).inputs()).containsEntry("nextQuestion", true).containsEntry("sessionId", "iv_1");
         assertThat(prepare("结束面试 iv_2", Map.of()).inputs()).containsEntry("action", "completeInterview").containsEntry("sessionId", "iv_2");
     }
+    @Test void practiceRequestsStartAnInterviewInsteadOfContinuingAMissingSession() {
+        // Live 2026-10-21: "我想练习 Java 后端面试，先问我一道题。" fell through to continueInterview and failed with 30701.
+        assertThat(prepare("我想练习 Java 后端面试，先问我一道题。", Map.of()).inputs())
+                .containsEntry("action", "startInterview").containsEntry("role", "Java 后端").doesNotContainKey("answer");
+        assertThat(prepare("帮我练练产品经理面试", Map.of()).inputs()).containsEntry("action", "startInterview").containsEntry("role", "产品经理");
+        assertThat(prepare("来一场前端面试，先问我一道题", Map.of()).inputs()).containsEntry("action", "startInterview");
+        assertThat(prepare("准备一下数据分析岗位面试", Map.of()).inputs()).containsEntry("action", "startInterview").containsEntry("role", "数据分析");
+        // Answers that merely mention practice or interviews stay answers.
+        assertThat(prepare("我在大学里练习过很多次面试，所以表达比较流畅", Map.of()).inputs()).containsEntry("action", "continueInterview");
+        assertThat(prepare("面试官问我为什么离职时，我会先说明项目结束", Map.of()).inputs()).containsEntry("action", "continueInterview");
+    }
+
+    @Test void historicalNoteQuestionsAreReadOnlyButActualAnswersStillContinue() {
+        for (String text : List.of("根据我的笔记，我上次面试缓存击穿是怎么答的？还要怎么改进？", "我笔记里记的缓存击穿解决方案有哪些？", "热点 key 过期导致数据库被打爆，我之前记过怎么处理吗？")) {
+            assertThat(InterviewIntentParser.noteReviewRequest(text)).isTrue();
+            var proposedWrite = new PlanStep("s1","面试",ExpertType.INTERVIEWER,Map.of("action","continueInterview"),List.of());
+            assertThat(InterviewIntentParser.prepare(proposedWrite,text,Map.of()).inputs()).containsEntry("action","noteGuidance").doesNotContainKeys("answer","sessionId");
+            assertThat(prepare(text,Map.of("interviewAction","continueInterview","interviewSessionId","iv_1")).inputs())
+                    .containsEntry("action","continueInterview").containsEntry("sessionId","iv_1");
+        }
+        for (String text : List.of("我参考笔记里的互斥锁方案回答，遇到竞争会短暂重试", "我的笔记记录了如何用 SETNX 重建缓存", "我参考笔记回答如何处理缓存击穿，先讲互斥锁", "我想练习 Java 后端面试，先问我一道题。", "下一题", "给我这场面试打分"))
+            assertThat(InterviewIntentParser.noteReviewRequest(text)).isFalse();
+    }
 }

@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { localizedText, language, translate as uiText } from '@/shared/utils/language'
+
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import OpsStatus from '../components/OpsStatus.vue'
+import { RouterLink, useRouter } from 'vue-router'
 import { listStaffUsers, setUserStatus, verifyToken, type StaffUserRow } from '@/shared/api/auth'
 import { useAuthStore } from '@/shared/stores/auth'
 import { getStoredToken, identitySignal } from '@/shared/utils/authSession'
@@ -15,8 +18,8 @@ const staffName = ref('')
 const users = ref<StaffUserRow[]>([])
 const loading = ref(false)
 const togglingId = ref('')
-const error = ref('')
-const notice = ref('')
+const error = localizedText()
+const notice = localizedText()
 const keyword = ref('')
 const hideGuests = ref(true)
 const page = ref(1)
@@ -52,7 +55,7 @@ async function load(targetPage = page.value) {
     size.value = result.size
   } catch (ex) {
     if (!isCurrentSession()) return
-    error.value = ex instanceof Error ? ex.message : '加载账号列表失败'
+    error.value = () => (ex instanceof Error ? ex.message : uiText('Could not load accounts'))
     if (isAuthError(error.value)) logout()
   } finally {
     loading.value = false
@@ -69,10 +72,15 @@ async function toggle(row: StaffUserRow) {
     const updated = await setUserStatus(row.id, next)
     if (!isCurrentSession()) return
     users.value = users.value.map((u) => (u.id === updated.id ? updated : u))
-    notice.value = `已${next === 'DISABLED' ? '禁用' : '启用'}账号 ${updated.nickname}`
+    notice.value = () =>
+      uiText('Account {1}: {0}', [
+        next === 'DISABLED' ? uiText('Disable') : uiText('Enable'),
+        updated.nickname,
+      ])
   } catch (ex) {
     if (!isCurrentSession()) return
-    error.value = ex instanceof Error ? ex.message : '操作失败，请稍后重试'
+    error.value = () =>
+      ex instanceof Error ? ex.message : uiText('Something went wrong. Please try again later.')
     if (isAuthError(error.value)) logout()
   } finally {
     togglingId.value = ''
@@ -90,7 +98,7 @@ function logout() {
 
 function formatTime(value: string): string {
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString(language.value)
 }
 
 onMounted(async () => {
@@ -100,7 +108,7 @@ onMounted(async () => {
     const info = await verifyToken()
     if (!isCurrentSession()) return
     if (!info.roles.includes('STAFF')) {
-      error.value = '当前登录的不是客服账号'
+      error.value = () => uiText('This account does not have staff access')
       logout()
       return
     }
@@ -109,7 +117,8 @@ onMounted(async () => {
     await load()
   } catch (ex) {
     if (!isCurrentSession()) return
-    error.value = ex instanceof Error ? ex.message : '验证失败，请重试'
+    error.value = () =>
+      ex instanceof Error ? ex.message : uiText('Verification failed. Please retry.')
     if (isAuthError(error.value)) logout()
   } finally {
     loading.value = false
@@ -120,22 +129,27 @@ onMounted(async () => {
   <section class="console">
     <header class="console-head">
       <div>
-        <h1>账号管理</h1>
-        <p class="subtle">管理所有用户端账号：查看、启用、禁用。</p>
+        <h1>{{ uiText('Account management') }}</h1>
+        <p class="subtle">{{ uiText('View, enable and disable user accounts.') }}</p>
       </div>
       <div class="head-right">
+        <RouterLink to="/staff/retrieval-debug" class="btn">{{
+          uiText('Retrieval diagnostics')
+        }}</RouterLink>
         <span v-if="staffName" class="staff-chip">{{ staffName }}</span>
-        <button class="btn ghost" type="button" @click="logout">退出登录</button>
+        <button class="btn ghost" type="button" @click="logout">{{ uiText('Sign out') }}</button>
       </div>
     </header>
+
+    <OpsStatus v-if="staffName" />
 
     <div class="toolbar">
       <input
         v-model="keyword"
         class="search"
         type="search"
-        placeholder="搜索本页邮箱或昵称…"
-        aria-label="搜索本页账号"
+        :placeholder="uiText('Search email or display name on this page…')"
+        :aria-label="uiText('Search accounts on this page')"
       />
       <label class="guest-filter">
         <input
@@ -144,22 +158,24 @@ onMounted(async () => {
           :disabled="loading || !!togglingId"
           @change="load(1)"
         />
-        隐藏访客
+        {{ uiText('Hide guests') }}
       </label>
-      <span class="stat">共 {{ total }} 个账号</span>
-      <span class="stat ok">本页启用 {{ activeCount }}</span>
-      <span class="stat muted">本页禁用 {{ disabledCount }}</span>
+      <span class="stat">{{ uiText('{0} accounts in total', [total]) }}</span>
+      <span class="stat ok">{{ uiText('Enabled on this page: {0}', [activeCount]) }}</span>
+      <span class="stat muted">{{ uiText('Disabled on this page: {0}', [disabledCount]) }}</span>
       <button
         class="btn ghost refresh"
         type="button"
         :disabled="loading || !!togglingId"
         @click="load()"
       >
-        {{ loading ? '加载中…' : '刷新' }}
+        {{ loading ? uiText('Loading… #2') : uiText('Refresh') }}
       </button>
     </div>
 
-    <p class="stat search-note">邮箱和昵称搜索仅筛选当前页。</p>
+    <p class="stat search-note">
+      {{ uiText('Email and display name search applies to the current page only.') }}
+    </p>
 
     <p v-if="notice" class="notice-banner" role="status">{{ notice }}</p>
     <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
@@ -168,20 +184,22 @@ onMounted(async () => {
       <table class="user-table">
         <thead>
           <tr>
-            <th>邮箱</th>
-            <th>昵称</th>
-            <th>角色</th>
-            <th>状态</th>
-            <th>注册时间</th>
-            <th class="col-action">操作</th>
+            <th>{{ uiText('Email') }}</th>
+            <th>{{ uiText('Display name') }}</th>
+            <th>{{ uiText('Role') }}</th>
+            <th>{{ uiText('Status') }}</th>
+            <th>{{ uiText('Registered') }}</th>
+            <th class="col-action">{{ uiText('Actions') }}</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading && !users.length">
-            <td colspan="6" class="empty">正在加载账号列表…</td>
+            <td colspan="6" class="empty">{{ uiText('Loading accounts…') }}</td>
           </tr>
           <tr v-else-if="!filtered.length">
-            <td colspan="6" class="empty">{{ keyword ? '没有匹配的账号' : '还没有任何账号' }}</td>
+            <td colspan="6" class="empty">
+              {{ keyword ? uiText('No matching accounts') : uiText('No accounts yet') }}
+            </td>
           </tr>
           <tr v-for="row in filtered" :key="row.id">
             <td class="cell-email">{{ row.email }}</td>
@@ -194,7 +212,7 @@ onMounted(async () => {
                 class="status-pill"
                 :class="row.status === 'ACTIVE' ? 'is-active' : 'is-disabled'"
               >
-                {{ row.status === 'ACTIVE' ? '启用' : '禁用' }}
+                {{ row.status === 'ACTIVE' ? uiText('Enable') : uiText('Disable') }}
               </span>
             </td>
             <td class="cell-time">{{ formatTime(row.createdAt) }}</td>
@@ -206,32 +224,38 @@ onMounted(async () => {
                 :disabled="loading || !!togglingId"
                 @click="toggle(row)"
               >
-                {{ togglingId === row.id ? '处理中…' : row.status === 'ACTIVE' ? '禁用' : '启用' }}
+                {{
+                  togglingId === row.id
+                    ? uiText('Processing…')
+                    : row.status === 'ACTIVE'
+                      ? uiText('Disable')
+                      : uiText('Enable')
+                }}
               </button>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
-    <nav class="pagination" aria-label="账号列表分页">
+    <nav class="pagination" :aria-label="uiText('Account pagination')">
       <button
         class="btn ghost"
         type="button"
         :disabled="loading || !!togglingId || page <= 1"
         @click="load(page - 1)"
       >
-        上一页
+        {{ uiText('Previous page') }}
       </button>
-      <span class="stat" role="status"
-        >第 {{ page }} / {{ pageCount }} 页 · 每页 {{ size }} 个</span
-      >
+      <span class="stat" role="status">{{
+        uiText('Page {0} of {1} · {2} per page', [page, pageCount, size])
+      }}</span>
       <button
         class="btn ghost"
         type="button"
         :disabled="loading || !!togglingId || page >= pageCount"
         @click="load(page + 1)"
       >
-        下一页
+        {{ uiText('Next page') }}
       </button>
     </nav>
   </section>

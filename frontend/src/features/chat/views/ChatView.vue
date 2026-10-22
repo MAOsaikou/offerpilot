@@ -1,20 +1,26 @@
 <script setup lang="ts">
+import { formatDisplay, localizedText, translate as uiText } from '@/shared/utils/language'
+
 import { checkPrivacyText } from '@/shared/api/privacy-settings'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Composer from '../components/Composer.vue'
+import type { ChatImage } from '@/shared/api/attachments'
 import MessageList from '../components/MessageList.vue'
 import ConversationHistory from '../components/ConversationHistory.vue'
 import ChatWelcome from '../components/ChatWelcome.vue'
 import ChatToolbar from '../components/ChatToolbar.vue'
+import { useRunReplay } from '@/shared/composables/useRunReplay'
 import { useConversationChat } from '../composables/useConversationChat'
 import { optimizationContext } from '../optimizationContext'
 import { normalizeModelTier, type ModelTier } from '@/shared/types/model-tier'
 import type { AgentMode } from '@/shared/types/agent-events'
 import type { Conversation } from '@/shared/types/conversation'
+import { getPreferences } from '@/shared/api/preferences'
 import type { PatchDecision } from '@/shared/types/optimization'
 import type { CareerTargetSelection } from '@/shared/types/cards'
-const privacyWarning = ref('')
+const replay = useRunReplay()
+const privacyWarning = localizedText()
 const route = useRoute()
 const router = useRouter()
 const chat = useConversationChat()
@@ -34,34 +40,75 @@ const {
   activeRun,
   remoteRunId,
 } = chat
-const modes: { value: AgentMode; label: string }[] = [
-  { value: 'AUTO', label: '智能助手' },
-  { value: 'CAREER_DISCOVERY', label: '职业探索' },
-  { value: 'RESUME', label: '简历指导' },
-  { value: 'JOB', label: '岗位分析' },
-  { value: 'INTERVIEWER', label: '面试练习' },
-  { value: 'COACH', label: '成长教练' },
-]
+const modes = computed<{ value: AgentMode; label: string }[]>(() => [
+  { value: 'AUTO', label: uiText('AI assistant') },
+  { value: 'CAREER_DISCOVERY', label: uiText('Career discovery') },
+  { value: 'RESUME', label: uiText('Resume coach') },
+  { value: 'JOB', label: uiText('Job analysis') },
+  { value: 'INTERVIEWER', label: uiText('Interview practice') },
+  { value: 'COACH', label: uiText('Growth coach') },
+])
+const displayedMessages = computed(() =>
+  viewMessages.value.map((message) => {
+    if (!replay.runId.value || message.role !== 'assistant' || message.runId !== replay.runId.value)
+      return message
+    const run = replay.run.value
+    return {
+      ...message,
+      text: run?.text ?? '',
+      cards: run?.cards ?? [],
+      reasoning: run?.reasoning ?? '',
+      citations: run?.citations ?? [],
+      usage: run?.usage ?? null,
+      model: run?.model ?? undefined,
+      durationMs: run?.durationMs,
+      status: run?.status ?? ('RUNNING' as const),
+      streaming: false,
+    }
+  }),
+)
+watch(
+  () => route.params.conversationId,
+  () => replay.close(),
+)
+watch(sending, (value) => {
+  if (value) replay.close()
+})
+async function openReplay(id: string) {
+  panelOpen.value = true
+  await replay.open(id)
+}
 const mode = ref<AgentMode>('AUTO')
 watch(
   [() => route.query.diagnosisReportId, () => route.query.optimizationReportId],
   (ids) => {
     if (
       ids.some((id) => typeof id === 'string') &&
-      !modes.some((m) => m.value === route.query.mode)
+      !modes.value.some((m) => m.value === route.query.mode)
     )
       mode.value = 'RESUME'
   },
   { immediate: true },
 )
 const tier = ref<ModelTier>('FLASH')
+let tierTouched = false
 watch(
   () => route.query.modelTier ?? route.query.tier,
   (value) => {
     tier.value = normalizeModelTier(value)
+    if (value) tierTouched = true
   },
   { immediate: true },
 )
+watch(tier, (_, previous) => {
+  if (previous) tierTouched = true
+})
+// AC-03: without an explicit tier in the link, start from the account's default tier.
+getPreferences()
+  .then((preferences) => {
+    if (!tierTouched) tier.value = preferences.defaultModelTier
+  })
+  .catch(() => undefined)
 const seed = ref('')
 const matchingSelection = computed(
   () => route.query.jobAction === 'match' && ['AUTO', 'JOB'].includes(mode.value),
@@ -100,7 +147,7 @@ watch(
     await chat.open(id)
     seed.value = typeof route.query.prompt === 'string' ? route.query.prompt : ''
     mode.value =
-      modes.find((m) => m.value === route.query.mode)?.value ||
+      modes.value.find((m) => m.value === route.query.mode)?.value ||
       (route.query.optimizationReportId || route.query.diagnosisReportId
         ? 'RESUME'
         : current.value?.mode || 'AUTO')
@@ -132,7 +179,7 @@ async function select(id?: string) {
   if (!id && !route.params.conversationId) await chat.open()
   else await router.push(id ? `/chat/${encodeURIComponent(id)}` : '/chat')
 }
-async function onSend(content: string) {
+async function onSend(content: string, images: ChatImage[] = []) {
   if (preparingSend.value || busy.value || missingConversation.value) return
   preparingSend.value = true
   try {
@@ -142,11 +189,26 @@ async function onSend(content: string) {
       try {
         privacyWarning.value = (await checkPrivacyText(content)).warning ?? ''
       } catch {
-        privacyWarning.value =
-          '隐私风险检查暂不可用；模型端仍按你的脱敏设置处理。建议在设置中确认已开启。'
+        privacyWarning.value = () =>
+          uiText(
+            'The privacy risk check is unavailable. Your masking preferences still apply when sending to the model. Check that masking is enabled in settings.',
+          )
       }
     }
     const submittedMode = mode.value
+    const rerankContext =
+      submittedMode === 'CAREER_DISCOVERY' && route.query.careerAction === 'rerankCareers'
+        ? {
+            careerAction: 'rerankCareers',
+            revisionId: route.query.revisionId,
+            city: typeof route.query.city === 'string' ? route.query.city : '',
+            ...(typeof route.query.minSalaryK === 'string' && route.query.minSalaryK
+              ? { minSalaryK: Number(route.query.minSalaryK) }
+              : {}),
+            avoidOvertime: route.query.avoidOvertime === 'true',
+            research: route.query.research === 'true',
+          }
+        : undefined
     const matchAction = matchingSelection.value
     const interviewAction =
       submittedMode === 'INTERVIEWER' && route.query.interviewAction === 'recallStarStories'
@@ -171,6 +233,19 @@ async function onSend(content: string) {
     context = optimizationContext(viewMessages.value, context)
     // Consume the selected action once; keep resource IDs for ordinary follow-up questions.
     if (route.query.jobAction === 'match') await clearMatchAction()
+    if (rerankContext) {
+      const query = { ...route.query }
+      for (const key of [
+        'careerAction',
+        'revisionId',
+        'city',
+        'minSalaryK',
+        'avoidOvertime',
+        'research',
+      ])
+        delete query[key]
+      await router.replace({ path: route.path, query })
+    }
     if (interviewAction) {
       const query = { ...route.query }
       delete query.interviewAction
@@ -189,13 +264,16 @@ async function onSend(content: string) {
         const query = Object.keys(context).length ? { ...context, mode: submittedMode } : {}
         void router.replace({ path: `/chat/${encodeURIComponent(id)}`, query })
       },
-      matchAction
-        ? { ...context, jobAction: 'match' }
-        : interviewAction
-          ? { ...context, interviewAction }
-          : Object.keys(context).length
-            ? context
-            : undefined,
+      rerankContext
+        ? rerankContext
+        : matchAction
+          ? { ...context, jobAction: 'match' }
+          : interviewAction
+            ? { ...context, interviewAction }
+            : Object.keys(context).length
+              ? context
+              : undefined,
+      images,
     )
     await nextTick()
     if (scrollArea.value) scrollArea.value.scrollTop = scrollArea.value.scrollHeight
@@ -212,7 +290,7 @@ async function editLastQuestion() {
 async function adoptTarget(selection: CareerTargetSelection) {
   if (busy.value || missingConversation.value) return
   panelOpen.value = true
-  const content = `请将「${selection.name}」设为目标职业`
+  const content = uiText('Set “{0}” as my target career', [selection.name])
   lastAttempt.value = content
   // Reuse the chat approval flow: this starts a WRITE step, never PUTs the profile from the card.
   await chat.send(
@@ -228,7 +306,9 @@ async function adoptTarget(selection: CareerTargetSelection) {
 async function adoptGrowth(taskTitles: string[]) {
   if (busy.value || missingConversation.value || !taskTitles.length) return
   panelOpen.value = true
-  const content = `同步成长任务：我确认已完成「${taskTitles.join('」、「')}」`
+  const content = uiText('Sync growth tasks: I confirm that I have completed “{0}”', [
+    taskTitles.join('」、「'),
+  ])
   lastAttempt.value = content
   await chat.send(
     content,
@@ -257,11 +337,13 @@ async function applyPatches(decision: PatchDecision, payload: unknown) {
     card.batchId !== decision.batchId ||
     !/^[A-Za-z0-9_-]{1,100}$/.test(decision.batchId)
   ) {
-    error.value = '无法关联这批建议的简历、版本或批次，请从对应简历重新打开改写建议。'
+    error.value = uiText(
+      'The resume, version or batch for these suggestions could not be identified. Reopen the rewrite suggestions from the resume.',
+    )
     return
   }
   panelOpen.value = true
-  const content = '请采纳所选的简历改写建议'
+  const content = uiText('Accept the selected resume rewrite suggestions')
   lastAttempt.value = content
   await chat.send(
     content,
@@ -315,8 +397,8 @@ async function remove(id: string) {
     <div class="chat-layout persistent-chat">
       <div class="chat-main">
         <ChatToolbar
-          :title="current?.title || '新对话'"
-          :status="mock ? 'Mock 演示' : '自动保存'"
+          :title="current?.title || uiText('New chat')"
+          :status="mock ? uiText('Mock demo') : uiText('Autosave')"
           :history-open="historyOpen"
           :panel-open="panelOpen"
           @toggle-history="historyOpen = !historyOpen"
@@ -325,23 +407,36 @@ async function remove(id: string) {
         <div ref="scrollArea" class="chat-scroll" aria-live="polite" aria-relevant="additions text">
           <div class="chat-column">
             <p v-if="privacyWarning" class="helper-note" role="status">
-              {{ privacyWarning }} <RouterLink to="/settings/privacy">隐私设置</RouterLink>
+              {{ privacyWarning }}
+              <RouterLink to="/settings/privacy">{{ uiText('Privacy settings') }}</RouterLink>
             </p>
             <p v-if="typeof route.query.jobId === 'string'" class="helper-note">
-              已关联选定岗位和简历版本。可发送匹配或定向改写请求，生成建议后仍需逐条核对采纳；搜索新岗位按本轮条件执行。
-              <RouterLink :to="'/jobs/' + encodeURIComponent(route.query.jobId)"
-                >返回岗位</RouterLink
-              >
+              {{
+                uiText(
+                  "The selected job and resume version are linked. Request matching or a targeted rewrite, then review each suggestion before accepting it. New job searches use the current request's conditions.",
+                )
+              }}
+              <RouterLink :to="'/jobs/' + encodeURIComponent(route.query.jobId)">{{
+                uiText('Back to job')
+              }}</RouterLink>
             </p>
             <p v-if="typeof route.query.applicationId === 'string'" class="helper-note">
-              已关联这条求职记录。可只读查看进度，或请求更新下一步行动；聊天写入仍需你批准。
+              {{
+                uiText(
+                  'This application is linked. View progress or request a next-action update. Chat changes require your approval.',
+                )
+              }}
               <RouterLink
                 :to="{ path: '/board', query: { application: route.query.applicationId } }"
-                >返回机会详情</RouterLink
+                >{{ uiText('Back to application') }}</RouterLink
               >
             </p>
             <p v-if="route.query.optimizationReportId" class="helper-note">
-              已关联这批改写建议。讨论会读取保存结果；明确要求重新生成时才调用改写模型，可在卡片选择建议并批准审批后采纳，也可到简历页确认。
+              {{
+                uiText(
+                  'These rewrite suggestions are linked. Discussion reads saved results. A rewrite model runs only when you explicitly request regeneration. Select suggestions and approve them in chat, or confirm them on the resume page.',
+                )
+              }}
               <RouterLink
                 v-if="typeof route.query.resumeId === 'string'"
                 :to="{
@@ -352,15 +447,19 @@ async function remove(id: string) {
                     optimizationReportId: route.query.optimizationReportId,
                   },
                 }"
-                >查看改写建议</RouterLink
+                >{{ uiText('View rewrite suggestions') }}</RouterLink
               >
             </p>
             <p v-if="route.query.diagnosisReportId" class="helper-note">
-              已关联选定版本的简历诊断报告。发送消息后，AI 会读取报告继续讨论。
+              {{
+                uiText(
+                  'The diagnosis for the selected resume version is linked. Send a message to discuss it with AI.',
+                )
+              }}
               <RouterLink
                 v-if="typeof route.query.resumeId === 'string'"
                 :to="'/resumes/' + encodeURIComponent(route.query.resumeId)"
-                >返回简历</RouterLink
+                >{{ uiText('Back to resume') }}</RouterLink
               >
             </p>
             <button
@@ -369,10 +468,85 @@ async function remove(id: string) {
               :disabled="loading"
               @click="older"
             >
-              加载更早消息
+              {{ uiText('Load earlier messages') }}
             </button>
-            <p v-if="loading" class="subtle" role="status">正在加载记录…</p>
-            <MessageList v-if="viewMessages.length" :messages="viewMessages"
+            <p v-if="loading" class="subtle" role="status">{{ uiText('Loading history…') }}</p>
+            <section
+              v-if="replay.runId.value"
+              class="panel form-stack mb-4"
+              :aria-label="uiText('Run replay')"
+              aria-live="polite"
+            >
+              <h3>{{ uiText('Historical run replay') }}</h3>
+              <p v-if="replay.loading.value" role="status">{{ uiText('Loading events…') }}</p>
+              <p v-if="replay.error.value" role="alert">{{ formatDisplay(replay.error.value) }}</p>
+              <p v-if="replay.partial.value">
+                {{
+                  uiText(
+                    'This older run has no saved text or card events. Only recorded steps can be replayed.',
+                  )
+                }}
+              </p>
+              <p>
+                {{
+                  uiText('{0} of {1} events', [replay.position.value, replay.events.value.length])
+                }}
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  class="btn"
+                  :disabled="replay.loading.value || replay.complete.value"
+                  @click="replay.play"
+                >
+                  {{ uiText('Play') }}
+                </button>
+                <button class="btn" :disabled="!replay.playing.value" @click="replay.pause">
+                  {{ uiText('Pause') }}
+                </button>
+                <button
+                  class="btn"
+                  :disabled="replay.loading.value || replay.complete.value"
+                  @click="replay.step"
+                >
+                  {{ uiText('Next event') }}
+                </button>
+                <button class="btn" :disabled="replay.loading.value" @click="replay.seek(0)">
+                  {{ uiText('Restart') }}
+                </button>
+                <button
+                  v-if="replay.error.value"
+                  class="btn"
+                  @click="replay.open(replay.runId.value)"
+                >
+                  {{ uiText('Reload') }}
+                </button>
+                <label
+                  >{{ uiText('Speed') }}
+                  <select v-model="replay.speed.value">
+                    <option :value="0.5">0.5×</option>
+                    <option :value="1">1×</option>
+                    <option :value="2">2×</option>
+                    <option :value="4">4×</option>
+                  </select></label
+                >
+                <button class="btn" @click="replay.close">{{ uiText('Exit replay') }}</button>
+              </div>
+              <label
+                >{{ uiText('Event progress') }}
+                <input
+                  type="range"
+                  min="0"
+                  :max="replay.events.value.length"
+                  :value="replay.position.value"
+                  :disabled="replay.loading.value"
+                  @input="replay.seek(Number(($event.target as HTMLInputElement).value))"
+              /></label>
+            </section>
+            <MessageList
+              v-if="viewMessages.length"
+              :messages="displayedMessages"
+              :replay-disabled="busy"
+              @replay="openReplay"
               ><template #cards="{ cards }"
                 ><slot
                   name="cards"
@@ -381,7 +555,7 @@ async function remove(id: string) {
                     adoptTarget,
                     adoptGrowth,
                     applyPatches,
-                    disabled: busy || missingConversation,
+                    disabled: busy || missingConversation || Boolean(replay.runId.value),
                   }" /></template
             ></MessageList>
             <ChatWelcome v-else-if="!loading && !missingConversation" @pick="seed = $event" />
@@ -401,13 +575,12 @@ async function remove(id: string) {
                 )
               "
             >
-              重新加载
+              {{ uiText('Reload #2') }}
             </button>
           </div>
           <div v-if="remoteRunId && !sending" class="helper-note">
-            这段对话仍在生成，记录会自动更新。<button class="btn text" @click="chat.stop()">
-              停止生成
-            </button>
+            {{ uiText('This conversation is still generating. Records update automatically.')
+            }}<button class="btn text" @click="chat.stop()">{{ uiText('Stop generation') }}</button>
           </div>
           <button
             v-if="
@@ -418,15 +591,12 @@ async function remove(id: string) {
             class="btn text"
             @click="editLastQuestion"
           >
-            重新编辑上条问题
+            {{ uiText('Edit previous question') }}
           </button>
           <div v-if="matchingSelection" class="helper-note">
-            本次发送将匹配所选岗位与简历。<button
-              class="btn text"
-              :disabled="busy"
-              @click="clearMatchAction"
-            >
-              改为普通提问
+            {{ uiText('This message will match the selected job and resume.')
+            }}<button class="btn text" :disabled="busy" @click="clearMatchAction">
+              {{ uiText('Ask a general question instead') }}
             </button>
           </div>
           <Composer
@@ -444,26 +614,46 @@ async function remove(id: string) {
             @stop="chat.stop"
           >
             <template #tools>
-              <select v-model="mode" class="tool-select" :disabled="busy" aria-label="对话模式">
+              <select
+                v-model="mode"
+                class="tool-select"
+                :disabled="busy"
+                :aria-label="uiText('Chat mode')"
+              >
                 <option v-for="m in modes" :key="m.value" :value="m.value">{{ m.label }}</option>
               </select>
-              <select v-model="tier" class="tool-select" :disabled="busy" aria-label="模型档位">
-                <option value="FLASH" title="DeepSeek Flash 响应快">快速</option>
-                <option value="PRO" title="DeepSeek Pro 推理更强">深度</option>
+              <select
+                v-model="tier"
+                class="tool-select"
+                :disabled="busy"
+                :aria-label="uiText('Model tier')"
+              >
+                <option value="FLASH" :title="uiText('DeepSeek Flash responds quickly')">
+                  {{ uiText('Fast') }}
+                </option>
+                <option value="PRO" :title="uiText('DeepSeek Pro offers stronger reasoning')">
+                  {{ uiText('Deep') }}
+                </option>
               </select>
             </template>
           </Composer>
           <p class="chat-footnote">
             {{
               mock
-                ? 'Mock 脚本演示，内容只在当前页面可见。'
-                : '历史保存在服务端，上下文最多参考最近 10 轮完整对话。附件解析尚未接入。'
+                ? uiText('Mock scripted demo. Content is only visible on this page.')
+                : uiText(
+                    'History is saved on the server. Context includes up to 10 recent completed exchanges. Images are sent to the model for the current exchange only.',
+                  )
             }}
           </p>
         </div>
       </div>
       <aside v-if="panelOpen" class="chat-panel visible">
-        <slot name="agent" :run="activeRun" />
+        <slot
+          name="agent"
+          :run="replay.runId.value ? replay.run.value : activeRun"
+          :readonly="Boolean(replay.runId.value)"
+        />
       </aside>
     </div>
   </section>

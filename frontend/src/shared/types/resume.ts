@@ -1,6 +1,14 @@
+import { translate as uiText } from '@/shared/utils/language'
 export type ResumeEntry = Record<string, string | string[]>
 export interface ResumeStructure {
-  basics: { name: string; phone: string; email: string; city: string; links: string[] }
+  basics: {
+    name: string
+    title?: string
+    phone: string
+    email: string
+    city: string
+    links: string[]
+  }
   education: ResumeEntry[]
   experience: ResumeEntry[]
   projects: ResumeEntry[]
@@ -38,13 +46,27 @@ export interface ResumePage {
   size: number
 }
 export const resumeStatus = {
-  QUEUED: '等待解析',
-  PARSING: '正在解析',
-  READY: '可编辑',
-  FAILED: '解析失败',
+  get QUEUED() {
+    return uiText('Waiting to parse')
+  },
+  get PARSING() {
+    return uiText('Parsing')
+  },
+  get READY() {
+    return uiText('Ready to edit')
+  },
+  get FAILED() {
+    return uiText('Parsing failed')
+  },
 }
 export const resumeVersionSource: Record<ResumeVersion['source'], string> = {
-  UPLOAD: '上传解析',
-  MANUAL_EDIT: '手动编辑',
-  OPTIMIZED: '改写采纳',
+  get UPLOAD() {
+    return uiText('Uploaded and parsed')
+  },
+  get MANUAL_EDIT() {
+    return uiText('Manual edit')
+  },
+  get OPTIMIZED() {
+    return uiText('Accepted rewrite')
+  },
 }

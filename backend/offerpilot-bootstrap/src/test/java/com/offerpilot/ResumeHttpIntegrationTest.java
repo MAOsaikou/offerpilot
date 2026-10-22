@@ -157,9 +157,52 @@ class ResumeHttpIntegrationTest {
         structure.put("summary","新版内容");
         var updated=resumes.save(owner(token),id,version,structure);
         assertThat(diagnoses.report(owner(token),id,version,reportId)).isEqualTo(report);
+        int callsBeforeHistory = providerCalls.get();
+        var mixedHistory = report.deepCopy();
+        ((com.fasterxml.jackson.databind.node.ObjectNode)mixedHistory).withArray("strengths")
+                .addObject().put("message","误引当前版本").putArray("evidence")
+                .addObject().put("path","/summary").put("quote","新版内容");
+        jdbc.update("UPDATE resume_diagnoses SET report=?::jsonb WHERE id=?", mixedHistory.toString(), reportId);
+        var historical = diagnoses.get(owner(token), reportId).path("report");
+        assertThat(historical.path("strengths")).isEmpty();
+        assertThat(historical.path("findings")).isEqualTo(report.path("findings"));
+        assertThat(historical.path("versionId").asText()).isEqualTo(version);
+        assertThat(new ResumeDiagnosisForChat(diagnoses).execute(owner(token),id,version,reportId,"unused")
+                .block(Duration.ofSeconds(5))).isEqualTo(historical);
+        assertThat(providerCalls.get()).isEqualTo(callsBeforeHistory);
+        jdbc.update("UPDATE resume_diagnoses SET report=?::jsonb WHERE id=?", report.toString(), reportId);
         assertThatThrownBy(() -> diagnoses.report(owner(token),id,updated.currentVersionId(),reportId)).hasMessageContaining("不存在");
         assertThat(request("POST","/resumes/"+id+"/versions/"+updated.currentVersionId()+"/analyze",token,body).statusCode()).isEqualTo(400);
     }
+    @Test void backgroundDiagnosisPersistsAndRestoresTheSameVersionReport() throws Exception {
+        String token=identities.create().accessToken(), stranger=identities.create().accessToken();
+        var structure=(com.fasterxml.jackson.databind.node.ObjectNode)JSON.readTree(ResumeStructure.SCHEMA);
+        structure.put("summary","负责缓存优化");output.set(structure.toString());
+        String id=data(upload(token,"background.txt","虚构简历".getBytes(StandardCharsets.UTF_8))).path("id").asText();
+        worker.processNext();String version=resumes.get(owner(token),id).currentVersionId();
+        output.set("""
+            {"summary":"补充真实行动", "strengths":[],"findings":[{"ruleId":"CONTRIBUTION","kind":"NEEDS_CLARIFICATION","priority":"MEDIUM","evidence":[{"path":"/summary","quote":"负责缓存优化"}],"reason":"缺少行动","suggestion":"补充策略","questions":["采用什么策略？"]}]}
+            """);
+        String body=JSON.writeValueAsString(Map.of("kind","RESUME_DIAGNOSIS","entityId",id,"requestId",UUID.randomUUID().toString(),"input",Map.of("versionId",version)));
+        assertThat(request("POST","/generation-tasks",stranger,body).statusCode()).isEqualTo(404);
+        String taskId=data(request("POST","/generation-tasks",token,body)).path("id").asText();
+        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                assertThat(data(request("GET","/generation-tasks/"+taskId,token,null)).path("status").asText()).isEqualTo("SUCCEEDED"));
+        var task=data(request("GET","/generation-tasks/"+taskId,token,null));
+        String reportId=task.path("resultId").asText();
+        var saved=data(request("GET","/generation-tasks/"+taskId+"/result",token,null));
+        assertThat(saved).isEqualTo(diagnoses.get(owner(token),reportId).path("report"));
+        assertThat(saved.path("versionId").asText()).isEqualTo(version);
+        assertThat(task.path("href").asText()).contains("tab=diagnosis","taskId="+taskId);
+        int calls=providerCalls.get();providerStatus.set(503);
+        assertThat(data(request("POST","/generation-tasks",token,body)).path("id").asText()).isEqualTo(taskId);
+        assertThat(data(request("GET","/generation-tasks/"+taskId+"/result",token,null))).isEqualTo(saved);
+        assertThat(providerCalls.get()).isEqualTo(calls);
+        assertThat(request("GET","/generation-tasks/"+taskId+"/result",stranger,null).statusCode()).isEqualTo(404);
+        assertThat(request("DELETE","/resumes/"+id,token,null).statusCode()).isEqualTo(200);
+        assertThat(request("GET","/generation-tasks/"+taskId,token,null).statusCode()).isEqualTo(404);
+    }
+
     private void cancelStream(String token, String path, String body, String listPath, String kind,
                               java.util.concurrent.CountDownLatch started, java.util.concurrent.CountDownLatch stopped) throws Exception {
         var req=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1"+path))
@@ -243,6 +286,19 @@ class ResumeHttpIntegrationTest {
         assertThat(request("PATCH", "/resumes/" + id, stranger, "{\"title\":\"attack\"}").statusCode()).isEqualTo(404);
         assertThat(request("PUT", "/resumes/" + id + "/versions/" + base + "/structured", stranger, structure.toString()).statusCode()).isEqualTo(404);
         assertThat(request("GET", "/resumes", null, null).statusCode()).isEqualTo(401);
+
+        // RS-06 rollback to version 1: a new version 3 with v1's content, on top of v2; history stays intact.
+        String v2 = data(saved).path("currentVersionId").asText();
+        String restoreBody = "{\"baseVersionId\":\"" + v2 + "\"}";
+        assertThat(request("POST", "/resumes/" + id + "/versions/" + base + "/restore", stranger, restoreBody).statusCode()).isEqualTo(404);
+        // A stale base (another tab already saved) conflicts instead of silently branching.
+        assertThat(request("POST", "/resumes/" + id + "/versions/" + v2 + "/restore", token, "{\"baseVersionId\":\"" + base + "\"}").statusCode()).isEqualTo(409);
+        var restored = data(request("POST", "/resumes/" + id + "/versions/" + base + "/restore", token, restoreBody));
+        assertThat(restored.path("currentVersion").path("versionNo").asInt()).isEqualTo(3);
+        assertThat(restored.path("currentVersion").path("parentVersionId").asText()).isEqualTo(v2);
+        assertThat(restored.path("currentVersion").path("parseMeta").path("restoredFrom").asText()).isEqualTo(base);
+        assertThat(restored.path("currentVersion").path("structured")).isEqualTo(detail.path("currentVersion").path("structured"));
+        assertThat(data(request("GET", "/resumes/" + id + "/versions", token, null)).size()).isEqualTo(3);
     }
     ResumeService.Resume patchFixture(String token) throws Exception {
         var structure = (com.fasterxml.jackson.databind.node.ObjectNode) JSON.readTree(ResumeStructure.SCHEMA);
@@ -267,6 +323,27 @@ class ResumeHttpIntegrationTest {
     }
     String decision(ResumePatchService.Batch batch, String accepted) {
         return "{\"batchId\":\"" + batch.batchId() + "\",\"accepted\":[\"" + accepted + "\"]}";
+    }
+    @Test void deleteRemovesResumeHistoryDerivedRecordsAndUploadedFile() throws Exception {
+        String token = identities.create().accessToken(), stranger = identities.create().accessToken();
+        var resume = patchFixture(token);
+        // Applied patches leave a second version that the batch row points at (applied_version_id has no cascade).
+        var batch = batch(token, resume);
+        assertThat(request("POST", applyPath(resume), token, decision(batch, "p1")).statusCode()).isEqualTo(200);
+        var file = jdbc.queryForMap("SELECT f.id,f.bucket,f.object_key FROM resumes r JOIN files f ON f.id=r.source_file_id WHERE r.id=?", resume.id());
+        assertThat(store.get((String) file.get("bucket"), (String) file.get("object_key"))).isNotEmpty();
+
+        assertThat(request("DELETE", "/resumes/" + resume.id(), stranger, null).statusCode()).isEqualTo(404);
+        assertThat(request("DELETE", "/resumes/" + resume.id(), null, null).statusCode()).isEqualTo(401);
+        assertThat(request("DELETE", "/resumes/" + resume.id(), token, null).statusCode()).isEqualTo(200);
+
+        assertThat(request("GET", "/resumes/" + resume.id(), token, null).statusCode()).isEqualTo(404);
+        for (String table : List.of("resume_versions", "resume_patch_batches"))
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM " + table + " WHERE resume_id=?", Integer.class, resume.id())).as(table).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM files WHERE id=?", Integer.class, file.get("id"))).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup WHERE object_key=?", Integer.class, file.get("object_key"))).isZero();
+        assertThatThrownBy(() -> store.get((String) file.get("bucket"), (String) file.get("object_key"))).isInstanceOf(RuntimeException.class);
+        assertThat(request("DELETE", "/resumes/" + resume.id(), token, null).statusCode()).isEqualTo(404);
     }
     @Test void patchesApplyEditedSubsetPreserveHistoryAndRetryOriginalResult() throws Exception {
         String token = identities.create().accessToken(), stranger = identities.create().accessToken();
@@ -376,6 +453,29 @@ class ResumeHttpIntegrationTest {
         jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES (?,'fixture',?,'intern',?::jsonb)", id, id, payload.toString());
         return id;
     }
+    /** SC-02: persisting analysis asks for approval mid-stream; approve it and return the full SSE body. */
+    String approvedChat(String token, String body) throws Exception {
+        var builder = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/chat")).timeout(Duration.ofSeconds(60))
+                .header("Authorization", "Bearer " + token).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body));
+        var response = HttpClient.newHttpClient().send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+        var out = new StringBuilder();
+        try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+            for (String line; (line = reader.readLine()) != null; ) {
+                out.append(line).append('\n');
+                if (!line.startsWith("data:")) continue;
+                var event = JSON.readTree(line.substring(5).strip());
+                if ("approval.required".equals(event.path("type").asText()))
+                    assertThat(request("POST", "/agent/runs/" + event.path("runId").asText() + "/approvals/" + event.path("approvalId").asText(),
+                            token, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(200);
+            }
+        }
+        return out.toString();
+    }
+    List<JsonNode> events(String body) {
+        return body.lines().filter(line -> line.startsWith("data:")).map(line -> {
+            try { return JSON.readTree(line.substring(5).strip()); } catch (Exception ex) { throw new IllegalStateException(ex); }
+        }).toList();
+    }
     List<JsonNode> events(HttpResponse<String> response) {
         return response.body().lines().filter(line -> line.startsWith("data:")).map(line -> {
             try { return JSON.readTree(line.substring(5).strip()); } catch (Exception ex) { throw new IllegalStateException(ex); }
@@ -391,9 +491,7 @@ class ResumeHttpIntegrationTest {
         String token = identities.create().accessToken(), stranger = identities.create().accessToken();
         var resume = patchFixture(token); String jobId = chatJob(OPTIMIZE_JD); output.set(optimizationWithTrivialPatch());
         var selected = Map.of("jobId", jobId, "resumeId", resume.id(), "resumeVersionId", resume.currentVersionId());
-        var response = request("POST", "/agent/chat", token, chatBody("AUTO", null, "针对岗位生成改写建议", selected));
-        assertThat(response.statusCode()).isEqualTo(200);
-        var stream = events(response);
+        var stream = events(approvedChat(token, chatBody("AUTO", null, "针对岗位生成改写建议", selected)));
         var card = stream.stream().filter(e -> "ui.card".equals(e.path("type").asText())).findFirst().orElseThrow();
         assertThat(card.path("cardType").asText()).isEqualTo("resume_diff");
         assertThat(card.path("cardId").asText()).isEqualTo(card.path("payload").path("reportId").asText());
@@ -427,8 +525,7 @@ class ResumeHttpIntegrationTest {
     @Test void chatRewriteMissingJobContentsFailsWithoutModelOrVersionWrites() throws Exception {
         String token = identities.create().accessToken(); var resume = patchFixture(token);
         var selected = Map.of("jobId", chatJob(""), "resumeId", resume.id(), "resumeVersionId", resume.currentVersionId());
-        var response = request("POST", "/agent/chat", token, chatBody("RESUME", null, "针对岗位生成改写建议", selected));
-        assertThat(response.body()).contains("岗位缺少职责与要求", "FAILED").doesNotContain("event:ui.card");
+        assertThat(approvedChat(token, chatBody("RESUME", null, "针对岗位生成改写建议", selected))).contains("岗位缺少职责与要求", "FAILED").doesNotContain("event:ui.card");
         assertThat(rewriteCalls.get()).isZero();
         assertThat(optimizations.list(owner(token), resume.id())).isEmpty();
         assertThat(resumes.versions(owner(token), resume.id())).hasSize(1);
@@ -560,7 +657,7 @@ class ResumeHttpIntegrationTest {
         assertThat(JSON.readTree(lastPrompt.get()).path("model").asText()).isEqualTo("deepseek-flash");
         var meta = resumes.get(owner(token), id).currentVersion().parseMeta();
         assertThat(meta.path("model").asText()).isEqualTo("deepseek-flash");
-        assertThat(meta.path("promptVersion").asText()).isEqualTo("v2");
+        assertThat(meta.path("promptVersion").asText()).isEqualTo("v6");
         assertThat(meta.path("imageCount").asInt()).isEqualTo(1);
         assertThat(meta.path("durationMs").asLong()).isGreaterThanOrEqualTo(0);
         assertThat(meta.path("totalTokens").asInt()).isEqualTo(18);

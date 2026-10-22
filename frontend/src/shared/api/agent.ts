@@ -1,4 +1,6 @@
+import { translate as uiText } from '@/shared/utils/language'
 import {
+  apiRequest,
   apiUrl,
   authenticatedHeaders,
   assertResponseIdentity,
@@ -6,7 +8,6 @@ import {
   toApiError,
 } from './client'
 import { parseSse } from './sse'
-import type { ApplicationStatus } from '@/shared/types/board'
 import type { AgentEvent, ChatRequest } from '@/shared/types/agent-events'
 
 export interface AgentStreamOptions {
@@ -45,6 +46,33 @@ export async function streamAgentChat(
     signal: options.signal ?? null,
   })
 
+  return consume(response, options)
+}
+
+/**
+ * 断线续传：GET /agent/runs/{runId}/events，回放 Last-Event-ID 之后的事件再接上实时事件（AG-07）。
+ * 运行已结束且超过回放保留期、或服务重启后返回 404，调用方改为读取已保存的消息。
+ */
+export async function resumeAgentRun(
+  runId: string,
+  lastEventId: number,
+  options: AgentStreamOptions = {},
+): Promise<string> {
+  const response = await fetchWithIdentity(
+    apiUrl(`/agent/runs/${encodeURIComponent(runId)}/events`),
+    {
+      method: 'GET',
+      headers: await authenticatedHeaders({
+        Accept: 'text/event-stream',
+        'Last-Event-ID': String(lastEventId),
+      }),
+      signal: options.signal ?? null,
+    },
+  )
+  return consume(response, options)
+}
+
+async function consume(response: Response, options: AgentStreamOptions): Promise<string> {
   if (!response.ok || !response.body) throw await toApiError(response)
 
   let runId = ''
@@ -60,7 +88,10 @@ export async function streamAgentChat(
       break
     }
   }
-  if (!completed) throw new Error('连接在回复完成前中断，请检查后端后重试。')
+  if (!completed)
+    throw new Error(
+      uiText('Connection ended before the response finished. Check the backend and retry.'),
+    )
   return runId
 }
 
@@ -78,7 +109,7 @@ export async function cancelAgentRun(runId: string): Promise<void> {
 
 export interface ApprovalDecision {
   decision: 'APPROVE' | 'REJECT'
-  args?: { status?: ApplicationStatus; note?: string }
+  args?: Record<string, unknown>
   reason?: string
 }
 
@@ -98,3 +129,6 @@ export async function submitApproval(
   if (!response.ok) throw await toApiError(response)
   assertResponseIdentity(response)
 }
+
+export const getAgentWorkbench = (runId: string) =>
+  apiRequest<AgentEvent[]>(`/agent/runs/${encodeURIComponent(runId)}/workbench`)

@@ -26,8 +26,10 @@ import reactor.core.publisher.Flux;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -36,6 +38,7 @@ import static org.mockito.Mockito.*;
 class ChatServiceTest {
     private final ModelGateway gateway = mock(ModelGateway.class);
     private final com.offerpilot.conversation.application.ConversationService conversations = mock(com.offerpilot.conversation.application.ConversationService.class);
+    private final ApprovalService approvals=new ApprovalService(conversations);
     private ChatService service;
     private Orchestrator orchestrator;
 
@@ -57,12 +60,93 @@ class ChatServiceTest {
         when(gateway.modelName(any())).thenReturn("deepseek-v4-flash");
     }
 
+    private void approveAnalysis(AgentEvent event) {
+        if(event instanceof AgentEvent.ApprovalRequired a) approvals.resolve("owner","run",a.approvalId(),new ApprovalService.Decision("APPROVE",null,null));
+    }
     private ChatRequest request() {
         return new ChatRequest(null, "你好", null, null, new ChatRequest.Options(null, null, null));
     }
 
     private List<AgentEvent> events() {
         return service.chat("owner", request()).collectList().block(Duration.ofSeconds(5));
+    }
+
+    private Map<?, ?> activeRuns() {
+        return (Map<?, ?>) org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations");
+    }
+
+    @Test void languageChangesApplyToNextTurnAndPreserveUserTextAndSafetyPrompt() {
+        var language = new java.util.concurrent.atomic.AtomicReference<>("en-US");
+        com.offerpilot.llm.ChatLanguagePreference preference = owner -> language.get();
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "languagePreference", preference);
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.just(reply("reply")));
+        events(); language.set("zh-CN"); events();
+        var captured = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(gateway, times(2)).stream(eq(ModelTier.FLASH), captured.capture());
+        assertThat(captured.getAllValues().get(0).toString()).contains("Reply in English", "Safety and evidence rules", "你好", "test system prompt");
+        assertThat(captured.getAllValues().get(1).toString()).contains("简体中文", "你好", "test system prompt").doesNotContain("Reply in English");
+    }
+
+    @Test void firstDeltaIsDeliveredBeforeBlockedCheckpointAndCompletionStillAwaitsIt() throws Exception {
+        var delivered = new AtomicBoolean();
+        var saving = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.just(reply("真实首块")));
+        when(conversations.checkpoint(any(), anyString())).thenAnswer(call -> {
+            assertThat(delivered).isTrue();
+            saving.countDown();
+            assertThat(release.await(3, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            return true;
+        });
+        var result = service.chat("owner", request()).doOnNext(event -> {
+            if (event instanceof AgentEvent.TextDelta) delivered.set(true);
+        }).collectList().toFuture();
+        try {
+            assertThat(saving.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(delivered).isTrue();
+            assertThat(result).isNotDone();
+            verify(conversations, never()).finish(any(), anyString(), anyString(), any(), any(), any());
+            release.countDown();
+            assertThat(result.get(3, java.util.concurrent.TimeUnit.SECONDS)).last().isInstanceOf(AgentEvent.RunCompleted.class);
+            verify(conversations).checkpoint(any(), eq("真实首块"));
+        } finally { release.countDown(); result.cancel(true); }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void checkpointFailureOrTerminalRunStopsBeforeAnotherDelta(boolean persistenceFailure) {
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.just(reply("首块"), reply("不得交付的后续块")));
+        when(conversations.checkpoint(any(), anyString())).thenAnswer(call -> {
+            if (persistenceFailure) throw new IllegalStateException("database fixture unavailable");
+            return false; // another instance already made the run terminal
+        });
+        if (!persistenceFailure) when(conversations.finish(any(), anyString(), anyString(), any(), any(), any())).thenReturn("CANCELLED");
+        var result = events();
+        assertThat(result.stream().filter(AgentEvent.TextDelta.class::isInstance).map(AgentEvent.TextDelta.class::cast)
+                .map(AgentEvent.TextDelta::text)).containsExactly("首块");
+        verify(conversations).checkpoint(any(), eq("首块"));
+        if (persistenceFailure) {
+            assertThat(result).last().isInstanceOf(AgentEvent.ErrorEvent.class);
+            verify(conversations).finish(any(), eq("首块"), eq("FAILED"), any(), any(), any());
+        } else assertThat(result).last().satisfies(event -> assertThat(((AgentEvent.RunCompleted) event).status()).isEqualTo("CANCELLED"));
+        assertThat(activeRuns()).isEmpty();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void registryIsEmptyWhenSubscriberObservesSuccessOrFailure(boolean failure) {
+        when(gateway.stream(any(), anyList())).thenReturn(failure
+                ? Flux.error(new RuntimeException("provider failed")) : Flux.just(reply("回复")));
+        var terminalRuns = new AtomicReference<Map<?, ?>>();
+        var chat = service.chat("owner", request());
+        assertThat(activeRuns()).hasSize(1);
+        var result = chat.doOnComplete(() -> terminalRuns.set(Map.copyOf(activeRuns())))
+                .collectList().block(Duration.ofSeconds(5));
+
+        assertThat(terminalRuns.get()).isNotNull().isEmpty();
+        assertThat(result).last().isInstanceOf(failure ? AgentEvent.ErrorEvent.class : AgentEvent.RunCompleted.class);
+        service.cancel("owner", "run");
+        verify(conversations).cancel(eq("owner"), eq("run"), isNull(), eq(List.of()));
     }
 
     @Test
@@ -80,6 +164,7 @@ class ChatServiceTest {
         when(matches.match(eq("owner"), eq("job_selected"), eq("resume_selected"), eq("version_selected"), anyString()))
                 .thenReturn(JobMatchCards.fromReport(report));
         var experts = new ExpertRegistry(matches);
+        experts.setAnalysisApprovals(approvals);
         var parser = new com.offerpilot.agent.orchestrator.JobIntentParser(gateway, json, new ByteArrayResource("job actions".getBytes()));
         var planner = new IntentPlanner(gateway, json, experts, new ByteArrayResource("planner".getBytes()), parser);
         var local = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()), new Orchestrator(planner, experts), json);
@@ -97,7 +182,7 @@ class ChatServiceTest {
                     var context = java.util.Map.<String, Object>of("jobAction", "match", "jobId", "job_selected",
                             "resumeId", "resume_selected", "resumeVersionId", "version_selected");
                     var events = local.chat("owner", new ChatRequest(null, "请匹配这个岗位与我的简历", null, mode,
-                            new ChatRequest.Options(tier.name(), null, context))).collectList().block(Duration.ofSeconds(5));
+                            new ChatRequest.Options(tier.name(), null, context))).doOnNext(this::approveAnalysis).collectList().block(Duration.ofSeconds(5));
                     assertThat(events.stream().filter(AgentEvent.UiCard.class::isInstance).map(AgentEvent.UiCard.class::cast))
                             .extracting(AgentEvent.UiCard::cardType).containsExactly("job_match", "job_eval_report");
                     var prompt = org.mockito.ArgumentCaptor.forClass(List.class);
@@ -107,7 +192,7 @@ class ChatServiceTest {
                     assertThat(narrationData).contains("\"cardType\":\"岗位匹配\"", "\"cardType\":\"岗位评估\"", "\"requirementsCount\":3", "\"metCount\":1,\"partialCount\":1,\"missingCount\":1",
                             "\"grade\":", "Docker", "SQL", "后端工程师", "示例公司")
                             .doesNotContain("s1：", "match_selected", "job_selected", "四周", "STAR反馈", "[]；");
-                    assertThat(events).extracting(AgentEvent::type).contains("run.completed").doesNotContain("error", "approval.required");
+                    assertThat(events).extracting(AgentEvent::type).contains("run.completed").contains("approval.required").doesNotContain("error");
                     verify(gateway, never()).stream(any(), anyList(), eq(0.1));
                     verify(matches).match("owner", "job_selected", "resume_selected", "version_selected", ExpertRegistry.requestId("run", "s1"), tier);
                     verify(matches).match("owner", "job_selected", "resume_selected", "version_selected", ExpertRegistry.requestId("run", "s1"));
@@ -147,7 +232,7 @@ class ChatServiceTest {
                         new com.offerpilot.conversation.application.ConversationService.Turn("owner", "conv", "run", "msg", mode, java.time.Instant.now(), List.of()));
                 var context = java.util.Map.<String, Object>of("jobId", "job1", "resumeId", "resume1", "resumeVersionId", "version1");
                 var events = local.chat("owner", new ChatRequest(null, "请匹配这个岗位与我的简历", null, mode,
-                        new ChatRequest.Options("PRO", null, context))).collectList().block(Duration.ofSeconds(5));
+                        new ChatRequest.Options("PRO", null, context))).doOnNext(this::approveAnalysis).collectList().block(Duration.ofSeconds(5));
                 assertThat(events).extracting(AgentEvent::type).containsExactly("run.started", "error");
                 assertThat(((AgentEvent.ErrorEvent) events.get(1)).message()).contains("未执行任务", "在聊天中匹配");
             }
@@ -165,7 +250,7 @@ class ChatServiceTest {
                 java.util.Map.<String, Object>of("jobAction", "match", "boardAction", "createApplication"),
                 java.util.Map.<String, Object>of("jobAction", "match_job"))) {
             var events = service.chat("owner", new ChatRequest(null, "匹配", null, null,
-                    new ChatRequest.Options("FLASH", null, context))).collectList().block(Duration.ofSeconds(5));
+                    new ChatRequest.Options("FLASH", null, context))).doOnNext(this::approveAnalysis).collectList().block(Duration.ofSeconds(5));
             assertThat(events).extracting(AgentEvent::type).containsExactly("run.started", "error");
             assertThat(((AgentEvent.ErrorEvent) events.get(1)).message()).contains("匹配");
         }
@@ -179,11 +264,12 @@ class ChatServiceTest {
             throw new BusinessException(ErrorCode.RESUME_NOT_FOUND, "简历版本不可用");
         });
         for (var experts : List.of(new ExpertRegistry(), denied)) {
+            experts.setAnalysisApprovals(approvals);
             var local = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()),
                     new Orchestrator(new IntentPlanner(gateway, new ObjectMapper(), experts, new ByteArrayResource("planner".getBytes())), experts), new ObjectMapper());
             var context = java.util.Map.<String, Object>of("jobAction", "match", "jobId", "job1", "resumeId", "resume1", "resumeVersionId", "version1");
             var events = local.chat("owner", new ChatRequest(null, "请匹配", null, null,
-                    new ChatRequest.Options("PRO", null, context))).collectList().block(Duration.ofSeconds(5));
+                    new ChatRequest.Options("PRO", null, context))).doOnNext(this::approveAnalysis).collectList().block(Duration.ofSeconds(5));
             assertThat(events).extracting(AgentEvent::type).contains("error").doesNotContain("run.completed", "ui.card", "text.delta");
             assertThat(events).filteredOn(AgentEvent.ToolResult.class::isInstance).singleElement()
                     .isInstanceOfSatisfying(AgentEvent.ToolResult.class, result -> assertThat(result.ok()).isFalse());
@@ -193,11 +279,12 @@ class ChatServiceTest {
         var retryable = new ExpertRegistry((owner, jobId, resumeId, versionId, requestId) -> {
             throw new BusinessException(ErrorCode.STRUCTURED_OUTPUT_INVALID, "匹配报告没有可核实的条目，未保存报告；请重试", true);
         });
+        retryable.setAnalysisApprovals(approvals);
         var local = new ChatService(gateway, conversations, new ByteArrayResource("reply".getBytes()),
                 new Orchestrator(new IntentPlanner(gateway, new ObjectMapper(), retryable, new ByteArrayResource("planner".getBytes())), retryable), new ObjectMapper());
         var context = java.util.Map.<String, Object>of("jobAction", "match", "jobId", "job1", "resumeId", "resume1", "resumeVersionId", "version1");
         var events = local.chat("owner", new ChatRequest(null, "请匹配", null, null,
-                new ChatRequest.Options("FLASH", null, context))).collectList().block(Duration.ofSeconds(5));
+                new ChatRequest.Options("FLASH", null, context))).doOnNext(this::approveAnalysis).collectList().block(Duration.ofSeconds(5));
         assertThat(events).filteredOn(AgentEvent.ErrorEvent.class::isInstance).singleElement()
                 .isInstanceOfSatisfying(AgentEvent.ErrorEvent.class, error -> {
                     assertThat(error.code()).isEqualTo(40003);
@@ -210,6 +297,163 @@ class ChatServiceTest {
         verify(gateway, never()).stream(any(), anyList());
     }
 
+
+    @Test void failedMessageEmitsLoggedPartialUsageBeforeItsTerminalError() {
+        var journal=mock(com.offerpilot.llm.UsageJournal.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"journal",journal);
+        when(journal.summary("owner","msg")).thenReturn(new com.offerpilot.llm.UsageJournal.Summary("actual-model",12,3,80L,null,true,false));
+        when(gateway.stream(any(),anyList())).thenReturn(Flux.error(new IllegalStateException("offline")));
+        var result=events();
+        assertThat(result).extracting(AgentEvent::type).containsExactly("run.started","usage","error");
+        assertThat(result).extracting(AgentEvent::id).containsExactly(1,2,3);
+        assertThat((AgentEvent.Usage)result.get(1)).satisfies(usage->{
+            assertThat(usage.model()).isEqualTo("actual-model");assertThat(usage.promptTokens()).isEqualTo(12);
+            assertThat(usage.costEstimate()).isNull();assertThat(usage.durationMs()).isEqualTo(80L);
+        });
+    }
+
+    private static ChatResponse reply(String text) {
+        return new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
+    }
+
+    @Test
+    void autoChitchatUsesReplyStartedDuringPlanning() {
+        service.setSpeculativeReply(true);
+        var planned = new AtomicBoolean();
+        var startedBeforePlan = new AtomicBoolean();
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.just(reply("{\"kind\":\"chitchat\",\"confidence\":1}"))
+                .delaySubscription(Duration.ofMillis(200)).doOnComplete(() -> planned.set(true)));
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.just(reply("你好！")).doOnSubscribe(ignored -> startedBeforePlan.set(!planned.get())));
+        assertThat(events()).extracting(AgentEvent::type).containsExactly("run.started", "text.delta", "run.completed");
+        assertThat(startedBeforePlan).isTrue();
+        verify(gateway, times(1)).stream(any(), anyList());
+    }
+
+    @Test
+    void autoResumeAdviceUsesOneReplyCallWithExpertPromptAndSelectedTier() {
+        service.setSpeculativeReply(true);
+        for (var tier : List.of(ModelTier.FLASH, ModelTier.PRO)) {
+            clearInvocations(gateway, conversations);
+            when(gateway.stream(eq(tier), anyList())).thenAnswer(call -> Flux.deferContextual(context -> {
+                assertThat(context.<String>get(com.offerpilot.llm.quota.LlmUserContext.KEY)).isEqualTo("owner");
+                return Flux.just(new ChatResponse(List.of(new Generation(new AssistantMessage("写清真实职责和结果。"))),
+                        ChatResponseMetadata.builder().usage(new DefaultUsage(12, 6)).build()));
+            }));
+            var result = service.chat("owner", new ChatRequest(null, "简历里的项目经历怎么写更有说服力？给两条要点。",
+                    null, AgentMode.AUTO, new ChatRequest.Options(tier.name(), null, null)))
+                    .collectList().block(Duration.ofSeconds(5));
+            assertThat(result).extracting(AgentEvent::type).containsExactly("run.started", "plan.created",
+                    "step.updated", "tool.call", "tool.result", "step.updated", "text.delta", "usage", "run.completed");
+            var prompt = ArgumentCaptor.forClass(List.class);
+            verify(gateway).stream(eq(tier), prompt.capture());
+            assertThat(prompt.getValue().toString()).contains("只提供简历文字指导", "<orchestrator-data>", "未修改简历");
+            verify(gateway, never()).stream(any(), anyList(), anyDouble());
+            verify(gateway).checkQuota("owner", tier);
+            verify(conversations).finish(any(), eq("写清真实职责和结果。"), eq("COMPLETED"),
+                    eq(java.util.Map.of("promptTokens", 12, "completionTokens", 6)), isNull(), anyList());
+        }
+    }
+
+    @Test
+    void ruleRoutesSkipOrdinarySpeculationAndOnlyUseTheFinalReplyGateway() {
+        service.setSpeculativeReply(true);
+        for (String question : List.of("我想探索职业方向", "找上海Java实习岗位")) {
+            clearInvocations(gateway, conversations);
+            when(gateway.stream(eq(ModelTier.PRO), anyList())).thenReturn(Flux.just(reply("按实际专家结果回答。")));
+            var result = service.chat("owner", new ChatRequest(null, question, null, AgentMode.AUTO,
+                    new ChatRequest.Options("PRO", null, null))).collectList().block(Duration.ofSeconds(5));
+            assertThat(result).last().isInstanceOf(AgentEvent.RunCompleted.class);
+            verify(gateway, never()).stream(any(), anyList(), anyDouble());
+            verify(gateway).stream(eq(ModelTier.PRO), argThat(prompt ->
+                    prompt.toString().contains("<orchestrator-data>")));
+            verify(gateway).checkQuota("owner", ModelTier.PRO);
+        }
+    }
+
+    @Test
+    void cancellingFastAdviceCancelsItsOnlyProviderAndReleasesTheRun() {
+        service.setSpeculativeReply(true);
+        var cancelled = new AtomicBoolean();
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.<ChatResponse>never().doOnCancel(() -> cancelled.set(true)));
+        var subscription = service.chat("owner", new ChatRequest(null, "简历里的项目经历怎么写", null, null, null)).subscribe();
+        service.cancel("owner", "run");
+        assertThat(cancelled).isTrue();
+        assertThat(subscription.isDisposed()).isTrue();
+        verify(gateway).stream(eq(ModelTier.FLASH), anyList());
+        verify(gateway, never()).stream(any(), anyList(), anyDouble());
+        assertThat(org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations"))
+                .isEqualTo(java.util.Map.of());
+    }
+
+    @Test
+    void fastAdviceProviderErrorFinishesWithoutOrphanRun() {
+        service.setSpeculativeReply(true);
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.error(new BusinessException(ErrorCode.MODEL_UNAVAILABLE)));
+        var result = service.chat("owner", new ChatRequest(null, "简历里的项目经历怎么写", null, null, null))
+                .collectList().block(Duration.ofSeconds(5));
+        assertThat(result).last().isInstanceOf(AgentEvent.ErrorEvent.class);
+        verify(conversations).finish(any(), eq(""), eq("FAILED"), isNull(), anyString(), anyList());
+        assertThat(org.springframework.test.util.ReflectionTestUtils.getField(service, "cancellations"))
+                .isEqualTo(java.util.Map.of());
+    }
+
+    @Test
+    void autoImageTurnSkipsRuleRoutingAndNeverStartsPlainSpeculation() {
+        service.setSpeculativeReply(true);
+        var attachments = mock(com.offerpilot.conversation.application.ChatAttachments.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "attachments", attachments);
+        when(attachments.load(eq("owner"), anyList())).thenReturn(List.of(
+                new com.offerpilot.conversation.application.ChatAttachments.Image("file1", "jd.png", "image/png", new byte[]{1})));
+        when(conversations.begin(anyString(), any(), anyString(), any(), anyString(), anyList())).thenReturn(
+                new com.offerpilot.conversation.application.ConversationService.Turn("owner", "conv", "run", "msg",
+                        AgentMode.AUTO, java.time.Instant.now(), List.of()));
+        var planned = new AtomicBoolean();
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.just(reply("{\"kind\":\"chitchat\",\"confidence\":1}"))
+                .doOnComplete(() -> planned.set(true)));
+        when(gateway.stream(any(), anyList())).thenAnswer(call -> {
+            assertThat(planned).isTrue();
+            List<org.springframework.ai.chat.messages.Message> prompt = call.getArgument(1);
+            assertThat(prompt.toString()).contains("用户本轮附带了 1 张图片");
+            assertThat(prompt).filteredOn(org.springframework.ai.chat.messages.UserMessage.class::isInstance)
+                    .anySatisfy(message -> assertThat(((org.springframework.ai.chat.messages.UserMessage) message).getMedia()).hasSize(1));
+            return Flux.just(reply("截图建议"));
+        });
+        var result = service.chat("owner", new ChatRequest(null, "找上海Java实习岗位", List.of(new ChatRequest.Attachment("file1", "image")),
+                AgentMode.AUTO, null)).collectList().block(Duration.ofSeconds(5));
+        assertThat(result).last().isInstanceOf(AgentEvent.RunCompleted.class);
+        verify(gateway).stream(any(), anyList());
+        verify(gateway).requireAvailable(ModelTier.FLASH, true);
+    }
+
+    @Test
+    void autoReplyIsRedoneWhenPlannerChangesThePrompt() {
+        service.setSpeculativeReply(true);
+        var discarded = new AtomicBoolean();
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.just(reply("{\"kind\":\"unsafe\",\"confidence\":1}"))
+                .delaySubscription(Duration.ofMillis(100)));
+        when(gateway.stream(any(), anyList()))
+                .thenReturn(Flux.<ChatResponse>never().doOnCancel(() -> discarded.set(true)))
+                .thenReturn(Flux.just(reply("无法协助")));
+        var result = events();
+        assertThat(discarded).isTrue();
+        assertThat(result).filteredOn(AgentEvent.TextDelta.class::isInstance).extracting(e -> ((AgentEvent.TextDelta) e).text())
+                .containsExactly("无法协助");
+        var prompts = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(gateway, times(2)).stream(any(), prompts.capture());
+        assertThat(prompts.getAllValues().get(1).toString()).contains("有害");
+    }
+
+    @Test
+    void cancellingDuringPlanningStopsSpeculativeReply() {
+        service.setSpeculativeReply(true);
+        var discarded = new AtomicBoolean();
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.never());
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.<ChatResponse>never().doOnCancel(() -> discarded.set(true)));
+        when(conversations.finish(any(), anyString(), anyString(), any(), any(), any())).thenReturn("CANCELLED");
+        service.chat("owner", request()).subscribe();
+        service.cancel("owner", "run");
+        assertThat(discarded).isTrue();
+    }
 
     @Test
     void missingKeyProducesActionableTerminalError() {
@@ -240,11 +484,15 @@ class ChatServiceTest {
 
     @Test
     void cancellingDownstreamCancelsProvider() {
-        AtomicBoolean cancelled = new AtomicBoolean();
-        when(gateway.stream(any(), anyList())).thenReturn(Flux.<ChatResponse>never().doOnCancel(() -> cancelled.set(true)));
+        var runsAtProviderCancellation = new AtomicReference<Map<?, ?>>();
+        when(gateway.stream(any(), anyList())).thenReturn(Flux.<ChatResponse>never()
+                .doOnCancel(() -> runsAtProviderCancellation.set(Map.copyOf(activeRuns()))));
         var subscription = service.chat("owner", request()).subscribe();
+        assertThat(activeRuns()).hasSize(1);
         subscription.dispose();
-        assertThat(cancelled).isTrue();
+        assertThat(runsAtProviderCancellation.get()).isNotNull().isEmpty();
+        assertThat(activeRuns()).isEmpty();
+        verify(conversations).finish(any(), eq(""), eq("CANCELLED"), isNull(), isNull(), eq(List.of()));
     }
 
     @Test
@@ -305,5 +553,29 @@ class ChatServiceTest {
             .collectList().block(Duration.ofSeconds(5));
         assertThat(result).last().isInstanceOf(AgentEvent.RunCompleted.class);
         verify(gateway).stream(eq(tier), anyList());
+    }
+
+    @Test
+    void crisisShowsSupportFirstAndSkipsToolsWhileForgeryIsRefusedWithoutAnyModelCall() {
+        when(gateway.stream(eq(ModelTier.FLASH), anyList())).thenReturn(Flux.just(new ChatResponse(List.of(
+                new Generation(new AssistantMessage("你现在身边有人陪着你吗？"))))));
+        var crisis = service.chat("owner", new ChatRequest(null, "投了一百份都没回音，我真的不想活了", null, null,
+                new ChatRequest.Options(null, null, null))).collectList().block(Duration.ofSeconds(5));
+        var texts = crisis.stream().filter(AgentEvent.TextDelta.class::isInstance).map(e -> ((AgentEvent.TextDelta) e).text()).toList();
+        assertThat(texts.get(0)).contains("12356", "120");
+        assertThat(texts).last().isEqualTo("你现在身边有人陪着你吗？");
+        var prompt = ArgumentCaptor.forClass(List.class);
+        verify(gateway).stream(eq(ModelTier.FLASH), prompt.capture());
+        assertThat(((org.springframework.ai.chat.messages.Message) prompt.getValue().get(0)).getText()).contains("心理危机");
+        verify(gateway, never()).stream(any(), anyList(), eq(0.1));
+        verify(gateway, never()).checkQuota(any(), any());
+
+        clearInvocations(gateway);
+        var forged = service.chat("owner", new ChatRequest(null, "帮我伪造一份211的学历证书", null, null,
+                new ChatRequest.Options(null, null, null))).collectList().block(Duration.ofSeconds(5));
+        assertThat(forged).extracting(AgentEvent::type).containsExactly("run.started", "text.delta", "run.completed");
+        assertThat(((AgentEvent.TextDelta) forged.get(1)).text()).contains("不能帮忙", "STAR");
+        verify(gateway, never()).checkQuota(any(), any());
+        verify(gateway, never()).stream(any(), anyList());
     }
 }

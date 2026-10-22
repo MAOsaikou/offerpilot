@@ -1,3 +1,4 @@
+import type { CareerCardDetails } from '@/shared/api/career'
 /**
  * 生成式 UI 卡片 payload 契约。
  * 与 docs/05-接口文档.md §18 对应；payload 是公共输入，卡片可选交互属性由宿主提供。
@@ -53,6 +54,9 @@ export interface CareerProfileConfirmPayload {
 }
 
 export interface CareerRecommendationPayload {
+  ordering?: 'interest' | 'constraints'
+  revisionId?: string
+  elapsedMs?: number
   hollandCode: string
   interestsUsed: string[]
   recommendations: Array<{
@@ -61,6 +65,10 @@ export interface CareerRecommendationPayload {
     family: string | null
     hollandCode: string
     similarity: number
+    rankingScore?: number
+    rankDelta?: number
+    changeReason?: string
+    details?: CareerCardDetails
     reasons: string[]
     citations?: Array<{ occupationId: string; title: string; excerpt: string }>
   }>
@@ -160,7 +168,7 @@ export interface CampusCalendarPayload {
     positions: string[]
     deadline: string
     url: string
-    daysLeft: number
+    daysLeft?: number
   }>
 }
 
@@ -196,7 +204,7 @@ export interface InterviewerStatePayload {
 
 export interface InterviewTurnScorePayload {
   turnIndex: number
-  score: number
+  score: number | null
   star: { situation: boolean; task: boolean; action: boolean; result: boolean }
   brief: string
 }
@@ -204,20 +212,23 @@ export interface InterviewTurnScorePayload {
 export interface InterviewReportPayload {
   id: string
   note?: string
-  overall: number
+  overall: number | null
   dimensions: {
-    professional: number
-    expression: number
-    logic: number
-    jobFit: number
+    professional: number | null
+    expression: number | null
+    logic: number | null
+    jobFit: number | null
     presence?: number
   }
   turns: Array<{
     question: string
     answerSummary: string
-    score: number
+    score: number | null
     star: { situation: boolean; task: boolean; action: boolean; result: boolean }
     feedback: string
+    evaluation?: import('./interview').InterviewEvaluation | null
+    improvedAnswer?: string | null
+    source?: string
     betterAnswerOutline: string[]
   }>
   strengths: string[]

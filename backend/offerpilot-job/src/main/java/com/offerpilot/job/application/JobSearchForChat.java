@@ -40,13 +40,21 @@ public class JobSearchForChat {
     }
 
     public ObjectNode search(String query, String site, String nature, String location) {
+        long deadline = JobSearchPipeline.deadline();
         if (query == null || query.isBlank() || query.length() > 100 || site == null || site.length() > 60
                 || location == null || location.length() > 60 || nature == null || !Set.of("campus", "intern", "social", "all").contains(nature))
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "搜索条件无效，请提供岗位关键词并检查城市、企业与招聘类型");
         String resolvedSite = SITE_ALIASES.getOrDefault(site.strip(), site.strip());
         if (!resolvedSite.isEmpty()) {
             JsonNode selected = null;
-            for (JsonNode candidate : jobs.sites().path("sites")) {
+            JsonNode directory;
+            try { directory = jobs.sites(deadline-java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(1700)); }
+            catch (BusinessException ex) {
+                if (ex.errorCode() != ErrorCode.TOOL_FAILED) throw ex;
+                // A failed directory must not discard available LOCAL_DB matches.
+                return card(jobs.search(query.strip(),resolvedSite,nature,location.strip(),deadline),query.strip(),resolvedSite,nature,location.strip());
+            }
+            for (JsonNode candidate : directory.path("sites")) {
                 if (resolvedSite.equalsIgnoreCase(candidate.path("id").asText()) || resolvedSite.equalsIgnoreCase(candidate.path("name").asText())) {
                     selected = candidate;
                     break;
@@ -61,7 +69,22 @@ public class JobSearchForChat {
             }
             resolvedSite = selected.path("id").asText();
         }
-        JsonNode result = jobs.search(query.strip(), resolvedSite, nature, location.strip());
+        return card(jobs.search(query.strip(), resolvedSite, nature, location.strip(),deadline),query.strip(),resolvedSite,nature,location.strip());
+    }
+
+    public record Prepared(ObjectNode preview, java.util.function.Supplier<ObjectNode> persist) {}
+
+    /** Only the orchestrator may choose this for a deterministic, validated rule route. */
+    public Prepared prepareRuleSearch(String query,String site,String nature,String location) {
+        if (!site.isEmpty()) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        var prepared=jobs.prepareRuleSearch(query,site,nature,location);
+        return new Prepared(card(prepared.preview(),query,site,nature,location),
+                () -> card(prepared.persist(),query,site,nature,location));
+    }
+
+    private ObjectNode card(JsonNode result,String query,String resolvedSite,String nature,String location) {
+        if (result.path("items").isEmpty() && result.path("meta").path("partial").asBoolean())
+            throw new BusinessException(ErrorCode.TOOL_FAILED, "本次查询的岗位来源均不可用，请稍后重试或选择其他企业");
         ObjectNode card = json.createObjectNode().put("schemaVersion", 2).put("returnedCount", result.path("items").size());
         card.set("criteria", json.valueToTree(java.util.Map.of("query", query.strip(), "site", resolvedSite,
                 "nature", nature, "location", location.strip())));
@@ -70,12 +93,15 @@ public class JobSearchForChat {
         for (JsonNode job : result.path("items")) {
             if (items.size() >= 5) break;
             var item = items.addObject();
-            for (String field : List.of("id", "site", "title", "company", "locations", "nature", "updatedAt"))
+            for (String field : List.of("id", "site", "title", "company", "locations", "nature", "updatedAt", "deadline", "url", "source", "snapshotDate", "retrievalSource", "storedAt"))
                 item.put(field, bounded(job.path(field).asText(), 200));
         }
         var meta = card.putObject("meta");
         for (String field : List.of("source", "snapshotDate", "sourceDescription", "fallbackReason"))
             if (result.path("meta").has(field)) meta.put(field, bounded(result.path("meta").path(field).asText(), 300));
+        for(String field:List.of("partial","timedOut","vectorAvailable"))
+            if(result.path("meta").has(field)) meta.put(field,result.path("meta").path(field).asBoolean());
+        if(result.path("meta").has("durationMs")) meta.put("durationMs",result.path("meta").path("durationMs").asLong());
         meta.put("cached", result.path("meta").path("cached").asBoolean());
         meta.put("truncated", result.path("meta").path("truncated").asBoolean());
         for (String field : List.of("sites", "degradedSites")) {

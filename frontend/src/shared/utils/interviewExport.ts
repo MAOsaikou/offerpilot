@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import type { InterviewAnswer } from '@/shared/types/interview'
 import { downloadText } from './download'
 import {
@@ -10,7 +11,10 @@ import {
 
 function localMarkdown(answers: InterviewAnswer[]) {
   return answers
-    .map((answer) => '## ' + answer.questionText + '\n\n' + (answer.answerText || '未作答'))
+    .map(
+      (answer) =>
+        '## ' + answer.questionText + '\n\n' + (answer.answerText || uiText('Unanswered')),
+    )
     .join('\n\n')
 }
 
@@ -33,8 +37,8 @@ export async function exportInterview(
     const markdown = await response.text()
     assertResponseIdentity(response)
     signal?.throwIfAborted()
-    downloadText(role + '-面试复盘包.md', markdown)
+    downloadText(role + uiText('-interview-review-package.md'), markdown)
     return
   }
-  downloadText(role + '-面试复盘.md', localMarkdown(answers))
+  downloadText(role + uiText('-interview-review.md'), localMarkdown(answers))
 }

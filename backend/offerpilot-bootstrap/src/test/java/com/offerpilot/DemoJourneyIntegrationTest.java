@@ -167,17 +167,26 @@ class DemoJourneyIntegrationTest {
         jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES ('job_real','real-site','real-1','intern','{}')");
         jdbc.update("INSERT INTO applications(id,user_id,job_id) VALUES ('app_demo_added',?,'job_real')", owner());
         jdbc.update("INSERT INTO conversations(id,user_id,title) VALUES ('conv_demo',?,'待清理')", owner());
+        jdbc.update("INSERT INTO career_assessments(user_id,answers) VALUES (?,'[\"上一位访客的回答\"]'::jsonb)", owner());
+        jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload,user_id) VALUES ('job_demo_import','imported','prev-visitor','campus','{}',?)", owner());
+        jdbc.update("INSERT INTO applications(id,user_id,job_id) VALUES ('app_demo_import',?,'job_demo_import')", owner());
         var draft = new com.offerpilot.knowledge.application.KnowledgeNoteService.Draft("其他用户笔记", "保留其他用户的原文", "技术积累");
         String otherNote = notes.create("usr_other", draft).id();
         notes.importNotes(owner(), java.util.List.of(new com.offerpilot.knowledge.application.KnowledgeNoteService.ImportEntry("old-demo", draft)));
         int occupations = jdbc.queryForObject("SELECT count(*) FROM occupations", Integer.class);
         String id = owner();
+        jdbc.update("INSERT INTO career_recommendation_revisions(id,user_id,snapshot) VALUES (? ,?,'{}')", id+"old-revision",id);
+        jdbc.update("UPDATE career_profiles SET major='上一位专业',courses='上一位课程',values_text='上一位价值观' WHERE user_id=?", id);
+        jdbc.update("INSERT INTO user_memories(id,user_id,kind,fact,normalized_fact,source,tsv) VALUES ('cd03-demo-memory',?,'OTHER','专业：上一位专业','专业：上一位专业','MANUAL','')", id);
         var first = resets.reset();
         var second = resets.reset();
         assertThat(first.resumeCount()).isEqualTo(2);
         assertThat(second.applicationCount()).isEqualTo(6);
         assertThat(second.jobCount()).isEqualTo(10);
         assertThat(second.knowledgeNoteCount()).isEqualTo(3);
+        assertThat(jdbc.queryForMap("SELECT major,courses,values_text FROM career_profiles WHERE user_id=?", id))
+                .containsEntry("major", "").containsEntry("courses", "").containsEntry("values_text", "");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_memories WHERE user_id=? AND fact LIKE '专业：%'", Integer.class, id)).isZero();
         assertThat(notes.get("usr_other", otherNote).content()).isEqualTo(draft.content());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM knowledge_note_imports WHERE user_id=?", Integer.class, id)).isZero();
         assertThat(notes.list(id,1,20).total()).isEqualTo(3);
@@ -192,6 +201,9 @@ class DemoJourneyIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT note FROM applications WHERE id='app_other'", String.class)).isEqualTo("保留其他用户");
         assertThat(jdbc.queryForObject("SELECT target FROM career_profiles WHERE user_id='usr_other'", String.class)).isEqualTo("其他用户目标");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM conversations WHERE user_id=?", Integer.class, id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM career_recommendation_revisions WHERE user_id=?", Integer.class, id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM career_assessments WHERE user_id=?", Integer.class, id)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM jobs WHERE user_id=?", Integer.class, id)).isZero();
         jdbc.update("UPDATE applications SET note='评委试用改动' WHERE user_id=?", id);
         bootstrap.run(new DefaultApplicationArguments());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM applications WHERE user_id=? AND note='评委试用改动'", Integer.class, id)).isEqualTo(6);
@@ -219,9 +231,11 @@ class DemoJourneyIntegrationTest {
         String id = owner();
         jdbc.update("UPDATE career_profiles SET target='保留试用改动' WHERE user_id=?", id);
         var memory = (MemoryDemoStorage) storage;
-        String key = "resumes/" + id + "/extra-upload";
+        String key = "knowledge/" + id + "/extra-upload";
         memory.put(key, new byte[]{1, 2, 3}, "application/pdf");
-        jdbc.update("INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256) VALUES ('file_extra',?,'RESUME',?,?,'extra.pdf','application/pdf',3,'fixture')", id, storage.bucket(), key);
+        jdbc.update("INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256) VALUES ('file_extra',?,'KB_DOCUMENT',?,?,'extra.pdf','application/pdf',3,'fixture')", id, storage.bucket(), key);
+        String note = notes.create(id, new com.offerpilot.knowledge.application.KnowledgeNoteService.Draft("上传资料", "保留上传原文", "技术积累")).id();
+        jdbc.update("UPDATE knowledge_notes SET source_file_id='file_extra',source_filename='extra.pdf' WHERE id=?", note);
         memory.failWrites = true;
         try { assertThatThrownBy(resets::reset).isInstanceOf(com.offerpilot.common.error.BusinessException.class); }
         finally { memory.failWrites = false; }
@@ -230,6 +244,8 @@ class DemoJourneyIntegrationTest {
         assertThat(memory.get(storage.bucket(), key)).containsExactly(1, 2, 3);
         resets.reset();
         assertThat(memory.get(storage.bucket(), key)).isNull();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM knowledge_notes WHERE id=?", Integer.class, note)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM files WHERE purpose='KB_DOCUMENT' AND user_id=?", Integer.class, id)).isZero();
     }
 
     @Test void concurrentResetsAndScheduledResetKeepOneCompleteJourney() {
@@ -313,6 +329,7 @@ class DemoJourneyIntegrationTest {
         assertThatThrownBy(() -> quotas.policy(owner)).isInstanceOf(com.offerpilot.common.error.BusinessException.class);
         jdbc.update("UPDATE users SET status='DISABLED' WHERE id=?",owner);
         sandboxes.cleanupExpired();
+        cleanup.retryPending();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE id=?", Integer.class,owner)).isZero();
         for (String table : jdbc.queryForList("SELECT table_name FROM information_schema.columns WHERE table_schema='public' AND column_name='user_id'",String.class))
             assertThat(jdbc.queryForObject("SELECT count(*) FROM "+table+" WHERE user_id=?",Integer.class,owner)).as(table).isZero();

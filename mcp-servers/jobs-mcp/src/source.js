@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { normalizeNature, DEFAULT_SITES, hasSite, searchAcrossSites } from './jobhunt.js';
+import { DEFAULT_LIVE_TIMEOUT_MS, DEFAULT_SITE_TIMEOUT_MS, positiveTimeout } from './config.js';
 
 // Single maintained source; the Docker image preserves this relative repository layout.
 const dataset = JSON.parse(readFileSync(new URL('../../../backend/offerpilot-job/src/main/resources/jobs/snapshot.json', import.meta.url), 'utf8'));
@@ -47,14 +48,15 @@ export function localSearch({ query, targets, nature, location = '', category = 
 
 /** Whole-query deadline also covers queued sites, not just each site's timeout. */
 export function createSearchHandler({ mode = process.env.JOBS_SOURCE_MODE ?? 'AUTO',
-  live = searchAcrossSites, timeoutMs = Number(process.env.JOBS_LIVE_TIMEOUT_MS || 10000),
-  siteTimeoutMs = Number(process.env.SITE_TIMEOUT_MS || 8000),
+  live = searchAcrossSites, timeoutMs = process.env.JOBS_LIVE_TIMEOUT_MS,
+  siteTimeoutMs = process.env.SITE_TIMEOUT_MS,
   concurrency = Number(process.env.MAX_PARALLEL_SITES || 6), warn = console.warn } = {}) {
   const resolvedMode = resolveMode(mode, warn);
-  const budget = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 10000;
+  const budget = positiveTimeout(timeoutMs, DEFAULT_LIVE_TIMEOUT_MS);
+  const siteBudget = positiveTimeout(siteTimeoutMs, DEFAULT_SITE_TIMEOUT_MS);
   return async ({ query = '', site, sites, nature, location = '', category = '', limit }) => {
     const keyword = String(query).trim();
-    if (!keyword || keyword.length > 100) throw new SearchInputError('搜索关键词须为 1–100 字符');
+    if (keyword.length > 100 || (!keyword && !site && !sites?.length && !location && !(nature && normalizeNature(nature) !== 'all'))) throw new SearchInputError('请提供关键词、企业或城市筛选条件');
     const targets = sites?.length ? sites : site ? [site] : resolvedMode === 'LOCAL' ? dataset.sites.map(s => s.id) : DEFAULT_SITES;
     if (targets.some(id => !hasSite(id))) throw new SearchInputError('未知站点，可用站点见 list_sites 工具');
     const options = { query: keyword, targets, nature: normalizeNature(nature), location, category,
@@ -66,19 +68,26 @@ export function createSearchHandler({ mode = process.env.JOBS_SOURCE_MODE ?? 'AU
     };
     if (resolvedMode === 'LOCAL') return fallback();
     let timer;
+    let partial;
+    const liveResult = (value, timedOut = false) => {
+      const jobs = value.jobs.slice(0, options.limit);
+      return { jobs, _meta: { source: 'company-career-site', query: keyword, nature: options.nature,
+        sites: targets, total: jobs.length, truncated: value.jobs.length > jobs.length,
+        cached: value.cached ?? false, skipped: value.skipped, degradedSites: value.degradedSites,
+        ...(timedOut ? { partial: true, timedOut: true, fallbackReason: 'LIVE_TIMEOUT' } : {}) } };
+    };
     const controller = new AbortController();
     try {
       const value = await Promise.race([
-        live(targets, options, { concurrency, timeoutMs: siteTimeoutMs, signal: controller.signal }),
+        live(targets, options, { concurrency, timeoutMs: siteBudget, signal: controller.signal,
+          onProgress: value => { partial = value; } }),
         new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('LIVE_TIMEOUT')); }, budget); }),
       ]);
       if (resolvedMode === 'AUTO' && value.skipped.length === targets.length) return fallback('ALL_SITES_FAILED');
       if (resolvedMode === 'AUTO' && !value.jobs.length && value.skipped.length) return fallback('EMPTY_DUE_TO_ERROR');
-      const jobs = value.jobs.slice(0, options.limit);
-      return { jobs, _meta: { source: 'company-career-site', query: keyword, nature: options.nature,
-        sites: targets, total: jobs.length, truncated: value.jobs.length > jobs.length,
-        cached: value.cached ?? false, skipped: value.skipped, degradedSites: value.degradedSites } };
+      return liveResult(value);
     } catch (error) {
+      if (error.message === 'LIVE_TIMEOUT' && partial?.jobs.length) return liveResult(partial, true);
       if (resolvedMode === 'LIVE') throw error;
       return fallback(error.message === 'LIVE_TIMEOUT' ? 'LIVE_TIMEOUT' : 'LIVE_UNAVAILABLE');
     } finally { clearTimeout(timer); }

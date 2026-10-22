@@ -32,12 +32,50 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 按档位选择模型，在供应商入口执行用户配额并累计已报告用量；回退与持久化审计日志待接入。
+ * 按档位选择模型，在供应商入口执行用户配额并累计已报告用量；聊天关联调用写入持久化用量审计。
  */
 @Component
 public class ModelGateway {
 
+    private static final String SCREEN_SESSION = ModelGateway.class.getName() + ".screen";
+    private static final String INPUT_SAFE = ModelGateway.class.getName() + ".inputSafe";
+    private static final String EFFECTS_GATE = ModelGateway.class.getName() + ".effects";
+
+    /** Gate all tool/memory effects, while model planning/generation can run concurrently. */
+    public static reactor.core.publisher.Mono<Void> beforeEffects() {
+        return reactor.core.publisher.Mono.deferContextual(context -> context.getOrDefault(EFFECTS_GATE,
+                reactor.core.publisher.Mono.<Void>empty()));
+    }
+
+    /** Whether this subscription has the original turn's shared safety gate. */
+    public static boolean hasInputSafetyGate(reactor.util.context.ContextView context) { return context.hasKey(INPUT_SAFE); }
+
+    /** Additional admission for speculative search snapshots; existing tool gate semantics stay unchanged. */
+    public static reactor.core.publisher.Mono<Boolean> inputSafetyPassed() {
+        return reactor.core.publisher.Mono.deferContextual(context -> context.getOrDefault(INPUT_SAFE,
+                reactor.core.publisher.Mono.just(false)));
+    }
+
+    public <T> Flux<T> withSafetyScreen(List<Message> messages, Flux<T> work) {
+        return Flux.deferContextual(context -> {
+            if (!environment.getProperty("offerpilot.agent.parallel-safety-screen", Boolean.class, true)) return work;
+            String owner = context.getOrDefault(LlmUserContext.KEY, LlmUserContext.current());
+            var session = new com.offerpilot.llm.safety.InputScreeningSession();
+            var ready = reactor.core.publisher.Sinks.<Boolean>one();
+            var policyOnly = com.offerpilot.llm.privacy.ModelInputBoundary.apply(new Prompt(messages),
+                    ignored -> List.of()).getInstructions();
+            var connection = ChatLatency.mono("input-safety", UsageJournal.callable(() -> inputBoundary(owner, new Prompt(messages), session))
+                    .subscribeOn(Schedulers.boundedElastic())).contextWrite(context)
+                    .subscribe(screened -> ready.tryEmitValue(screened.getInstructions().equals(policyOnly)), ready::tryEmitError);
+            return work.contextWrite(c -> c.put(SCREEN_SESSION, session).put(EFFECTS_GATE, ready.asMono().then()).put(INPUT_SAFE, ready.asMono()))
+                    .doFinally(signal -> { connection.dispose(); session.close(); });
+        });
+    }
+
     private static final Logger log = LoggerFactory.getLogger(ModelGateway.class);
+
+    @Autowired(required = false)
+    private UsageJournal usageJournal;
 
     private final OfferPilotProperties properties;
     private final Map<ModelTier, ChatModel> models = new ConcurrentHashMap<>();
@@ -52,15 +90,132 @@ public class ModelGateway {
     public boolean piiMaskingEnabled(String owner) { return owner == null || privacy == null || privacy.enabled(owner); }
     public String privacyWarning(String owner, String text) {
         return !piiMaskingEnabled(owner) && com.offerpilot.llm.privacy.PiiMasker.detects(text)
-                ? "检测到联系方式或身份证号。当前已关闭文本脱敏，相关信息可能发送给模型；建议在设置中开启。" : null;
+                ? "检测到联系方式、身份证号或住址。当前已关闭文本脱敏，相关信息可能发送给模型；建议在设置中开启。" : null;
     }
     private com.offerpilot.llm.privacy.PiiMasker.Session masking(String owner, Prompt prompt) {
         return piiMaskingEnabled(owner) ? com.offerpilot.llm.privacy.PiiMasker.forPrompt(prompt) : null;
     }
-    private Flux<ChatResponse> protectedStream(String owner, Prompt prompt, java.util.function.Function<Prompt, Flux<ChatResponse>> provider) {
-        prompt = com.offerpilot.llm.privacy.ModelInputBoundary.apply(prompt);
-        var session = masking(owner, prompt);
-        return session == null ? provider.apply(prompt) : session.restore(provider.apply(session.mask(prompt)));
+    private Flux<ChatResponse> screenedStream(ModelTier tier, String capturedOwner, Prompt prompt,
+            java.util.function.Function<Prompt, Flux<ChatResponse>> provider) {
+        var capturedScope = UsageJournal.current();
+        return Flux.deferContextual(context -> {
+            String owner = context.getOrDefault(LlmUserContext.KEY, capturedOwner);
+            requireAvailable(tier, false);
+            checkQuota(owner, tier);
+            java.util.function.Function<Prompt, Flux<ChatResponse>> outbound = screened -> {
+                var session = masking(owner, screened);
+                var response = provider.apply(session == null ? screened : session.mask(screened));
+                return moderation().guard(session == null ? response : session.restore(response));
+            };
+            java.util.function.Function<Prompt, Flux<ChatResponse>> generate = screened ->
+                    guardedStream(tier, owner, ignored -> outbound.apply(screened));
+            if (!environment.getProperty("offerpilot.agent.parallel-safety-screen", Boolean.class, true)
+                    || !environment.getProperty("offerpilot.llm.injection-classifier-enabled", Boolean.class, true))
+                // Preserve serial admission ordering: reserve the generation request before classifying.
+                return guardedStream(tier, owner, ignored -> outbound.apply(
+                        UsageJournal.asScope(context.getOrDefault(UsageJournal.KEY, null),
+                                () -> inputBoundary(owner, prompt, context.getOrDefault(SCREEN_SESSION, null)))));
+            // Rules and the fixed policy are always installed before speculative provider IO.
+            Prompt rules = com.offerpilot.llm.privacy.ModelInputBoundary.apply(prompt);
+            var verdict = ChatLatency.mono("prompt-safety", UsageJournal.callable(() -> inputBoundary(owner, prompt, context.getOrDefault(SCREEN_SESSION, null))).contextWrite(context)
+                    .subscribeOn(Schedulers.boundedElastic()));
+            return com.offerpilot.llm.safety.ScreenedGeneration.release(verdict, generate.apply(rules),
+                    screened -> screened.getInstructions().equals(rules.getInstructions()), generate);
+        }).contextWrite(c -> capturedScope == null || c.hasKey(UsageJournal.KEY) ? c : c.put(UsageJournal.KEY, capturedScope))
+          .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private final com.offerpilot.llm.safety.PromptInjectionClassifier injectionClassifier =
+            new com.offerpilot.llm.safety.PromptInjectionClassifier(this::classifyInjection);
+    private volatile ChatModel injectionModel;
+
+    /** Same SC-01 screen for gateway inputs and import notices; owner comes from verified application context. */
+    public List<String> detectInjection(String text) {
+        return detectInjection(text, com.offerpilot.llm.safety.PromptInjectionClassifier.TIMEOUT);
+    }
+
+    private List<String> detectInjection(String text, java.time.Duration budget) {
+        if (!environment.getProperty("offerpilot.llm.injection-classifier-enabled", Boolean.class, true))
+            return com.offerpilot.llm.safety.PromptInjectionDetector.detect(text);
+        var result = injectionClassifier.detectWithMetadata(text, budget);
+        injectionClassificationCompleted(result);
+        return result.categories();
+    }
+
+    /** Observation hook: immutable per-call outcomes only; never raw inputs or provider outputs. */
+    protected void injectionClassificationCompleted(
+            com.offerpilot.llm.safety.PromptInjectionClassifier.Detection result) {}
+
+    private Prompt inputBoundary(String owner, Prompt prompt) {
+        return inputBoundary(owner, prompt, null);
+    }
+
+    private Prompt inputBoundary(String owner, Prompt prompt, com.offerpilot.llm.safety.InputScreeningSession session) {
+        long started = System.nanoTime();
+        long deadline = started + com.offerpilot.llm.safety.PromptInjectionClassifier.TIMEOUT.toNanos();
+        var screened = com.offerpilot.llm.privacy.ModelInputBoundary.apply(prompt, text -> LlmUserContext.asUser(owner,
+                () -> session == null ? detectInjection(text, java.time.Duration.ofNanos(deadline - System.nanoTime()))
+                        : session.detect(text, java.time.Duration.ofNanos(deadline - System.nanoTime()), this::detectInjection)));
+        log.debug("AG02 phase=safety elapsedMs={}", (System.nanoTime() - started) / 1_000_000);
+        return screened;
+    }
+
+    /** Dedicated provider entry: no recursion/tools/provider retries; classifier owns the bounded format retry. */
+    protected reactor.core.publisher.Mono<String> classifyInjection(Prompt prompt) {
+        requireAvailable(ModelTier.FLASH, false);
+        var admission = admit(LlmUserContext.current(), ModelTier.FLASH);
+        var session = masking(LlmUserContext.current(), prompt);
+        var outbound = session == null ? prompt : session.mask(prompt);
+        AtomicLong usage = new AtomicLong();
+        var responses = injectionModel().stream(outbound);
+        if (usageJournal != null && UsageJournal.current() != null)
+            responses = usageJournal.observe(UsageJournal.current(), ModelTier.FLASH, modelName(ModelTier.FLASH),
+                    responses.publishOn(Schedulers.boundedElastic()));
+        return responses
+                .doOnNext(response -> usage.accumulateAndGet(tokens(response), Math::max))
+                .map(response -> response.getResult() == null || response.getResult().getOutput().getText() == null
+                        ? "" : response.getResult().getOutput().getText())
+                .reduce(new StringBuilder(), (body, part) -> {
+                    if (body.length() + part.length() > 2048)
+                        throw new com.offerpilot.llm.safety.PromptInjectionClassifier.InvalidOutputException();
+                    return body.append(part);
+                }).map(StringBuilder::toString)
+                .doFinally(signal -> record(admission, usage.get()));
+    }
+
+    private synchronized ChatModel injectionModel() {
+        if (injectionModel == null) {
+            var retry = new RetryTemplate();
+            retry.setRetryPolicy(new org.springframework.retry.policy.NeverRetryPolicy());
+            var support = new DeepSeekRequestSupport("disabled", com.offerpilot.llm.safety.PromptInjectionClassifier.TIMEOUT);
+            var api = org.springframework.ai.openai.api.OpenAiApi.builder().baseUrl(baseUrl(ModelTier.FLASH))
+                    .apiKey(apiKey(ModelTier.FLASH)).completionsPath(completionsPath(ModelTier.FLASH));
+            if ("deepseek".equalsIgnoreCase(configuration(ModelTier.FLASH).provider()))
+                api.restClientBuilder(support.restClient()).webClientBuilder(support.webClient());
+            injectionModel = OpenAiChatModel.builder().openAiApi(api.build()).retryTemplate(retry)
+                    .observationRegistry(observations).defaultOptions(OpenAiChatOptions.builder()
+                            .model(modelName(ModelTier.FLASH)).temperature(0.0).maxTokens(160).streamUsage(true).build()).build();
+        }
+        return injectionModel;
+    }
+
+    @Autowired(required = false)
+    private io.micrometer.core.instrument.MeterRegistry meters;
+    private volatile com.offerpilot.llm.safety.OutputModeration moderation;
+    /** Built lazily from the configured provider keys and JWT secret; their values are never logged. */
+    com.offerpilot.llm.safety.OutputModeration moderation() {
+        if (moderation == null) {
+            var secrets = new java.util.ArrayList<String>();
+            for (String key : List.of("spring.ai.deepseek.api-key", "spring.ai.deepseek.chat.api-key", "spring.ai.openai.api-key",
+                    "spring.ai.openai.chat.api-key", "spring.ai.openai.embedding.api-key", "offerpilot.security.jwt-secret",
+                    "offerpilot.llm.providers.custom.api-key", "offerpilot.mcp.search-api-key",
+                    "offerpilot.mcp.github-token", "offerpilot.mcp.server-api-key"))
+                secrets.add(environment.getProperty(key, ""));
+            moderation = new com.offerpilot.llm.safety.OutputModeration(secrets, category -> {
+                if(meters!=null) meters.counter("offerpilot.output.blocked", "category",category).increment();
+            });
+        }
+        return moderation;
     }
 
     /** Compatibility constructor for isolated tests/live evaluations without business identity or Redis. */
@@ -112,15 +267,18 @@ public class ModelGateway {
             @Override public ChatResponse call(Prompt prompt) {
                 String owner = LlmUserContext.current() == null ? capturedOwner : LlmUserContext.current();
                 var admission = admit(owner, tier);
-                prompt = com.offerpilot.llm.privacy.ModelInputBoundary.apply(prompt);
+                prompt = inputBoundary(owner, prompt);
                 var session = masking(owner, prompt);
-                ChatResponse response = delegate.call(session == null ? prompt : session.mask(prompt));
+                Prompt outbound = session == null ? prompt : session.mask(prompt);
+                ChatResponse response = usageJournal == null || UsageJournal.current() == null ? delegate.call(outbound)
+                        : usageJournal.observe(UsageJournal.current(),tier,modelName(tier),
+                                Flux.defer(() -> Flux.just(delegate.call(outbound)))).blockLast();
                 if (session != null) response = session.restore(response);
                 record(admission, tokens(response));
-                return response;
+                return moderation().check(response);
             }
             @Override public Flux<ChatResponse> stream(Prompt prompt) {
-                return guardedStream(tier, capturedOwner, owner -> protectedStream(owner, prompt, delegate::stream));
+                return screenedStream(tier, capturedOwner, prompt, delegate::stream);
             }
         };
     }
@@ -145,27 +303,16 @@ public class ModelGateway {
     }
 
     public Flux<ChatResponse> stream(ModelTier tier, List<Message> messages, double temperature) {
-        return guardedStream(tier, LlmUserContext.current(), owner -> {
-            var rawPrompt = com.offerpilot.llm.privacy.ModelInputBoundary.apply(new Prompt(messages));
-            var session = masking(owner, rawPrompt);
-            List<Message> outbound = session == null ? rawPrompt.getInstructions() : session.mask(rawPrompt).getInstructions();
-            // Spring AI 1.0 的 DeepSeek 适配器不处理图片；图文请求使用同一供应商的兼容接口。
-            boolean hasImages = messages.stream().anyMatch(message -> message instanceof
-                    org.springframework.ai.chat.messages.UserMessage user && !user.getMedia().isEmpty());
+        boolean hasImages = messages.stream().anyMatch(message -> message instanceof
+                org.springframework.ai.chat.messages.UserMessage user && !user.getMedia().isEmpty());
+        ChatOptions options = hasImages || !"deepseek".equalsIgnoreCase(configuration(tier).provider())
+                ? OpenAiChatOptions.builder().model(modelName(tier)).temperature(temperature)
+                        .maxTokens(configuration(tier).maxTokens()).streamUsage(true).build()
+                : DeepSeekChatOptions.builder().model(modelName(tier)).temperature(temperature)
+                        .maxTokens(configuration(tier).maxTokens()).build();
+        return screenedStream(tier, LlmUserContext.current(), new Prompt(messages, options), outbound -> {
             requireAvailable(tier, hasImages);
-            if (hasImages) {
-                var response = compatibleModel(tier).stream(new Prompt(outbound,
-                        OpenAiChatOptions.builder().model(modelName(tier)).temperature(temperature)
-                                .maxTokens(configuration(tier).maxTokens()).streamUsage(true).build()));
-                return session == null ? response : session.restore(response);
-            }
-            ChatOptions options = "deepseek".equalsIgnoreCase(configuration(tier).provider())
-                    ? DeepSeekChatOptions.builder().model(modelName(tier)).temperature(temperature)
-                            .maxTokens(configuration(tier).maxTokens()).build()
-                    : OpenAiChatOptions.builder().model(modelName(tier)).temperature(temperature)
-                            .maxTokens(configuration(tier).maxTokens()).streamUsage(true).build();
-            var response = providerModel(tier).stream(new Prompt(outbound, options));
-            return session == null ? response : session.restore(response);
+            return (hasImages ? compatibleModel(tier) : providerModel(tier)).stream(outbound);
         });
     }
 
@@ -180,18 +327,31 @@ public class ModelGateway {
 
     private Flux<ChatResponse> guardedStream(ModelTier tier, String capturedOwner,
             java.util.function.Function<String, Flux<ChatResponse>> provider) {
+        var capturedScope = UsageJournal.current();
         return Flux.deferContextual(context -> {
             String owner = context.getOrDefault(LlmUserContext.KEY, capturedOwner);
             // Validate configuration before consuming a request; quotas always run before provider IO.
             requireAvailable(tier, false);
-            var admission = admit(owner, tier);
+            ChatLatency timing = context.getOrDefault(ChatLatency.KEY, null);
+            var admission = timing == null ? admit(owner, tier) : timing.measure("model-admission", () -> admit(owner, tier));
             AtomicLong usage = new AtomicLong();
-            return provider.apply(owner).timeout(configuration(tier).timeout())
-                    .publishOn(Schedulers.boundedElastic())
+            Flux<ChatResponse> providerResponses = timing == null ? provider.apply(owner)
+                    : timing.measure("provider-setup", () -> provider.apply(owner));
+            var first = new java.util.concurrent.atomic.AtomicBoolean();
+            Flux<ChatResponse> responses = ChatLatency.flux("provider-stream", providerResponses.doOnNext(chunk -> {
+                if (timing != null && chunk.getResult() != null && chunk.getResult().getOutput() != null
+                        && chunk.getResult().getOutput().getText() != null && !chunk.getResult().getOutput().getText().isEmpty()
+                        && first.compareAndSet(false, true)) timing.mark("provider-first");
+            })).timeout(configuration(tier).timeout())
+                    .publishOn(Schedulers.boundedElastic());
+            UsageJournal.Scope scope = context.getOrDefault(UsageJournal.KEY, null);
+            if (usageJournal != null && scope != null) responses = usageJournal.observe(scope, tier, modelName(tier), responses);
+            return responses
                     // Stream usage is cumulative; repeated metadata must not be counted twice.
                     .doOnNext(response -> usage.accumulateAndGet(tokens(response), Math::max))
-                    .doOnComplete(() -> record(admission, usage.get()));
-        }).subscribeOn(Schedulers.boundedElastic());
+                    .doFinally(signal -> record(admission, usage.get()));
+        }).contextWrite(c -> capturedScope == null || c.hasKey(UsageJournal.KEY) ? c : c.put(UsageJournal.KEY, capturedScope))
+          .subscribeOn(Schedulers.boundedElastic());
     }
 
     private static long tokens(ChatResponse response) {

@@ -4,10 +4,16 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useConversationChat } from './useConversationChat'
 import { conversationsApi } from '@/shared/api/conversations'
 import { useAgentRunStore } from '@/shared/stores/agentRun'
+import { getAgentWorkbench } from '@/shared/api/agent'
 import type { Conversation, MessagePage } from '@/shared/types/conversation'
 
 const startMock = vi.hoisted(() => vi.fn())
+const attachMock = vi.hoisted(() => vi.fn())
 
+vi.mock('@/shared/api/agent', async (load) => ({
+  ...(await load<typeof import('@/shared/api/agent')>()),
+  getAgentWorkbench: vi.fn().mockResolvedValue([]),
+}))
 vi.mock('@/shared/api/conversations', () => ({
   conversationsApi: {
     list: vi.fn(),
@@ -22,6 +28,7 @@ vi.mock('@/shared/composables/useAgentStream', () => ({
   useAgentStream: () => ({
     streaming: ref(false),
     start: startMock,
+    attach: attachMock,
     stop: vi.fn().mockResolvedValue(undefined),
   }),
 }))
@@ -56,6 +63,7 @@ beforeEach(() => {
   scope = effectScope()
   vi.mocked(conversationsApi.list).mockResolvedValue({ items: [], page: 1, size: 20, total: 0 })
   startMock.mockResolvedValue('run')
+  vi.mocked(getAgentWorkbench).mockResolvedValue([])
 })
 afterEach(() => scope.stop())
 describe('持久会话状态', () => {
@@ -156,4 +164,117 @@ describe('持久会话状态', () => {
     expect(saved?.cards?.map((c) => c.cardId)).toEqual(['card_1'])
     expect(saved?.reasoning).toBe('先查岗位')
   })
+})
+
+it('打开会话时最后一条回复仍在生成：接上运行流，结束后以服务端记录为准', async () => {
+  const running = messagePage('live')
+  running.items[0]!.status = 'RUNNING'
+  running.items[0]!.plainText = '已保存的前半段'
+  vi.mocked(conversationsApi.get).mockResolvedValue(conv('a'))
+  vi.mocked(conversationsApi.messages)
+    .mockResolvedValueOnce(running)
+    .mockResolvedValueOnce(messagePage('live'))
+  let finish!: (runId: string) => void
+  attachMock.mockReturnValue(new Promise<string>((resolve) => (finish = resolve)))
+  const chat = scope.run(() => useConversationChat())!
+  await chat.open('a')
+  expect(attachMock).toHaveBeenCalledWith('run')
+  expect(chat.busy.value).toBe(true)
+  finish('run')
+  await vi.waitFor(() => expect(chat.sending.value).toBe(false))
+  expect(chat.messages.value.map((m) => [m.text, m.status])).toEqual([['live', 'COMPLETED']])
+})
+
+describe('会话列表乐观更新（AG-01）', () => {
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    let reject!: (reason: unknown) => void
+    const promise = new Promise<T>((ok, fail) => {
+      resolve = ok
+      reject = fail
+    })
+    return { promise, resolve, reject }
+  }
+  async function loaded() {
+    vi.mocked(conversationsApi.list).mockResolvedValue({
+      items: [conv('a'), conv('b')],
+      page: 1,
+      size: 20,
+      total: 2,
+    })
+    const chat = scope.run(useConversationChat)!
+    await chat.refreshList()
+    return chat
+  }
+
+  it('重命名与置顶立即生效，服务端失败时回滚并提示', async () => {
+    const chat = await loaded()
+    const pending = deferred<Conversation>()
+    vi.mocked(conversationsApi.update).mockReturnValueOnce(pending.promise)
+    const result = chat.update('a', { title: '新标题', pinned: true })
+    expect(chat.conversations.value[0]).toMatchObject({ title: '新标题', pinned: true })
+    pending.reject(new Error('保存失败'))
+    expect(await result).toBe(false)
+    expect(chat.conversations.value.map((c) => c.title)).toEqual(['a', 'b'])
+    expect(chat.conversations.value[0]!.pinned).toBe(false)
+    expect(chat.listError.value).toContain('保存失败')
+  })
+
+  it('删除立即从列表移除，失败时恢复原位置', async () => {
+    const chat = await loaded()
+    const pending = deferred<void>()
+    vi.mocked(conversationsApi.delete).mockReturnValueOnce(pending.promise)
+    const result = chat.remove('a')
+    expect(chat.conversations.value.map((c) => c.id)).toEqual(['b'])
+    pending.reject(new Error('删除失败'))
+    expect(await result).toBe(false)
+    expect(chat.conversations.value.map((c) => c.id)).toEqual(['a', 'b'])
+  })
+
+  it('成功后采用服务端返回的会话', async () => {
+    const chat = await loaded()
+    const saved = { ...conv('a'), title: '服务端标题' }
+    vi.mocked(conversationsApi.update).mockResolvedValueOnce(saved)
+    vi.mocked(conversationsApi.list).mockResolvedValue({
+      items: [saved, conv('b')],
+      page: 1,
+      size: 20,
+      total: 2,
+    })
+    expect(await chat.update('a', { title: '本地标题' })).toBe(true)
+    await vi.waitFor(() => expect(chat.conversations.value[0]!.title).toBe('服务端标题'))
+    expect(conversationsApi.list).toHaveBeenCalledTimes(2)
+  })
+})
+
+it('restores persisted plan and final step state when opening a completed conversation', async () => {
+  vi.mocked(conversationsApi.get).mockResolvedValue(conv('conv'))
+  vi.mocked(conversationsApi.messages).mockResolvedValue(messagePage('saved'))
+  const base = { runId: 'run', ts: '2026-10-19T00:00:00Z' }
+  vi.mocked(getAgentWorkbench).mockResolvedValue([
+    {
+      ...base,
+      id: 1,
+      type: 'plan.created',
+      goal: '已保存的计划',
+      steps: [{ id: 's', title: '跟进', agent: 'JOB', status: 'PENDING', dependsOn: [] }],
+    },
+    { ...base, id: 2, type: 'step.updated', stepId: 's', status: 'SKIPPED', summary: '上游失败' },
+  ])
+  const chat = scope.run(() => useConversationChat())!
+  await chat.open('conv')
+  expect(getAgentWorkbench).toHaveBeenCalledWith('run')
+  expect(useAgentRunStore().activeRun?.goal).toBe('已保存的计划')
+  expect(useAgentRunStore().activeRun?.steps[0]?.status).toBe('SKIPPED')
+  expect(useAgentRunStore().activeRun?.status).toBe('COMPLETED')
+})
+
+it('keeps the saved reply readable and reports workbench load failure', async () => {
+  vi.mocked(conversationsApi.get).mockResolvedValue(conv('conv'))
+  vi.mocked(conversationsApi.messages).mockResolvedValue(messagePage('saved'))
+  vi.mocked(getAgentWorkbench).mockRejectedValue(new Error('offline'))
+  const chat = scope.run(() => useConversationChat())!
+  await chat.open('conv')
+  expect(chat.messages.value[0]?.text).toBe('saved')
+  expect(chat.error.value).toContain('执行过程暂时无法读取')
 })

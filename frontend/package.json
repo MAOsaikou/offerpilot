@@ -17,11 +17,13 @@
     "format": "prettier --write \"src/**/*.{ts,vue,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,vue,css}\"",
     "test": "vitest",
+    "test:full": "vitest --mode full",
     "gen:api": "openapi-typescript http://localhost:8081/v3/api-docs -o src/shared/api/schema.d.ts"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.3.0",
     "@tanstack/vue-query": "^5.102.8",
+    "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.15",
     "markdown-it": "^15.0.1",

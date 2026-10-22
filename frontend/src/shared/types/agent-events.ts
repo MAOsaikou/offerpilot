@@ -10,7 +10,7 @@ export type ExpertType = Exclude<AgentMode, 'AUTO'>
 
 export type StepStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'SKIPPED'
 
-export type ToolSource = 'local' | `mcp:${string}`
+export type ToolSource = 'LOCAL' | 'MCP' | 'local' | `mcp:${string}`
 
 export type ToolAccess = 'READ' | 'WRITE' | 'EXTERNAL_SIDE_EFFECT'
 
@@ -28,7 +28,7 @@ export interface CitationSource {
   docId: string
   title: string
   snippet: string
-  score: number
+  score: number | null
   url?: string
   collection: string
   index: number
@@ -64,6 +64,7 @@ export type AgentEvent =
       toolCallId: string
       name: string
       args: unknown
+      serverName?: string
       source: ToolSource
       access: ToolAccess
     })
@@ -72,6 +73,9 @@ export type AgentEvent =
       toolCallId: string
       name: string
       ok: boolean
+      source?: ToolSource
+      serverName?: string
+      result?: unknown
       resultPreview: string
       durationMs: number
       truncated: boolean
@@ -99,7 +103,9 @@ export type AgentEvent =
       model: string
       promptTokens: number
       completionTokens: number
-      costEstimate: number
+      costEstimate: number | null
+      durationMs?: number | null
+      usageReported?: boolean
       fallbackUsed: boolean
     })
   | (EventBase & { type: 'error'; code: number; message: string; recoverable: boolean })
@@ -116,7 +122,8 @@ export type AgentEventType = AgentEvent['type']
 export interface ChatRequest {
   conversationId?: string
   content: string
-  attachments?: Array<{ fileId: string; kind: 'IMAGE' | 'PDF' | 'DOCX' | 'AUDIO' }>
+  /** AG-02：目前只支持图片，先经 POST /agent/attachments 上传 */
+  attachments?: Array<{ fileId: string; kind: 'image' }>
   mode?: AgentMode
   options?: {
     modelTier?: ModelTier

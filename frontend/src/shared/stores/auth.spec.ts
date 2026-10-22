@@ -9,7 +9,7 @@ import { streamAgentChat } from '@/shared/api/agent'
 import { createApp, defineComponent, nextTick, onUnmounted, ref } from 'vue'
 import App from '@/app/App.vue'
 import { identitySignal } from '@/shared/utils/authSession'
-import { optimizeResume } from '@/shared/api/optimizations'
+import { optimizeResumeStream as optimizeResume } from '@/shared/api/optimizations'
 import { listStaffUsers, setUserStatus } from '@/shared/api/auth'
 import { authenticatedHeaders, fetchWithIdentity } from '@/shared/api/client'
 
@@ -191,7 +191,8 @@ it.each([null, 'existing-guest'])(
       auth.logout()
       const responses = await Promise.all(pending)
       expect(pending).toHaveLength(1)
-      expect(fetch).not.toHaveBeenCalled()
+      // Only the refresh-cookie revocation is sent: no guest creation, no queued request.
+      expect(fetch.mock.calls.map((call) => String(call[0]))).toEqual(['/api/v1/auth/logout'])
       expect(responses[0]).toMatchObject({ code: 20002 })
       expect(localStorage.getItem('offerpilot-guest-v1')).toBe(guest)
     } finally {
@@ -214,8 +215,9 @@ it('当前访客 401 保留访问凭据，不允许创建新身份替代历史',
   expect(localStorage.getItem('offerpilot-guest-v1')).toBe('expired-guest')
 })
 
-it('令牌达到 exp 时主动进入重新认证状态', async () => {
+it('令牌达到 exp 时主动进入重新认证状态（续期不可用时）', async () => {
   vi.useFakeTimers()
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
   const expires = Math.floor(Date.now() / 1000) + 2
   localStorage.setItem('offerpilot-access-token', jwt('A', expires))
   const auth = useAuthStore()
@@ -250,6 +252,7 @@ it('切换账号清除简历缓存，B 必须读取自己的数据', async () =>
   const fetch = vi
     .fn()
     .mockResolvedValueOnce(loginResponse('A'))
+    .mockResolvedValueOnce(new Response('{}')) // logout revokes the refresh cookie
     .mockResolvedValueOnce(loginResponse('B'))
   vi.stubGlobal('fetch', fetch)
   const auth = useAuthStore()
@@ -266,7 +269,11 @@ it('切换账号清除简历缓存，B 必须读取自己的数据', async () =>
 it('身份切换取消旧查询，迟到结果不能重填缓存', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValueOnce(loginResponse('A')).mockResolvedValueOnce(loginResponse('B')),
+    vi
+      .fn()
+      .mockResolvedValueOnce(loginResponse('A'))
+      .mockResolvedValueOnce(new Response('{}')) // logout revokes the refresh cookie
+      .mockResolvedValueOnce(loginResponse('B')),
   )
   const auth = useAuthStore()
   await auth.login('A@example.com', 'password')
@@ -545,4 +552,52 @@ it('体验账号未启用时保留当前身份并交付 403 错误', async () =>
   await auth.login('A@example.com', 'password')
   await expect(auth.demoLogin()).rejects.toMatchObject({ code: 20007, message: '体验账号未启用' })
   expect(auth.user?.id).toBe('A')
+})
+
+it('访问令牌临期时用 refresh Cookie 续期，同一账号不重置缓存和视图', async () => {
+  localStorage.setItem('offerpilot-access-token', jwt('A', Math.floor(Date.now() / 1000) + 30))
+  localStorage.setItem(
+    'offerpilot-auth-user',
+    JSON.stringify({ id: 'A', email: 'A@example.com', nickname: 'A', roles: ['USER'] }),
+  )
+  const renewed = jwt('A')
+  const fetch = vi.fn(async (url: string, _init?: RequestInit) =>
+    url.endsWith('/auth/refresh')
+      ? new Response(
+          JSON.stringify({
+            data: { accessToken: renewed, expiresIn: 900, user: { id: 'A', roles: ['USER'] } },
+          }),
+        )
+      : new Response(JSON.stringify({ data: ['A-resume'] })),
+  )
+  vi.stubGlobal('fetch', fetch)
+  const auth = useAuthStore()
+  const keyBefore = auth.identityKey
+  queryClient.setQueryData(['private'], 'kept')
+  const session = identitySignal()
+  // Two concurrent requests share one refresh, then both use the renewed token.
+  const [a, b] = await Promise.all([apiRequest('/resumes'), apiRequest('/resumes')])
+  expect(a).toEqual(['A-resume'])
+  expect(b).toEqual(['A-resume'])
+  const refreshCalls = fetch.mock.calls.filter(([url]) => String(url).endsWith('/auth/refresh'))
+  expect(refreshCalls).toHaveLength(1)
+  expect(refreshCalls[0]![1]).toMatchObject({ method: 'POST', credentials: 'include' })
+  const resumeCall = fetch.mock.calls.find(([url]) => String(url).endsWith('/resumes'))!
+  expect(new Headers(resumeCall[1]?.headers).get('Authorization')).toBe(`Bearer ${renewed}`)
+  expect(localStorage.getItem('offerpilot-access-token')).toBe(renewed)
+  expect(auth.identityKey).toBe(keyBefore)
+  expect(session.aborted).toBe(false)
+  expect(queryClient.getQueryData(['private'])).toBe('kept')
+})
+
+it('refresh 被拒（Cookie 过期或已撤销）时回到登录', async () => {
+  localStorage.setItem('offerpilot-access-token', jwt('A', Math.floor(Date.now() / 1000) - 5))
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 20003 }), { status: 401 })),
+  )
+  const auth = useAuthStore()
+  await expect(apiRequest('/resumes')).rejects.toMatchObject({ code: 20002 })
+  expect(auth.isLoggedIn).toBe(false)
+  expect(auth.requiresLogin).toBe(true)
 })

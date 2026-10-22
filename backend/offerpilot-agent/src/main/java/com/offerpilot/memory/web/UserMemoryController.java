@@ -19,6 +19,16 @@ public class UserMemoryController {
     @GetMapping public ApiResponse<?> list(HttpServletRequest request) {
         return ApiResponse.ok(memories.list(users.require(request.getHeader("Authorization"))), TraceIdFilter.current(request));
     }
+    @GetMapping("/candidates") public ApiResponse<?> candidates(HttpServletRequest request) {
+        return ApiResponse.ok(memories.candidates(users.require(request.getHeader("Authorization"))), TraceIdFilter.current(request));
+    }
+    @PostMapping("/candidates/{id}/confirm") public ApiResponse<?> confirm(@PathVariable String id, HttpServletRequest request) {
+        return ApiResponse.ok(memories.confirmCandidate(users.require(request.getHeader("Authorization")),id), TraceIdFilter.current(request));
+    }
+    @DeleteMapping("/candidates/{id}") public ApiResponse<?> discard(@PathVariable String id, HttpServletRequest request) {
+        memories.deleteCandidate(users.require(request.getHeader("Authorization")),id);
+        return ApiResponse.ok(null, TraceIdFilter.current(request));
+    }
     @PutMapping("/settings") public ApiResponse<?> settings(@Valid @RequestBody Selection selection, HttpServletRequest request) {
         return ApiResponse.ok(memories.settings(users.require(request.getHeader("Authorization")), selection.memoryEnabled()), TraceIdFilter.current(request));
     }

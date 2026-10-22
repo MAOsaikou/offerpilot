@@ -1,4 +1,5 @@
-import { onScopeDispose, ref, watch } from 'vue'
+import { localizedText, translate as uiText } from '@/shared/utils/language'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { Job, Workspace, Stage } from '@/shared/types/workspace'
 import {
@@ -151,8 +152,15 @@ export function createWorkspace(): Workspace {
   }
 }
 export const useWorkspace = defineStore('workspace', () => {
-  const storageError = ref('')
+  const storageError = localizedText()
   const state = ref<Workspace>(createWorkspace())
+  const displayName = computed({
+    get: () =>
+      !state.value.name || state.value.name === '求职者' ? uiText('Job seeker') : state.value.name,
+    set: (name: string) => {
+      state.value.name = name
+    },
+  })
   let boundIdentity: string | undefined
   let boundKey = ''
   let stopPersistence: (() => void) | undefined
@@ -186,19 +194,27 @@ export const useWorkspace = defineStore('workspace', () => {
               localStorage.removeItem(LEGACY_KEY)
               raw = legacy
             } else {
-              storageError.value = '本地数据格式不兼容，已打开临时工作区；原数据未覆盖。'
+              storageError.value = () =>
+                uiText(
+                  'Local data format is incompatible. A temporary workspace is open; original data is unchanged.',
+                )
             }
           }
         }
         if (raw !== null) {
           const parsed: unknown = JSON.parse(raw)
           if (isWorkspace(parsed)) state.value = parsed
-          else storageError.value = '本地数据格式不兼容，已打开临时工作区；原数据未覆盖。'
+          else
+            storageError.value = () =>
+              uiText(
+                'Local data format is incompatible. A temporary workspace is open; original data is unchanged.',
+              )
         }
       } catch {
         stopPersistence?.()
         state.value = createWorkspace()
-        storageError.value = '无法读取本地数据，本次修改可能无法在刷新后保留。'
+        storageError.value = () =>
+          uiText('Could not read local data. Changes may not survive a refresh.')
       }
 
       const blocked = Boolean(storageError.value)
@@ -211,7 +227,8 @@ export const useWorkspace = defineStore('workspace', () => {
             localStorage.setItem(key, JSON.stringify(value))
             storageError.value = ''
           } catch {
-            storageError.value = '浏览器存储空间不足或不可用，请导出重要内容。'
+            storageError.value = () =>
+              uiText('Browser storage is full or unavailable. Export important content.')
           }
         },
         { deep: true },
@@ -234,7 +251,7 @@ export const useWorkspace = defineStore('workspace', () => {
     state.value.notices.unshift({
       id: crypto.randomUUID(),
       text,
-      date: new Date().toLocaleString('zh-CN'),
+      date: new Date().toISOString(),
       read: false,
     })
   }
@@ -245,7 +262,7 @@ export const useWorkspace = defineStore('workspace', () => {
     )
   }
   // Existing applications remain a readable/exportable archive. Active board writes use the API.
-  return { state, storageError, notify, jobFor, clearIdentityData }
+  return { state, displayName, storageError, notify, jobFor, clearIdentityData }
 })
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object'

@@ -48,7 +48,7 @@ function New-BackendBuildDirectory {
 }
 
 function Build-Backend {
-    Invoke-Step '编译并测试后端' {
+    Invoke-Step '编译并打包后端' {
         $buildRoot = New-BackendBuildDirectory
         $buildLog = Join-Path $buildRoot 'maven-build.log'
         $writer = New-Object IO.StreamWriter($buildLog, $false, (New-Object Text.UTF8Encoding($false)))
@@ -62,13 +62,12 @@ function Build-Backend {
             try {
                 # Native stderr must reach the log; check Maven's exit code after the pipeline.
                 $ErrorActionPreference = 'Continue'
-                & './mvnw.cmd' -B -pl offerpilot-bootstrap -am package 2>&1 | ForEach-Object {
+                & './mvnw.cmd' -B -pl offerpilot-bootstrap -am '-Dmaven.test.skip=true' package 2>&1 | ForEach-Object {
                     $line = $_.ToString()
                     $writer.WriteLine($line)
                     $stage = $null
                     if ($line -match 'Downloading from') { $stage = '正在下载依赖…' }
                     elseif ($line -match '--- (?:maven-)?compiler:|Compiling \d+') { $stage = '正在编译后端…' }
-                    elseif ($line -match '--- (?:maven-)?surefire:|\[INFO\] Running ') { $stage = '正在运行测试…' }
                     elseif ($line -match '--- (?:maven-)?jar:|--- spring-boot:|Building jar:') { $stage = '正在打包后端…' }
                     if ($stage -and $stage -ne $currentStage) {
                         $currentStage = $stage

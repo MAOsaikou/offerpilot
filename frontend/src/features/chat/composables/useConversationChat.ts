@@ -1,7 +1,9 @@
+import { localizedText, translate as uiText } from '@/shared/utils/language'
 import { normalizeModelTier, type ModelTier } from '@/shared/types/model-tier'
 import { computed, onScopeDispose, ref } from 'vue'
 import { conversationsApi } from '@/shared/api/conversations'
-import { cancelAgentRun } from '@/shared/api/agent'
+import { cancelAgentRun, getAgentWorkbench } from '@/shared/api/agent'
+import { ApiError } from '@/shared/api/client'
 import { useAgentStream } from '@/shared/composables/useAgentStream'
 import { useAgentRunStore, type CardView } from '@/shared/stores/agentRun'
 import type { Conversation, StoredMessage } from '@/shared/types/conversation'
@@ -27,7 +29,8 @@ const storedCards = (m: StoredMessage): CardView[] =>
         ]
       : [],
   )
-const errorText = (error: unknown) => (error instanceof Error ? error.message : '请求失败，请重试')
+const errorText = (error: unknown) =>
+  error instanceof Error ? error.message : uiText('Request failed. Please retry.')
 
 export function useConversationChat() {
   const mock = import.meta.env.DEV && import.meta.env.VITE_ENABLE_MOCK === 'true'
@@ -39,7 +42,7 @@ export function useConversationChat() {
   const loading = ref(false)
   const sending = ref(false)
   const listLoading = ref(false)
-  const error = ref('')
+  const error = localizedText()
   const listError = ref('')
   const needsReload = ref(false)
   const hasMoreConversations = ref(false)
@@ -59,8 +62,21 @@ export function useConversationChat() {
       text: m.plainText || '',
       status: m.status,
       runId: m.runId,
+      model: m.model,
+      usage: m.usage,
+      citations: (m.parts ?? []).flatMap((part) =>
+        part.type === 'citation' ? (part.sources ?? []) : [],
+      ),
     }
-    if (view.role === 'user') return view
+    if (view.role === 'user') {
+      const images = (m.parts ?? []).flatMap((part) =>
+        part.type === 'image' && part.fileId
+          ? [{ fileId: part.fileId, name: part.name ?? uiText('Image') }]
+          : [],
+      )
+      if (images.length) view.images = images
+      return view
+    }
     const extras = m.runId ? runExtras.get(m.runId) : undefined
     const cards = storedCards(m)
     if (cards.length) view.cards = cards
@@ -83,6 +99,11 @@ export function useConversationChat() {
               (activeRun.value.status === 'FAILED' ? activeRun.value.error?.message || '' : ''),
             reasoning: activeRun.value.reasoning,
             cards: activeRun.value.cards,
+            runId: activeRun.value.runId,
+            model: activeRun.value.model ?? undefined,
+            usage: activeRun.value.usage,
+            citations: activeRun.value.citations,
+            durationMs: activeRun.value.durationMs,
             streaming: stream.streaming.value,
           }
         : m,
@@ -164,7 +185,44 @@ export function useConversationChat() {
       messages.value = data.items.map(messageView)
       before.value = data.nextBefore
       hasMoreMessages.value = data.hasMore
-      schedulePoll(id, version)
+      const running = messages.value.find((m) => m.status === 'RUNNING' && m.runId)
+      if (running) {
+        loading.value = false
+        void follow(id, running, version)
+      } else {
+        const latest = [...data.items]
+          .reverse()
+          .find((message) => message.role === 'ASSISTANT' && message.runId)
+        if (latest?.runId) {
+          try {
+            const events = await getAgentWorkbench(latest.runId)
+            if (version !== epoch) return
+            for (const event of events) store.apply(event)
+            const restored = store.getRun(latest.runId)
+            if (restored?.status === 'RUNNING' && latest.status !== 'RUNNING')
+              store.apply({
+                type: 'run.completed',
+                id: restored.lastEventId + 1,
+                runId: latest.runId,
+                ts: latest.createdAt,
+                messageId: latest.id,
+                status:
+                  latest.status === 'FAILED'
+                    ? 'FAILED'
+                    : latest.status === 'CANCELLED'
+                      ? 'CANCELLED'
+                      : 'COMPLETED',
+                durationMs: 0,
+              })
+          } catch {
+            if (version === epoch)
+              error.value = () =>
+                uiText('Execution details could not be loaded. Reopen the conversation to retry.')
+          }
+        }
+        if (version !== epoch) return
+        schedulePoll(id, version)
+      }
     } catch (e) {
       if (version === epoch) error.value = errorText(e)
     } finally {
@@ -199,6 +257,7 @@ export function useConversationChat() {
     modelTier: ModelTier,
     created: (id: string) => void,
     context?: Record<string, unknown>,
+    images: Array<{ fileId: string; name: string }> = [],
   ) {
     if (busy.value) return
     const version = epoch
@@ -212,7 +271,7 @@ export function useConversationChat() {
         const conversation = mock
           ? {
               id: 'conv_mock_01',
-              title: 'Mock 演示',
+              title: uiText('Mock demo'),
               mode,
               pinned: false,
               createdAt: '',
@@ -229,13 +288,26 @@ export function useConversationChat() {
       }
       optimisticId.value = crypto.randomUUID()
       messages.value.push(
-        { id: crypto.randomUUID(), role: 'user', text: content },
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          text: content,
+          ...(images.length ? { images } : {}),
+        },
         { id: optimisticId.value, role: 'assistant', text: '', streaming: true },
       )
       runId = await stream.start({
         conversationId: id,
         content,
         mode,
+        ...(images.length
+          ? {
+              attachments: images.map((image) => ({
+                fileId: image.fileId,
+                kind: 'image' as const,
+              })),
+            }
+          : {}),
         options: { modelTier: normalizeModelTier(modelTier), ...(context ? { context } : {}) },
       })
       if (version === epoch && activeRun.value?.error) error.value = activeRun.value.error.message
@@ -243,50 +315,75 @@ export function useConversationChat() {
       if (version === epoch && !(e instanceof DOMException && e.name === 'AbortError'))
         error.value = errorText(e)
     } finally {
-      if (version === epoch) {
-        const target = messages.value.find((m) => m.id === optimisticId.value)
-        if (target) {
-          target.text = activeRun.value?.text || ''
-          target.cards = activeRun.value?.cards
-          target.reasoning = activeRun.value?.reasoning
-          target.streaming = false
-          runId ||= activeRun.value?.runId
-          if (runId && (target.cards?.length || target.reasoning))
-            runExtras.set(runId, { cards: target.cards, reasoning: target.reasoning })
-          target.status =
-            activeRun.value?.status === 'CANCELLED'
-              ? 'CANCELLED'
-              : error.value
-                ? 'FAILED'
-                : 'COMPLETED'
-        }
-        optimisticId.value = undefined
-        if (id && !mock) {
-          try {
-            const data = await conversationsApi.messages(id)
-            if (version === epoch) {
-              // Reconcile from the server without retaining optimistic duplicates.
-              const ids = new Set(data.items.map((m) => m.id))
-              messages.value = [
-                ...messages.value.filter((m) => m.runId && !ids.has(m.id)),
-                ...data.items.map(messageView),
-              ]
-              before.value = data.nextBefore
-              hasMoreMessages.value = data.hasMore
-            }
-          } catch (e) {
-            if (version === epoch) {
-              needsReload.value = true
-              error.value = `记录同步失败：${errorText(e)}。请重新加载会话后确认结果，避免重复发送。`
-            }
-          }
-        }
+      await settle(id, version, runId)
+    }
+  }
+
+  /** 一次运行结束（完成、失败、中断或续传失败）后，把流式内容落到消息上并与服务端记录对齐 */
+  async function settle(id: string | undefined, version: number, runId?: string) {
+    if (version !== epoch) return
+    const target = messages.value.find((m) => m.id === optimisticId.value)
+    if (target) {
+      target.text = activeRun.value?.text || target.text || ''
+      target.cards = activeRun.value?.cards ?? target.cards
+      target.reasoning = activeRun.value?.reasoning ?? target.reasoning
+      target.streaming = false
+      runId ||= activeRun.value?.runId
+      if (runId && (target.cards?.length || target.reasoning))
+        runExtras.set(runId, { cards: target.cards, reasoning: target.reasoning })
+      target.status =
+        activeRun.value?.status === 'CANCELLED' ? 'CANCELLED' : error.value ? 'FAILED' : 'COMPLETED'
+    }
+    optimisticId.value = undefined
+    if (id && !mock) {
+      try {
+        const data = await conversationsApi.messages(id)
         if (version === epoch) {
-          sending.value = false
-          if (id) schedulePoll(id, version)
-          void refreshList()
+          // Reconcile from the server without retaining optimistic duplicates.
+          const ids = new Set(data.items.map((m) => m.id))
+          messages.value = [
+            ...messages.value.filter((m) => m.runId && !ids.has(m.id)),
+            ...data.items.map(messageView),
+          ]
+          before.value = data.nextBefore
+          hasMoreMessages.value = data.hasMore
+        }
+      } catch (e) {
+        if (version === epoch) {
+          needsReload.value = true
+          error.value = () =>
+            uiText(
+              'Could not sync records: {0}. Reload the conversation to confirm the result before sending again.',
+              [errorText(e)],
+            )
         }
       }
+    }
+    if (version === epoch) {
+      sending.value = false
+      if (id) schedulePoll(id, version)
+      void refreshList()
+    }
+  }
+
+  /**
+   * 刷新页面或重新打开会话时，最后一条回复仍在生成：接上运行的事件流，从头回放已产生的内容（AG-07）。
+   * 运行已不在服务端回放缓存中（404）时退回轮询已保存的消息。
+   */
+  async function follow(id: string, message: ChatMessageView, version: number) {
+    if (!message.runId) return
+    sending.value = true
+    optimisticId.value = message.id
+    message.streaming = true
+    try {
+      await stream.attach(message.runId)
+      if (version === epoch && activeRun.value?.error) error.value = activeRun.value.error.message
+    } catch (e) {
+      const gone = e instanceof ApiError && e.status === 404
+      if (version === epoch && !gone && !(e instanceof DOMException && e.name === 'AbortError'))
+        error.value = errorText(e)
+    } finally {
+      await settle(id, version, message.runId)
     }
   }
 
@@ -302,23 +399,36 @@ export function useConversationChat() {
     }
   }
 
+  // AG-01: rename / pin / delete apply to the list at once and roll back if the server refuses.
   async function update(id: string, value: { title?: string; pinned?: boolean }) {
+    const before = conversations.value
+    const beforeCurrent = current.value
+    ++listEpoch // a list refresh already in flight must not overwrite the optimistic state
+    conversations.value = before.map((c) => (c.id === id ? { ...c, ...value } : c))
+    if (current.value?.id === id) current.value = { ...current.value, ...value }
     try {
       const updated = await conversationsApi.update(id, value)
+      conversations.value = conversations.value.map((c) => (c.id === id ? updated : c))
       if (current.value?.id === id) current.value = updated
-      await refreshList()
+      void refreshList()
       return true
     } catch (e) {
+      conversations.value = before
+      current.value = beforeCurrent
       listError.value = errorText(e)
       return false
     }
   }
   async function remove(id: string) {
+    const before = conversations.value
+    ++listEpoch
+    conversations.value = before.filter((c) => c.id !== id)
     try {
       await conversationsApi.delete(id)
-      await refreshList()
+      void refreshList()
       return true
     } catch (e) {
+      conversations.value = before
       listError.value = errorText(e)
       return false
     }

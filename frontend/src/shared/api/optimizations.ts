@@ -1,3 +1,5 @@
+import { translate as uiText } from '@/shared/utils/language'
+import { runGeneration, cancelBackgroundTask } from './generationTasks'
 import {
   ApiError,
   apiRequest,
@@ -23,7 +25,11 @@ export const listOptimizations = (id: string) =>
 export const getOptimization = (id: string) =>
   apiRequest<OptimizationTask>(`/resumes/optimizations/${encodeURIComponent(id)}`)
 export const cancelOptimization = (id: string) =>
-  apiRequest<void>(`/resumes/optimizations/${encodeURIComponent(id)}/cancel`, { method: 'POST' })
+  id.startsWith('gen_')
+    ? cancelBackgroundTask(id)
+    : apiRequest<void>(`/resumes/optimizations/${encodeURIComponent(id)}/cancel`, {
+        method: 'POST',
+      })
 export const getPatchBatch = (id: string, version: string, batchId: string) =>
   apiRequest<PatchBatch>(`${versionPath(id, version)}/patches/${encodeURIComponent(batchId)}`)
 export const applyPatches = (id: string, version: string, decision: PatchDecision) =>
@@ -32,7 +38,7 @@ export const applyPatches = (id: string, version: string, decision: PatchDecisio
     body: JSON.stringify(decision),
   })
 
-export async function optimizeResume(
+export async function optimizeResumeStream(
   id: string,
   version: string,
   requestId: string,
@@ -67,12 +73,37 @@ export async function optimizeResume(
     if (event.type === 'run.started' && event.reportId) started(event.reportId)
     if (event.type === 'ui.card' && event.cardType === 'resume_diff') report = event.payload
     if (event.type === 'error')
-      throw new ApiError(event.message || '改写失败，请重试', { code: event.code ?? 50000 })
+      throw new ApiError(event.message || uiText('Rewrite failed. Please retry.'), {
+        code: event.code ?? 50000,
+      })
     if (event.type === 'run.completed') {
       complete = event.status === 'COMPLETED'
       break
     }
   }
-  if (!complete || !report) throw new Error('连接中断，请先刷新改写记录，确认本次结果后再重试。')
+  if (!complete || !report)
+    throw new Error(
+      uiText(
+        "Connection interrupted. Refresh rewrite history and confirm this request's result before retrying.",
+      ),
+    )
   return report
 }
+
+export const optimizeResume = (
+  id: string,
+  versionId: string,
+  requestId: string,
+  jobDescription: string,
+  signal: AbortSignal,
+  started: (id: string) => void,
+  jobId?: string,
+) =>
+  runGeneration<OptimizationReport>(
+    'RESUME_OPTIMIZE',
+    id,
+    { versionId, jobDescription, jobId },
+    requestId,
+    signal,
+    started,
+  )

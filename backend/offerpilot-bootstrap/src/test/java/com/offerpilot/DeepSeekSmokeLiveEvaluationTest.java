@@ -192,10 +192,10 @@ class DeepSeekSmokeLiveEvaluationTest {
         jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES ('job_smoke_stored','tencent','smoke-stored','intern',?::jsonb) ON CONFLICT (id) DO UPDATE SET payload=EXCLUDED.payload", stored.toString());
         assertThat(data(request("POST", "/api/v1/jobs/job_smoke_stored/refresh", Map.of())).path("source").asText()).isEqualTo("STORED_SNAPSHOT");
         // Check the snapshot policy independently; real-model matching already exercised above.
-        assertThat(jobs.detail("job_smoke_stored", false).path("fallbackReason").asText()).isEqualTo("LIVE_DETAIL_UNAVAILABLE");
+        assertThat(jobs.detail("anyone", "job_smoke_stored", false).path("fallbackReason").asText()).isEqualTo("LIVE_DETAIL_UNAVAILABLE");
         var local = jobs.search("Java", "", "intern", "");
         assertThat(local.path("items")).isNotEmpty();
-        assertThat(jobs.detail(local.path("items").get(0).path("id").asText(), true).path("source").asText()).isEqualTo("LOCAL_SNAPSHOT");
+        assertThat(jobs.detail("anyone", local.path("items").get(0).path("id").asText(), true).path("source").asText()).isEqualTo("LOCAL_SNAPSHOT");
         System.out.println("LIVE_SMOKE " + tier + " AUTO stored-detail and LOCAL_SNAPSHOT PASS");
     }
 

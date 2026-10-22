@@ -30,8 +30,8 @@
         <testcontainers.version>1.21.3</testcontainers.version>
         <!-- JDK 25 local toolchain: Mockito/Byte Buddy needs experimental until upgraded -->
         <argLine>-Dnet.bytebuddy.experimental=true</argLine>
-        <!-- Keep paid/deep smoke sources out of the default test compilation and discovery. -->
-        <offerpilot.live-test-exclude>**/*LiveEvaluation*.java</offerpilot.live-test-exclude>
+        <!-- Paid evaluations and live dump helpers are always opt-in. -->
+        <offerpilot.live-test-exclude>**/*Live*.java</offerpilot.live-test-exclude>
     </properties>
 
     <dependencyManagement>
@@ -95,6 +95,119 @@
         </pluginManagement>
     </build>
     <profiles>
+        <profile>
+            <id>essential-test</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <build>
+                <pluginManagement>
+                    <plugins>
+                        <plugin>
+                            <groupId>org.apache.maven.plugins</groupId>
+                            <artifactId>maven-compiler-plugin</artifactId>
+                            <configuration>
+                                <!-- Keep compilation small as well as execution. No Spring Boot or Docker suites. -->
+                                <testIncludes>
+                                    <testInclude>**/PiiMaskerTest.java</testInclude>
+                                    <testInclude>**/PiiGatewayTransportTest.java</testInclude>
+                                    <testInclude>**/DeepSeekGatewayTest.java</testInclude>
+                                    <testInclude>**/McpApiKeyFilterTest.java</testInclude>
+                                    <testInclude>**/AuthRateLimiterTest.java</testInclude>
+                                    <testInclude>**/LlmQuotaLimiterTest.java</testInclude>
+                                    <testInclude>**/SseWriterTest.java</testInclude>
+                                    <testInclude>**/SafetyScreensTest.java</testInclude>
+                                    <testInclude>**/ScreenedGenerationTest.java</testInclude>
+                                    <testInclude>**/JwtTokenServiceTest.java</testInclude>
+                                    <testInclude>**/PasswordLoginServiceTest.java</testInclude>
+                                    <testInclude>**/OrchestratorTest.java</testInclude>
+                                    <testInclude>**/ChatServiceTest.java</testInclude>
+                                    <testInclude>**/BoardApprovalTest.java</testInclude>
+                                    <testInclude>**/InterviewApprovalTest.java</testInclude>
+                                    <testInclude>**/CareerApprovalTest.java</testInclude>
+                                    <testInclude>**/CoachApprovalTest.java</testInclude>
+                                    <testInclude>**/ResumePatchApprovalTest.java</testInclude>
+                                    <testInclude>**/MemoryChatTest.java</testInclude>
+                                    <testInclude>**/ToolSafetyExecutionTest.java</testInclude>
+                                    <testInclude>**/ResumePatchesTest.java</testInclude>
+                                    <testInclude>**/ResumeDiagnosisTest.java</testInclude>
+                                    <testInclude>**/ResumeOptimizerTest.java</testInclude>
+                                    <testInclude>**/JobMatcherTest.java</testInclude>
+                                    <testInclude>**/JobMatchDeadlineTest.java</testInclude>
+                                    <testInclude>**/JobPageFetcherPinningTest.java</testInclude>
+                                    <testInclude>**/EmbeddingPrivacyTest.java</testInclude>
+                                    <testInclude>**/CoachPlanForChatTest.java</testInclude>
+                                    <testInclude>**/InterviewServiceTest.java</testInclude>
+                                    <testInclude>**/InterviewValidationTest.java</testInclude>
+                                    <testInclude>**/ControllerIdentityArchitectureTest.java</testInclude>
+                                    <testInclude>**/RequestValidationTest.java</testInclude>
+                                    <testInclude>**/AccountDataDeletionServiceTest.java</testInclude>
+                                    <testInclude>**/UserDataInventoryTest.java</testInclude>
+                                    <testInclude>**/DevEmbeddingConfigurationTest.java</testInclude>
+                                </testIncludes>
+                            </configuration>
+                        </plugin>
+                        <plugin>
+                            <groupId>org.apache.maven.plugins</groupId>
+                            <artifactId>maven-surefire-plugin</artifactId>
+                            <configuration>
+                                <!-- Also constrain discovery when a previous full/live compile left class files. -->
+                                <includes>
+                                    <include>**/PiiMaskerTest.java</include>
+                                    <include>**/PiiGatewayTransportTest.java</include>
+                                    <include>**/DeepSeekGatewayTest.java</include>
+                                    <include>**/McpApiKeyFilterTest.java</include>
+                                    <include>**/AuthRateLimiterTest.java</include>
+                                    <include>**/LlmQuotaLimiterTest.java</include>
+                                    <include>**/SseWriterTest.java</include>
+                                    <include>**/SafetyScreensTest.java</include>
+                                    <include>**/ScreenedGenerationTest.java</include>
+                                    <include>**/JwtTokenServiceTest.java</include>
+                                    <include>**/PasswordLoginServiceTest.java</include>
+                                    <include>**/OrchestratorTest.java</include>
+                                    <include>**/ChatServiceTest.java</include>
+                                    <include>**/BoardApprovalTest.java</include>
+                                    <include>**/InterviewApprovalTest.java</include>
+                                    <include>**/CareerApprovalTest.java</include>
+                                    <include>**/CoachApprovalTest.java</include>
+                                    <include>**/ResumePatchApprovalTest.java</include>
+                                    <include>**/MemoryChatTest.java</include>
+                                    <include>**/ToolSafetyExecutionTest.java</include>
+                                    <include>**/ResumePatchesTest.java</include>
+                                    <include>**/ResumeDiagnosisTest.java</include>
+                                    <include>**/ResumeOptimizerTest.java</include>
+                                    <include>**/JobMatcherTest.java</include>
+                                    <include>**/JobMatchDeadlineTest.java</include>
+                                    <include>**/JobPageFetcherPinningTest.java</include>
+                                    <include>**/EmbeddingPrivacyTest.java</include>
+                                    <include>**/CoachPlanForChatTest.java</include>
+                                    <include>**/InterviewServiceTest.java</include>
+                                    <include>**/InterviewValidationTest.java</include>
+                                    <include>**/ControllerIdentityArchitectureTest.java</include>
+                                    <include>**/RequestValidationTest.java</include>
+                                    <include>**/AccountDataDeletionServiceTest.java</include>
+                                    <include>**/UserDataInventoryTest.java</include>
+                                    <include>**/DevEmbeddingConfigurationTest.java</include>
+                                </includes>
+                            </configuration>
+                        </plugin>
+                    </plugins>
+                </pluginManagement>
+            </build>
+        </profile>
+        <profile>
+            <!-- Explicit activation disables essential-test and restores all offline tests, including Docker suites. -->
+            <id>full-test</id>
+        </profile>
+        <profile>
+            <!-- A targeted -Dtest invocation must compile the requested class even outside the default list. -->
+            <id>selected-test</id>
+            <activation>
+                <property>
+                    <name>test</name>
+                </property>
+            </activation>
+        </profile>
         <profile>
             <id>live</id>
             <properties>

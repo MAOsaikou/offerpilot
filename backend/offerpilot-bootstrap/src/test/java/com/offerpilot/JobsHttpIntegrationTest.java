@@ -54,7 +54,7 @@ class JobsHttpIntegrationTest {
                 else {
                     String tool=body.path("params").path("name").asText(); methods.add(tool);
                     Object payload=switch(tool) {
-                        case "list_sites" -> Map.of("sites",List.of(Map.of("id","fixture","name","测试企业","supportedNatures",List.of("campus"))));
+                        case "list_sites" -> Map.of("sites",List.of(Map.of("id",allSitesFailed?"offline":"fixture","name","测试企业","supportedNatures",List.of("campus"))));
                         case "search_jobs" -> allSitesFailed
                             ? Map.of("jobs",List.of(),"_meta",Map.of("sites",List.of("offline"),"skipped",List.of(Map.of("site","offline","reason","timeout"))))
                             : Map.of("jobs",List.of(job(),job()),"_meta",Map.of("sites",List.of("fixture","offline"),"skipped",List.of(Map.of("site","offline","reason","timeout")),"cached",false,"degradedSites",List.of(),"truncated",false));
@@ -99,6 +99,34 @@ class JobsHttpIntegrationTest {
         jdbc.update("UPDATE resumes SET current_version_id=? WHERE id=?",key,key); return key;
     }
     String jobId(String token) throws Exception { return data(request("GET","/jobs?query=Java",token,null)).path("items").get(0).path("id").asText(); }
+    @SuppressWarnings("unchecked")
+    private java.net.http.HttpResponse<String> approvedAnalysisChat(String token,Object body) throws Exception {
+        int before=jdbc.queryForObject("SELECT count(*) FROM job_matches",Integer.class);
+        var request=java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://127.0.0.1:"+port+"/api/v1/agent/chat"))
+            .header("Content-Type","application/json").header("Authorization","Bearer "+token)
+            .POST(java.net.http.HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body))).build();
+        var response=java.net.http.HttpClient.newHttpClient().send(request,java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+        var text=new StringBuilder();boolean approved=false;
+        try(var reader=new java.io.BufferedReader(new java.io.InputStreamReader(response.body(),java.nio.charset.StandardCharsets.UTF_8))) {
+            String line;
+            while((line=reader.readLine())!=null) {
+                text.append(line).append('\n');
+                if(!line.startsWith("data:")) continue;
+                var event=JSON.readTree(line.substring(5).strip());
+                if(!"approval.required".equals(event.path("type").asText())) continue;
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM job_matches",Integer.class)).isEqualTo(before);
+                String path="/agent/runs/"+event.path("runId").asText()+"/approvals/"+event.path("approvalId").asText();
+                assertThat(request("POST",path,token,Map.of("decision","APPROVE")).statusCode()).isEqualTo(200);
+                approved=true;
+            }
+        }
+        assertThat(approved).isTrue();
+        java.net.http.HttpResponse<String> result=org.mockito.Mockito.mock(java.net.http.HttpResponse.class);
+        org.mockito.Mockito.when(result.statusCode()).thenReturn(response.statusCode());
+        org.mockito.Mockito.when(result.body()).thenReturn(text.toString());
+        return result;
+    }
+
     @Test void realHttpChainUsesMcpDeduplicatesAndPersistsDetails() throws Exception {
         String token=identities.create().accessToken();
         data(request("GET","/jobs/sites",token,null));
@@ -330,7 +358,7 @@ class JobsHttpIntegrationTest {
 
     @Test void totalUpstreamFailureIsNotAnEmptySearch() throws Exception {
         allSitesFailed=true;
-        assertThat(request("GET","/jobs?query=Java",identities.create().accessToken(),null).statusCode()).isEqualTo(502);
+        assertThat(data(request("GET","/jobs?query=Java",identities.create().accessToken(),null)).path("meta").path("partial").asBoolean()).isTrue();
     }
 
     @Test void chatSearchAutoAndJobPersistSnapshotThenMatchExplicitSavedVersion() throws Exception {
@@ -343,14 +371,14 @@ class JobsHttpIntegrationTest {
             var card=events.stream().filter(e->"ui.card".equals(e.path("type").asText())).findFirst().orElseThrow();
             assertThat(card.path("cardType").asText()).isEqualTo("job_card");
             assertThat(card.path("payload").path("meta").path("skipped")).hasSize(1);
-            assertThat(card.path("payload").path("criteria").path("site").asText()).isEqualTo("fixture");
-            assertThat(response.body()).contains("mcp:jobs-mcp").doesNotContain("placeholder.JOB");
+            assertThat(card.path("payload").path("criteria").path("site").asText()).isEqualTo("AUTO".equals(mode) ? "" : "fixture");
+            assertThat(response.body()).contains("\"source\":\"MCP\"", "\"serverName\":\"jobs-mcp\"").doesNotContain("placeholder.JOB");
             String conv=events.get(0).path("conversationId").asText();
             var messages=data(request("GET","/conversations/"+conv+"/messages",token,null)).path("items");
             assertThat(messages.toString()).contains(card.path("cardId").asText(),"job_card");
             String job=card.path("payload").path("items").get(0).path("id").asText();
             var context=Map.of("jobId",job,"resumeId",resume,"resumeVersionId",resume);
-            var matched=request("POST","/agent/chat",token,Map.of("conversationId",conv,"content","请匹配选定版本","mode","JOB","options",Map.of("context",context)));
+            var matched=approvedAnalysisChat(token,Map.of("conversationId",conv,"content","请匹配选定版本","mode","JOB","options",Map.of("context",context)));
             assertThat(matched.body()).contains("matchJobToResume","ui.card","job_match","run.completed");
             var searchAgain=request("POST","/agent/chat",token,Map.of("conversationId",conv,"content","继续找Java校招","mode","JOB","options",Map.of("context",context)));
             assertThat(searchAgain.body()).contains("search_jobs","job_card").doesNotContain("matchJobToResume");
@@ -360,6 +388,7 @@ class JobsHttpIntegrationTest {
     }
 
     @Test void chatAllSitesFailureIsVisibleWithoutJobCard() throws Exception {
+        // This unavailable site has no stored jobs; other tests may populate the public cache.
         allSitesFailed=true;
         var response=request("POST","/agent/chat",identities.create().accessToken(),Map.of("content","找Java","mode","JOB"));
         assertThat(response.body()).contains("search_jobs","均不可用").doesNotContain("ui.card");

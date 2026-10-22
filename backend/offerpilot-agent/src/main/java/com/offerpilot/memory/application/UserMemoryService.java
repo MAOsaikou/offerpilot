@@ -74,7 +74,30 @@ public class UserMemoryService {
         if (jdbc.update("DELETE FROM user_memories WHERE user_id=? AND id=?", owner, id) == 0) throw missing();
     }
     @Transactional
-    public void clear(String owner) { lock(owner); jdbc.update("DELETE FROM user_memories WHERE user_id=?", owner); }
+    public void clear(String owner) { lock(owner); jdbc.update("UPDATE memory_candidates SET status='DELETED' WHERE user_id=?", owner); jdbc.update("DELETE FROM user_memories WHERE user_id=?", owner); }
+
+    /** Stable user-authored facts from an explicit profile save; shares cap, validation, FTS and owner lock. */
+    @Transactional
+    public void upsertPrefixed(String owner, Kind kind, String prefix, String value) {
+        lock(owner);
+        if (!enabled(owner)) return;
+        if (prefix == null || prefix.isBlank()) throw invalid("记忆前缀不能为空");
+        String text = value == null ? "" : value.replaceAll("(?U)\\s+", " ").strip();
+        var existing = list(owner).items().stream().filter(m -> m.fact().startsWith(prefix)).toList();
+        // Blank means remove the corresponding durable fact, so a cleared field cannot reappear on load.
+        if (text.isEmpty()) {
+            for (var fact : existing) delete(owner, fact.id());
+            return;
+        }
+        var draft = new Draft(kind, prefix + text);
+        validate(draft);
+        if (existing.isEmpty()) add(owner, draft);
+        else {
+            for (int i = 1; i < existing.size(); i++) delete(owner, existing.get(i).id());
+            if (!existing.get(0).fact().equals(draft.fact()) || existing.get(0).kind() != kind)
+                edit(owner, existing.get(0).id(), draft);
+        }
+    }
 
     public boolean contains(String owner, String fact) {
         return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM user_memories WHERE user_id=? AND normalized_fact=?)",
@@ -83,7 +106,7 @@ public class UserMemoryService {
     public List<Memory> recall(String owner, String query) {
         if (!enabled(owner)) return List.of();
         String q = OccupationDocument.lexicalQuery(query == null ? "" : query);
-        // Reserve one latest GOAL and one latest LOCATION; fill remaining slots by FTS relevance/recency.
+        // Reserve one latest GOAL, LOCATION and PREFERENCE; fill remaining slots by FTS relevance/recency.
         // A hard total of five applies even when the user has many goals and locations.
         return jdbc.query("""
                 WITH ranked AS (
@@ -91,27 +114,105 @@ public class UserMemoryService {
                     ts_rank_cd(tsv,to_tsquery('simple',?)) AS score
                   FROM user_memories m WHERE user_id=?
                 ) SELECT * FROM ranked
-                WHERE (kind IN ('GOAL','LOCATION') AND position=1) OR score>0
-                ORDER BY (kind IN ('GOAL','LOCATION') AND position=1) DESC,score DESC,updated_at DESC,id LIMIT 5
+                WHERE (kind IN ('GOAL','LOCATION','PREFERENCE') AND position=1) OR score>0
+                ORDER BY (kind IN ('GOAL','LOCATION','PREFERENCE') AND position=1) DESC,score DESC,updated_at DESC,id LIMIT 5
                 """, UserMemoryService::map, q, owner);
     }
 
     /** Called after approval only. Re-derive from the persisted USER message, never trust model/card args. */
     @Transactional
     public Memory saveApproved(String owner, String runId, MemoryCandidate.Candidate candidate) {
+        return saveApproved(owner, runId, candidate, true);
+    }
+
+    /** requireRunning=false is for an approval decided after its chat stream ended; grounding is unchanged. */
+    @Transactional
+    public Memory saveApproved(String owner, String runId, MemoryCandidate.Candidate candidate, boolean requireRunning) {
+        return saveApproved(owner, runId, candidate, requireRunning, false);
+    }
+
+    /** Approval may shorten a fact, but may not introduce any text or change its provenance. */
+    @Transactional
+    public Memory saveApprovedExcerpt(String owner, String runId, MemoryCandidate.Candidate candidate, boolean requireRunning) {
+        return saveApproved(owner, runId, candidate, requireRunning, true);
+    }
+
+    private Memory saveApproved(String owner, String runId, MemoryCandidate.Candidate candidate, boolean requireRunning, boolean excerpt) {
         lock(owner);
         if (!enabled(owner)) throw conflict("长期记忆已关闭，未保存");
         var sources = jdbc.queryForList("""
                 SELECT r.conversation_id,r.user_message_id,m.plain_text FROM agent_runs r
                 JOIN messages m ON m.id=r.user_message_id AND m.user_id=r.user_id AND m.role='USER'
-                WHERE r.id=? AND r.user_id=? AND r.status='RUNNING' FOR UPDATE OF r
-                """, runId, owner);
+                WHERE r.id=? AND r.user_id=? AND (r.status='RUNNING' OR NOT ?) FOR UPDATE OF r
+                """, runId, owner, requireRunning);
         if (sources.isEmpty()) throw conflict("运行已结束，未保存记忆");
         var row = sources.get(0);
         var grounded = MemoryCandidate.extract((String) row.get("plain_text"));
-        if (!candidate.equals(grounded)) throw invalid("记忆必须来自本轮用户原话");
+        if (!candidate.equals(grounded) && !(excerpt && grounded != null
+                && grounded.kind() == candidate.kind() && grounded.source() == candidate.source()
+                && grounded.fact().contains(candidate.fact()))) throw invalid("记忆必须来自本轮用户原话");
         return insert(owner, new Draft(candidate.kind(), candidate.fact()), candidate.source(),
                 (String) row.get("conversation_id"), (String) row.get("user_message_id"));
+    }
+    public record Pending(String id, Kind kind, String fact, double confidence, String extractor,
+                          String sourceConversationId, String sourceMessageId) {}
+    public record MessageSource(String conversationId, String messageId, String text) {}
+    public MessageSource extractionSource(String owner, String runId) {
+        var rows = jdbc.query("""
+                SELECT r.conversation_id,m.id,m.plain_text FROM agent_runs r
+                JOIN messages m ON m.id=r.user_message_id AND m.user_id=r.user_id AND m.role='USER'
+                WHERE r.id=? AND r.user_id=?
+                """, (rs,n) -> new MessageSource(rs.getString(1),rs.getString(2),rs.getString(3)), runId,owner);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+    public List<Pending> candidates(String owner) {
+        return jdbc.query("""
+                SELECT c.* FROM memory_candidates c WHERE user_id=? AND status='PENDING'
+                AND NOT EXISTS(SELECT 1 FROM user_memories m WHERE m.user_id=c.user_id AND m.normalized_fact=c.normalized_fact)
+                ORDER BY created_at,id
+                """, (rs,n) -> new Pending(rs.getString("id"),Kind.valueOf(rs.getString("kind")),rs.getString("fact"),
+                rs.getDouble("confidence"),rs.getString("extractor"),rs.getString("source_conversation_id"),rs.getString("source_message_id")),owner);
+    }
+    @Transactional
+    public void suggest(String owner, String runId, MessageSource source, List<AutomaticMemoryExtractor.Fact> facts) {
+        lock(owner);
+        if (!enabled(owner)) return;
+        if (jdbc.queryForList("SELECT id FROM agent_runs WHERE id=? AND user_id=? AND status='RUNNING' FOR UPDATE",String.class,runId,owner).isEmpty()
+                || !source.equals(extractionSource(owner,runId))) return;
+        int pending = candidates(owner).size();
+        for (var fact : facts) {
+            if (pending >= CAP) break;
+            // Revalidate independently of the provider, including first-person assertion and exact provenance.
+            if (AutomaticMemoryExtractor.rules(source.text()).stream().noneMatch(f -> f.fact().equals(fact.fact()) && f.kind()==fact.kind())
+                    || !Double.isFinite(fact.confidence()) || fact.confidence()<0 || fact.confidence()>1 || contains(owner,fact.fact())) continue;
+            pending += jdbc.update("""
+                    INSERT INTO memory_candidates(id,user_id,kind,fact,normalized_fact,confidence,extractor,source_conversation_id,source_message_id)
+                    VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,normalized_fact) DO NOTHING
+                    """, "mc_"+UUID.randomUUID(),owner,fact.kind().name(),fact.fact(),normalize(fact.fact()),fact.confidence(),fact.extractor(),source.conversationId(),source.messageId());
+        }
+    }
+    @Transactional
+    public Memory confirmCandidate(String owner, String id) {
+        lock(owner);
+        if (!enabled(owner)) throw conflict("长期记忆已关闭，未保存");
+        var candidate = candidates(owner).stream().filter(c -> c.id().equals(id)).findFirst().orElse(null);
+        if (candidate == null) {
+            var accepted = jdbc.query("""
+                    SELECT m.* FROM memory_candidates c JOIN user_memories m ON m.user_id=c.user_id AND m.normalized_fact=c.normalized_fact
+                    WHERE c.user_id=? AND c.id=? AND c.status='ACCEPTED'
+                    """,UserMemoryService::map,owner,id);
+            if (accepted.isEmpty()) throw missing();
+            return accepted.get(0);
+        }
+        var memory = insert(owner,new Draft(candidate.kind(),candidate.fact()),Source.SUGGESTED_ACCEPTED,
+                candidate.sourceConversationId(),candidate.sourceMessageId());
+        jdbc.update("UPDATE memory_candidates SET status='ACCEPTED' WHERE user_id=? AND id=?",owner,id);
+        return memory;
+    }
+    @Transactional
+    public void deleteCandidate(String owner, String id) {
+        lock(owner);
+        if (jdbc.update("UPDATE memory_candidates SET status='DELETED' WHERE user_id=? AND id=?",owner,id)==0) throw missing();
     }
     private Memory insert(String owner, Draft draft, Source source, String conversation, String message) {
         validate(draft);

@@ -82,4 +82,28 @@ class ExpertRegistryTest {
     private static Map<String, Object> ids(String jobId, String resumeId, String versionId) {
         return Map.of("jobId", jobId, "resumeId", resumeId, "resumeVersionId", versionId);
     }
+
+    @Test void missingInterviewSessionDegradesBeforeApprovalAndScoringAlsoGivesGuidance() {
+        var registry = new ExpertRegistry();
+        var interviews = org.mockito.Mockito.mock(com.offerpilot.interview.application.InterviewCoachForChat.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(registry,"interviews",interviews);
+        org.mockito.Mockito.when(interviews.resolveSession("owner",null,false)).thenThrow(
+                new com.offerpilot.common.error.BusinessException(com.offerpilot.common.error.ErrorCode.INTERVIEW_NOT_FOUND));
+        var step = new PlanStep("s1","继续面试",ExpertType.INTERVIEWER,Map.of("action","continueInterview","answer","缓存击穿用互斥锁"),List.of());
+        var prepared = registry.prepareInterview("owner",step).block(Duration.ofSeconds(3));
+        assertThat(prepared.inputs()).containsEntry("action","interviewGuidance").doesNotContainKey("answer");
+        assertThat(registry.writingInterview(prepared)).isFalse();
+        assertThat(run(registry,Map.of(),prepared).summary()).contains("没有可用的面试会话","开始");
+        assertThat(run(registry,Map.of(),new PlanStep("s2","评分",ExpertType.INTERVIEWER,Map.of("action","scoreInterview"),List.of())).summary())
+                .contains("没有可用的面试会话","开始");
+        var stories = org.mockito.Mockito.mock(com.offerpilot.interview.application.StarStoriesForChat.class);
+        registry.setStarContext(new StarStoryContext(stories,json));
+        org.mockito.Mockito.when(interviews.resolveSession("owner","iv_missing",false)).thenThrow(
+                new com.offerpilot.common.error.BusinessException(com.offerpilot.common.error.ErrorCode.INTERVIEW_NOT_FOUND));
+        org.mockito.Mockito.when(stories.retrieveForSession("owner","iv_missing","面试 STAR")).thenThrow(
+                new com.offerpilot.common.error.BusinessException(com.offerpilot.common.error.ErrorCode.INTERVIEW_NOT_FOUND));
+        assertThat(run(registry,Map.of(),new PlanStep("s3","评分",ExpertType.INTERVIEWER,Map.of("action","scoreInterview","sessionId","iv_missing"),List.of())).summary())
+                .contains("没有可用的面试会话","开始");
+        org.mockito.Mockito.verify(interviews,org.mockito.Mockito.never()).continueSession(org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.anyBoolean(),org.mockito.ArgumentMatchers.any());
+    }
 }

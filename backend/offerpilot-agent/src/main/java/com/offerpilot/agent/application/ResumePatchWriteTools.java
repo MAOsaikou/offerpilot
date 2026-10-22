@@ -43,7 +43,7 @@ public class ResumePatchWriteTools {
     private static BusinessException invalid() {
         return new BusinessException(ErrorCode.VALIDATION_FAILED, "请选择有效的简历、版本和补丁批次，并核对采纳项");
     }
-    private static Map<String, Object> body(Map<String, Object> args) {
+    static Map<String, Object> body(Map<String, Object> args) {
         var body = new LinkedHashMap<String, Object>(args);
         body.remove("resumeId"); body.remove("resumeVersionId");
         return body;

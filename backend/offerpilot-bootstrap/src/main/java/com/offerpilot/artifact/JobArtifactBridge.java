@@ -16,16 +16,23 @@ public class JobArtifactBridge implements JobArtifacts {
     private final JobService jobs;
     public JobArtifactBridge(JdbcTemplate jdbc, JobService jobs) { this.jdbc=jdbc; this.jobs=jobs; }
 
+    public String interviewContext(String owner, String jobId) {
+        if (jobId == null) return null;
+        var job = jobs.get(owner, jobId);
+        String text = job.path("title").asText() + "：" + job.path("description").asText("");
+        return text.substring(0, text.offsetByCodePoints(0, Math.min(400, text.codePointCount(0, text.length()))));
+    }
+
     public void lockJob(String owner, String jobId) {
         if (jobId == null) return;
         if (!jobId.matches("\\S{1,80}")) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         // Same lock as application creation: either writer observes the other's committed artifact.
         if (jdbc.queryForList("SELECT id FROM users WHERE id=? FOR UPDATE",String.class,owner).isEmpty())
             throw new BusinessException(ErrorCode.UNAUTHENTICATED);
-        jobs.get(jobId); // jobs are shared snapshots, not private owner rows.
+        jobs.get(owner, jobId); // shared snapshots, or a job this user imported
     }
     public String selectedJob(String owner, String jobId, String applicationId, String matchId) {
-        if (jobId != null) { jobs.get(jobId); return jobId; }
+        if (jobId != null) { jobs.get(owner, jobId); return jobId; }
         if (applicationId != null) return ownedJob("applications", owner, applicationId, ErrorCode.APPLICATION_NOT_FOUND);
         if (matchId != null) return ownedJob("job_matches", owner, matchId, ErrorCode.MATCH_NOT_FOUND);
         return null;

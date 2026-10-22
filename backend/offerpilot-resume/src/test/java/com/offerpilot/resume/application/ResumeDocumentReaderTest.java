@@ -85,6 +85,22 @@ class ResumeDocumentReaderTest {
             assertThat(result.images().get(0).bytes().length).isPositive();
         }
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"png", "jpg", "jpeg"})
+    void readsRasterFormatsAndRejectsTruncatedOrMislabeledContent(String format) throws Exception {
+        var picture = new java.awt.image.BufferedImage(200, 300, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var out = new ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(picture, format.equals("jpeg") ? "jpg" : format, out);
+        byte[] bytes = out.toByteArray();
+        String mime = reader.mime("fictional." + format, bytes);
+        var document = reader.read(bytes, mime);
+        assertThat(document.channel()).isEqualTo("image-vision");
+        assertThat(document.text()).isEmpty();
+        assertThat(document.images()).hasSize(1);
+        assertThat(document.images().get(0).bytes()).isEqualTo(bytes);
+        assertThatThrownBy(() -> reader.mime("fictional.pdf", bytes)).hasMessageContaining("文件内容");
+        assertThatThrownBy(() -> reader.read(java.util.Arrays.copyOf(bytes, 12), mime)).isInstanceOf(com.offerpilot.common.error.BusinessException.class);
+    }
     private byte[] docx(String xml) throws Exception {
         var out = new ByteArrayOutputStream();
         try (var zip = new ZipOutputStream(out)) { zip.putNextEntry(new ZipEntry("word/document.xml")); zip.write(xml.getBytes(StandardCharsets.UTF_8)); zip.closeEntry(); }

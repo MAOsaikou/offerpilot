@@ -10,6 +10,10 @@ spring:
     default: dev
   application:
     name: offerpilot
+  task:
+    scheduling:
+      pool:
+        size: 4
   threads:
     virtual:
       enabled: false
@@ -19,6 +23,8 @@ spring:
     password: ${POSTGRES_PASSWORD:change-me-postgres}
     hikari:
       maximum-pool-size: 10
+      connection-timeout: 2000
+      validation-timeout: 1000
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -51,8 +57,13 @@ spring:
           model: ${LLM_MODEL_FLASH:qwen3.8-flash}
           temperature: 0.3
       embedding:
+        # Local Ollama bge-m3 by default; credentials/endpoints may be overridden by deployment.
+        # Retrieval debug accepts only local bge-m3 with a matching persisted index fingerprint.
+        base-url: ${EMBEDDING_BASE_URL:http://localhost:11434}
+        api-key: ${EMBEDDING_API_KEY:ollama}
+        embeddings-path: /v1/embeddings
         options:
-          model: ${LLM_MODEL_EMBEDDING:text-embedding-v4}
+          model: ${LLM_MODEL_EMBEDDING:bge-m3}
           dimensions: ${LLM_EMBEDDING_DIMENSIONS:1024}
     deepseek:
       base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
@@ -98,6 +109,30 @@ springdoc:
     path: /v3/api-docs
 
 offerpilot:
+  ops:
+    check-delay-ms: ${OPS_CHECK_DELAY_MS:60000}
+    min-requests: ${OPS_MIN_REQUESTS:20}
+    error-rate-threshold: ${OPS_ERROR_RATE_THRESHOLD:0.05}
+    hourly-token-threshold: ${OPS_HOURLY_TOKEN_THRESHOLD:1000000}
+    external-push-enabled: ${OPS_EXTERNAL_PUSH_ENABLED:false}
+  agent:
+    max-tool-iterations: ${AGENT_MAX_TOOL_ITERATIONS:8}
+    # Overlap SC-01 with generation; model text and business writes still wait for screening.
+    parallel-safety-screen: ${AGENT_PARALLEL_SAFETY_SCREEN:true}
+    early-expert-handoff: ${AGENT_EARLY_EXPERT_HANDOFF:true}
+    # Audited local reads may precede SC-01; final text still waits for gateway screening.
+    early-readonly-expert: ${AGENT_EARLY_READONLY_EXPERT:true}
+    # Standalone AUTO career/search grammar; uncertain or contextual requests keep model planning.
+    rule-first-routing: ${AGENT_RULE_FIRST_ROUTING:true}
+    # Private note reads overlap planning/expert reads; evidence and safety checks are retained.
+    parallel-note-retrieval: ${AGENT_PARALLEL_NOTE_RETRIEVAL:true}
+    # AUTO single JOB searches parse parameters in the planning call; false restores action handoff.
+    joint-job-search-planning: ${AGENT_JOINT_JOB_SEARCH_PLANNING:true}
+    # AUTO standalone resume-writing questions: skip planner/action models; keep expert + reply gateway.
+    # History, selected resources and any extra instructions use the normal planning path.
+    resume-advice-fast-path: ${AGENT_RESUME_ADVICE_FAST_PATH:true}
+    # Plain AUTO replies may overlap planning; disabled for images and deterministic expert routes.
+    speculative-reply: ${AGENT_SPECULATIVE_REPLY:true}
   knowledge:
     notes-embed:
       enabled: ${NOTES_EMBED_ENABLED:true}
@@ -110,8 +145,10 @@ offerpilot:
     password: ${STAFF_BOOTSTRAP_PASSWORD:}
   security:
     jwt-secret: ${JWT_SECRET:}
-    access-ttl: 12h
+    access-ttl: 15m
     refresh-ttl: 7d
+    # HttpOnly refresh Cookie 仅经 HTTPS 发送；本地 http 开发在 dev profile 里关闭。
+    refresh-cookie-secure: ${REFRESH_COOKIE_SECURE:true}
     cors-origins: ${CORS_ORIGINS:}
   demo:
     enabled: ${DEMO_ACCOUNT_ENABLED:true}
@@ -183,11 +220,12 @@ offerpilot:
   jobs:
     source-mode: ${JOBS_SOURCE_MODE:AUTO}
   mcp:
-    jobs-timeout-ms: ${JOBS_LIVE_TIMEOUT_MS:10000}
+    jobs-timeout-ms: ${JOBS_LIVE_TIMEOUT_MS:6500}
     jobs-url: ${JOBS_MCP_URL:http://localhost:7001}
     search-url: ${SEARCH_MCP_URL:}
     search-api-key: ${SEARCH_MCP_API_KEY:}
     github-url: ${GITHUB_MCP_URL:https://api.githubcopilot.com/mcp/}
+    github-token: ${GITHUB_MCP_TOKEN:}
     server-enabled: ${MCP_SERVER_ENABLED:false}
     server-api-key: ${MCP_SERVER_API_KEY:}
 

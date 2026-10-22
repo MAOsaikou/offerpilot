@@ -9,6 +9,10 @@ export interface RealJob {
   locations: string
   category: string
   nature: string
+  deadline?: string
+  storedAt?: string
+  retrievalSource?: string
+  retrievalSources?: string[]
   department: string
   updatedAt: string
   url: string
@@ -16,6 +20,7 @@ export interface RealJob {
   originalSource?: string
   fallbackReason?: string
   snapshotDate?: string
+  importedAt?: string
   skills?: string[]
   description: string
   requirement: string
@@ -29,7 +34,20 @@ export interface JobSite {
 export interface JobSearchResult {
   items: RealJob[]
   fetchedAt: string
+  criteria?: {
+    query: string
+    company: string
+    site: string
+    nature: string
+    location: string
+    parser: string
+  }
   meta: {
+    partial?: boolean
+    timedOut?: boolean
+    durationMs?: number
+    vectorAvailable?: boolean
+    warnings?: string[]
     source?: string
     snapshotDate?: string
     sourceDescription?: string
@@ -44,7 +62,13 @@ export interface JobSearchResult {
 export interface ChatJobSearch {
   schemaVersion: 2
   criteria: { query: string; site: string; nature: string; location: string }
-  items: Pick<RealJob, 'id' | 'site' | 'title' | 'company' | 'locations' | 'nature' | 'updatedAt'>[]
+  items: (Pick<
+    RealJob,
+    'id' | 'site' | 'title' | 'company' | 'locations' | 'nature' | 'updatedAt'
+  > &
+    Partial<
+      Pick<RealJob, 'source' | 'snapshotDate' | 'retrievalSource' | 'storedAt' | 'deadline' | 'url'>
+    >)[]
   returnedCount: number
   fetchedAt: string
   meta: JobSearchResult['meta']
@@ -99,6 +123,7 @@ export interface EvidenceMatch {
   }>
   jobSnapshot: RealJob
   resumeSnapshot: Record<string, unknown>
+  durationMs?: number
   model: string
   evaluation?: JobEvaluation
 }
@@ -109,4 +134,34 @@ export interface MatchHistory {
   resumeTitle: string | null
   score: string | null
   createdAt: string
+}
+export interface JobImportDraft {
+  title: string
+  company: string
+  locations: string
+  department: string
+  nature: 'campus' | 'intern' | 'social'
+  description: string
+  requirement: string
+  skills: string[]
+  parser: 'model' | 'rule'
+}
+export interface JobImportParse {
+  draft: JobImportDraft
+  url: string
+  sourceKind: 'text' | 'url' | 'screenshot'
+  fileIds?: string[]
+  /** SC-01: labels of suspected injected instructions found in the source text. */
+  securityNotices?: string[]
+}
+export interface JobImportFields extends Omit<JobImportDraft, 'parser'> {
+  url: string
+}
+
+export interface DailyJobRecommendations {
+  date: string
+  generatedAt: string
+  cached: boolean
+  rankingVersion: string
+  items: Array<{ jobId: string; score: number; reasons: string[]; job: RealJob }>
 }

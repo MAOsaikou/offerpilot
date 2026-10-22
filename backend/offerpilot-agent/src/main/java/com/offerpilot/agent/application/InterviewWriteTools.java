@@ -65,7 +65,7 @@ public class InterviewWriteTools {
     public Mono<ExpertResult> execute(String owner, String runId, PlanStep step, ApprovalService.Decision decision) {
         if (!"APPROVE".equals(decision.decision())) return Mono.error(new BusinessException(ErrorCode.APPROVAL_REJECTED,
                 "TIMEOUT".equals(decision.decision()) ? "审批已超时" : "用户拒绝了面试写入"));
-        return Mono.fromCallable(() -> {
+        return com.offerpilot.llm.UsageJournal.callable(() -> {
             String action = (String) step.inputs().get("action");
             var args = decision.args();
             validate(action, args);

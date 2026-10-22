@@ -1,4 +1,14 @@
 <script setup lang="ts">
+import {
+  formatDisplay,
+  localizedText,
+  language,
+  translate as uiText,
+} from '@/shared/utils/language'
+
+import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
+import { generationResult } from '@/shared/api/generationTasks'
+
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { isGenerationCancelled } from '@/shared/api/client'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
@@ -20,8 +30,8 @@ const history = useQuery({
 })
 const report = ref<Report>()
 const reportElement = ref<HTMLElement>()
-const error = ref('')
-const message = ref('')
+const error = localizedText()
+const message = localizedText()
 const running = ref(false)
 const selecting = ref(false)
 const runningId = ref('')
@@ -30,7 +40,12 @@ let locallyCancelled = false
 let controller: AbortController | undefined
 let alive = true
 let selection = 0
-const labels = { RUNNING: '分析中', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已取消' }
+const labels = computed(() => ({
+  RUNNING: uiText('Analyzing'),
+  SUCCEEDED: uiText('Completed'),
+  FAILED: uiText('Failed'),
+  CANCELLED: uiText('Canceled'),
+}))
 const refresh = () => cache.invalidateQueries({ queryKey: ['diagnoses', props.resumeId] })
 async function revealReport(value: Report, epoch: number) {
   if (!alive || epoch !== selection) return
@@ -49,11 +64,12 @@ async function show(id: string) {
   error.value = ''
   try {
     const task = await getDiagnosis(id)
-    if (!task.report) throw new Error('报告尚未完成，请刷新诊断记录后重试。')
+    if (!task.report)
+      throw new Error(uiText('The report is incomplete. Refresh diagnosis history and retry.'))
     await revealReport(task.report, epoch)
   } catch (cause) {
     if (alive && epoch === selection)
-      error.value = cause instanceof Error ? cause.message : '报告加载失败'
+      error.value = () => (cause instanceof Error ? cause.message : uiText('Could not load report'))
   } finally {
     if (alive && epoch === selection) selecting.value = false
   }
@@ -80,6 +96,7 @@ async function start(save: boolean) {
       controller.signal,
       (id) => {
         runningId.value = id
+        if (locallyCancelled) void cancelDiagnosis(id).catch(() => {})
         void refresh()
       },
     )
@@ -91,15 +108,15 @@ async function start(save: boolean) {
         (locallyCancelled && cause instanceof DOMException && cause.name === 'AbortError')
       ) {
         error.value = ''
-        message.value = '诊断已取消，可重新发起。'
+        message.value = () => uiText('Diagnosis canceled. You can start again.')
         return
       }
-      error.value =
+      error.value = () =>
         cause instanceof DOMException && cause.name === 'AbortError'
-          ? '诊断连接已停止，请查看报告记录。'
+          ? uiText('Diagnosis connection stopped. Check report history.')
           : cause instanceof Error
             ? cause.message
-            : '诊断失败'
+            : uiText('Diagnosis failed')
       // A disconnect may happen after the report committed. Recover this exact request before retrying.
       if (requestId)
         try {
@@ -124,7 +141,7 @@ async function start(save: boolean) {
 async function stop(id = runningId.value || existing.value?.id) {
   if (!id) {
     locallyCancelled = true
-    message.value = '诊断已取消，可重新发起。'
+    message.value = () => uiText('Diagnosis canceled. You can start again.')
     error.value = ''
     controller?.abort()
     return
@@ -132,33 +149,52 @@ async function stop(id = runningId.value || existing.value?.id) {
   try {
     await cancelDiagnosis(id)
     locallyCancelled = true
-    message.value = '诊断已取消，可重新发起。'
+    message.value = () => uiText('Diagnosis canceled. You can start again.')
     error.value = ''
     controller?.abort()
     await refresh()
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '取消失败，请重试'
+    error.value = () =>
+      cause instanceof Error ? cause.message : uiText('Could not cancel. Please retry.')
   }
 }
 onBeforeUnmount(() => {
   alive = false
   selection++
-  controller?.abort()
-  if (runningId.value) void cancelDiagnosis(runningId.value).catch(() => {})
 })
+async function restoreTask(id: string) {
+  if (running.value || selecting.value) return
+  try {
+    const saved = await generationResult<Report>(id)
+    if (alive && report.value?.reportId !== saved.reportId) await show(saved.reportId)
+  } catch (cause) {
+    if (alive)
+      error.value = () =>
+        cause instanceof Error ? cause.message : uiText('Could not restore report')
+  }
+}
 </script>
 <template>
   <section class="panel form-stack diagnosis-panel">
+    <BackgroundTaskStatus kind="RESUME_DIAGNOSIS" :entity-id="resumeId" @completed="restoreTask" />
     <header class="diagnosis-intro">
       <span class="diagnosis-icon"><AppIcon name="spark" :size="24" /></span>
       <div>
-        <h2>AI 简历诊断</h2>
-        <p>找到值得保留的亮点，把改进建议变成下一步行动。</p>
-        <small>使用设置中的文字模型分析已保存版本，不会自动修改简历。</small>
+        <h2>{{ uiText('AI resume diagnosis') }}</h2>
+        <p>{{ uiText('Find strengths worth keeping and turn suggestions into action.') }}</p>
+        <small>{{
+          uiText(
+            'Analyzes the saved version using the text model in settings. Your resume is not changed automatically.',
+          )
+        }}</small>
       </div>
     </header>
     <div v-if="dirty" class="helper-note">
-      有未保存的修改。请选择保存后诊断，或仅分析已保存版本。
+      {{
+        uiText(
+          'You have unsaved edits. Save them before diagnosis or analyze only the saved version.',
+        )
+      }}
     </div>
     <div class="diagnosis-actions">
       <button
@@ -167,7 +203,7 @@ onBeforeUnmount(() => {
         :disabled="running || !!existing"
         @click="start(true)"
       >
-        保存新版本后诊断
+        {{ uiText('Save new version and diagnose') }}
       </button>
       <button
         class="btn"
@@ -175,50 +211,68 @@ onBeforeUnmount(() => {
         :disabled="running || !!existing"
         @click="start(false)"
       >
-        {{ running || existing ? '正在分析…' : dirty ? '仅诊断已保存版本' : '开始 AI 诊断' }}
+        {{
+          running || existing
+            ? uiText('Analyzing…')
+            : dirty
+              ? uiText('Diagnose saved version only')
+              : uiText('Start AI diagnosis')
+        }}
       </button>
-      <button v-if="running || existing" class="btn" @click="stop()">取消诊断</button>
+      <button v-if="running || existing" class="btn" @click="stop()">
+        {{ uiText('Cancel diagnosis') }}
+      </button>
     </div>
     <p v-if="running || existing" role="status">
-      正在分析已保存版本，通常需要几十秒；离开当前分析页面会停止本次连接。
+      {{
+        uiText(
+          'Analyzing the saved version. This usually takes tens of seconds and continues after you leave. Return to view the report.',
+        )
+      }}
     </p>
     <p v-if="message" role="status">{{ message }}</p>
     <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
-    <p v-if="selecting" role="status">正在加载报告…</p>
+    <p v-if="selecting" role="status">{{ uiText('Loading report…') }}</p>
     <p v-if="report && report.versionId !== versionId" class="helper-note">
-      这是旧版本的诊断。当前编辑版本不同，引用仍指向报告原版本。
+      {{
+        uiText(
+          "This diagnosis is for an older version. Your editing version differs; citations still point to the report's original version.",
+        )
+      }}
     </p>
     <div
       v-if="report"
       ref="reportElement"
       class="report-result"
       tabindex="-1"
-      aria-label="简历诊断报告"
+      :aria-label="uiText('Resume diagnosis report')"
     >
       <ResumeDiagnosisReport :report="report" />
     </div>
     <details class="diagnosis-history-group" :open="!report">
-      <summary>
-        <AppIcon name="history" :size="18" /><span>诊断记录</span
-        ><span class="subtle">{{ history.data.value?.length || 0 }} 次</span>
+      <summary :data-expand="uiText('Expand')" :data-collapse="uiText('Collapse')">
+        <AppIcon name="history" :size="18" /><span>{{ uiText('Diagnosis history') }}</span
+        ><span class="subtle">{{ uiText('{0} times', [history.data.value?.length || 0]) }}</span>
       </summary>
       <div class="history-toolbar">
-        <p class="subtle">查看已保存的报告，不会重新调用模型。</p>
+        <p class="subtle">{{ uiText('View saved reports without calling the model again.') }}</p>
         <button class="btn" :disabled="history.isFetching.value" @click="history.refetch()">
-          刷新记录
+          {{ uiText('Refresh history') }}
         </button>
       </div>
-      <p v-if="history.isPending.value" role="status">正在加载记录…</p>
+      <p v-if="history.isPending.value" role="status">{{ uiText('Loading history…') }}</p>
       <p v-else-if="history.error.value" class="error-banner" role="alert">
-        {{ history.error.value.message }}
+        {{ formatDisplay(history.error.value.message) }}
       </p>
       <p v-else-if="!history.data.value?.length" class="subtle">
-        还没有诊断报告，点击上方按钮开始。
+        {{ uiText('No diagnosis reports yet. Use the button above to start.') }}
       </p>
       <div v-for="task in history.data.value" :key="task.id" class="diagnosis-history">
         <div>
-          <strong>版本 {{ task.versionNo }} · {{ labels[task.status] }}</strong>
-          <p class="subtle">{{ new Date(task.createdAt).toLocaleString('zh-CN') }}</p>
+          <strong>{{
+            uiText('Version {0} · {1} #2', [task.versionNo, labels[task.status]])
+          }}</strong>
+          <p class="subtle">{{ new Date(task.createdAt).toLocaleString(language) }}</p>
           <p v-if="task.error">{{ task.error }}</p>
         </div>
         <button
@@ -227,7 +281,7 @@ onBeforeUnmount(() => {
           :disabled="selecting || running"
           @click="show(task.id)"
         >
-          查看报告
+          {{ uiText('View report') }}
         </button>
       </div>
     </details>
@@ -280,13 +334,13 @@ onBeforeUnmount(() => {
   font-weight: 550;
 }
 .diagnosis-history-group summary::after {
-  content: '展开';
+  content: attr(data-expand);
   margin-left: auto;
   font-size: 12px;
   color: var(--muted-foreground);
 }
 .diagnosis-history-group[open] summary::after {
-  content: '收起';
+  content: attr(data-collapse);
 }
 .history-toolbar {
   display: flex;

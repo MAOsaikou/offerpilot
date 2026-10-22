@@ -56,7 +56,7 @@ class AccountDataDeletionIntegrationTest {
     @SpyBean ResumeObjectStore storage;
     @LocalServerPort int port;
     static final ObjectMapper JSON = new ObjectMapper();
-    static final Set<String> DIRECT = Set.of("user_memories","user_preferences","refresh_tokens","user_integrations","guest_sessions","conversations","messages","agent_runs","approvals","files","resumes","resume_versions","resume_model_preferences","resume_diagnoses","resume_patch_batches","resume_optimizations","job_matches","applications","interview_sessions","star_stories","career_profiles","growth_task_completions","knowledge_notes","knowledge_note_imports");
+    static final Set<String> DIRECT = com.offerpilot.privacy.UserDataInventory.CASCADE_TABLES;
     static final Map<String,String> INDIRECT = Map.of("application_events","application_id IN (SELECT id FROM applications WHERE user_id=?)", "agent_steps","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "tool_calls","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "agent_events","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "interview_answers","session_id IN (SELECT id FROM interview_sessions WHERE user_id=?)");
     HttpResponse<String> request(String path, String token, String body) throws Exception {
         var b = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1"+path)).timeout(Duration.ofSeconds(30));
@@ -70,10 +70,14 @@ class AccountDataDeletionIntegrationTest {
         return jdbc.queryForList("SELECT row_to_json(t)::text FROM "+table+" t WHERE "+INDIRECT.getOrDefault(table,"user_id=?")+" ORDER BY row_to_json(t)::text",String.class,owner);
     }
     void seed(String o) throws Exception {
+        jdbc.update("INSERT INTO notifications(id,user_id,kind,dedupe_key,title,body,link) VALUES (?,?,'DDL','fixture','fixture','private','/board')",o+"notification",o);
+        jdbc.update("INSERT INTO career_profile_suggestions(id,user_id,source_type,source_id,fingerprint,skills,facts) VALUES (?,?,'RESUME','fixture','fixture','[]','[\"private fact\"]')",o+"suggestion",o);
         jdbc.update("INSERT INTO user_preferences(user_id) VALUES (?)",o);
         jdbc.update("INSERT INTO refresh_tokens(id,user_id,token_hash,expires_at) VALUES (?,?,?,now()+interval '1 day')",o+"rt",o,o+"hash");
         jdbc.update("INSERT INTO user_integrations(id,user_id,provider,secret_enc) VALUES (?,?,'GITHUB',decode('00','hex'))",o+"integration",o);
-        for (String purpose: List.of("RESUME","EXPORT")) {
+        jdbc.update("INSERT INTO user_mcp_servers(user_id,provider) VALUES (?,'jobs')",o);
+        jdbc.update("INSERT INTO github_evidence(user_id,username,token_ciphertext,revision) VALUES (?,'fixture','v1:fixture:encrypted','fixture')",o);
+        for (String purpose: List.of("RESUME","EXPORT","KB_DOCUMENT")) {
             String key="resumes/"+o+"/"+purpose;
             storage.put(key,"fictional resume".getBytes(),"text/plain");
             jdbc.update("INSERT INTO files(id,user_id,purpose,bucket,object_key,name,mime,size,sha256) VALUES (?,?,?,?,?,'fixture.txt','text/plain',16,'fixture')",o+purpose,o,purpose,storage.bucket(),key);
@@ -87,16 +91,27 @@ class AccountDataDeletionIntegrationTest {
         jdbc.update("INSERT INTO resume_patch_batches(id,user_id,resume_id,resume_version_id,patches,applied_version_id,decision) VALUES (?,?,?,?,'[{}]',?,'{}')",o+"patch",o,o+"resume",o+"v",o+"v2");
         jdbc.update("INSERT INTO resume_optimizations(id,user_id,resume_id,version_id,request_id,status,model_tier,job_description) VALUES (?,?,?,?,'optimization','RUNNING','FLASH','private')",o+"opt",o,o+"resume",o+"v");
         jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES (?,'deletion',?,'campus','{}')",o+"job",o);
+        jdbc.update("INSERT INTO jobs(id,site,external_id,nature,payload,user_id) VALUES (?,'imported',?,'campus','{}',?)",o+"imported",o,o);
+        jdbc.update("INSERT INTO applications(id,user_id,job_id,note) VALUES (?,?,?,'private import')",o+"app-imported",o,o+"imported");
         jdbc.update("UPDATE resume_optimizations SET job_id=? WHERE id=?",o+"job",o+"opt");
+        jdbc.update("INSERT INTO job_daily_recommendations(user_id,day,context_hash,snapshot) VALUES (?,current_date,'fixture','{\"items\":[]}'::jsonb)",o);
         jdbc.update("INSERT INTO job_matches(id,user_id,job_id,resume_version_id,request_id,status) VALUES (?,?,?,?,'match','RUNNING')",o+"match",o,o+"job",o+"v");
         jdbc.update("INSERT INTO applications(id,user_id,job_id,note) VALUES (?,?,?,'private')",o+"app",o,o+"job");
         jdbc.update("INSERT INTO application_events(id,application_id,kind,to_status,detail,actor) VALUES (?,?,'CREATED','TODO','private','USER')",o+"event",o+"app");
         jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,job_id) VALUES (?,?,'开发','项目与经历',?)",o+"interview",o,o+"job");
+        jdbc.update("INSERT INTO interview_learning_plans(id,user_id,report_id,roadmap,start_date) VALUES (?,?,?,'{\"weeks\":[],\"milestones\":[]}',current_date)",o+"plan",o,o+"interview");
         jdbc.update("INSERT INTO interview_answers(session_id,question_index,question_text,answer_text) VALUES (?,0,'fictional','private')",o+"interview");
         jdbc.update("INSERT INTO star_stories(id,user_id,title,body,role,source_session_id,source_question_index,star_count,situation,task,action,result,normalized_body,tsv) VALUES (?,?,'fixture','private STAR body','开发',?,0,4,true,true,true,true,'private star body','')",o+"star",o,o+"interview");
-        jdbc.update("INSERT INTO career_profiles(user_id,skills) VALUES (?,'private')",o);
+        jdbc.update("INSERT INTO career_profiles(user_id,skills,major,courses,values_text) VALUES (?,'private','private major','private courses','private values')",o);
+        jdbc.update("INSERT INTO career_recommendation_revisions(id,user_id,snapshot) VALUES (?,?,'{}')",o+"revision",o);
+        jdbc.update("INSERT INTO career_recommendation_revisions(id,user_id,parent_id,snapshot) VALUES (?,?,?,'{}')",o+"revision-child",o,o+"revision");
         jdbc.update("INSERT INTO growth_task_completions(user_id,task_title) VALUES (?,'fixture')",o);
+        jdbc.update("INSERT INTO generation_tasks(id,user_id,kind,entity_id,request_id,request_hash,status,stage,title,href,result) VALUES (?,?,'JOB_IMPORT','current',?,'fixture','SUCCEEDED','saved','private','/jobs','{\"private\":true}'::jsonb)","gen_"+o,o,"request_"+o);
+        jdbc.update("INSERT INTO career_questionnaires(user_id,answers) VALUES (?,'{\"R1\":5}'::jsonb)",o);
+        jdbc.update("INSERT INTO memory_candidates(id,user_id,kind,fact,normalized_fact,confidence,extractor) VALUES (?,?,'GOAL','我的目标是测试','我的目标是测试',0.75,'rule')",o+"candidate",o);
+        jdbc.update("INSERT INTO career_assessments(user_id,answers) VALUES (?,'[\"private\"]'::jsonb)",o);
         jdbc.update("INSERT INTO knowledge_notes(id,user_id,title,content,category,tsv,embedding) VALUES (?,?,'fixture','private','技术积累','',?::vector)",o+"note",o,"["+String.join(",",Collections.nCopies(1024,"0.1"))+"]");
+        jdbc.update("UPDATE knowledge_notes SET source_file_id=?,source_filename='资料.md',index_status='READY' WHERE id=?", o+"KB_DOCUMENT", o+"note");
         jdbc.update("INSERT INTO knowledge_note_imports(user_id,source_id,fingerprint,note_id) VALUES (?,'fixture',?,?)",o,"0".repeat(64),o+"note");
         jdbc.update("INSERT INTO user_memories(id,user_id,kind,fact,normalized_fact,source,tsv) VALUES (?, ?, 'GOAL', '虚构目标', '虚构目标', 'MANUAL', '')",o+"memory",o);
         var turn = conversations.begin(o,null,"private",AgentMode.AUTO,"fixture");
@@ -104,6 +119,8 @@ class AccountDataDeletionIntegrationTest {
         jdbc.update("INSERT INTO tool_calls(id,run_id,step_id,name,source,access,args) VALUES (?,?,?,'fixture','fixture','WRITE','{}')",o+"tool",turn.runId(),o+"step");
         jdbc.update("INSERT INTO approvals(id,run_id,user_id,tool_name,args,status,expires_at) VALUES (?,?,?,'fixture','{}','PENDING',now()+interval '1 hour')",o+"approval",turn.runId(),o);
         jdbc.update("INSERT INTO agent_events(run_id,seq,type,payload) VALUES (?,1,'fixture','{}')",turn.runId());
+        jdbc.update("INSERT INTO llm_usage_logs(id,user_id,run_id,message_id,model,prompt_tokens,completion_tokens,duration_ms,usage_reported,status) VALUES (?,?,?,?,'fixture',1,1,1,true,'COMPLETED')",o+"usage",o,turn.runId(),turn.messageId());
+        jdbc.update("INSERT INTO career_target_plans(user_id,revision,target,city) VALUES (?,'fixture','fixture','fixture')",o);
     }
     @Test void deletesEveryOwnedTableAndObjectsWithoutTouchingAnotherIdentity() throws Exception {
         String a=owner(),b=owner(); seed(a);seed(b);
@@ -116,17 +133,21 @@ class AccountDataDeletionIntegrationTest {
             childIds.put(table,jdbc.queryForList("SELECT "+column+" FROM "+table+" WHERE "+INDIRECT.get(table),String.class,a));
         }
         String jwt=tokens.issue(a,List.of("USER"),"fixture");
+        long deletionStarted=System.nanoTime();
         assertThat(request("/users/me/data",jwt,"{\"confirm\":\"DELETE\"}").statusCode()).isEqualTo(200);
+        assertThat(Duration.ofNanos(System.nanoTime()-deletionStarted)).isLessThan(Duration.ofSeconds(30));
         for (String table:tables) { assertThat(rows(table,a)).as(table+" A deleted").isEmpty(); assertThat(rows(table,b)).as(table+" B preserved").isEqualTo(before.get(table)); }
         for (String table:INDIRECT.keySet()) {
             String column=table.equals("interview_answers")?"session_id":table.equals("agent_events")?"run_id":"id";
             for(String id:childIds.get(table)) assertThat(jdbc.queryForObject("SELECT count(*) FROM "+table+" WHERE "+column+"=?",Integer.class,id)).isZero();
         }
-        for(String purpose:List.of("RESUME","EXPORT")) {
+        cleanup.retryPending();
+        for(String purpose:List.of("RESUME","EXPORT","KB_DOCUMENT")) {
             assertThatThrownBy(() -> storage.get(storage.bucket(),"resumes/"+a+"/"+purpose)).isInstanceOf(RuntimeException.class);
             assertThat(storage.get(storage.bucket(),"resumes/"+b+"/"+purpose)).isEqualTo("fictional resume".getBytes());
         }
         assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE id=?",Integer.class,a)).isZero();
+        cleanup.retryPending();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup",Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM jobs WHERE id=?",Integer.class,a+"job")).isEqualTo(1);
         assertThat(request("/auth/verify",jwt,null).statusCode()).isEqualTo(401);
@@ -158,6 +179,7 @@ class AccountDataDeletionIntegrationTest {
             assertThat(conversations.finish(turn,"late private","COMPLETED",null,null)).isEqualTo("CANCELLED");
             assertThat(jdbc.queryForObject("SELECT count(*) FROM resume_versions WHERE user_id=?",Integer.class,o)).isZero();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM messages WHERE user_id=?",Integer.class,o)).isZero();
+            cleanup.retryPending();
             assertThat(jdbc.queryForObject("SELECT attempts FROM account_data_cleanup WHERE object_key=?",Integer.class,job.key())).isEqualTo(1);
             assertThat(storage.get(job.bucket(),job.key())).isNotEmpty();
         } finally { doCallRealMethod().when(storage).remove(job.bucket(),job.key()); }
@@ -190,6 +212,7 @@ class AccountDataDeletionIntegrationTest {
             release.countDown();upload.get(15,TimeUnit.SECONDS);
             assertThat(deletion.get(15,TimeUnit.SECONDS).statusCode()).isEqualTo(200);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM files WHERE user_id=?",Integer.class,o)).isZero();
+            cleanup.retryPending();
             assertThatThrownBy(() -> storage.get(storage.bucket(),key.get())).isInstanceOf(RuntimeException.class);
             // A request that passed auth before deletion cannot upload another object afterward.
             assertThatThrownBy(() -> resumes.upload(o,"late.txt",null,"fictional".getBytes())).isInstanceOf(RuntimeException.class);
@@ -221,9 +244,32 @@ class AccountDataDeletionIntegrationTest {
             assertThat(result.statusCode()).as(result.body()).isEqualTo(200);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE id=?",Integer.class,o)).isZero();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM resume_versions WHERE user_id=?",Integer.class,o)).isZero();
+            cleanup.retryPending();
             assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup WHERE object_key=? OR object_key LIKE ?",Integer.class,o,"resumes/"+o+"/%")).isZero();
         } finally { release.countDown();executor.shutdownNow(); }
     }
+    @Test void adminOpsShowsAggregatedUsageAndPrivateCleanupProgress() throws Exception {
+        String guest=guests.create().accessToken(),o=guests.require("Bearer "+guest);seed(o);
+        for(String path:List.of("/admin/ops/status","/admin/ops/cleanup")) {
+            assertThat(request(path,null,null).statusCode()).isEqualTo(401);
+            // Guest tokens are not staff JWTs: rejected as unauthenticated before any role check.
+            assertThat(request(path,guest,null).statusCode()).isEqualTo(401);
+        }
+        String staffOwner=owner();jdbc.update("UPDATE users SET roles='{STAFF}' WHERE id=?",staffOwner);
+        String staff=tokens.issue(staffOwner,List.of("STAFF"),"fixture");
+        assertThat(request("/users/me/data",guest,"{\"confirm\":\"DELETE\"}").statusCode()).isEqualTo(200);
+        var receipts=request("/admin/ops/cleanup",staff,null);
+        assertThat(receipts.statusCode()).isEqualTo(200);
+        assertThat(receipts.body()).contains("OBJECT","QUOTA").doesNotContain("object_key","bucket",o,"private");
+        assertThat(receipts.headers().firstValue("Cache-Control")).contains("no-store");
+        var status=request("/admin/ops/status",staff,null);
+        assertThat(status.statusCode()).isEqualTo(200);
+        assertThat(JSON.readTree(status.body()).path("data").path("uptimeSeconds").asLong()).isGreaterThanOrEqualTo(0);
+        cleanup.retryPending();
+        var completed=request("/admin/ops/cleanup",staff,null);
+        assertThat(JSON.readTree(completed.body()).path("data")).isEmpty();
+    }
+
     @Test void inventoryRequiresCoverageForEveryOwnerColumnAndCascadeDescendant() {
         var owned=jdbc.queryForList("SELECT DISTINCT table_name FROM information_schema.columns WHERE table_schema='public' AND column_name IN ('user_id','owner_id')",String.class);
         assertThat(new HashSet<>(owned)).isEqualTo(DIRECT);

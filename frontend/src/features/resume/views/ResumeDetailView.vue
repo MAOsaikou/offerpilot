@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 import { PII_WARNING } from '@/shared/api/privacy-settings'
 import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
@@ -12,7 +14,8 @@ const local = computed(() => workspace.state.resumes.some((resume) => resume.id 
 </script>
 <template>
   <p v-if="route.query.piiWarning === '1'" class="helper-note" role="status">
-    {{ PII_WARNING }} <RouterLink to="/settings/privacy">隐私设置</RouterLink>
+    {{ uiText(PII_WARNING) }}
+    <RouterLink to="/settings/privacy">{{ uiText('Privacy settings') }}</RouterLink>
   </p>
   <LocalResumeEditor v-if="local" :key="'local-' + id" />
   <ServerResumeEditor v-else :id="id" :key="id">

@@ -1,14 +1,17 @@
 <script setup lang="ts">
+import { formatDate, translate as uiText } from '@/shared/utils/language'
+
 import { ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useBoard } from '@/shared/composables/useBoard'
 import {
-  applicationStages,
+  APPLICATION_DRAG_TYPE,
+  applicationStageLabels as applicationStages,
   type ApplicationStatus,
   type ServerApplication,
 } from '@/shared/types/board'
 const props = defineProps<{ application: ServerApplication }>()
-const board = useBoard()
+const board = useBoard({ cardScope: true })
 const router = useRouter()
 function open(event: MouseEvent) {
   if ((event.target as HTMLElement).closest('a,button,input,textarea,select,label')) return
@@ -27,25 +30,42 @@ async function changeStage(event: Event) {
   select.value = props.application.status
   await board.update(props.application.id, { status })
 }
+const dragging = ref(false)
+function dragStart(event: DragEvent) {
+  if (!event.dataTransfer) return
+  event.dataTransfer.setData(APPLICATION_DRAG_TYPE, props.application.id)
+  event.dataTransfer.effectAllowed = 'move'
+  dragging.value = true
+}
 async function saveNote() {
   await board.update(props.application.id, { note: note.value })
 }
 </script>
 <template>
-  <article class="application-card" :aria-busy="board.busy.value" @click="open">
+  <article
+    class="application-card"
+    :class="{ dragging }"
+    :aria-busy="board.busy.value"
+    :draggable="!board.busy.value && note === application.note"
+    :data-application-id="application.id"
+    @click="open"
+    @dragstart="dragStart"
+    @dragend="dragging = false"
+  >
     <p>{{ application.job.company }}</p>
     <RouterLink :to="{ path: '/board', query: { application: application.id } }"
       ><h3>{{ application.job.title }}</h3></RouterLink
     >
     <p>
-      {{ application.job.locations || '地点未提供' }} · {{ application.createdAt.slice(0, 10) }}
+      {{ application.job.locations || uiText('Location not provided') }} ·
+      {{ formatDate(application.createdAt) }}
     </p>
     <p v-if="application.nextAction" class="subtle">
-      下一步：{{ application.nextAction
-      }}<span v-if="application.nextActionAt"> · {{ application.nextActionAt }}</span>
+      {{ uiText('Next action: {0}', [application.nextAction])
+      }}<span v-if="application.nextActionAt"> · {{ formatDate(application.nextActionAt) }}</span>
     </p>
     <label class="field"
-      >当前阶段
+      >{{ uiText('Current stage') }}
       <select
         :value="application.status"
         :disabled="board.busy.value || note !== application.note"
@@ -57,21 +77,31 @@ async function saveNote() {
       </select>
     </label>
     <label class="field"
-      >跟进备注
+      >{{ uiText('Follow-up notes') }}
       <textarea
         v-model="note"
         rows="2"
         maxlength="2000"
         :disabled="board.busy.value"
-        placeholder="记录下一步、面试时间…"
+        :placeholder="uiText('Record next steps, interview times…')"
       />
     </label>
     <button class="btn" :disabled="board.busy.value || note === application.note" @click="saveNote">
-      {{ board.busy.value ? '正在保存…' : '保存备注' }}
+      {{ board.busy.value ? uiText('Saving…') : uiText('Save notes') }}
     </button>
-    <p v-if="note !== application.note" class="subtle">备注尚未保存，请保存后再移动阶段。</p>
+    <p v-if="note !== application.note" class="subtle">
+      {{ uiText('Save your notes before moving to another stage.') }}
+    </p>
     <p v-if="board.error.value" class="error-banner" role="alert">
-      {{ board.error.value }}，请重试。
+      {{ uiText('{0}. Please retry.', [board.error.value]) }}
     </p>
   </article>
 </template>
+<style scoped>
+.application-card[draggable='true'] {
+  cursor: grab;
+}
+.application-card.dragging {
+  opacity: 0.5;
+}
+</style>

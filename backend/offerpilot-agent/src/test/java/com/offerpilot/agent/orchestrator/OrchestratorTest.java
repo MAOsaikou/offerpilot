@@ -124,7 +124,7 @@ class OrchestratorTest {
                     .when(experts).execute(any(), any(), any(), any(), anyMap());
         } else {
             ExpertResult result = path.equals("card")
-                    ? ExpertResult.card(payload, "card_1", "job_card", Map.of()) : ExpertResult.text(payload);
+                    ? ExpertResult.card(payload, "card_1", "job_card", Map.of("items", List.of(Map.of("title", payload)))) : ExpertResult.text(payload);
             doReturn(Mono.just(result)).when(experts).execute(any(), any(), any(), any(), anyMap());
             if (path.equals("placeholder")) model(composite().replace("\"COACH\"", "\"JOB\""));
         }
@@ -223,5 +223,44 @@ class OrchestratorTest {
         }
         assertThatThrownBy(() -> planner.decode("{\"kind\":\"chitchat\",\"confidence\":1} {}", "hi"))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test void autoNoteQuestionsAndPlainRepliesConsumeTheSamePrefetchAndEmitNumberedCitations() {
+        for (boolean parallel : List.of(false,true)) for (String query : List.of(
+                "我笔记里记的缓存击穿解决方案有哪些？",
+                "根据我的笔记，我上次面试缓存击穿是怎么答的？还要怎么改进？", "聊聊缓存击穿")) {
+            var notes = mock(com.offerpilot.knowledge.application.KnowledgeNotesForChat.class);
+            when(notes.retrieve("owner",query)).thenReturn(List.of(new com.offerpilot.knowledge.application.KnowledgeNotesForChat.Citation(
+                    "note1","Redis 缓存击穿复盘","面试复盘","互斥锁重建缓存和逻辑过期异步刷新","KB-123456789012")));
+            var context = new com.offerpilot.agent.experts.KnowledgeNoteContext(notes,new ObjectMapper());
+            org.springframework.test.util.ReflectionTestUtils.setField(context,"parallel",parallel);
+            orchestrator.setNoteContext(context);
+            model("{\"kind\":\"chitchat\",\"confidence\":1}");
+            reply.clear();
+            var events = orchestrator.run(AgentMode.AUTO,query,List.of(),ModelTier.FLASH,"run",new AtomicInteger(),reply,u->{},"owner",Map.of())
+                    .collectList().block(Duration.ofSeconds(3));
+            assertThat(events).extracting(AgentEvent::type).containsExactly("ui.card","citation");
+            assertThat(events).extracting(AgentEvent::id).containsExactly(1,2);
+            var citation = ((AgentEvent.Citation)events.get(1)).sources().get(0);
+            assertThat(citation.collection()).isEqualTo("notes");
+            assertThat(citation.index()).isEqualTo(1);
+            assertThat(citation.docId()).isEqualTo("note1");
+            assertThat(reply.get(0).getText()).contains("[n]");
+            assertThat(reply.get(1).getText()).contains("互斥锁", "Redis 缓存击穿复盘", "\"index\":1");
+            verify(notes,times(1)).retrieve("owner",query);
+        }
+        verify(experts,never()).prepareInterview(any(),any());
+        verify(experts,never()).requestInterview(any(),any(),any());
+    }
+
+    @Test void noNoteHitsAndUnsafeTurnsNeverEmitInventedCitations() {
+        var notes = mock(com.offerpilot.knowledge.application.KnowledgeNotesForChat.class);
+        when(notes.retrieve(anyString(),anyString())).thenReturn(List.of());
+        orchestrator.setNoteContext(new com.offerpilot.agent.experts.KnowledgeNoteContext(notes,new ObjectMapper()));
+        model("{\"kind\":\"chitchat\",\"confidence\":1}");
+        assertThat(run(AgentMode.AUTO).collectList().block(Duration.ofSeconds(3))).isEmpty();
+        assertThat(reply).isEmpty();
+        model("{\"kind\":\"unsafe\",\"confidence\":1}");
+        assertThat(run(AgentMode.AUTO).collectList().block(Duration.ofSeconds(3))).isEmpty();
     }
 }

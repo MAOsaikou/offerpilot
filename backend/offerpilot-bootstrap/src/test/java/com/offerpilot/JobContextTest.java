@@ -98,6 +98,8 @@ class JobContextTest {
         registry.setArtifacts(artifacts);
         var planner = new IntentPlanner(gateway, json, registry, resource("planner"));
         var conversations = mock(ConversationService.class);
+        var approvals=new com.offerpilot.agent.application.ApprovalService(conversations);
+        registry.setAnalysisApprovals(approvals);
         var service = new ChatService(gateway, conversations, resource("system"), new Orchestrator(planner, registry), json);
         when(gateway.defaultTier()).thenReturn(ModelTier.FLASH);
         when(gateway.modelName(any())).thenReturn("stub");
@@ -115,7 +117,9 @@ class JobContextTest {
             var context = Map.<String,Object>of("jobAction", "match", "jobId", "job", "resumeId", "rs", "resumeVersionId", "rv",
                     "applicationId", "foreign-application");
             var events = service.chat("owner", new ChatRequest(null, "匹配所选岗位和简历", null, mode,
-                    new ChatRequest.Options("FLASH", false, context))).collectList().block(Duration.ofSeconds(5));
+                    new ChatRequest.Options("FLASH", false, context))).doOnNext(event -> {
+                        if(event instanceof AgentEvent.ApprovalRequired a) approvals.resolve("owner","run",a.approvalId(),new com.offerpilot.agent.application.ApprovalService.Decision("APPROVE",null,null));
+                    }).collectList().block(Duration.ofSeconds(5));
             assertThat(events).noneMatch(AgentEvent.ErrorEvent.class::isInstance)
                     .anyMatch(e -> e instanceof AgentEvent.UiCard card && card.cardType().equals("job_match"))
                     .anyMatch(AgentEvent.RunCompleted.class::isInstance);
@@ -143,9 +147,9 @@ class JobContextTest {
                 beans.getBeanProvider(com.offerpilot.interview.application.InterviewCoachForChat.class),
                 beans.getBeanProvider(com.offerpilot.agent.application.InterviewWriteTools.class));
         registry.setArtifacts(artifacts);
-        when(jobs.get("missing")).thenThrow(new BusinessException(ErrorCode.JOB_NOT_FOUND));
-        when(jobs.get("shared")).thenReturn(json.createObjectNode().put("id", "shared"));
-        when(descriptions.description(anyString())).thenReturn("Java JD");
+        when(jobs.get("owner", "missing")).thenThrow(new BusinessException(ErrorCode.JOB_NOT_FOUND));
+        when(jobs.get("owner", "shared")).thenReturn(json.createObjectNode().put("id", "shared"));
+        when(descriptions.description(eq("owner"), anyString())).thenReturn("Java JD");
         when(optimizations.generate(eq("owner"), eq("rs"), eq("rv"), eq("Java JD"), anyString(), nullable(String.class)))
                 .thenReturn(Mono.just(json.createObjectNode().put("reportId", "opt")));
         for (String job : List.of("missing", "shared")) {
@@ -163,11 +167,11 @@ class JobContextTest {
             var optimize = new com.offerpilot.agent.domain.PlanStep("s", "改写", com.offerpilot.agent.domain.ExpertType.RESUME,
                     Map.of("action", "optimize"), List.of());
             registry.execute("owner", selected, "run_" + job, optimize, Map.of()).block();
-            verify(descriptions).description(job);
+            verify(descriptions).description("owner", job);
             verify(optimizations).generate(eq("owner"), eq("rs"), eq("rv"), eq("Java JD"), anyString(),
                     job.equals("missing") ? isNull() : eq(job));
         }
-        when(jobs.get("unavailable")).thenThrow(new BusinessException(ErrorCode.DATABASE_UNAVAILABLE));
+        when(jobs.get("owner", "unavailable")).thenThrow(new BusinessException(ErrorCode.DATABASE_UNAVAILABLE));
         var interview = new com.offerpilot.agent.domain.PlanStep("s", "面试", com.offerpilot.agent.domain.ExpertType.INTERVIEWER,
                 Map.of("action", "startInterview", "jobId", "unavailable"), List.of());
         assertThatThrownBy(() -> registry.requestInterview("owner", "run_failed", interview))

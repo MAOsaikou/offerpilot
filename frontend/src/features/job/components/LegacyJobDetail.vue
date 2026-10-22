@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { translate as uiText } from '@/shared/utils/language'
+
 import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
@@ -9,31 +11,45 @@ const job = computed(() => jobs.find((j) => j.id === route.params.id))
 <template>
   <section v-if="job" class="page-stack">
     <PageHeading :title="job.title" :description="job.company + ' · ' + job.city"
-      ><RouterLink to="/jobs" class="btn">← 返回岗位</RouterLink></PageHeading
+      ><RouterLink to="/jobs" class="btn">{{ uiText('← Back to jobs') }}</RouterLink></PageHeading
     >
-    <div class="helper-note">这是虚构示例岗位。请在岗位搜索页收藏企业官网的真实岗位。</div>
+    <div class="helper-note">
+      {{
+        uiText(
+          'This is a fictional sample job. Search for real jobs from company websites and save them instead.',
+        )
+      }}
+    </div>
     <div class="split-content">
       <article class="panel form-stack">
-        <h2>岗位介绍</h2>
+        <h2>{{ uiText('About the role') }}</h2>
         <p class="prose-content">{{ job.description }}</p>
-        <h2>能力关键词</h2>
+        <h2>{{ uiText('Skill keywords') }}</h2>
         <div class="chips">
           <span v-for="tag in job.tags" :key="tag" class="chip">{{ tag }}</span>
         </div>
-        <h2>准备建议</h2>
+        <h2>{{ uiText('Preparation tips') }}</h2>
         <p class="subtle">
-          整理与你申请方向相关的项目经历，说明自己的职责、具体行动与可验证成果。先核实企业官方招聘信息，再决定投递。
+          {{
+            uiText(
+              'Prepare relevant project experience covering your responsibilities, concrete actions and verifiable results. Check official recruitment information before applying.',
+            )
+          }}
         </p>
         <RouterLink
           :to="{
             path: '/chat',
             query: {
               mode: 'JOB',
-              prompt: '请帮我分析以下岗位需要准备哪些能力：' + job.title + '。' + job.description,
+              prompt:
+                uiText('Help me analyze the skills needed for this role:') +
+                job.title +
+                '。' +
+                job.description,
             },
           }"
           class="btn"
-          >在 AI 对话中讨论这个方向</RouterLink
+          >{{ uiText('Discuss this direction with AI') }}</RouterLink
         >
       </article>
       <aside class="panel form-stack">
@@ -43,15 +59,17 @@ const job = computed(() => jobs.find((j) => j.id === route.params.id))
         <h2>{{ job.company }}</h2>
         <p class="large-number" style="font-size: 1.5rem">{{ job.salary }}</p>
         <p class="subtle">
-          工作城市：{{ job.city }}<br />岗位方向：{{ job.category }}<br />数据来源：本地示例
+          {{ uiText('Work city: {0}', [job.city]) }}<br />{{
+            uiText('Job direction: {0}', [job.category])
+          }}<br />{{ uiText('Source: local sample') }}
         </p>
-        <RouterLink to="/resumes" class="btn primary">准备我的简历</RouterLink
-        ><RouterLink to="/board" class="btn">跟进投递进展</RouterLink>
+        <RouterLink to="/resumes" class="btn primary">{{ uiText('Prepare my resume') }}</RouterLink
+        ><RouterLink to="/board" class="btn">{{ uiText('Track application progress') }}</RouterLink>
       </aside>
     </div>
   </section>
   <div v-else class="panel empty-state">
-    <h2>没有找到这个岗位</h2>
-    <RouterLink to="/jobs" class="btn">返回岗位列表</RouterLink>
+    <h2>{{ uiText('Job not found') }}</h2>
+    <RouterLink to="/jobs" class="btn">{{ uiText('Back to job list') }}</RouterLink>
   </div>
 </template>

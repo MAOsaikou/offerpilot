@@ -1,9 +1,19 @@
-import { createApp, nextTick } from 'vue'
+import { createApp, nextTick, ref } from 'vue'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import type { EvidenceMatch } from '@/shared/types/jobs'
 import EvidenceMatchReport from './EvidenceMatchReport.vue'
 
+const favorite = vi.hoisted(() => vi.fn())
+vi.mock('@/shared/composables/useBoard', () => ({
+  useBoard: () => ({
+    saved: () => false,
+    busy: ref(false),
+    error: ref(''),
+    favorite,
+    query: { isPending: ref(false), isError: ref(false) },
+  }),
+}))
 const report: EvidenceMatch = {
   id: 'match-1',
   jobId: 'job-1',
@@ -15,6 +25,7 @@ const report: EvidenceMatch = {
   summary: '已有开发证据，待补数据库与部署经验',
   createdAt: '2026-09-21',
   model: 'test',
+  durationMs: 2345,
   unverifiedCount: 1,
   unverifiedRequirements: [
     { requirement: '会常用的shell命令', status: 'UNVERIFIED', verificationIssue: 'RESUME_QUOTE' },
@@ -131,4 +142,15 @@ it('switches the original quote and status when navigating to missing JD evidenc
   panel.querySelector<HTMLButtonElement>('button')!.click()
   await nextTick()
   expect(root.querySelector('section[tabindex="-1"]')).toBeNull()
+})
+
+it('report exposes a one-click board action and the measured generation duration', async () => {
+  const root = mountReport()
+  const action = [...root.querySelectorAll<HTMLButtonElement>('button')].find(
+    (b) => b.textContent?.trim() === '加入看板',
+  )!
+  action.click()
+  await nextTick()
+  expect(favorite).toHaveBeenCalledWith('job-1')
+  expect(root.textContent).toContain('生成耗时 2.35 秒')
 })

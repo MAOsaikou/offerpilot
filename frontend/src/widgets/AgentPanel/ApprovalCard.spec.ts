@@ -235,3 +235,95 @@ it('expanded execution details show the reviewed change without transport JSON o
   expect(root.textContent).not.toContain('app_internal')
   expect(root.querySelector('pre')).toBeNull()
 })
+
+it.each([
+  [
+    'setCareerTarget',
+    { name: '工程师', occupationId: 'locked' },
+    ['name'],
+    '后端工程师',
+    { name: '后端工程师' },
+  ],
+  [
+    'adoptGrowthPlan',
+    { taskTitles: ['任务一'] },
+    ['taskTitles'],
+    '["任务二"]',
+    { taskTitles: ['任务二'] },
+  ],
+  [
+    'saveStarStory',
+    { sessionId: 'locked', questionIndex: 0 },
+    ['questionIndex'],
+    '1',
+    { questionIndex: 1 },
+  ],
+  ['startInterview', { role: '前端', kind: '项目与经历' }, ['role'], '后端', { role: '后端' }],
+  [
+    'answerInterview',
+    { sessionId: 'locked', answer: '原答案' },
+    ['answer'],
+    '核对后的答案',
+    { answer: '核对后的答案' },
+  ],
+  [
+    'saveUserFact',
+    { kind: 'GOAL', source: 'EXPLICIT', fact: '我的目标岗位是后端工程师' },
+    ['fact'],
+    '目标岗位是后端工程师',
+    { fact: '目标岗位是后端工程师' },
+  ],
+] as const)(
+  'edits meaningful %s arguments without exposing pinned resource fields',
+  async (name, args, fields, value, expected) => {
+    const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetch)
+    const { root, approval } = mount()
+    approval.value = { ...approval.value, name, args, editableFields: [...fields] }
+    await nextTick()
+    const input = root.querySelector('textarea')!
+    input.value = value
+    input.dispatchEvent(new Event('input'))
+    await nextTick()
+    root.querySelector('button')!.click()
+    await settle()
+    expect(JSON.parse(fetch.mock.calls[0]?.[1].body)).toEqual({
+      decision: 'APPROVE',
+      args: expected,
+    })
+    expect(root.textContent).toContain('已批准')
+    expect(root.textContent).not.toContain('locked')
+  },
+)
+
+it('validates structured patch edits locally and keeps rejection available for invalid JSON', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }))
+  vi.stubGlobal('fetch', fetch)
+  const { root, approval } = mount()
+  approval.value = {
+    ...approval.value,
+    name: 'applyPatches',
+    args: { accepted: ['p1'], edited: {}, confirmed: [] },
+    editableFields: ['accepted', 'edited', 'confirmed'],
+  }
+  await nextTick()
+  const inputs = root.querySelectorAll('textarea')
+  inputs[1]!.value = '{'
+  inputs[1]!.dispatchEvent(new Event('input'))
+  await nextTick()
+  root.querySelector('button')!.click()
+  await settle()
+  expect(fetch).not.toHaveBeenCalled()
+  expect(root.textContent).toContain('有效的 JSON')
+  inputs[0]!.value = '[]'
+  inputs[0]!.dispatchEvent(new Event('input'))
+  inputs[1]!.value = '{"p1":{"value":"核对后的文本"}}'
+  inputs[1]!.dispatchEvent(new Event('input'))
+  await nextTick()
+  root.querySelector('button')!.click()
+  await settle()
+  expect(JSON.parse(fetch.mock.calls[0]?.[1].body).args).toEqual({
+    accepted: [],
+    edited: { p1: { value: '核对后的文本' } },
+  })
+})

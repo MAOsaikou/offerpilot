@@ -12,6 +12,15 @@ spring:
       - org.springframework.ai.vectorstore.pgvector.autoconfigure.PgVectorStoreAutoConfiguration
 
 offerpilot:
+  notifications:
+    deadline-cron: "-"
+    new-job-initial-delay-ms: 3600000
+  career:
+    target-initial-delay-ms: 3600000
+    profile-initial-delay-ms: 3600000
+  llm:
+    # General protocol stubs do not emulate the optional classifier. Dedicated SC-01 tests enable it.
+    injection-classifier-enabled: false
   knowledge:
     notes-embed:
       enabled: false

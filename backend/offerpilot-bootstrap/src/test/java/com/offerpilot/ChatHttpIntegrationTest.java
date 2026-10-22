@@ -51,6 +51,8 @@ class ChatHttpIntegrationTest {
     @Container
     static PostgreSQLContainer<?> database = new PostgreSQLContainer<>(DockerImageName.parse("pgvector/pgvector:pg17").asCompatibleSubstituteFor("postgres"));
     @MockBean ResumeOptimizationForChat optimizations;
+    @MockBean com.offerpilot.resume.application.ResumeObjectStore objects;
+    private final java.util.Map<String, byte[]> stored = new java.util.concurrent.ConcurrentHashMap<>();
     @Autowired ObjectMapper json;
     @Autowired GuestIdentityService identities;
     @Autowired ConversationService conversations;
@@ -58,6 +60,8 @@ class ChatHttpIntegrationTest {
     @Autowired com.offerpilot.llm.quota.LlmQuotaLimiter quotas;
     @Autowired org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     private static final AtomicReference<String> requestBody = new AtomicReference<>();
+    private static final java.util.List<String> requestBodies = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private static final java.util.concurrent.atomic.AtomicInteger providerCalls = new java.util.concurrent.atomic.AtomicInteger();
     private static final HttpServer provider = provider();
     @Autowired com.offerpilot.resume.application.ResumePatchService patchService;
     @LocalServerPort
@@ -67,8 +71,10 @@ class ChatHttpIntegrationTest {
         try {
             var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/chat/completions", exchange -> {
+                providerCalls.incrementAndGet();
                 String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 requestBody.set(body);
+                requestBodies.add(body);
                 exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
                 exchange.sendResponseHeaders(200, 0);
                 try (var out = exchange.getResponseBody()) {
@@ -124,6 +130,72 @@ class ChatHttpIntegrationTest {
     }
 
     private String owner(String token) { return identities.require("Bearer " + token); }
+
+    @Test
+    void autoResumeAdviceSkipsClassificationAndPersistsOnlyOneReplyUsage() throws Exception {
+        String token = identities.create().accessToken(), user = owner(token);
+        int before = providerCalls.get();
+        var response = request("POST", "/agent/chat", token,
+                "{\"content\":\"简历里的项目经历怎么写更有说服力？给两条要点。\",\"mode\":\"AUTO\"}");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("plan.created", "resumeGuidance", "text.delta", "run.completed")
+                .doesNotContain("approval.required", "event:error", "event: error");
+        assertThat(providerCalls.get() - before).isEqualTo(1);
+        assertThat(requestBody.get()).contains("本轮只提供简历文字指导", "<orchestrator-data>")
+                .doesNotContain("意图识别与规划 v1", "简历动作解析 v1");
+        var message = jdbc.queryForMap("SELECT m.plain_text,m.usage::text AS usage FROM messages m "
+                + "JOIN agent_runs r ON r.assistant_message_id=m.id WHERE r.user_id=?", user);
+        assertThat(message.get("plain_text")).isEqualTo("你好，同学。");
+        var usage = json.readTree((String) message.get("usage"));
+        assertThat(usage.path("promptTokens").asInt()).isEqualTo(12);
+        assertThat(usage.path("completionTokens").asInt()).isEqualTo(6);
+    }
+
+    private HttpResponse<String> upload(String token, String filename, byte[] bytes) throws Exception {
+        String boundary = "op" + java.util.UUID.randomUUID();
+        var body = new java.io.ByteArrayOutputStream();
+        body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename
+                + "\"\r\nContent-Type: application/octet-stream\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        body.write(bytes);
+        body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        return HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/attachments"))
+                .header("Authorization", "Bearer " + token).header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void chatImageAttachmentReachesTheVisionModelStaysPrivateAndIsReleasedWithTheConversation() throws Exception {
+        org.mockito.Mockito.when(objects.bucket()).thenReturn("test");
+        org.mockito.Mockito.doAnswer(call -> stored.put(call.getArgument(0), call.getArgument(1))).when(objects).put(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+        org.mockito.Mockito.when(objects.get(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString())).thenAnswer(call -> stored.get(call.<String>getArgument(1)));
+        String token = identities.create().accessToken(), stranger = identities.create().accessToken(), user = owner(token);
+        byte[] png = {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10, 0, 0, 0, 13, 'I', 'H', 'D', 'R'};
+
+        assertThat(upload(token, "notes.txt", "hello".getBytes(StandardCharsets.UTF_8)).statusCode()).isEqualTo(400);
+        var uploaded = upload(token, "jd.png", png);
+        assertThat(uploaded.statusCode()).isEqualTo(200);
+        String fileId = json.readTree(uploaded.body()).path("data").path("fileId").asText();
+        assertThat(request("GET", "/agent/attachments/" + fileId, stranger, null).statusCode()).isEqualTo(404);
+        assertThat(request("GET", "/agent/attachments/" + fileId, token, null).statusCode()).isEqualTo(200);
+
+        String chat = json.writeValueAsString(java.util.Map.of("content", "帮我看看这张岗位截图", "mode", "COACH",
+                "attachments", java.util.List.of(java.util.Map.of("fileId", fileId, "kind", "image"))));
+        // Someone else's file id cannot be attached.
+        assertThat(request("POST", "/agent/chat", stranger, chat).statusCode()).isEqualTo(400);
+        var response = request("POST", "/agent/chat", token, chat);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("run.completed");
+        assertThat(requestBody.get()).contains("data:image/png;base64,", "用户本轮附带了 1 张图片");
+
+        String conversation = jdbc.queryForObject("SELECT conversation_id FROM agent_runs WHERE user_id=?", String.class, user);
+        var parts = json.readTree(jdbc.queryForObject("SELECT parts::text FROM messages WHERE conversation_id=? AND role='USER'", String.class, conversation));
+        assertThat(parts.get(1).path("type").asText()).isEqualTo("image");
+        assertThat(parts.get(1).path("fileId").asText()).isEqualTo(fileId);
+
+        assertThat(request("DELETE", "/conversations/" + conversation, token, null).statusCode()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM files WHERE id=?", Integer.class, fileId)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM account_data_cleanup WHERE object_key=?", Integer.class, "chat/" + user + "/" + fileId)).isEqualTo(1);
+    }
 
     @Test
     void legacyAndUnknownChatTiersUseFlashInsteadOfReturning400() throws Exception {
@@ -243,7 +315,7 @@ class ChatHttpIntegrationTest {
         var data = json.readTree(registered.body()).path("data");
         String token = data.path("accessToken").asText();
         String userId = data.path("user").path("id").asText();
-        assertThat(data.path("expiresIn").asLong()).isEqualTo(43200);
+        assertThat(data.path("expiresIn").asLong()).isEqualTo(900);
         assertThat(request("POST", "/auth/register", null, payload).statusCode()).isEqualTo(409);
         assertThat(request("POST", "/auth/login", null, payload).statusCode()).isEqualTo(200);
         assertThat(request("POST", "/auth/staff/login", null, payload).statusCode()).isEqualTo(403);
@@ -284,16 +356,24 @@ class ChatHttpIntegrationTest {
         String token = identities.create().accessToken();
         String conv = conversations.create(owner(token), null, AgentMode.AUTO).id();
         assertThat(request("POST", "/agent/chat", token, json.writeValueAsString(java.util.Map.of("conversationId", conv, "content", "我的专业是物理"))).body()).contains("run.completed");
+        requestBodies.clear();
         var second = request("POST", "/agent/chat", token, json.writeValueAsString(java.util.Map.of("conversationId", conv, "content", "适合哪些岗位？")));
         assertThat(second.body()).contains("run.completed");
-        var prompt = json.readTree(requestBody.get()).path("messages");
-        assertThat(prompt.size()).isEqualTo(4);
+        // Planner and reply calls run concurrently; assert on the planner prompt instead of whichever finished last.
+        String plannerBody = requestBodies.stream().filter(b -> b.contains("意图识别与规划 v1")).reduce((a, b) -> b).orElseThrow();
+        var prompt = json.readTree(plannerBody).path("messages");
+        // AG-02: planner keeps the raw user text (shared SC-01 screen) and sends selection state as a separate system message.
+        assertThat(prompt.size()).isBetween(4, 5);
+        assertThat(prompt.get(prompt.size() - 1).path("content").asText()).isEqualTo("适合哪些岗位？");
         assertThat(prompt.get(1).path("content").asText()).isEqualTo("我的专业是物理");
         assertThat(prompt.get(2).path("role").asText()).isEqualTo("assistant");
         var restored = request("GET", "/conversations/" + conv + "/messages", token, null);
         assertThat(json.readTree(restored.body()).path("data").path("items").size()).isEqualTo(4);
         request("POST", "/agent/chat", token, "{\"content\":\"新的对话\"}");
-        assertThat(json.readTree(requestBody.get()).path("messages").size()).isEqualTo(2);
+        var fresh = json.readTree(requestBody.get()).path("messages");
+        // Planner/reply prompts now run concurrently; the last captured one has 2 or 3 messages (optional selection-state system message).
+        assertThat(fresh.size()).isBetween(2, 3);
+        assertThat(fresh.toString()).doesNotContain("我的专业是物理");
         assertThat(conversations.list(owner(token), 1, 20).items()).hasSize(2);
     }
 
@@ -432,7 +512,7 @@ class ChatHttpIntegrationTest {
                 "step.updated", "tool.call", "tool.result", "step.updated", "text.delta", "text.delta", "usage", "run.completed");
         assertThat(events.stream().map(e -> e.path("id").asInt()).toList())
                 .containsExactlyElementsOf(java.util.stream.IntStream.rangeClosed(1, events.size()).boxed().toList());
-        assertThat(response.body()).contains("你好", "，同学。", "event:usage", "\"promptTokens\":24", "\"completionTokens\":12");
+        assertThat(response.body()).contains("你好", "，同学。", "event:usage", "\"promptTokens\":36", "\"completionTokens\":18");
         assertThat(response.body().indexOf("event:usage")).isLessThan(response.body().indexOf("event:run.completed"));
         String conv = events.get(0).path("conversationId").asText();
         var messages = conversations.messages(owner(token), conv, null, 30).items();
@@ -474,7 +554,7 @@ class ChatHttpIntegrationTest {
                     }
                     assertThat(approval).isNotNull();
                     assertThat(approval.path("name").asText()).isEqualTo(action);
-                    assertThat(approval.path("editableFields")).isEmpty();
+                    assertThat(approval.path("editableFields")).isEqualTo(json.valueToTree(action.equals("startInterview") ? java.util.List.of("role", "kind") : action.equals("continueInterview") ? java.util.List.of("answer", "nextQuestion") : java.util.List.of()));
                     assertThat(json.readTree(request("GET", "/interviews", token, null).body()).path("data")).isEqualTo(beforeData);
                     String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
                     assertThat(request("POST", path, stranger, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
@@ -616,7 +696,7 @@ class ChatHttpIntegrationTest {
                 assertThat(approval).isNotNull();
                 assertThat(approval.path("name").asText()).isEqualTo("setCareerTarget");
                 assertThat(approval.path("args").path("name").asText()).isEqualTo(occupationName);
-                assertThat(approval.path("editableFields")).isEmpty();
+                assertThat(approval.path("editableFields")).isEqualTo(json.valueToTree(java.util.List.of("name")));
                 var before = json.readTree(request("GET", "/career/profile", token, null).body()).path("data");
                 assertThat(before.path("target").asText()).isEqualTo("原目标");
                 String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
@@ -683,14 +763,14 @@ class ChatHttpIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(200);
         var events = sseEvents(response.body());
         var cards = events.stream().filter(e -> e.path("type").asText().equals("ui.card")).toList();
-        assertThat(cards).extracting(e -> e.path("cardType").asText()).containsExactly("skill_gap", "roadmap");
+        assertThat(cards).extracting(e -> e.path("cardType").asText()).containsExactly("skill_gap", "roadmap", "skill_radar");
         assertThat(cards.get(0).path("payload").path("skills").get(0).path("name").asText()).isEqualTo("Java");
         assertThat(cards.get(0).path("payload").path("skills").get(1).path("current").asInt()).isEqualTo(3);
         assertThat(cards.get(0).path("payload").path("citations")).isEmpty();
         assertThat(response.body()).doesNotContain("private-phone-fixture", "占位", "approval.required", "placeholder.COACH");
         var persisted = json.readTree(jdbc.queryForObject("SELECT parts::text FROM messages WHERE conversation_id=? AND role='ASSISTANT'",
                 String.class, events.get(0).path("conversationId").asText()));
-        assertThat(persisted).hasSize(3);
+        assertThat(persisted).hasSize(4);
         assertThat(persisted.get(1).path("payload")).isEqualTo(cards.get(0).path("payload"));
         assertThat(persisted.get(2).path("payload")).isEqualTo(cards.get(1).path("payload"));
         var restored = json.readTree(request("GET", "/conversations/" + events.get(0).path("conversationId").asText() + "/messages", token, null).body());
@@ -743,7 +823,7 @@ class ChatHttpIntegrationTest {
                 "content", "技能差距和成长计划", "mode", "COACH", "options", java.util.Map.of("context",
                 java.util.Map.of("applicationId", applicationId, "jobId", "unrelated-caller-job")))));
         var loopCards = sseEvents(loopResponse.body()).stream().filter(e -> e.path("type").asText().equals("ui.card")).toList();
-        assertThat(loopCards).extracting(e -> e.path("cardType").asText()).containsExactly("skill_gap", "roadmap");
+        assertThat(loopCards).extracting(e -> e.path("cardType").asText()).containsExactly("skill_gap", "roadmap", "skill_radar");
         var loopSkills = loopCards.get(0).path("payload").path("skills");
         assertThat(loopSkills).hasSizeLessThanOrEqualTo(8);
         assertThat(loopSkills.get(0).path("name").asText()).isEqualTo("Docker");
@@ -811,12 +891,12 @@ class ChatHttpIntegrationTest {
                 }
                 assertThat(approval).isNotNull();
                 assertThat(approval.path("name").asText()).isEqualTo("adoptGrowthPlan");
-                assertThat(approval.path("editableFields")).isEmpty();
+                assertThat(approval.path("editableFields")).isEqualTo(json.valueToTree(java.util.List.of("taskTitles")));
                 assertThat(approval.path("args").path("taskTitles")).isEqualTo(json.valueToTree(java.util.List.of(titles.get(1))));
                 assertThat(jdbc.queryForObject("SELECT count(*) FROM growth_task_completions WHERE user_id=?", Integer.class, user)).isEqualTo(1);
                 String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
                 assertThat(request("POST", path, stranger, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
-                assertThat(request("POST", path, token, json.writeValueAsString(java.util.Map.of("decision", "APPROVE", "args", java.util.Map.of("taskTitles", java.util.List.of(titles.get(2)))))).statusCode()).isEqualTo(400);
+                assertThat(request("POST", path, token, json.writeValueAsString(java.util.Map.of("decision", "APPROVE", "args", java.util.Map.of("taskTitles", java.util.List.of("不在目录内的任务"))))).statusCode()).isEqualTo(400);
                 if (decision.equals("APPROVE")) {
                     // A checklist change made while waiting must be preserved by the eventual merge.
                     assertThat(request("PUT", "/career/tasks", token, json.writeValueAsString(java.util.Map.of("completed", java.util.List.of(titles.get(0), titles.get(2))))).statusCode()).isEqualTo(200);
@@ -889,13 +969,13 @@ class ChatHttpIntegrationTest {
                 }
                 assertThat(writeCalled).isTrue();
                 assertThat(approval).isNotNull();
-                assertThat(approval.path("editableFields")).isEmpty();
+                assertThat(approval.path("editableFields")).isEqualTo(json.valueToTree(java.util.List.of("accepted", "edited", "confirmed")));
                 assertThat(approval.path("args").path("owner").isMissingNode()).isTrue();
                 assertThat(patchService.get(user, resumeId, versionId, batch.batchId()).appliedVersionId()).isNull();
                 assertThat(jdbc.queryForObject("SELECT count(*) FROM resume_versions WHERE resume_id=?", Integer.class, resumeId)).isEqualTo(1);
                 String path = "/agent/runs/" + approval.path("runId").asText() + "/approvals/" + approval.path("approvalId").asText();
                 assertThat(request("POST", path, stranger, "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
-                assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\",\"args\":{\"accepted\":[]}}").statusCode()).isEqualTo(400);
+                assertThat(request("POST", path, token, "{\"decision\":\"APPROVE\",\"args\":{\"accepted\":[\"p2\"]}}").statusCode()).isEqualTo(400);
                 assertThat(request("POST", path, token, json.writeValueAsString(java.util.Map.of("decision", decision))).statusCode()).isEqualTo(200);
                 var rest = sseEvents(reader.lines().collect(java.util.stream.Collectors.joining("\n")));
                 assertThat(rest).anySatisfy(event -> {

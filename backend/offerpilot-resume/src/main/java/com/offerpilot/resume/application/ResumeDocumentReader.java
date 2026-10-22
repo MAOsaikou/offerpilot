@@ -9,14 +9,13 @@ import org.springframework.stereotype.Component;
 import javax.imageio.ImageIO;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.*;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.zip.ZipInputStream;
 
 @Component
 public class ResumeDocumentReader {
-    public static final int MAX_BYTES = 10 * 1024 * 1024;
+    public static final int MAX_BYTES = com.offerpilot.common.document.DocumentTextReader.MAX_BYTES;
     public record Image(byte[] bytes, String mime) {}
     public record Document(String text, List<Image> images, String channel) {}
     public String mime(String filename, byte[] bytes) {
@@ -29,10 +28,9 @@ public class ResumeDocumentReader {
         if ((name.endsWith(".jpg") || name.endsWith(".jpeg")) && starts(bytes, new byte[]{(byte)255,(byte)216,(byte)255})) return "image/jpeg";
         if (name.endsWith(".txt") || name.endsWith(".md")) {
             try {
-                String text = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
-                if (text.indexOf('\0') >= 0) throw invalid("文本文件必须是 UTF-8 编码");
+                com.offerpilot.common.document.DocumentTextReader.utf8(bytes);
                 return "text/plain";
-            } catch (java.nio.charset.CharacterCodingException ex) { throw invalid("文本文件必须是 UTF-8 编码"); }
+            } catch (BusinessException ex) { throw invalid(ex.getMessage()); }
         }
         throw new BusinessException(ErrorCode.FILE_TYPE_UNSUPPORTED, "请选择 PDF、DOCX、PNG、JPG 或 UTF-8 TXT/Markdown，文件内容须与扩展名一致");
     }

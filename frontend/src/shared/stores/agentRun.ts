@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { assertNever } from '@/shared/utils/assertNever'
@@ -31,10 +32,12 @@ export interface ToolCallView {
   id: string
   stepId?: string
   name: string
+  serverName?: string
   source: string
   access: ToolAccess
   args: unknown
   status: 'RUNNING' | 'OK' | 'FAILED' | 'CANCELLED'
+  result?: unknown
   resultPreview?: string
   durationMs?: number
   truncated?: boolean
@@ -60,10 +63,13 @@ export interface CardView {
 }
 
 export interface UsageView {
+  source?: 'llm_usage_logs' | 'legacy_message'
   model: string
   promptTokens: number
   completionTokens: number
-  costEstimate: number
+  costEstimate: number | null
+  durationMs?: number | null
+  usageReported?: boolean
   fallbackUsed: boolean
 }
 
@@ -203,6 +209,7 @@ export const useAgentRunStore = defineStore('agentRun', () => {
       args: event.args,
       status: 'RUNNING',
     }
+    if (event.serverName) call.serverName = event.serverName
     if (event.stepId) call.stepId = event.stepId
     ensure(event.runId).toolCalls.push(call)
   }
@@ -211,6 +218,10 @@ export const useAgentRunStore = defineStore('agentRun', () => {
     const call = ensure(event.runId).toolCalls.find((c) => c.id === event.toolCallId)
     if (!call) return
     call.status = event.ok ? 'OK' : 'FAILED'
+    if (event.source) call.source = event.source
+    if (event.serverName) call.serverName = event.serverName
+    else if (event.source === 'LOCAL') delete call.serverName
+    call.result = event.result
     call.resultPreview = event.resultPreview
     call.durationMs = event.durationMs
     call.truncated = event.truncated
@@ -274,12 +285,16 @@ export const useAgentRunStore = defineStore('agentRun', () => {
     for (const step of run.steps) {
       if (step.status !== 'RUNNING' && step.status !== 'PENDING') continue
       step.status = status === 'FAILED' && step.status === 'RUNNING' ? 'FAILED' : 'SKIPPED'
-      step.summary = status === 'CANCELLED' ? '运行已取消' : '运行已结束，步骤未完成'
+      step.summary =
+        status === 'CANCELLED'
+          ? uiText('Run canceled')
+          : uiText('Run ended before this step completed')
     }
     for (const call of run.toolCalls) {
       if (call.status !== 'RUNNING') continue
       call.status = status === 'CANCELLED' ? 'CANCELLED' : 'FAILED'
-      call.resultPreview = status === 'CANCELLED' ? '运行已取消' : '运行已结束，未收到工具结果'
+      call.resultPreview =
+        status === 'CANCELLED' ? uiText('Run canceled') : uiText('Run ended without a tool result')
     }
   }
 
@@ -300,6 +315,7 @@ export const useAgentRunStore = defineStore('agentRun', () => {
 
   /** 事件归约入口：新增事件类型时 default 分支会编译期报错 */
   function apply(event: AgentEvent): void {
+    if (event.id <= (runs.value.get(event.runId)?.lastEventId ?? 0)) return
     switch (event.type) {
       case 'run.started':
         begin(event)
@@ -339,11 +355,14 @@ export const useAgentRunStore = defineStore('agentRun', () => {
         break
       case 'usage':
         setUsage(event.runId, {
+          source: 'llm_usage_logs',
           model: event.model,
           promptTokens: event.promptTokens,
           completionTokens: event.completionTokens,
           costEstimate: event.costEstimate,
+          usageReported: event.usageReported,
           fallbackUsed: event.fallbackUsed,
+          durationMs: event.durationMs,
         })
         break
       case 'error':

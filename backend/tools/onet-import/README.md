@@ -9,7 +9,7 @@
 
 - **权威**：兴趣分数（RIASEC 六维）来自 O*NET 官方测评，不是我们自己估的。
 - **可溯源**：每条条目保留 `onetCode`（O*NET-SOC 编码），能回到源数据核对。
-- **公开领域**：O*NET 数据可自由使用。
+- **许可**：O*NET 数据库按 **CC BY 4.0** 使用，需保留归属与改编说明（[许可](https://www.onetcenter.org/license_db.html)）。本项目使用 O*NET 31.0，归属 National Center for O*NET Development；中文为翻译/改编，不代表官方认可。
 
 注意它的局限：O*NET 是美国的职业分类，**没有中国特有职业**（公务员、事业编等），
 这部分要另找数据源（计划里是《中华人民共和国职业分类大典》）。
@@ -71,3 +71,7 @@ mvn -q -B -pl offerpilot-bootstrap -am package -DskipTests
 - `core_skills` 用的是 O*NET 的**通用技能**（阅读理解、批判性思维等），不是技术技能。
   技术技能建议改为从真实 JD 抽取（jobs-mcp 已经能返回 JD 全文）。
 - 更新 O*NET 版本时，`hollandScores` 会随之变化，需要重新跑一遍并复核差异。
+
+## KB-01 数据边界
+
+当前直接导入 378 条，另保留24个中文映射 ID（不计作378之外的独立官方职业）。`sourceUrl/onetCode/license/attribution/contentNotice` 随条目保存。全部薪资无可信统计源，置 null，页面显示“暂无数据”；删除原24条估算及未经支持的趋势/企业断言。直接导入的6条缺技能、378条缺路径保持空值；中文映射的技术技能/路径标记 curated 编辑建议。后续导入必须保留同样的字段与许可，不补造薪资。

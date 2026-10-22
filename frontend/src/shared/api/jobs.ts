@@ -1,15 +1,21 @@
+import { translate as uiText } from '@/shared/utils/language'
+import { runGeneration } from './generationTasks'
 import {
-  ApiError,
   apiRequest,
   apiUrl,
   authenticatedHeaders,
   fetchWithIdentity,
+  readApiData,
+  assertResponseIdentity,
   toApiError,
 } from './client'
 import { downloadText } from '@/shared/utils/download'
 import type { ModelTier } from '@/shared/types/model-tier'
 import type {
+  DailyJobRecommendations,
   EvidenceMatch,
+  JobImportFields,
+  JobImportParse,
   JobSearchResult,
   JobSite,
   MatchHistory,
@@ -25,39 +31,25 @@ export const listJobSites = (signal?: AbortSignal) =>
   apiRequest<{ sites: JobSite[] }>('/jobs/sites', { signal })
 export const searchJobs = (search: JobSearch, signal?: AbortSignal) =>
   apiRequest<JobSearchResult>('/jobs?' + new URLSearchParams({ ...search }), { signal })
+/** JB-06: parse JD text / a public URL in the background; only a review draft is stored until explicit save. */
+export const parseJobImport = (source: { text?: string; url?: string; fileIds?: string[] }) =>
+  runGeneration<JobImportParse>('JOB_IMPORT', 'current', source)
+/** Save the reviewed draft as a job only this user can see. */
+export const saveJobImport = (fields: JobImportFields) =>
+  apiRequest<RealJob>('/jobs/import', { method: 'POST', body: JSON.stringify(fields) })
+export const listImportedJobs = (signal?: AbortSignal) =>
+  apiRequest<RealJob[]>('/jobs/imported', { signal })
 export const getJob = (id: string, signal?: AbortSignal) =>
   apiRequest<RealJob>(`/jobs/${encodeURIComponent(id)}`, { signal })
 export const refreshJob = (id: string, signal?: AbortSignal) =>
   apiRequest<RealJob>(`/jobs/${encodeURIComponent(id)}/refresh`, { method: 'POST', signal })
-/** No automatic POST retry: a disconnected request may still save its report. */
-export const matchJob = async (
+export const matchJob = (
   id: string,
   resumeId: string,
-  resumeVersionId: string,
+  versionId: string,
   requestId: string,
   modelTier?: ModelTier,
-) => {
-  try {
-    return await apiRequest<EvidenceMatch>(`/jobs/${encodeURIComponent(id)}/matches`, {
-      method: 'POST',
-      body: JSON.stringify({ resumeId, resumeVersionId, requestId, modelTier }),
-      signal: AbortSignal.timeout(modelTier === 'FLASH' ? 90_000 : 210_000),
-    })
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'TimeoutError')
-      throw new ApiError(
-        '等待匹配响应超时。分析可能仍在保存，请先刷新匹配记录，再决定是否重新分析。',
-        { code: 40001 },
-      )
-    if (error instanceof ApiError && error.status === 504 && error.code === 504)
-      throw new ApiError('网关等待匹配响应超时。请先刷新匹配记录，确认结果后再重新分析。', {
-        code: 40001,
-        status: 504,
-        traceId: error.traceId,
-      })
-    throw error
-  }
-}
+) => runGeneration<EvidenceMatch>('JOB_MATCH', id, { resumeId, versionId, modelTier }, requestId)
 export const listJobMatches = (id: string, signal?: AbortSignal) =>
   apiRequest<MatchHistory[]>(`/jobs/${encodeURIComponent(id)}/matches`, { signal })
 export const getJobMatch = (id: string, signal?: AbortSignal) =>
@@ -66,7 +58,7 @@ export const getJobMatch = (id: string, signal?: AbortSignal) =>
 /** Downloads deterministic A–F evaluation markdown for a COMPLETED match. */
 export async function exportJobEvalMarkdown(
   matchId: string,
-  filename = '岗位评估.md',
+  filename = uiText('job-assessment.md'),
 ): Promise<void> {
   const response = await fetchWithIdentity(
     apiUrl(`/jobs/matches/${encodeURIComponent(matchId)}/eval.md`),
@@ -76,4 +68,44 @@ export async function exportJobEvalMarkdown(
   )
   if (!response.ok) throw await toApiError(response)
   downloadText(filename, await response.text())
+}
+
+export const getJobRecommendations = (signal?: AbortSignal) =>
+  apiRequest<DailyJobRecommendations>('/jobs/recommendations', { signal })
+
+export interface JobScreenshotFile {
+  fileId: string
+  name: string
+  mime: string
+  size: number
+}
+export function validateJobScreenshot(file: File): string | undefined {
+  if (!file.size) return uiText('Screenshot is empty. Please select again.')
+  if (file.size > 5 * 1024 * 1024) return uiText('Each screenshot must be 5 MB or smaller.')
+  if (!/\.(png|jpe?g|webp)$/i.test(file.name)) return uiText('Choose PNG, JPG or WebP screenshots.')
+}
+export async function uploadJobScreenshot(file: File): Promise<JobScreenshotFile> {
+  const error = validateJobScreenshot(file)
+  if (error) throw new Error(error)
+  const body = new FormData()
+  body.append('file', file)
+  const response = await fetchWithIdentity(apiUrl('/jobs/import/screenshots'), {
+    method: 'POST',
+    headers: await authenticatedHeaders(),
+    body,
+  })
+  if (!response.ok) throw await toApiError(response)
+  return readApiData<JobScreenshotFile>(response)
+}
+export async function readJobScreenshot(id: string): Promise<Blob> {
+  const response = await fetchWithIdentity(
+    apiUrl(`/jobs/import/screenshots/${encodeURIComponent(id)}`),
+    {
+      headers: await authenticatedHeaders(),
+    },
+  )
+  if (!response.ok) throw await toApiError(response)
+  const blob = await response.blob()
+  assertResponseIdentity(response)
+  return blob
 }

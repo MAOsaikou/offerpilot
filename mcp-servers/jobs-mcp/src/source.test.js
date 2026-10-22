@@ -1,9 +1,72 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSearchHandler, resolveMode } from './source.js';
+import { searchAcrossSites } from './jobhunt.js';
+import { DEFAULT_LIVE_TIMEOUT_MS, DEFAULT_SITE_TIMEOUT_MS } from './config.js';
 
 const args = { query: 'Java', site: 'bytedance', nature: 'campus', location: '上海' };
 const silent = () => {};
+
+test('default live budget returns from a hung upstream within eight seconds', async () => {
+  assert.equal(DEFAULT_LIVE_TIMEOUT_MS, 6500);
+  assert.equal(DEFAULT_SITE_TIMEOUT_MS, 6000);
+  let controls;
+  const start = performance.now();
+  const result = await createSearchHandler({ mode: 'AUTO', warn: silent,
+    live: (_targets, _options, value) => { controls = value; return new Promise(() => {}); } })(args);
+  assert.ok(performance.now() - start < 8000);
+  assert.ok(performance.now() - start >= 6400);
+  assert.equal(controls.timeoutMs, 6000);
+  assert.equal(controls.signal.aborted, true);
+  assert.equal(result._meta.fallbackReason, 'LIVE_TIMEOUT');
+  assert.ok(result.jobs.length);
+});
+
+test('environment overrides still control total and per-site budgets', async () => {
+  const previous = [process.env.JOBS_LIVE_TIMEOUT_MS, process.env.SITE_TIMEOUT_MS];
+  process.env.JOBS_LIVE_TIMEOUT_MS = '30';
+  process.env.SITE_TIMEOUT_MS = '20';
+  try {
+    let controls;
+    const start = performance.now();
+    const result = await createSearchHandler({ mode: 'AUTO', warn: silent,
+      live: (_targets, _options, value) => { controls = value; return new Promise(() => {}); } })(args);
+    assert.ok(performance.now() - start < 500);
+    assert.equal(controls.timeoutMs, 20);
+    assert.equal(result._meta.fallbackReason, 'LIVE_TIMEOUT');
+  } finally {
+    for (const [i, key] of ['JOBS_LIVE_TIMEOUT_MS', 'SITE_TIMEOUT_MS'].entries()) {
+      if (previous[i] === undefined) delete process.env[key]; else process.env[key] = previous[i];
+    }
+  }
+});
+
+test('whole-query timeout keeps completed live sites and stops hung/queued sites in AUTO and LIVE', async () => {
+  for (const mode of ['AUTO', 'LIVE']) {
+    const calls = [];
+    const result = await createSearchHandler({ mode, timeoutMs: 40, siteTimeoutMs: 2000, concurrency: 1,
+      live: (targets, options, controls) => searchAcrossSites(targets, options, { ...controls,
+        search: async site => {
+          calls.push(site);
+          if (site === 'tencent') return { jobs: [{ id: 'live-1' }], degraded: false };
+          return new Promise(() => {});
+        } }),
+    })({ query: 'Java', sites: ['tencent', 'bytedance', 'meituan'], nature: 'all' });
+    assert.deepEqual(result.jobs, [{ id: 'live-1' }]);
+    assert.equal(result._meta.source, 'company-career-site');
+    assert.equal(result._meta.timedOut, true);
+    assert.equal(result._meta.partial, true);
+    assert.deepEqual(result._meta.skipped.map(value => value.site), ['bytedance', 'meituan']);
+    assert.deepEqual(calls, ['tencent', 'bytedance']);
+  }
+});
+
+test('LIVE total timeout with no completed result fails promptly', async () => {
+  const start = performance.now();
+  await assert.rejects(createSearchHandler({ mode: 'LIVE', timeoutMs: 20,
+    live: async () => new Promise(() => {}) })(args), /LIVE_TIMEOUT/);
+  assert.ok(performance.now() - start < 500);
+});
 
 test('AUTO falls back on thrown failures, all-sites-failed and empty-due-to-error', async () => {
   for (const [live, reason] of [
@@ -89,4 +152,14 @@ test('MCP search_jobs actually routes LOCAL without fetch', async t => {
     assert.equal(JSON.parse(directory.content[0].text)._meta.source, 'LOCAL_SNAPSHOT');
     assert.equal(calls, 0);
   } finally { await client.close(); await server.close(); delete process.env.JOBS_SOURCE_MODE; }
+});
+
+test('filter-only natural searches allow an empty keyword without broadening the company', async () => {
+  const handler = createSearchHandler({ mode: 'LOCAL' });
+  const result = await handler({ query: '', site: 'bytedance', nature: 'all', location: '上海' });
+  assert.ok(result.jobs.length);
+  assert.ok(result.jobs.every(job => job.site === 'bytedance' && job.locations.includes('上海')));
+  const interns = await handler({ query: '', nature: 'intern' });
+  assert.ok(interns.jobs.length && interns.jobs.every(job => job.nature === 'intern'));
+  await assert.rejects(handler({ query: '' }), /筛选条件/);
 });

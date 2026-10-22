@@ -63,7 +63,7 @@ import static org.mockito.Mockito.*;
 @org.springframework.test.annotation.DirtiesContext(classMode = org.springframework.test.annotation.DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = SseStreamHttpIntegrationTest.Application.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "offerpilot.sse.heartbeat-interval=2ms")
+        properties = {"offerpilot.sse.heartbeat-interval=2ms", "offerpilot.agent.reconnect-grace=3s"})
 @ExtendWith(OutputCaptureExtension.class)
 class SseStreamHttpIntegrationTest {
     static final int WAIT_SECONDS = 30;
@@ -74,7 +74,8 @@ class SseStreamHttpIntegrationTest {
     @ImportAutoConfiguration({ServletWebServerFactoryAutoConfiguration.class,
             org.springframework.boot.autoconfigure.web.servlet.DispatcherServletAutoConfiguration.class, WebMvcAutoConfiguration.class})
     @Import({AgentController.class, ResumeDiagnosisController.class, ResumeOptimizationController.class,
-            JacksonConfig.class, GlobalExceptionHandler.class, com.offerpilot.common.web.SseStreams.class})
+            JacksonConfig.class, GlobalExceptionHandler.class, com.offerpilot.common.web.SseStreams.class,
+            com.offerpilot.agent.application.RunRelay.class})
     static class Application {
         @Bean ContainerCompletions containerCompletions() { return new ContainerCompletions(); }
         @Bean org.springframework.boot.web.server.WebServerFactoryCustomizer<org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory>
@@ -277,6 +278,42 @@ class SseStreamHttpIntegrationTest {
         }
         verify(diagnoses).cancel("owner", "diag_test");
         verify(optimizations).cancel("owner", "opt_test");
+    }
+
+    @Test void chatReconnectsWithLastEventIdAfterTcpResetWithoutCancellingTheRun() throws Exception {
+        Sinks.Many<AgentEvent> model = Sinks.many().unicast().onBackpressureBuffer();
+        var cancelled = new CountDownLatch(1);
+        when(chats.chat(any(), any())).thenReturn(Flux.just(started()).concatWith(model.asFlux()).doOnCancel(cancelled::countDown));
+        String path = "/api/v1/agent/chat";
+        try (var socket = new Socket("127.0.0.1", port)) {
+            socket.setSoTimeout(WAIT_SECONDS * 1000);
+            socket.setSoLinger(true, 0);
+            byte[] body = BODY.getBytes(StandardCharsets.UTF_8);
+            String id = completions.expect();
+            socket.getOutputStream().write(("POST " + path + " HTTP/1.1\r\nHost: 127.0.0.1:" + port
+                    + "\r\nContent-Type: application/json\r\nAccept: text/event-stream\r\n"
+                    + REQUEST_ID_HEADER + ": " + id + "\r\nContent-Length: " + body.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+            socket.getOutputStream().write(body);
+            socket.getOutputStream().flush();
+            var reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            String line;
+            do { line = reader.readLine(); assertThat(line).isNotNull(); } while (!line.equals("event:run.started"));
+        }
+        // Event 2 is produced while no client is connected.
+        model.tryEmitNext(new AgentEvent.TextDelta("text.delta", 2, "run_test", Instant.now(), null, "missed"));
+        var resumed = client.sendAsync(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/runs/run_test/events"))
+                .timeout(Duration.ofSeconds(WAIT_SECONDS)).header(REQUEST_ID_HEADER, completions.expect())
+                .header("Accept", "text/event-stream").header("Last-Event-ID", "1").GET().build(), HttpResponse.BodyHandlers.ofString());
+        model.tryEmitNext(new AgentEvent.TextDelta("text.delta", 3, "run_test", Instant.now(), null, "live"));
+        model.tryEmitNext(new AgentEvent.RunCompleted("run.completed", 4, "run_test", Instant.now(), "msg_test", "COMPLETED", 1));
+        var response = resumed.get(WAIT_SECONDS, TimeUnit.SECONDS);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("id:2", "missed", "id:3", "live", "event:run.completed").doesNotContain("event:run.started");
+        assertThat(cancelled.getCount()).as("reconnect within grace keeps the run").isEqualTo(1);
+        completions.awaitAll();
+        // Unknown or expired runs are an ordinary 404 before any SSE frame (not tracked: no async lifecycle).
+        assertThat(client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/v1/agent/runs/run_missing/events"))
+                .header(REQUEST_ID_HEADER, "untracked").GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(404);
     }
 
     /** Observe chunk boundaries without blocking the HTTP executor or replacing its UTF-8 body decoder. */

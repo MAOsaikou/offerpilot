@@ -36,9 +36,27 @@ public class OccupationEmbeddingJob implements ApplicationRunner {
     @Override public void run(ApplicationArguments args) { reindex(force); }
 
     public record Result(int fulltextUpdated, int embedded) {}
+
+    /** Vectors from another model are not comparable with new query vectors: drop them all once.
+     * Runs under reindex's monitor; a crash before the state upsert only repeats the reset. */
+    public void resetIfModelChanged() {
+        if (!embeddings.configured()) return;
+        String current = embeddings.fingerprint();
+        var stored = jdbc.queryForList("SELECT fingerprint FROM embedding_index_state WHERE id=1", String.class);
+        if (!stored.isEmpty() && stored.get(0).equals(current)) return;
+        int occupations = jdbc.update("UPDATE occupations SET embedding=NULL WHERE embedding IS NOT NULL");
+        int notes = jdbc.update("UPDATE knowledge_notes SET embedding=NULL,embedding_next_attempt_at=now(),index_status='QUEUED',index_error=NULL,embedding_attempts=0,revision=revision+1 WHERE embedding IS NOT NULL");
+        jdbc.update("""
+                INSERT INTO embedding_index_state(id,fingerprint) VALUES (1,?)
+                ON CONFLICT (id) DO UPDATE SET fingerprint=EXCLUDED.fingerprint,updated_at=now()
+                """, current);
+        if (occupations + notes > 0)
+            log.info("向量模型已切换为 {}：清空旧向量 职业 {} 条、笔记 {} 条，将重新索引", current, occupations, notes);
+    }
     private record Entry(String id, String document, OffsetDateTime version) {}
 
     public synchronized Result reindex(boolean forceAll) {
+        resetIfModelChanged();
         var entries = jdbc.query("SELECT * FROM occupations ORDER BY id", (rs, row) -> new Entry(
                 rs.getString("id"), OccupationDocument.build(rs.getString("name"), rs.getString("description"),
                 rs.getString("core_skills"), rs.getString("growth_path"), rs.getString("family"),
@@ -57,6 +75,7 @@ public class OccupationEmbeddingJob implements ApplicationRunner {
                     "SELECT embedding IS NULL FROM occupations WHERE id=?", Boolean.class, entry.id()))) pending.add(entry);
         }
         int embedded = 0;
+        if (!enabled) log.info("职业向量索引已关闭（occupation-embed.enabled=false），仅维护全文索引");
         if (enabled) {
             for (int offset = 0; offset < pending.size(); offset += BATCH_SIZE) {
                 var batch = pending.subList(offset, Math.min(offset + BATCH_SIZE, pending.size()));

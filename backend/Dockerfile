@@ -18,7 +18,7 @@ COPY offerpilot-job offerpilot-job
 COPY offerpilot-career offerpilot-career
 COPY offerpilot-interview offerpilot-interview
 COPY offerpilot-bootstrap offerpilot-bootstrap
-RUN mvn -q -B -pl offerpilot-bootstrap -am -DskipTests package
+RUN mvn -q -B -pl offerpilot-bootstrap -am -Dmaven.test.skip=true package
 
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app

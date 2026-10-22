@@ -54,6 +54,41 @@ class CareerApprovalTest {
         when(profiles.saveTarget("alice", "工程师")).thenReturn(new CareerProfileService.Profile("工程师", "上海", "Java", List.of("技术研发"), List.of(), null));
     }
 
+    @Test void rerankIsAWriteAndOnlyPersistsAfterOwnerApproval() throws Exception {
+        var reranks = mock(CareerRerankForChat.class);
+        tools.setReranks(reranks);
+        var constraints = new CareerRecommendationService.Constraints("上海", 30, true, true);
+        var saved = new CareerRecommendationService.Revision("new", "parent", constraints, List.of(), 1, false, "");
+        when(reranks.rerank("alice", "parent", constraints)).thenReturn(saved);
+        var registry = registry();
+        var runner = new Orchestrator(planner(registry), registry);
+        Map<String, Object> context = Map.of("careerAction", "rerankCareers", "revisionId", "parent",
+                "city", "上海", "minSalaryK", 30, "avoidOvertime", true, "research", true, "owner", "attacker");
+        var events = new CopyOnWriteArrayList<AgentEvent>();
+        var pending = new CompletableFuture<AgentEvent.ApprovalRequired>();
+        var finished = runner.run(AgentMode.AUTO, "按约束重排", List.of(), ModelTier.FLASH, "run", new AtomicInteger(),
+                new ArrayList<>(), u -> {}, "alice", context).doOnNext(e -> {
+                    events.add(e);
+                    if (e instanceof AgentEvent.ApprovalRequired approval) pending.complete(approval);
+                }).collectList().toFuture();
+        var approval = pending.get(3, TimeUnit.SECONDS);
+        assertThat(approval.name()).isEqualTo("rerankCareers");
+        assertThat(approval.reason()).contains("新的推荐修订");
+        verify(reranks, never()).rerank(anyString(), anyString(), any());
+        assertThatThrownBy(() -> approvals.resolve("mallory", "run", approval.approvalId(),
+                new ApprovalService.Decision("APPROVE", null, null))).isInstanceOf(BusinessException.class);
+        approvals.resolve("alice", "run", approval.approvalId(), new ApprovalService.Decision("APPROVE", null, null));
+        finished.get(3, TimeUnit.SECONDS);
+        verify(reranks).rerank("alice", "parent", constraints);
+        verifyNoInteractions(gateway);
+        assertThat(events).anyMatch(e -> e instanceof AgentEvent.ToolCall call && call.access() == AgentEvent.ToolAccess.WRITE);
+        assertThat(events).anyMatch(e -> e instanceof AgentEvent.UiCard card && card.cardType().equals("career_recommendation"));
+        var step = new PlanStep("s", "重排", ExpertType.CAREER_DISCOVERY, Map.of("action", "rerankCareers"), List.of());
+        assertThatThrownBy(() -> registry.execute("alice", Map.of(), "run", step, Map.of()).block()).hasMessageContaining("必须先审批");
+        assertThatThrownBy(() -> tools.execute("alice", step, new ApprovalService.Decision("REJECT", Map.of(), null)).block())
+                .hasMessageContaining("拒绝");
+        verifyNoInteractions(profiles);
+    }
 
     @Test void recommendationCarriesCurrentProfileWithoutChangingExistingTarget() {
         when(profiles.get("alice")).thenReturn(new CareerProfileService.Profile("工程师", "上海", "Java", List.of("技术研发"), List.of(), null));
@@ -82,6 +117,35 @@ class CareerApprovalTest {
         assertThatThrownBy(() -> approvals.resolve("alice", "run", ticket.id(),
                 new ApprovalService.Decision("APPROVE", null, null))).isInstanceOf(BusinessException.class);
         verifyNoInteractions(profiles, occupations);
+    }
+
+    @Test void approvedTargetGeneratesFollowupCardsThroughOrchestratorAndAsksForConfirmation() throws Exception {
+        occupation();
+        var followups=mock(CareerTargetPlans.class);tools.setTargetPlans(followups);
+        var result=new ObjectMapper().readTree("{\"jobs\":{\"items\":[]},\"learning\":{\"skillGap\":{\"skills\":[]},\"roadmap\":{\"weeks\":[]}}}");
+        when(followups.get("alice")).thenReturn(new CareerTargetPlans.Plan("revision","工程师","上海","SUGGESTED",result,""));
+        var registry=registry();var runner=new Orchestrator(planner(registry),registry);
+        var events=new CopyOnWriteArrayList<AgentEvent>();var pending=new CompletableFuture<AgentEvent.ApprovalRequired>();
+        var finished=runner.run(AgentMode.AUTO,"设为目标",List.of(),ModelTier.FLASH,"target-run",new AtomicInteger(),
+            new ArrayList<>(),u->{},"alice",Map.of("careerAction","setCareerTarget","occupationId","occ1"))
+            .doOnNext(e->{events.add(e);if(e instanceof AgentEvent.ApprovalRequired approval) pending.complete(approval);}).collectList().toFuture();
+        var approval=pending.get(3,TimeUnit.SECONDS);verifyNoInteractions(followups);
+        approvals.resolve("alice","target-run",approval.approvalId(),new ApprovalService.Decision("APPROVE",null,null));
+        finished.get(3,TimeUnit.SECONDS);
+        verify(followups).generate("alice");
+        assertThat(events).anyMatch(e->e instanceof AgentEvent.UiCard card && card.cardType().equals("skill_gap"));
+        assertThat(events).anyMatch(e->e instanceof AgentEvent.UiCard card && card.cardType().equals("roadmap"));
+        var direct=tools.execute("alice",write(),new ApprovalService.Decision("APPROVE",Map.of("occupationId","occ1","name","工程师"),null)).block();
+        assertThat(direct.summary()).contains("是否按这些建议继续", "确认采用", "未修改投递记录");
+        clearInvocations(followups);
+        assertThatThrownBy(()->tools.execute("alice",write(),new ApprovalService.Decision("REJECT",Map.of(),null)).block()).hasMessageContaining("拒绝");
+        verifyNoInteractions(followups);
+    }
+    @Test void followupFailureDoesNotMisreportAnAlreadySavedTarget() {
+        occupation();var followups=mock(CareerTargetPlans.class);tools.setTargetPlans(followups);
+        doThrow(new IllegalStateException("fixture failure")).when(followups).generate("alice");
+        var result=tools.execute("alice",write(),new ApprovalService.Decision("APPROVE",Map.of("occupationId","occ1","name","工程师"),null)).block();
+        assertThat(result.summary()).contains("目标设为：工程师", "已排队");verify(profiles).saveTarget("alice","工程师");
     }
 
 }

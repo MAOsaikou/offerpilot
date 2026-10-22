@@ -2,6 +2,8 @@ package com.offerpilot.agent.orchestrator;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.offerpilot.agent.domain.*;
 import com.offerpilot.agent.experts.ExpertRegistry;
 import com.offerpilot.common.error.BusinessException;
@@ -13,6 +15,7 @@ import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Flux;
@@ -25,14 +28,65 @@ import java.util.function.Consumer;
 
 @Component
 public class IntentPlanner {
+    public static final String ON_EXPERT_ROUTE = IntentPlanner.class.getName() + ".route";
+    public static final String RULE_ROUTING_ALLOWED = IntentPlanner.class.getName() + ".ruleAllowed";
+    private boolean earlyExpertHandoff = true;
+
+    @Value("${offerpilot.agent.early-expert-handoff:true}")
+    void setEarlyExpertHandoff(boolean enabled) { this.earlyExpertHandoff = enabled; }
+
     public record Decision(String kind, ExpertType expert, Double confidence, boolean needsClarification,
-                           String clarifyingQuestion, Plan plan) {}
+                           String clarifyingQuestion, Plan plan, JsonNode jobSearch, @com.fasterxml.jackson.annotation.JsonIgnore boolean ruleRoute) {
+        public Decision(String kind, ExpertType expert, Double confidence, boolean needsClarification,
+                        String clarifyingQuestion, Plan plan, JsonNode jobSearch) {
+            this(kind,expert,confidence,needsClarification,clarifyingQuestion,plan,jobSearch,false);
+        }
+        public Decision(String kind, ExpertType expert, Double confidence, boolean needsClarification,
+                        String clarifyingQuestion, Plan plan) {
+            this(kind, expert, confidence, needsClarification, clarifyingQuestion, plan, null);
+        }
+    }
     private final ModelGateway gateway;
     private final ObjectMapper mapper;
     private final ExpertRegistry experts;
     private final String prompt;
+    private final String jobSearchPrompt;
     private final JobIntentParser jobs;
     private final ResumeIntentParser resumes;
+    private boolean resumeAdviceFastPath = true;
+    private boolean jointJobSearchPlanning = true;
+    private boolean ruleFirstRouting = true;
+
+    @Value("${offerpilot.agent.rule-first-routing:true}")
+    void setRuleFirstRouting(boolean enabled) { ruleFirstRouting = enabled; }
+
+    public boolean usesRuleFirstRoute(AgentMode mode, String content, List<Message> history,
+                                     Map<String, Object> context) {
+        return ruleRoute(mode, content, history, context).isPresent();
+    }
+
+    private Optional<PlanStep> ruleRoute(AgentMode mode, String content, List<Message> history,
+                                         Map<String, Object> context) {
+        if (!ruleFirstRouting || mode != null && mode != AgentMode.AUTO || !history.isEmpty()
+                || context != null && !context.isEmpty()) return Optional.empty();
+        return ReadOnlyRuleRoute.parse(content);
+    }
+
+    @Value("${offerpilot.agent.joint-job-search-planning:true}")
+    void setJointJobSearchPlanning(boolean enabled) { jointJobSearchPlanning = enabled; }
+
+    @Value("${offerpilot.agent.resume-advice-fast-path:true}")
+    void setResumeAdviceFastPath(boolean enabled) {
+        resumeAdviceFastPath = enabled;
+    }
+
+    /** Only standalone, context-free advice questions; never infer a business action from a keyword. */
+    public boolean usesResumeAdviceFastPath(AgentMode mode, String content, List<Message> history,
+                                           Map<String, Object> context) {
+        return resumeAdviceFastPath && (mode == null || mode == AgentMode.AUTO)
+                && history.isEmpty() && (context == null || context.isEmpty())
+                && ResumeAdviceIntent.matches(content);
+    }
 
     public IntentPlanner(ModelGateway gateway, ObjectMapper mapper, ExpertRegistry experts,
                          Resource prompt) throws IOException {
@@ -44,21 +98,40 @@ public class IntentPlanner {
         this(gateway, mapper, experts, prompt, jobs, null);
     }
 
-    @Autowired
     public IntentPlanner(ModelGateway gateway, ObjectMapper mapper, ExpertRegistry experts,
                          @Value("classpath:prompts/agent/plan.st") Resource prompt, JobIntentParser jobs,
                          ResumeIntentParser resumes) throws IOException {
+        this(gateway, mapper, experts, prompt, jobs, resumes, new ByteArrayResource(new byte[0]));
+    }
+
+    @Autowired
+    public IntentPlanner(ModelGateway gateway, ObjectMapper mapper, ExpertRegistry experts,
+                         @Value("classpath:prompts/agent/plan.st") Resource prompt, JobIntentParser jobs,
+                         ResumeIntentParser resumes,
+                         @Value("classpath:prompts/agent/plan-job-search.st") Resource jobSearchPrompt) throws IOException {
         this.gateway = gateway;
         this.mapper = mapper.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
         this.experts = experts;
         this.prompt = prompt.getContentAsString(StandardCharsets.UTF_8);
+        this.jobSearchPrompt = jobSearchPrompt.getContentAsString(StandardCharsets.UTF_8);
         this.jobs = jobs;
         this.resumes = resumes;
     }
 
     public Mono<Decision> prepare(AgentMode mode, String content, List<Message> history, ModelTier tier,
                                   Consumer<Usage> onUsage, Map<String, Object> context) {
+        return Mono.deferContextual(reactorContext -> {
+            long started = System.nanoTime();
+            return com.offerpilot.llm.ChatLatency.mono("planner", prepareDecision(mode, content, history, tier, onUsage, context,
+                    reactorContext.getOrDefault(RULE_ROUTING_ALLOWED, true)))
+                    .doFinally(signal -> org.slf4j.LoggerFactory.getLogger(IntentPlanner.class)
+                            .debug("AG02 phase=planner elapsedMs={} signal={}", (System.nanoTime() - started) / 1_000_000, signal));
+        });
+    }
+
+    private Mono<Decision> prepareDecision(AgentMode mode, String content, List<Message> history, ModelTier tier,
+                                           Consumer<Usage> onUsage, Map<String, Object> context, boolean ruleRoutingAllowed) {
         Map<String, Object> safeContext = context == null ? Map.of() : context;
         if (safeContext.containsKey("jobAction")) {
             if (!"match".equals(safeContext.get("jobAction"))
@@ -75,6 +148,11 @@ public class IntentPlanner {
                     PlanValidator.validate(new Plan(content, List.of(new PlanStep("s1", "岗位与简历匹配",
                             ExpertType.JOB, Map.of("action", "match"), List.of()))))));
         }
+        if (mode != null && mode != AgentMode.AUTO) {
+            ExpertType expert = ExpertType.valueOf(mode.name());
+            return resolveActions(new Decision("single", expert, 1.0, false, null, single(content, expert, safeContext)),
+                    content, history, tier, onUsage, safeContext);
+        }
         if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.JOB) && BoardIntent.matches(content, safeContext)) {
             return resolveActions(new Decision("single", ExpertType.JOB, 1.0, false, null,
                     single(content, ExpertType.JOB, safeContext)), content, history, tier, onUsage, safeContext);
@@ -84,6 +162,8 @@ public class IntentPlanner {
             return resolveActions(new Decision("single", ExpertType.RESUME, 1.0, false, null,
                     single(content, ExpertType.RESUME, safeContext)), content, history, tier, onUsage, safeContext);
         }
+        if (safeContext.isEmpty() && InterviewIntentParser.noteReviewRequest(content))
+            return Mono.just(new Decision("chitchat", null, 1.0, false, null, null));
         if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.INTERVIEWER)
                 && (safeContext.containsKey("interviewAction") || safeContext.containsKey("interviewSessionId")
                     || content.contains("面试") && InterviewIntentParser.scoringRequest(content))) {
@@ -91,7 +171,7 @@ public class IntentPlanner {
                     single(content, ExpertType.INTERVIEWER, safeContext)), content, history, tier, onUsage, safeContext);
         }
         if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.CAREER_DISCOVERY)
-                && "setCareerTarget".equals(safeContext.get("careerAction"))) {
+                && java.util.Set.of("setCareerTarget", "rerankCareers").contains(String.valueOf(safeContext.get("careerAction")))) {
             return resolveActions(new Decision("single", ExpertType.CAREER_DISCOVERY, 1.0, false, null,
                     single(content, ExpertType.CAREER_DISCOVERY, safeContext)), content, history, tier, onUsage, safeContext);
         }
@@ -100,17 +180,38 @@ public class IntentPlanner {
             return resolveActions(new Decision("single", ExpertType.COACH, 1.0, false, null,
                     single(content, ExpertType.COACH, safeContext)), content, history, tier, onUsage, safeContext);
         }
-        if (mode != null && mode != AgentMode.AUTO) {
-            ExpertType expert = ExpertType.valueOf(mode.name());
-            return resolveActions(new Decision("single", expert, 1.0, false, null, single(content, expert, safeContext)),
-                    content, history, tier, onUsage, safeContext);
+        if (usesResumeAdviceFastPath(mode, content, history, safeContext)) {
+            // Both routing and action are certain. Keep normal expert execution (including note retrieval)
+            // and gateway safety/quota hooks, but omit the two serial classification calls.
+            var step = new PlanStep("s1", "简历文字指导", ExpertType.RESUME,
+                    Map.of("action", "advice", "noteQuery",
+                            com.offerpilot.knowledge.application.KnowledgeNoteSearch.bounded(content, 2000)), List.of());
+            return Mono.just(new Decision("single", ExpertType.RESUME, 1.0, false, null,
+                    PlanValidator.validate(new Plan(content, List.of(step)))));
+        }
+        var rule = ruleRoutingAllowed ? ruleRoute(mode, content, history, safeContext) : Optional.<PlanStep>empty();
+        if (rule.isPresent()) {
+            PlanStep step = rule.get();
+            return com.offerpilot.llm.ChatLatency.mono("rule-route", Mono.fromSupplier(() ->
+                    new Decision("single", step.agent(), 1.0, false, null,
+                            PlanValidator.validate(new Plan(content, List.of(step))), null, true)));
         }
         List<Message> messages = new ArrayList<>();
-        messages.add(new SystemMessage(prompt.replace("{experts}", experts.capabilities())));
+        messages.add(new SystemMessage(prompt.replace("{experts}", experts.capabilities())
+                + (jointJobSearchPlanning && jobs != null && !jobSearchPrompt.isBlank() ? "\n" + jobSearchPrompt : "")));
         messages.addAll(history.subList(Math.max(0, history.size() - 12), history.size()));
-        messages.add(new UserMessage(SelectedResources.describe(safeContext) + "\n本轮请求：" + content));
-        return attempt(messages, content, tier, onUsage, 0, safeContext)
-                .flatMap(decision -> resolveActions(decision, content, history, tier, onUsage, safeContext));
+        // Only fixed field names and booleans enter this trusted message, never caller IDs/values.
+        // Keep the actual user fragment byte-for-byte identical to the turn input so SC-01's
+        // request-local session can share its verdict with planning and the ordinary reply.
+        messages.add(new SystemMessage(SelectedResources.describe(safeContext)));
+        messages.add(new UserMessage(content));
+        return Mono.deferContextual(reactorContext -> {
+            var early = new EarlyHandoff(content, history, tier, safeContext,
+                    reactorContext.getOrDefault(ON_EXPERT_ROUTE, (Runnable) () -> {}), reactorContext);
+            return attempt(messages, content, tier, onUsage, 0, safeContext, early)
+                    .flatMap(decision -> early.adopt(decision, onUsage))
+                    .doFinally(signal -> early.close());
+        });
     }
 
     private Mono<Decision> resolveActions(Decision decision, String content, List<Message> history, ModelTier tier,
@@ -120,7 +221,13 @@ public class IntentPlanner {
             if (step.agent() == ExpertType.COACH) return Mono.just(CoachIntentParser.prepare(step, content, context));
             if (step.agent() == ExpertType.INTERVIEWER) return Mono.just(InterviewIntentParser.prepare(step, content, context));
             if (step.agent() == ExpertType.CAREER_DISCOVERY) return Mono.just(CareerIntentParser.prepare(step, content, context));
-            if (step.agent() == ExpertType.JOB && jobs != null) return jobs.prepare(step, content, history, tier, onUsage, context);
+            if (step.agent() == ExpertType.JOB && jobs != null) {
+                // Only decode() can put a validated search action into a single JOB plan.
+                // Composite/model inputs and every other action still use the original parser.
+                if (jointJobSearchPlanning && "single".equals(decision.kind())
+                        && "search".equals(step.inputs().get("action"))) return Mono.just(step);
+                return jobs.prepare(step, content, history, tier, onUsage, context);
+            }
             if (step.agent() == ExpertType.RESUME && resumes != null) return resumes.prepare(step, content, history, tier, onUsage, context);
             return Mono.just(step);
         }).map(step -> {
@@ -144,17 +251,19 @@ public class IntentPlanner {
     }
 
     private Mono<Decision> attempt(List<Message> messages, String content, ModelTier tier,
-                                   Consumer<Usage> onUsage, int retry, Map<String, Object> context) {
+                                   Consumer<Usage> onUsage, int retry, Map<String, Object> context, EarlyHandoff early) {
         return Mono.defer(() -> {
             AtomicReference<Usage> usage = new AtomicReference<>();
-            return gateway.stream(tier, messages, 0.1).doOnNext(chunk -> {
+            return com.offerpilot.llm.ChatLatency.flux("intent-model", gateway.stream(tier, messages, 0.1)).doOnNext(chunk -> {
                 var current = chunk.getMetadata().getUsage();
                 if (current != null && current.getTotalTokens() != null && current.getTotalTokens() > 0) usage.set(current);
             }).map(chunk -> chunk.getResult() == null || chunk.getResult().getOutput() == null || chunk.getResult().getOutput().getText() == null
                     ? "" : chunk.getResult().getOutput().getText())
                     .reduce(new StringBuilder(), (text, delta) -> {
                         if (text.length() + delta.length() > 16000) throw new IllegalArgumentException("规划输出过长");
-                        return text.append(delta);
+                        text.append(delta);
+                        early.observe(text.toString());
+                        return text;
                     }).timeout(Duration.ofSeconds(60))
                     .doOnSuccess(ignored -> { if (usage.get() != null) onUsage.accept(usage.get()); })
                     .map(text -> decode(text.toString(), content, context));
@@ -162,8 +271,85 @@ public class IntentPlanner {
             if (retry >= 2) return Mono.just(new Decision("fallback", null, 0.0, false, null, null));
             List<Message> corrected = new ArrayList<>(messages);
             corrected.add(new SystemMessage("上次输出不符合 JSON 契约。请重新输出完整合法对象，检查步骤及依赖。"));
-            return attempt(corrected, content, tier, onUsage, retry + 1, context);
+            early.close();
+            return attempt(corrected, content, tier, onUsage, retry + 1, context, early);
         });
+    }
+
+    /** At most one expert action stream; no tool, approval, or domain mutation runs speculatively. */
+    private final class EarlyHandoff implements AutoCloseable {
+        final String content;
+        final List<Message> history;
+        final ModelTier tier;
+        final Map<String, Object> context;
+        final Runnable onRoute;
+        final List<Usage> usage = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Decision route;
+        Mono<Decision> result;
+        final reactor.core.Disposable.Swap connection = reactor.core.Disposables.swap();
+        final reactor.util.context.ContextView reactorContext;
+        boolean attempted;
+
+        EarlyHandoff(String content, List<Message> history, ModelTier tier, Map<String, Object> context, Runnable onRoute, reactor.util.context.ContextView reactorContext) {
+            this.content = content; this.history = history; this.tier = tier; this.context = context; this.onRoute = onRoute;
+            this.reactorContext = reactorContext;
+        }
+
+        void observe(String prefix) {
+            if (!earlyExpertHandoff || attempted || connection.isDisposed()) return;
+            String kind = null, expert = null;
+            Double confidence = null;
+            Boolean clarify = null;
+            // Read complete top-level JSON scalar fields, never substring matches inside strings or nested plans.
+            try (var parser = mapper.getFactory().createParser(prefix)) {
+                if (parser.nextToken() != com.fasterxml.jackson.core.JsonToken.START_OBJECT) return;
+                while (parser.nextToken() == com.fasterxml.jackson.core.JsonToken.FIELD_NAME) {
+                    String name = parser.currentName();
+                    var token = parser.nextToken();
+                    if (token == null) break;
+                    if ("kind".equals(name) && token == com.fasterxml.jackson.core.JsonToken.VALUE_STRING) kind = parser.getText();
+                    else if ("expert".equals(name) && token == com.fasterxml.jackson.core.JsonToken.VALUE_STRING) expert = parser.getText();
+                    else if ("confidence".equals(name) && token.isNumeric()) confidence = parser.getDoubleValue();
+                    else if ("needsClarification".equals(name) && token.isBoolean()) clarify = parser.getBooleanValue();
+                    else parser.skipChildren();
+                    if ("single".equals(kind) && expert != null && confidence != null && Boolean.FALSE.equals(clarify)) {
+                        var type = ExpertType.valueOf(expert);
+                        // Other experts are local rule/data services. Only these two have an LLM handoff.
+                        if (type != ExpertType.RESUME && type != ExpertType.JOB
+                                || type == ExpertType.RESUME && resumes == null || type == ExpertType.JOB && jobs == null) return;
+                        if (type == ExpertType.JOB && jointJobSearchPlanning) {
+                            // Search parameters arrive in this same stream. Do not spend an extra
+                            // RPM slot on an action stream that would be discarded on adoption.
+                            attempted = true;
+                            onRoute.run();
+                            return;
+                        }
+                        route = decode(mapper.writeValueAsString(new Decision(kind, type, confidence, false, null, null)), content, context);
+                        attempted = true;
+                        onRoute.run(); // cancel the ordinary speculative reply before starting one extra expert call
+                        var replay = resolveActions(route, content, history, tier, usage::add, context)
+                                .flux().contextWrite(reactorContext).replay(1);
+                        result = replay.next();
+                        connection.update(replay.connect());
+                        return;
+                    }
+                }
+            } catch (IOException | IllegalArgumentException ignored) {
+                // Incomplete/invalid JSON cannot authorize anything. The final decoder remains authoritative.
+            }
+        }
+
+        Mono<Decision> adopt(Decision decision, Consumer<Usage> onUsage) {
+            if (result != null && "single".equals(decision.kind()) && !decision.needsClarification()
+                    && decision.expert() == route.expert() && java.util.Objects.equals(decision.plan(), route.plan()))
+                return result.doOnSuccess(ignored -> usage.forEach(onUsage));
+            close();
+            return resolveActions(decision, content, history, tier, onUsage, context);
+        }
+
+        @Override public void close() {
+            connection.dispose();
+        }
     }
 
     Decision decode(String text, String content) {
@@ -184,12 +370,25 @@ public class IntentPlanner {
                 return new Decision(d.kind(), d.expert(), d.confidence(), true, d.clarifyingQuestion(), null);
             }
             Plan plan = switch (d.kind()) {
-                case "single" -> { if (d.expert() == null) throw new IllegalArgumentException("缺少专家"); yield single(content, d.expert(), context); }
+                case "single" -> {
+                    if (d.expert() == null) throw new IllegalArgumentException("缺少专家");
+                    Plan base = single(content, d.expert(), context);
+                    yield plannedSearch(d, base).orElse(base);
+                }
                 case "composite" -> PlanValidator.validate(d.plan());
                 default -> null;
             };
             return new Decision(d.kind(), d.expert(), d.confidence(), false, null, plan);
         } catch (IOException ex) { throw new IllegalArgumentException("无效规划 JSON", ex); }
+    }
+
+    private Optional<Plan> plannedSearch(Decision decision, Plan base) {
+        if (!jointJobSearchPlanning || jobs == null || decision.expert() != ExpertType.JOB
+                || decision.jobSearch() == null || !decision.jobSearch().isObject()) return Optional.empty();
+        Map<String, Object> inputs = mapper.convertValue(decision.jobSearch(), new TypeReference<>() {});
+        // Incomplete/invalid optimization data is never executable. Preserve the action parser.
+        return jobs.plannedSearch(base.steps().get(0), inputs)
+                .map(step -> PlanValidator.validate(new Plan(base.goal(), List.of(step))));
     }
 
     private Plan single(String content, ExpertType expert, Map<String, Object> context) {

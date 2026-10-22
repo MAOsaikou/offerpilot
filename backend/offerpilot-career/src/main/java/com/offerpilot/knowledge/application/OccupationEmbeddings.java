@@ -27,16 +27,33 @@ public class OccupationEmbeddings {
 
     public boolean configured() {
         boolean mock = Arrays.asList(env.getActiveProfiles()).contains("mock-llm");
-        String key = env.getProperty("spring.ai.openai.api-key", "");
+        String key = env.getProperty("spring.ai.openai.embedding.api-key", env.getProperty("spring.ai.openai.api-key", ""));
         return mock || !("none".equals(env.getProperty("spring.ai.model.embedding"))
                 || key.isBlank() || "sk-not-configured".equals(key));
+    }
+
+    /** Vectors from different models/endpoints share no space; stored vectors are tagged with this. */
+    public String fingerprint() {
+        String base = env.getProperty("spring.ai.openai.embedding.base-url", env.getProperty("spring.ai.openai.base-url", ""));
+        String host = base.replaceFirst("^[a-z]+://", "").replaceFirst("/.*$", "");
+        if (host.matches("(localhost|127\\.0\\.0\\.1|host\\.docker\\.internal|ollama)(:\\d+)?")) host = "local";
+        return env.getProperty("spring.ai.openai.embedding.options.model", "") + "@" + host;
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.offerpilot.llm.privacy.PiiMaskingPreference privacy;
     public List<float[]> embed(List<String> documents) {
+        long started = System.nanoTime();
+        try { return embedDocuments(documents); }
+        finally {
+            var scope = com.offerpilot.llm.UsageJournal.current();
+            if (scope != null) log.debug("AG02 run={} phase=embedding elapsedMs={}", scope.runId(), (System.nanoTime() - started) / 1_000_000);
+        }
+    }
+
+    private List<float[]> embedDocuments(List<String> documents) {
         if (!configured()) {
-            log.warn("职业向量不可用：embedding 已关闭或未配置 Bailian Key；保留全文索引与规则推荐");
+            log.warn("职业向量不可用：embedding 已关闭或未配置 embedding 凭据；保留全文索引与规则推荐");
             return List.of();
         }
         try {

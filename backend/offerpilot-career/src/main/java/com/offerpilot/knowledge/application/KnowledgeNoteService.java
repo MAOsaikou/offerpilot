@@ -20,10 +20,23 @@ import java.util.UUID;
 public class KnowledgeNoteService {
     public static final Set<String> CATEGORIES = Set.of("面试复盘", "技术积累", "项目经历", "求职心得");
     private final JdbcTemplate jdbc;
-    public KnowledgeNoteService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    private final OccupationEmbeddings embeddings;
+    private final boolean indexingEnabled;
+    public KnowledgeNoteService(JdbcTemplate jdbc, OccupationEmbeddings embeddings,
+            @org.springframework.beans.factory.annotation.Value("${offerpilot.knowledge.notes-embed.enabled:true}") boolean indexingEnabled) {
+        this.jdbc = jdbc; this.embeddings = embeddings; this.indexingEnabled = indexingEnabled;
+    }
+    private String pendingStatus() { return indexingEnabled && embeddings.configured() ? "QUEUED" : "READY"; }
+
+    private String pendingError() {
+        if (!indexingEnabled) return "向量索引已关闭，当前仅全文检索";
+        if (!embeddings.configured()) return "向量模型未启用或未配置，当前仅全文检索";
+        return null;
+    }
 
     public record Draft(String title, String content, String category) {}
-    public record Note(String id, String title, String content, String category, String createdAt, String updatedAt) {}
+    public record Note(String id, String title, String content, String category, String createdAt, String updatedAt,
+                       String sourceFileId, String sourceFilename, boolean sourceTruncated, String indexStatus, String indexError) {}
     public record Page(List<Note> items, long total, int page, int size) {}
     public record ImportEntry(String sourceId, Draft note) {}
     public record ImportResult(int imported, int alreadyImported) {}
@@ -49,9 +62,9 @@ public class KnowledgeNoteService {
         validate(draft);
         String id = "knt_" + UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO knowledge_notes(id,user_id,title,content,category,tsv)
-                VALUES (?,?,?,?,?,to_tsvector('simple',?))
-                """, id, owner, draft.title().strip(), draft.content().strip(), draft.category(), fulltext(draft));
+                INSERT INTO knowledge_notes(id,user_id,title,content,category,tsv,index_status,index_error)
+                VALUES (?,?,?,?,?,to_tsvector('simple',?),?,?)
+                """, id, owner, draft.title().strip(), draft.content().strip(), draft.category(), fulltext(draft), pendingStatus(), pendingError());
         return get(owner, id);
     }
 
@@ -60,15 +73,27 @@ public class KnowledgeNoteService {
         validate(draft);
         int changed = jdbc.update("""
                 UPDATE knowledge_notes SET title=?,content=?,category=?,tsv=to_tsvector('simple',?),
-                    updated_at=clock_timestamp(),revision=revision+1,embedding=NULL,embedding_next_attempt_at=now()
+                    updated_at=clock_timestamp(),revision=revision+1,embedding=NULL,embedding_next_attempt_at=now(),
+                    index_status=?,index_error=?,embedding_attempts=0
                 WHERE user_id=? AND id=?
-                """, draft.title().strip(), draft.content().strip(), draft.category(), fulltext(draft), owner, id);
+                """, draft.title().strip(), draft.content().strip(), draft.category(), fulltext(draft), pendingStatus(), pendingError(), owner, id);
         if (changed == 0) throw new BusinessException(ErrorCode.KNOWLEDGE_NOTE_NOT_FOUND);
         return get(owner, id);
     }
 
     @Transactional
     public void delete(String owner, String id) {
+        // Serialize with account deletion/reset before taking a note lock.
+        jdbc.queryForList("SELECT id FROM users WHERE id=? FOR KEY SHARE", String.class, owner);
+        var sources = jdbc.queryForList("SELECT source_file_id FROM knowledge_notes WHERE user_id=? AND id=? FOR UPDATE", owner, id);
+        if (!sources.isEmpty() && sources.get(0).get("source_file_id") != null) {
+            String file = (String) sources.get(0).get("source_file_id");
+            jdbc.update("""
+                    INSERT INTO account_data_cleanup(id,kind,bucket,object_key)
+                    SELECT ?,'OBJECT',bucket,object_key FROM files WHERE id=? AND user_id=? AND purpose='KB_DOCUMENT'
+                    """, "cleanup_" + UUID.randomUUID(), file, owner);
+            jdbc.update("DELETE FROM files WHERE id=? AND user_id=? AND purpose='KB_DOCUMENT'", file, owner);
+        }
         if (jdbc.update("DELETE FROM knowledge_notes WHERE user_id=? AND id=?", owner, id) == 0)
             throw new BusinessException(ErrorCode.KNOWLEDGE_NOTE_NOT_FOUND);
     }
@@ -119,6 +144,8 @@ public class KnowledgeNoteService {
     private static void invalid(String message) { throw new BusinessException(ErrorCode.VALIDATION_FAILED, message); }
     private static Note map(ResultSet rs, int row) throws SQLException {
         return new Note(rs.getString("id"), rs.getString("title"), rs.getString("content"), rs.getString("category"),
-                rs.getTimestamp("created_at").toInstant().toString(), rs.getTimestamp("updated_at").toInstant().toString());
+                rs.getTimestamp("created_at").toInstant().toString(), rs.getTimestamp("updated_at").toInstant().toString(),
+                rs.getString("source_file_id"), rs.getString("source_filename"), rs.getBoolean("source_truncated"),
+                rs.getString("index_status"), rs.getString("index_error"));
     }
 }

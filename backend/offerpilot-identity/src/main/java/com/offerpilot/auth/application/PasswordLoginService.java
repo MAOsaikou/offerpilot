@@ -123,6 +123,25 @@ public class PasswordLoginService {
         return userId;
     }
 
+    /**
+     * AC-01: a new access token for the user behind a valid refresh token. The account must still be an
+     * ACTIVE, non-sandbox USER or STAFF account; otherwise the refresh is refused and the browser returns to login.
+     */
+    @Transactional(readOnly = true)
+    public LoginResponse refreshed(String userId) {
+        List<Account> found = jdbc.query("""
+                SELECT id, email, password_hash, nickname, array_to_string(roles, ',') AS roles_csv, status, is_demo
+                FROM users WHERE id = ? AND demo_expires_at IS NULL
+                """, (rs, i) -> new Account(rs.getString("id"), rs.getString("email"),
+                rs.getString("password_hash"), rs.getString("nickname"),
+                Arrays.stream(rs.getString("roles_csv").split(",")).filter(s -> !s.isBlank()).toList(),
+                rs.getString("status"), rs.getBoolean("is_demo")), userId);
+        if (found.isEmpty() || !"ACTIVE".equals(found.get(0).status())
+                || !found.get(0).roles().contains(ROLE_USER) && !found.get(0).roles().contains(ROLE_STAFF))
+            throw new BusinessException(ErrorCode.TOKEN_INVALID, "登录已过期，请重新登录");
+        return issue(found.get(0));
+    }
+
     /** 用户端注册：仅需邮箱 + 密码，成功后直接签发令牌（自动登录）。 */
     @Transactional
     public LoginResponse register(String email, String password) {

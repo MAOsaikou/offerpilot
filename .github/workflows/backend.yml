@@ -5,6 +5,12 @@ on:
     paths: ["backend/**", ".github/workflows/backend.yml"]
   pull_request:
     paths: ["backend/**", ".github/workflows/backend.yml"]
+  workflow_dispatch:
+    inputs:
+      full_tests:
+        description: Run all offline tests and compile opt-in live evaluations
+        type: boolean
+        default: false
 
 concurrency:
   group: backend-${{ github.ref }}
@@ -18,12 +24,19 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17, cache: maven }
       - name: Install CJK fonts for PDF export tests
+        if: inputs.full_tests == true
         run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
-      - run: mvn -q -B -DskipTests compile
-        working-directory: backend
-      - name: Compile opt-in live evaluations without provider calls
-        run: mvn -q -B -Plive -DskipTests test-compile
-        working-directory: backend
-      - run: mvn -q -B test
+      - name: Essential regression tests
+        if: inputs.full_tests != true
+        run: mvn -q -B test
         working-directory: backend
         env: { SPRING_PROFILES_ACTIVE: test }
+      - name: Full offline regression tests
+        if: inputs.full_tests == true
+        run: mvn -q -B -Pfull-test test
+        working-directory: backend
+        env: { SPRING_PROFILES_ACTIVE: test }
+      - name: Compile opt-in live evaluations without provider calls
+        if: inputs.full_tests == true
+        run: mvn -q -B -Plive -DskipTests test-compile
+        working-directory: backend

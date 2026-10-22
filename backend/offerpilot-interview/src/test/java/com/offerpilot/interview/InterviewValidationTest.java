@@ -48,7 +48,7 @@ class InterviewValidationTest {
                 Arguments.of("POST", "", Map.of("role", "工程师", "kind", "其他")),
                 Arguments.of("POST", "", Map.of("role", "工程师")),
                 Arguments.of("PATCH", "/iv_1", Map.of("questionIndex", -1)),
-                Arguments.of("PATCH", "/iv_1", Map.of("questionIndex", 5)),
+                Arguments.of("PATCH", "/iv_1", Map.of("questionIndex", 15)),
                 Arguments.of("PUT", "/iv_1/answers/0", Map.of()),
                 Arguments.of("PUT", "/iv_1/answers/0", Map.of("answerText", "a".repeat(12001))),
                 Arguments.of("PUT", "/iv_1/answers/0", Map.of("answerText", "😀".repeat(12001))));
@@ -66,6 +66,8 @@ class InterviewValidationTest {
         when(users.require(null)).thenReturn("owner");
         when(service.get("owner", "iv_1")).thenReturn(new InterviewService.Session("iv_1", "后端", "项目与经历", 0,
                 true, "now", "now", java.util.List.of(new InterviewService.Answer(0, "问题", "当时负责，我实现，最终完成"))));
+        var savedReport=com.offerpilot.interview.application.InterviewRubric.score(service.get("owner", "iv_1"));
+        when(service.report("owner", "iv_1")).thenReturn(savedReport);
         for (String accept : new String[] {"text/markdown", "*/*"}) {
             mvc.perform(get("/api/v1/interviews/iv_1/recap.md").accept(accept))
                     .andExpect(status().isOk()).andExpect(content().contentType("text/markdown;charset=UTF-8"))

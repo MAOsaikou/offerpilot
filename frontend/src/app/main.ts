@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import { createApp, watch } from 'vue'
 import { createPinia } from 'pinia'
 import { VueQueryPlugin } from '@tanstack/vue-query'
@@ -59,7 +60,7 @@ watch(
 
 enableMocking()
   .catch((error: unknown) => {
-    console.error('[mock] 启动失败，将以真实后端模式运行', error)
+    console.error(uiText('[mock] Could not start; using the real backend'), error)
   })
   .finally(() => {
     app.mount('#app')

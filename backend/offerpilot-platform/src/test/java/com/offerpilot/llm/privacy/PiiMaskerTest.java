@@ -56,5 +56,13 @@ class PiiMaskerTest {
         assertThat(masked.toString()).doesNotContain("13800138000", "fictional@example.test", ID);
         assertThat(((ToolResponseMessage) masked.getInstructions().get(3)).getResponses().get(0).responseData()).isEqualTo("[PHONE_1]");
     }
+    @Test void streetAddressesAreMaskedWithoutSwallowingSurroundingWordsOrPlainPlaceNames() {
+        var session = new PiiMasker.Session(List.of());
+        assertThat(session.mask("我住在上海市浦东新区张江路123号5栋601室，公司位于中关村大街27号"))
+                .isEqualTo("我住在[ADDRESS_1]，公司位于[ADDRESS_2]");
+        assertThat(session.restore("[ADDRESS_1]")).isEqualTo("上海市浦东新区张江路123号5栋601室");
+        String plain = "工作地点：上海浦东；负责第3号需求，熟悉道路规划，每周去张江路实习";
+        assertThat(session.mask(plain)).isEqualTo(plain);
+    }
     private ChatResponse chunk(String text) { return new ChatResponse(List.of(new Generation(new AssistantMessage(text)))); }
 }

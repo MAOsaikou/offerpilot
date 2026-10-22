@@ -12,7 +12,10 @@ public final class InterviewIntentParser {
     private static final Pattern ID = Pattern.compile("\\biv_[A-Za-z0-9_-]+\\b");
     private static final Pattern ROLE = Pattern.compile("(?:岗位|职位|角色)\\s*[:：]\\s*([^，。；\\n]{1,100})");
     private static final Pattern ROLE_INTERVIEW = Pattern.compile("(?:模拟|文字)?面试\\s*[:：]\\s*([^，。；\\n]{1,100})");
-    private static final Pattern NATURAL_ROLE = Pattern.compile("(?:模拟|进行|开始)(?:一场)?([^，。；\\n]{1,100}?)(?:岗位)?面试");
+    private static final Pattern NATURAL_ROLE = Pattern.compile("(?:模拟|进行|开始|练习|练练|准备)(?:一下|一场|一次)?\\s*([^，。；\\n]{1,100}?)(?:岗位)?面试");
+    /** A request to practise, anchored at the start, so an interview answer that mentions practice stays an answer. */
+    private static final Pattern PRACTICE = Pattern.compile("(?s)(?:请)?(?:帮我|给我|陪我)?(?:我想|我想要|我要|我需要)?(?:练习|练练|练一下|准备)(?:一下|一场|一次)?[^，。；\\n]{0,40}面试.*");
+    private static final Pattern ASK_FIRST = Pattern.compile("(?s)(?:请)?(?:帮我|给我|陪我)?(?:我想|我想要|我要)?(?:来|做|进行)?(?:一场|一次)?[^，。；\\n]{0,40}面试[，,]?\\s*(?:先|请)?(?:问我|出(?:一|几|两|三)?道?题|提问|考考我).*");
     private static final Set<String> ACTIONS = Set.of("startInterview", "continueInterview", "answerInterview", "scoreInterview", "generateReport", "completeInterview", "saveStarStory", "recallStarStories");
     private InterviewIntentParser() {}
     public static PlanStep prepare(PlanStep step, String content, Map<String, Object> context) {
@@ -24,11 +27,13 @@ public final class InterviewIntentParser {
                     "面试会话标识无效，请重新选择练习。");
         var args = new LinkedHashMap<String, Object>();
         String action = context.get("interviewAction") instanceof String s && ACTIONS.contains(s) ? s : null;
+        if (action == null && noteReviewRequest(content)) action = "noteGuidance";
         if (action == null && scoringRequest(content)) action = "scoreInterview";
         if (action == null && step.inputs().get("action") instanceof String proposed && ACTIONS.contains(proposed)) action = proposed;
         if (action == null) {
             if (content.strip().matches("(?s)(?:请)?(?:帮我|给我)?(?:结束面试|完成面试|标记完成).*")) action = "completeInterview";
             else if (content.strip().matches("(?s)(?:请)?(?:帮我|给我|我想|我想要)?(?:做|来|进行)?(?:一场)?(?:模拟.*面试|面试练习|文字面试|开始面试|新面试).*")) action = "startInterview";
+            else if (PRACTICE.matcher(content.strip()).matches() || ASK_FIRST.matcher(content.strip()).matches()) action = "startInterview";
             else if (content.strip().matches("(?is)(?:请|帮我|给我)?(?:评价|评分|复盘|生成.*报告|做.*评分|面试(?:反馈|评分|报告)|score|STAR\\s*(?:评价|评分)).*")
                     || content.matches("(?s).*(?:给我|生成|请求).*(?:面试反馈|评分卡|面试报告).*")) action = "scoreInterview";
             else if (recallRequest(content)) action = "recallStarStories";
@@ -57,7 +62,7 @@ public final class InterviewIntentParser {
             if (role == null && roleMatch.find()) role = roleMatch.group(1).strip();
             if (role == null && interviewRole.find()) role = interviewRole.group(1).strip();
             var naturalRole = NATURAL_ROLE.matcher(content);
-            if (role == null && naturalRole.find() && !Set.of("文字", "一场", "一次", "项目与经历", "表达与结构", "职业动机").contains(naturalRole.group(1))) role = naturalRole.group(1).strip();
+            if (role == null && naturalRole.find() && !Set.of("文字", "一场", "一次", "一下", "项目与经历", "表达与结构", "职业动机").contains(naturalRole.group(1))) role = naturalRole.group(1).strip();
             args.put("role", role == null ? "目标岗位" : role);
             String kind = string(context.get("kind"));
             if (kind == null) kind = InterviewService.KINDS.stream().filter(content::contains).sorted().findFirst().orElse("项目与经历");
@@ -68,6 +73,15 @@ public final class InterviewIntentParser {
             args.put("nextQuestion", content.strip().matches("(?:请)?(?:下一题|跳过追问|跳过本题)[。！!]?"));
         }
         return new PlanStep(step.id(), action.equals("scoreInterview") ? "面试 STAR 评分卡" : "文字模拟面试", step.agent(), args, step.dependsOn());
+    }
+    /** A retrospective question about authored material is a read, never an interview answer. */
+    public static boolean noteReviewRequest(String content) {
+        String text = content.strip();
+        return text.matches("(?s).*(?:笔记|记过|记的|记录里).*")
+                && (text.matches("(?s).*[？?].*")
+                    || text.matches("(?s).*(?:哪些|什么|怎么|如何|有没有|吗).*")
+                        && !text.matches("(?s).*(?:记录了|记了|写了|参考.*回答).*(?:如何|怎么).*"))
+                && !PRACTICE.matcher(text).matches() && !ASK_FIRST.matcher(text).matches();
     }
     public static boolean scoringRequest(String content) {
         String text = content.strip();

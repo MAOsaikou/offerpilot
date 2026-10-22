@@ -1,3 +1,4 @@
+import { translate as uiText } from '@/shared/utils/language'
 import { computed, onScopeDispose, watch } from 'vue'
 import { defineStore } from 'pinia'
 import {
@@ -6,7 +7,9 @@ import {
   staffLogin as staffLoginApi,
   demoLogin as demoLoginApi,
   createGuest,
+  logoutSession,
 } from '@/shared/api/auth'
+import { ensureFreshLogin } from '@/shared/api/client'
 import {
   clearLogin,
   expireLoginIfNeeded,
@@ -29,7 +32,13 @@ import type { AuthUser, LoginResult } from '@/shared/types/auth'
  * 业务请求经 shared/api/client 的 authenticatedHeaders 自动携带 JWT。
  */
 export const useAuthStore = defineStore('auth', () => {
-  expireLoginIfNeeded()
+  // An expired access token may still be renewable through the refresh cookie (AC-01).
+  async function refreshSession(): Promise<void> {
+    const refreshing = ensureFreshLogin()
+    if (refreshing) await refreshing
+    expireLoginIfNeeded()
+  }
+  void refreshSession()
   const token = computed(() => {
     void sessionRevision.value
     return getStoredToken()
@@ -55,21 +64,36 @@ export const useAuthStore = defineStore('auth', () => {
     () => isLoggedIn.value || (hasGuest.value && !requiresLogin.value),
   )
   const isStaff = computed(() => isLoggedIn.value && Boolean(user.value?.roles.includes('STAFF')))
+  // Keyed by account, not token string: a refreshed token must not remount views or reset runs.
   const identityKey = computed(
-    () => token.value || (isAuthenticated.value ? getStoredGuest() : null) || 'anonymous',
+    () =>
+      (token.value && user.value ? `user:${user.value.id}` : token.value) ||
+      (isAuthenticated.value ? getStoredGuest() : null) ||
+      'anonymous',
   )
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
+  let renewTimer: ReturnType<typeof setTimeout> | undefined
   watch(
     token,
     (value) => {
       clearTimeout(expiryTimer)
+      clearTimeout(renewTimer)
       const expiry = value ? tokenExpiresAt(value) : null
-      if (expiry !== null)
-        expiryTimer = setTimeout(expireLoginIfNeeded, Math.max(0, expiry - Date.now()))
+      if (expiry === null) return
+      // Renew shortly before expiry (a refused renewal ends the session); if renewal cannot
+      // happen (offline), the token still expires on time.
+      renewTimer = setTimeout(
+        () => void refreshSession(),
+        Math.max(0, expiry - Date.now() - 60_000),
+      )
+      expiryTimer = setTimeout(expireLoginIfNeeded, Math.max(0, expiry - Date.now()))
     },
     { immediate: true },
   )
-  onScopeDispose(() => clearTimeout(expiryTimer))
+  onScopeDispose(() => {
+    clearTimeout(expiryTimer)
+    clearTimeout(renewTimer)
+  })
 
   async function login(email: string, password: string): Promise<AuthUser> {
     return signIn(loginApi(email, password))
@@ -97,6 +121,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout(): void {
+    // Only a signed-in session has a refresh cookie to revoke; guests stay offline-only.
+    if (getStoredToken()) void logoutSession()
     clearLogin()
   }
 
@@ -112,7 +138,7 @@ export const useAuthStore = defineStore('auth', () => {
         getStoredGuest() !== initialGuest ||
         loginRequired() !== initialLoginRequired
       )
-        throw new Error('身份已切换，请重新选择访客体验')
+        throw new Error(uiText('Identity changed. Please select guest mode again.'))
       if (getStoredGuest()) return resumeGuest()
       localStorage.setItem('offerpilot-storage-check', '1')
       localStorage.removeItem('offerpilot-storage-check')
@@ -141,6 +167,6 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     resumeGuest,
     enterGuest,
-    refreshSession: expireLoginIfNeeded,
+    refreshSession,
   }
 })

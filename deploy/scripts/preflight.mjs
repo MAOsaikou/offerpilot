@@ -80,7 +80,8 @@ export function validateDeployment(config) {
     require(!!variable && !placeholder(backend[variable]), 'Every selected model provider must have a non-placeholder API key')
   }
   if (backend.MCP_SERVER_ENABLED === 'true') require(!placeholder(backend.MCP_SERVER_API_KEY), 'Enabled MCP Server requires a non-placeholder API key')
-  if (placeholder(backend.BAILIAN_API_KEY)) warnings.push('Embedding is unavailable; only rules/full-text fallback can be accepted')
+  // EMBEDDING_* (e.g. local Ollama bge-m3) overrides the Bailian embedding endpoint/key.
+  if (placeholder(backend.EMBEDDING_API_KEY ?? backend.BAILIAN_API_KEY)) warnings.push('Embedding is unavailable; only rules/full-text fallback can be accepted')
   return { errors, warnings }
 }
 

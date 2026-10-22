@@ -16,11 +16,80 @@ public class JobService implements JobDescriptionForChat {
     private final JobSource source;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
+    private JobSearchPipeline pipeline;
+    @org.springframework.beans.factory.annotation.Autowired
+    public JobService(JobSource source, JdbcTemplate jdbc, ObjectMapper json, JobSearchPipeline pipeline) {
+        this(source,jdbc,json); this.pipeline=pipeline;
+    }
     public JobService(JobSource source, JdbcTemplate jdbc, ObjectMapper json) { this.source=source; this.jdbc=jdbc; this.json=json; }
     public JsonNode sites() { return source.sites(); }
+    JsonNode sites(long deadline) { return source.sites(deadline); }
+    JsonNode search(String query,String site,String nature,String location,long deadline) {
+        return search(query,site,nature,location,this::save,false,deadline);
+    }
     public JsonNode search(String query, String site, String nature, String location) {
+        return search(query,site,nature,location,this::save,false);
+    }
+    /** Request-local snapshots only. No parser model and no JDBC writes until persist() is called. */
+    public PreparedSearch prepareRuleSearch(String query,String site,String nature,String location) {
+        var pending=new java.util.concurrent.ConcurrentHashMap<String,PendingSnapshot>();
+        JsonNode result=search(query,site,nature,location,(raw,kind)-> {
+            String key=raw.path("site").asText()+":"+raw.path("id").asText()+":"+kind;
+            var snapshot=pending.computeIfAbsent(key,ignored->new PendingSnapshot(IdGenerator.next("job"),raw.deepCopy(),kind));
+            var preview=normalize(snapshot.raw(),snapshot.nature());
+            // Mirror the upsert's preservation of previously fetched detail using a public read.
+            var existing=jdbc.query("SELECT id,payload,detail_fetched_at FROM jobs WHERE site=? AND external_id=? AND nature=? AND user_id IS NULL",
+                    (rs,n)->view(rs.getString("id"),rs.getString("payload"),rs.getTimestamp("detail_fetched_at")),
+                    raw.path("site").asText(),raw.path("id").asText(),kind);
+            if(!existing.isEmpty() && !existing.get(0).path("detailFetchedAt").isNull())
+                preview=(ObjectNode)existing.get(0).deepCopy();
+            preview.put("id",snapshot.id());
+            if(!preview.has("detailFetchedAt")) preview.putNull("detailFetchedAt");
+            return preview;
+        },true);
+        // Only returned snapshots survive a timeout/truncation; late workers cannot add effects.
+        var selected=new LinkedHashMap<String,PendingSnapshot>();
+        for(var item:result.path("items")) for(var snapshot:pending.values())
+            if(snapshot.id().equals(item.path("id").asText())) selected.putIfAbsent(snapshot.id(),snapshot);
+        return new PreparedSearch(result.deepCopy(),List.copyOf(selected.values()));
+    }
+    private record PendingSnapshot(String id,JsonNode raw,String nature) {}
+    public final class PreparedSearch {
+        private final JsonNode preview;
+        private final List<PendingSnapshot> pending;
+        private JsonNode saved;
+        private PreparedSearch(JsonNode preview,List<PendingSnapshot> pending) { this.preview=preview; this.pending=pending; }
+        public JsonNode preview() { return preview.deepCopy(); }
+        public synchronized JsonNode persist() {
+            if(saved==null) {
+                var resolved=new HashMap<String,JsonNode>();
+                for(var snapshot:pending) resolved.put(snapshot.id(),save(snapshot.raw(),snapshot.nature()));
+                var result=(ObjectNode)preview.deepCopy();
+                var items=result.putArray("items");
+                for(var item:preview.path("items")) {
+                    JsonNode stored=resolved.get(item.path("id").asText());
+                    if(stored==null) items.add(item);
+                    else {
+                        var merged=(ObjectNode)stored.deepCopy();
+                        for(String field:List.of("retrievalSource","retrievalSources"))
+                            if(item.has(field)) merged.set(field,item.get(field));
+                        items.add(merged);
+                    }
+                }
+                saved=result;
+            }
+            return saved.deepCopy();
+        }
+    }
+    private JsonNode search(String query,String site,String nature,String location,
+            java.util.function.BiFunction<JsonNode,String,JsonNode> sink,boolean structured) {
+        return search(query,site,nature,location,sink,structured,JobSearchPipeline.deadline());
+    }
+    private JsonNode search(String query,String site,String nature,String location,
+            java.util.function.BiFunction<JsonNode,String,JsonNode> sink,boolean structured,long deadline) {
         if (query == null || query.isBlank() || query.length()>100 || site.length()>60 || location.length()>60
                 || !Set.of("campus","intern","social","all").contains(nature)) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        if (pipeline != null) return pipeline.search(com.offerpilot.llm.quota.LlmUserContext.current(),query,site,nature,location,sink,structured,deadline);
         Map<String,Object> args = new LinkedHashMap<>();
         args.put("query",query.strip()); args.put("nature",nature); args.put("limit",30);
         if (!site.isBlank()) args.put("site",site);
@@ -31,7 +100,7 @@ public class JobService implements JobDescriptionForChat {
             if (raw.path("id").asText().isBlank() || raw.path("site").asText().isBlank() || raw.path("title").asText().isBlank()) continue;
             String actualNature=Set.of("campus","intern","social").contains(raw.path("nature").asText()) ? raw.path("nature").asText() : nature;
             String key=raw.path("site").asText()+":"+raw.path("id").asText()+":"+actualNature;
-            if (seen.add(key)) items.add(save(raw,actualNature));
+            if (seen.add(key)) items.add(sink.apply(raw,actualNature));
         }
         output.set("meta",result.path("_meta")); output.put("fetchedAt",Instant.now().toString());
         return output;
@@ -43,17 +112,25 @@ public class JobService implements JobDescriptionForChat {
             (rs,n)->view(rs.getString("id"),rs.getString("payload"),rs.getTimestamp("detail_fetched_at")),
             id,data.path("site").asText(),data.path("externalId").asText(),nature,data.toString());
     }
+    /** Unscoped lookup for rows the caller already owns through another table (application, match). */
     public JsonNode get(String id) {
         var rows=jdbc.query("SELECT id,payload,detail_fetched_at FROM jobs WHERE id=?",(rs,n)->view(rs.getString("id"),rs.getString("payload"),rs.getTimestamp("detail_fetched_at")),id);
         if(rows.isEmpty()) throw new BusinessException(ErrorCode.JOB_NOT_FOUND);
         return rows.get(0);
     }
-    public JsonNode detail(String id,boolean force) {
-        var existing=get(id);
+    /** Shared search snapshots are public; jobs a user imported (JB-06) are visible only to that user. */
+    public JsonNode get(String owner,String id) {
+        var rows=jdbc.query("SELECT id,payload,detail_fetched_at FROM jobs WHERE id=? AND (user_id IS NULL OR user_id=?)",(rs,n)->view(rs.getString("id"),rs.getString("payload"),rs.getTimestamp("detail_fetched_at")),id,owner);
+        if(rows.isEmpty()) throw new BusinessException(ErrorCode.JOB_NOT_FOUND);
+        return rows.get(0);
+    }
+    public JsonNode detail(String owner,String id,boolean force) {
+        var existing=get(owner,id);
         if(!force && !existing.path("detailFetchedAt").isNull() && Instant.parse(existing.path("detailFetchedAt").asText()).isAfter(Instant.now().minusSeconds(600))) return existing;
         if(source.localOnly() || "demo".equals(existing.path("site").asText())
                 || "demo".equals(existing.path("source").asText())
-                || "LOCAL_SNAPSHOT".equals(existing.path("source").asText())) return existing;
+                || "LOCAL_SNAPSHOT".equals(existing.path("source").asText())
+                || JobImportService.SITE.equals(existing.path("site").asText())) return existing;
         JsonNode result;
         try {
             result=source.detail(existing.path("site").asText(),existing.path("externalId").asText(),existing.path("nature").asText());
@@ -69,14 +146,14 @@ public class JobService implements JobDescriptionForChat {
         var raw=(ObjectNode)result.deepCopy();
         raw.put("id",existing.path("externalId").asText()); raw.put("site",existing.path("site").asText());
         var data=normalize(raw,existing.path("nature").asText());
-        for(String field:List.of("title","company","locations","category","department","url","updatedAt"))
+        for(String field:List.of("title","company","locations","category","department","deadline","url","updatedAt"))
             if(data.path(field).asText().isBlank()) data.set(field,existing.path(field));
         jdbc.update("UPDATE jobs SET payload=?::jsonb,detail_fetched_at=now(),updated_at=now() WHERE id=?",data.toString(),id);
-        return get(id);
+        return get(owner,id);
     }
     private ObjectNode normalize(JsonNode raw,String nature) {
         var data=json.createObjectNode();
-        for(String field:List.of("site","company","title","locations","category","department","updatedAt","description","requirement")) {
+        for(String field:List.of("site","company","title","locations","category","department","deadline","updatedAt","description","requirement")) {
             String value=raw.path(field).asText("").replaceAll("(?is)<[^>]*>"," ").replace("&nbsp;"," ").replace("&amp;","&").strip();
             if(value.length()>30000) value=com.offerpilot.common.text.TextBounds.truncate(value,30000);
             data.put(field,value);
@@ -92,7 +169,7 @@ public class JobService implements JobDescriptionForChat {
         if(raw.path("skills").isArray()) data.set("skills",raw.path("skills").deepCopy());
         return data;
     }
-    private JsonNode view(String id,String payload,java.sql.Timestamp fetched) {
+    JsonNode view(String id,String payload,java.sql.Timestamp fetched) {
         try { var node=(ObjectNode)json.readTree(payload); node.put("id",id); if(fetched==null) node.putNull("detailFetchedAt"); else node.put("detailFetchedAt",fetched.toInstant().toString()); return node; }
         catch(Exception ex) { throw new IllegalStateException(ex); }
     }
@@ -100,8 +177,8 @@ public class JobService implements JobDescriptionForChat {
         return "岗位："+job.path("title").asText()+"\n职责：\n"+job.path("description").asText()+"\n要求：\n"+job.path("requirement").asText();
     }
     @Override
-    public String description(String jobId) {
-        var job = get(jobId);
+    public String description(String owner, String jobId) {
+        var job = get(owner, jobId);
         if (job.path("description").asText().isBlank() && job.path("requirement").asText().isBlank())
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "岗位缺少职责与要求，请先获取完整详情或在简历改写页粘贴JD");
         String jd = evidenceText(job);

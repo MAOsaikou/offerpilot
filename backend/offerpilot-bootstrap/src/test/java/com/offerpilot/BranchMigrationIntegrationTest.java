@@ -18,7 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** 只操作一次性数据库，验证 V1–V26 和历史对齐，不接触开发数据。 */
+/** 只操作一次性数据库，验证 V1–V50 和历史对齐，不接触开发数据。 */
 @Testcontainers
 class BranchMigrationIntegrationTest {
     @Container
@@ -65,13 +65,88 @@ class BranchMigrationIntegrationTest {
         assertThat(jdbc(url).queryForObject("SELECT to_regclass('public.knowledge_notes') IS NOT NULL AND to_regclass('public.knowledge_note_imports') IS NOT NULL", Boolean.class)).isTrue();
         assertThat(jdbc(url).queryForObject("SELECT to_regclass('public.star_stories') IS NOT NULL", Boolean.class)).isTrue();
         assertThat(migrations(url, "latest", false).validateWithResult().validationSuccessful).isTrue();
-        assertThat(jdbc(url).queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(26);
+        assertThat(jdbc(url).queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(45);
         assertThat(jdbc(url).queryForList("SELECT version FROM flyway_schema_history WHERE success", String.class))
-                .contains("15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26");
+                .contains("15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50");
         assertThat(jdbc(url).queryForObject("SELECT status FROM users WHERE id='usr_test_staff001'", String.class)).isEqualTo("DISABLED");
         String fresh = newDatabase();
         migrations(fresh, "latest", false).migrate();
         assertThat(migrations(fresh, "latest", false).validateWithResult().validationSuccessful).isTrue();
+    }
+
+    @Test void upgradesV49PreservingPlanAndBackfillingOnlyActualTarget() {
+        String url=newDatabase(); migrations(url,"49",false).migrate(); var db=jdbc(url);
+        db.update("INSERT INTO users(id,email,password_hash,nickname) VALUES ('v50-owner','v50@example.test','fixture','Keep me')");
+        db.update("INSERT INTO jobs(id,site,external_id,nature,payload) VALUES ('v50-job','fixture','v50','intern','{}')");
+        db.update("INSERT INTO interview_sessions(id,user_id,role,kind,completed,job_id) VALUES ('v50-report','v50-owner','后端','技术',true,'v50-job')");
+        db.update("INSERT INTO interview_learning_plans(id,user_id,report_id,roadmap,start_date) VALUES ('v50-plan','v50-owner','v50-report','{\"weeks\":[],\"milestones\":[]}','2026-10-21')");
+        String before=db.queryForObject("SELECT roadmap::text FROM interview_learning_plans WHERE id='v50-plan'",String.class);
+        migrations(url,"latest",false).migrate();
+        assertThat(db.queryForObject("SELECT roadmap::text FROM interview_learning_plans WHERE id='v50-plan'",String.class)).isEqualTo(before);
+        assertThat(db.queryForObject("SELECT target_role FROM interview_learning_plans WHERE id='v50-plan'",String.class)).isEqualTo("后端");
+        assertThat(db.queryForObject("SELECT target_job_id FROM interview_learning_plans WHERE id='v50-plan'",String.class)).isEqualTo("v50-job");
+        assertThat(db.queryForObject("SELECT applied_updates::text FROM interview_learning_plans WHERE id='v50-plan'",String.class)).isEqualTo("{}");
+        assertThat(db.queryForObject("SELECT count(*) FROM growth_task_completions WHERE user_id='v50-owner'",Integer.class)).isZero();
+    }
+
+    @Test void upgradesV46WithoutBackfillingFakeNotificationsAndQueuesOnlyChangedTargets() {
+        String url=newDatabase();migrations(url,"46",false).migrate();var db=jdbc(url);
+        db.update("INSERT INTO users(id,email,password_hash,nickname) VALUES ('v47','v47@example.test','fixture','Keep me')");
+        db.update("INSERT INTO career_profiles(user_id,target,skills) VALUES ('v47','Existing target','Java')");
+        migrations(url,"latest",false).migrate();
+        assertThat(db.queryForObject("SELECT count(*) FROM notifications",Integer.class)).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM career_target_plans",Integer.class)).isZero();
+        db.update("UPDATE career_profiles SET skills='SQL' WHERE user_id='v47'");
+        assertThat(db.queryForObject("SELECT count(*) FROM career_target_plans",Integer.class)).isZero();
+        db.update("UPDATE career_profiles SET target='New target' WHERE user_id='v47'");
+        String revision=db.queryForObject("SELECT revision FROM career_target_plans WHERE user_id='v47'",String.class);
+        db.update("UPDATE career_profiles SET target='New target' WHERE user_id='v47'");
+        assertThat(db.queryForObject("SELECT revision FROM career_target_plans WHERE user_id='v47'",String.class)).isEqualTo(revision);
+        db.update("UPDATE career_profiles SET city='上海' WHERE user_id='v47'");
+        assertThat(db.queryForObject("SELECT revision FROM career_target_plans WHERE user_id='v47'",String.class)).isNotEqualTo(revision);
+        db.update("UPDATE career_profiles SET target='' WHERE user_id='v47'");
+        assertThat(db.queryForObject("SELECT count(*) FROM career_target_plans",Integer.class)).isZero();
+        assertThat(db.queryForObject("SELECT skills FROM career_profiles WHERE user_id='v47'",String.class)).isEqualTo("SQL");
+    }
+
+    @Test void upgradesV45WithOwnerScopedGithubEvidenceAndCascade() {
+        String url = newDatabase(); migrations(url,"45",false).migrate(); var jdbc = jdbc(url);
+        jdbc.update("INSERT INTO users(id,email,password_hash,nickname) VALUES ('v46-owner','v46@example.test','fixture-only','Keep me')");
+        migrations(url,"latest",false).migrate();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM github_evidence",Integer.class)).isZero();
+        jdbc.update("INSERT INTO github_evidence(user_id,username,revision) VALUES ('v46-owner','fixture','revision')");
+        assertThat(jdbc.queryForObject("SELECT token_ciphertext IS NULL AND snapshot IS NULL AND fetched_at IS NULL AND status='NOT_FETCHED' FROM github_evidence WHERE user_id='v46-owner'",Boolean.class)).isTrue();
+        assertThatThrownBy(() -> jdbc.update("UPDATE github_evidence SET snapshot='{}'::jsonb WHERE user_id='v46-owner'"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        jdbc.update("DELETE FROM users WHERE id='v46-owner'");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM github_evidence",Integer.class)).isZero();
+    }
+
+    @Test void upgradesV44KeepingOccupationIdsAndRemovingOnlyUnsupportedSalaryEstimates() {
+        String url=newDatabase();migrations(url,"44",false).migrate();var jdbc=jdbc(url);
+        jdbc.update("INSERT INTO occupations(id,name,family,description,source,salary_range) VALUES ('before45','Keep name','test','Keep original','custom','{\"campus\":\"15-30k\",\"source\":\"自建岗位族谱估算\"}')");
+        migrations(url,"latest",false).migrate();
+        assertThat(jdbc.queryForObject("SELECT name FROM occupations WHERE id='before45'",String.class)).isEqualTo("Keep name");
+        assertThat(jdbc.queryForObject("SELECT salary_range IS NULL AND onet_code IS NULL FROM occupations WHERE id='before45'",Boolean.class)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM builtin_knowledge_entries",Integer.class)).isZero();
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO builtin_knowledge_entries(id,kind,title,content,industry,role,source,license,notice,tsv) VALUES ('bad-question','QUESTION','bad','bad','test','test','real-candidate','none','bad',to_tsvector('simple','bad'))"))
+            .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+
+    @Test void upgradesV43WithEmptyOwnerScopedMcpPreferencesAndCascadesOnDeletion() {
+        String url = newDatabase();
+        migrations(url, "43", false).migrate();
+        var jdbc = jdbc(url);
+        jdbc.update("INSERT INTO users(id,email,password_hash,nickname) VALUES ('v44-owner','v44@example.test','fixture-only','Keep me')");
+        migrations(url, "latest", false).migrate();
+        assertThat(jdbc.queryForObject("SELECT nickname FROM users WHERE id='v44-owner'", String.class)).isEqualTo("Keep me");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_mcp_servers", Integer.class)).isZero();
+        jdbc.update("INSERT INTO user_mcp_servers(user_id,provider,enabled) VALUES ('v44-owner','jobs',false)");
+        assertThat(jdbc.queryForObject("SELECT tools='[]'::jsonb AND status='NOT_REFRESHED' AND NOT enabled FROM user_mcp_servers WHERE user_id='v44-owner'", Boolean.class)).isTrue();
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO user_mcp_servers(user_id,provider) VALUES ('v44-owner','custom')"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        jdbc.update("DELETE FROM users WHERE id='v44-owner'");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_mcp_servers", Integer.class)).isZero();
     }
 
     @Test void foldsPersistedCheapPreferencesJobsAndReportsWithoutChangingEvidence() {
@@ -124,9 +199,9 @@ class BranchMigrationIntegrationTest {
         align(url); // 可重复运行，不覆盖原历史备份。
         migrations(url, "latest", true).migrate();
         assertThat(migrations(url, "latest", false).validateWithResult().validationSuccessful).isTrue();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(26);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(45);
         assertThat(jdbc.queryForList("SELECT version FROM flyway_schema_history WHERE success", String.class))
-                .contains("15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26");
+                .contains("15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "40", "41", "42", "43", "44", "45", "46", "47", "48", "49", "50");
         assertThat(jdbc.queryForObject("SELECT nickname FROM users WHERE id='legacy-owner'", String.class)).isEqualTo("Preserve me");
         assertThat(jdbc.queryForObject("SELECT source FROM resume_versions WHERE id='legacy-v'", String.class)).isEqualTo("OPTIMIZED");
         assertThat(jdbc.queryForObject("SELECT current_version_id FROM resumes WHERE id='legacy-resume'", String.class)).isEqualTo("legacy-v");
@@ -138,6 +213,17 @@ class BranchMigrationIntegrationTest {
             assertThat(jdbc.queryForObject("SELECT note FROM applications WHERE id='legacy-app'", String.class)).isEqualTo("Keep my note");
             assertThat(jdbc.queryForObject("SELECT status FROM applications WHERE id='legacy-app'", String.class)).isEqualTo("INTERVIEW");
         }
+    }
+
+    @Test
+    void v41InterviewSnapshotsKeepAnswersOptionsAndLegacyReportSemantics() {
+        String url=newDatabase(); migrations(url,"41",false).migrate(); var jdbc=jdbc(url);
+        jdbc.update("INSERT INTO users(id,email,password_hash,nickname) VALUES ('iv-migration-owner','iv-migration@example.test','fixture','Migration')");
+        jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,question_index,completed,options) VALUES ('iv-before42','iv-migration-owner','护士','综合',4,true,'{\"resumeId\":null,\"versionId\":null,\"difficulty\":\"STANDARD\",\"mode\":\"TEXT\",\"durationMinutes\":30}')");
+        for(int i=0;i<5;i++) jdbc.update("INSERT INTO interview_answers(session_id,question_index,question_text,answer_text,follow_up_question,follow_up_answer,follow_up_source) VALUES ('iv-before42',?,'旧问题','真实旧回答','旧追问','真实补充','rule')",i);
+        migrations(url,"latest",false).migrate();
+        assertThat(jdbc.queryForObject("SELECT generation_source IS NULL AND report IS NULL AND revision=0 AND completed AND options->>'difficulty'='STANDARD' FROM interview_sessions WHERE id='iv-before42'",Boolean.class)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM interview_answers WHERE session_id='iv-before42' AND answer_text='真实旧回答' AND follow_up_answer='真实补充' AND evaluation IS NULL",Integer.class)).isEqualTo(5);
     }
 
     @Test

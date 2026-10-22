@@ -80,6 +80,12 @@ public class ResumeController {
         return ok(resumes.rename(owner(r), id, body.title()), r);
     }
 
+    @DeleteMapping("/{id}")
+    public ApiResponse<?> delete(@PathVariable String id, HttpServletRequest r) {
+        resumes.delete(owner(r), id);
+        return ok(java.util.Map.of("deleted", true), r);
+    }
+
     @GetMapping("/{id}/versions")
     public ApiResponse<?> versions(@PathVariable String id, HttpServletRequest r) {
         return ok(resumes.versions(owner(r), id), r);
@@ -88,6 +94,14 @@ public class ResumeController {
     @GetMapping("/{id}/versions/{vid}")
     public ApiResponse<?> version(@PathVariable String id, @PathVariable String vid, HttpServletRequest r) {
         return ok(resumes.version(owner(r), id, vid), r);
+    }
+
+    public record RestoreRequest(String baseVersionId) {}
+
+    /** Rolls back to version {vid} by creating a new current version with its content. */
+    @PostMapping("/{id}/versions/{vid}/restore")
+    public ApiResponse<?> restore(@PathVariable String id, @PathVariable String vid, @RequestBody RestoreRequest body, HttpServletRequest r) {
+        return ok(resumes.restore(owner(r), id, body == null ? null : body.baseVersionId(), vid), r);
     }
 
     @PutMapping("/{id}/versions/{vid}/structured")

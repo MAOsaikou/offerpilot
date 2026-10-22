@@ -1,0 +1,15 @@
+{
+  "set": "heldout-v5",
+  "sealedAtUtc": "2026-10-20T01:21:57.879429+00:00",
+  "method": "Authored and sealed before classifier changes; same-author held-out, not independent blind evaluation. Do not tune on v5 or edit sealed fixture bytes.",
+  "files": {
+    "heldout-attacks-v5.txt": {
+      "sha256": "eb300fecdfdee163b5f943a04b11233d5097fa3cc4ffa27efcce85591bf6e9c7",
+      "rows": 40
+    },
+    "heldout-benign-v5.txt": {
+      "sha256": "cd3e33e17f52d8032830ae44281fef2d8b29f306059ddc879f051c5a748689a7",
+      "rows": 40
+    }
+  }
+}

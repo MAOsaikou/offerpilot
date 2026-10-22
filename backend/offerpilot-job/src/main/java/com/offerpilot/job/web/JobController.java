@@ -14,12 +14,19 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/jobs")
 public class JobController {
+    private final JobScreenshotService screenshots;
     private final JobService jobs;
     private final JobMatchService matches;
     private final JobEvalMarkdownExporter evalExports;
     private final CurrentUser users;
+    private final JobImportService imports;
+    private final JobRecommendationService recommendations;
 
-    public JobController(JobService jobs, JobMatchService matches, JobEvalMarkdownExporter evalExports, CurrentUser users) {
+    public JobController(JobService jobs, JobMatchService matches, JobEvalMarkdownExporter evalExports, CurrentUser users,
+                         JobImportService imports, JobRecommendationService recommendations, JobScreenshotService screenshots) {
+        this.screenshots=screenshots;
+        this.recommendations=recommendations;
+        this.imports = imports;
         this.jobs = jobs;
         this.matches = matches;
         this.evalExports = evalExports;
@@ -47,20 +54,64 @@ public class JobController {
             @RequestParam(defaultValue = "campus") String nature,
             @RequestParam(defaultValue = "") String location,
             HttpServletRequest r) {
-        owner(r);
-        return ok(jobs.search(query, site, nature, location), r);
+        String user=owner(r);
+        return ok(com.offerpilot.llm.quota.LlmUserContext.asUser(user, () -> jobs.search(query, site, nature, location)), r);
     }
+
+    @PostMapping(value = "/import/screenshots", consumes = "multipart/form-data")
+    public ApiResponse<?> uploadScreenshot(@RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+                                          HttpServletRequest r) throws java.io.IOException {
+        String user=owner(r);
+        if(file.getSize()>5*1024*1024) throw new com.offerpilot.common.error.BusinessException(
+                com.offerpilot.common.error.ErrorCode.FILE_TOO_LARGE,"单张截图不能超过 5MB");
+        return ok(screenshots.upload(user,file.getOriginalFilename(),file.getBytes()),r);
+    }
+
+    @GetMapping("/import/screenshots/{id}")
+    public ResponseEntity<byte[]> screenshot(@PathVariable String id,HttpServletRequest r) {
+        var image=screenshots.read(owner(r),id);
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_TYPE,image.mime())
+                .header(HttpHeaders.CACHE_CONTROL,"private, no-store")
+                .header("X-Content-Type-Options","nosniff").body(image.bytes());
+    }
+
+    public record ImportParseRequest(@Size(max = 20000) String text, @Size(max = 2000) String url) {}
+
+    /** JB-06 step 1: parse pasted text or a public page into a draft; nothing is stored. */
+    @PostMapping("/import/parse")
+    public ApiResponse<?> parseImport(@Valid @RequestBody ImportParseRequest body, HttpServletRequest r) {
+        return ok(imports.parse(owner(r), body.text(), body.url()), r);
+    }
+
+    public record ImportRequest(@NotBlank @Size(max = 100) String title, @Size(max = 100) String company,
+                                @Size(max = 100) String locations, @Size(max = 100) String department,
+                                @Pattern(regexp = "campus|intern|social") String nature,
+                                @Size(max = 30000) String description, @Size(max = 30000) String requirement,
+                                @Size(max = 2000) String url, @Size(max = 12) java.util.List<@Size(max = 40) String> skills) {}
+
+    /** JB-06 step 2: save the reviewed draft as a job visible only to this user. */
+    @PostMapping("/import")
+    public ApiResponse<?> saveImport(@Valid @RequestBody ImportRequest b, HttpServletRequest r) {
+        return ok(imports.save(owner(r), new JobImportService.Fields(b.title(), b.company(), b.locations(), b.department(),
+                b.nature(), b.description(), b.requirement(), b.url(), b.skills())), r);
+    }
+
+    @GetMapping("/imported")
+    public ApiResponse<?> imported(HttpServletRequest r) {
+        return ok(imports.list(owner(r)), r);
+    }
+
+    @GetMapping("/recommendations")
+    public ApiResponse<?> recommendations(HttpServletRequest r) { return ok(recommendations.daily(owner(r)), r); }
 
     @GetMapping("/{id}")
     public ApiResponse<?> get(@PathVariable String id, HttpServletRequest r) {
-        owner(r);
-        return ok(jobs.get(id), r);
+        return ok(jobs.get(owner(r), id), r);
     }
 
     @PostMapping("/{id}/refresh")
     public ApiResponse<?> refresh(@PathVariable String id, HttpServletRequest r) {
-        owner(r);
-        return ok(jobs.detail(id, true), r);
+        return ok(jobs.detail(owner(r), id, true), r);
     }
 
     public record MatchRequest(

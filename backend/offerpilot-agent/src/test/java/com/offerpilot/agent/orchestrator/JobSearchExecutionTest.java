@@ -30,10 +30,12 @@ class JobSearchExecutionTest {
     final List<Message> reply = new ArrayList<>();
     final Map<String, Object> context = Map.of("jobId", "job_1", "resumeId", "res_1", "resumeVersionId", "ver_1", "optimizationReportId", "old_optimization");
 
+    final com.offerpilot.agent.application.ApprovalService approvals = new com.offerpilot.agent.application.ApprovalService(mock(com.offerpilot.conversation.application.ConversationService.class));
     Orchestrator orchestrator() throws Exception {
         var beans = new StaticListableBeanFactory();
         beans.addBean("matches", matches);
         var experts = new ExpertRegistry(beans.getBeanProvider(JobMatchForChat.class), beans.getBeanProvider(ResumeDiagnosisForChat.class), searches);
+        experts.setAnalysisApprovals(approvals);
         var parser = new JobIntentParser(gateway, json, new ByteArrayResource("extract".getBytes()));
         return new Orchestrator(new IntentPlanner(gateway, json, experts, new ByteArrayResource("{experts}".getBytes()), parser), experts);
     }
@@ -44,10 +46,27 @@ class JobSearchExecutionTest {
 
     List<AgentEvent> run(AgentMode mode, Map<String,Object> selected) throws Exception {
         return orchestrator().run(mode, "换成北京的 Java 校招", List.of(new UserMessage("找上海Java校招")), ModelTier.FLASH,
-                "run", new AtomicInteger(), reply, ignored -> {}, "owner", selected).collectList().block(Duration.ofSeconds(5));
+                "run", new AtomicInteger(), reply, ignored -> {}, "owner", selected).doOnNext(event -> {
+                    if(event instanceof AgentEvent.ApprovalRequired a) approvals.resolve("owner","run",a.approvalId(),new com.offerpilot.agent.application.ApprovalService.Decision("APPROVE",null,null));
+                }).collectList().block(Duration.ofSeconds(5));
     }
 
-    @Test void autoAndExplicitSearchIgnoreStaleMatchIdsAndEmitOneMcpCard() throws Exception {
+    @Test void localSnapshotResultReportsLocalSourceAndStructuredJson() throws Exception {
+        when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(response("{\"action\":\"search\",\"query\":\"Java\",\"site\":\"\",\"nature\":\"campus\",\"location\":\"北京\"}"));
+        var card = json.createObjectNode().put("schemaVersion",2).put("returnedCount",0);
+        card.putObject("meta").put("source","LOCAL_SNAPSHOT");
+        when(searches.search("Java", "", "campus", "北京")).thenReturn(card);
+        var events = run(AgentMode.JOB, context);
+        assertThat(events).filteredOn(AgentEvent.ToolResult.class::isInstance).singleElement().satisfies(event -> {
+            var result = (AgentEvent.ToolResult)event;
+            assertThat(result.source()).isEqualTo("LOCAL");
+            assertThat(result.serverName()).isNull();
+            assertThat(result.durationMs()).isGreaterThanOrEqualTo(0);
+            assertThat(json.valueToTree(result.result()).path("cards").get(0).path("payload").path("meta").path("source").asText()).isEqualTo("LOCAL_SNAPSHOT");
+        });
+    }
+
+    @Test void autoAndExplicitSearchIgnoreStaleMatchIdsAndEmitJobAndCalendarCards() throws Exception {
         String extract = "{\"action\":\"search\",\"query\":\"Java\",\"site\":\"\",\"nature\":\"campus\",\"location\":\"北京\"}";
         when(searches.search("Java", "", "campus", "北京")).thenReturn(json.createObjectNode().put("schemaVersion", 2).put("returnedCount", 0));
         for (var mode : List.of(AgentMode.AUTO, AgentMode.JOB)) {
@@ -55,11 +74,13 @@ class JobSearchExecutionTest {
                     response("{\"kind\":\"single\",\"expert\":\"JOB\",\"confidence\":1}"), response(extract));
             else when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(response(extract));
             var events = run(mode, context);
-            assertThat(events).filteredOn(AgentEvent.UiCard.class::isInstance).hasSize(1);
+            assertThat(events.stream().filter(AgentEvent.UiCard.class::isInstance).map(AgentEvent.UiCard.class::cast))
+                    .extracting(AgentEvent.UiCard::cardType).containsExactly("job_card", "campus_calendar");
             assertThat(events).filteredOn(AgentEvent.ToolCall.class::isInstance).singleElement().satisfies(event -> {
                 var call = (AgentEvent.ToolCall)event;
                 assertThat(call.name()).isEqualTo("search_jobs");
-                assertThat(call.source()).isEqualTo("mcp:jobs-mcp");
+                assertThat(call.source()).isEqualTo("MCP");
+                assertThat(call.serverName()).isEqualTo("jobs-mcp");
                 assertThat(call.args().toString()).contains("北京", "Java");
             });
         }
@@ -74,7 +95,8 @@ class JobSearchExecutionTest {
         card.putObject("meta").put("source", "LOCAL_SNAPSHOT").put("snapshotDate", "2026-10-10");
         when(searches.search(anyString(), anyString(), anyString(), anyString())).thenReturn(card);
         var events = run(AgentMode.JOB, Map.of());
-        assertThat(events).filteredOn(AgentEvent.UiCard.class::isInstance).hasSize(1);
+        assertThat(events.stream().filter(AgentEvent.UiCard.class::isInstance).map(AgentEvent.UiCard.class::cast))
+                    .extracting(AgentEvent.UiCard::cardType).containsExactly("job_card", "campus_calendar");
         assertThat(reply.stream().map(Message::getText).toList().toString())
                 .contains("离线示例岗位快照", "非实时数据", "不能声称是官网当前在招岗位")
                 .doesNotContain("真实岗位搜索快照");

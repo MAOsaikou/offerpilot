@@ -86,7 +86,7 @@ public class ApplicationService {
     @Transactional
     public Application create(String owner, String jobId) { return createBase(owner,jobId,"USER",null); }
     private Application createBase(String owner,String jobId,String actor,String runId) {
-        jobs.get(jobId);
+        jobs.get(owner,jobId);
         // Serialize creation with match completion; either side sees the other's committed artifact.
         if (jdbc.queryForList("SELECT id FROM users WHERE id=? FOR UPDATE",String.class,owner).isEmpty())
             throw new BusinessException(ErrorCode.UNAUTHENTICATED);

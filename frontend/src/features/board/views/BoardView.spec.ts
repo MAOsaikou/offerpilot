@@ -4,12 +4,18 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import BoardView from './BoardView.vue'
 import { listApplications, updateApplication, getApplication } from '@/shared/api/applications'
+import { listPendingAgentApprovals, decidePendingAgentApproval } from '@/shared/api/agentApprovals'
 import type { ServerApplication, ApplicationDetail } from '@/shared/types/board'
 vi.mock('@/shared/api/applications', () => ({
   listApplications: vi.fn(),
   updateApplication: vi.fn(),
   favoriteJob: vi.fn(),
   getApplication: vi.fn(),
+}))
+vi.mock('@/shared/api/agentApprovals', async (load) => ({
+  ...(await load<typeof import('@/shared/api/agentApprovals')>()),
+  listPendingAgentApprovals: vi.fn(),
+  decidePendingAgentApproval: vi.fn(),
 }))
 vi.mock('@/shared/api/jobs', () => ({ exportJobEvalMarkdown: vi.fn(), getJobMatch: vi.fn() }))
 import { exportJobEvalMarkdown } from '@/shared/api/jobs'
@@ -86,6 +92,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   server = [fixture()]
   vi.mocked(listApplications).mockImplementation(async () => structuredClone(server))
+  vi.mocked(listPendingAgentApprovals).mockResolvedValue([])
   vi.mocked(updateApplication).mockImplementation(async (_id, patch) => {
     server[0] = { ...server[0]!, ...patch }
     return structuredClone(server[0])
@@ -258,4 +265,104 @@ it('opens the selected workspace, retries detail, preserves failed edits and exp
   await vi.waitFor(() =>
     expect(document.querySelector('dialog')?.textContent).toContain('刚保存的岗位故事'),
   )
+})
+function dragEvent(type: string, data: Map<string, string>) {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'dataTransfer', {
+    value: {
+      types: [...data.keys()],
+      setData: (k: string, v: string) => data.set(k, v),
+      getData: (k: string) => data.get(k) ?? '',
+      effectAllowed: '',
+      dropEffect: '',
+    },
+  })
+  return event
+}
+const column = (stage: string) => root.querySelector(`[data-stage="${stage}"]`)!
+it('dragging a card to another column moves it at once and rolls back if the save fails', async () => {
+  await mount()
+  await vi.waitFor(() => expect(column('TODO').querySelector('article')).not.toBeNull())
+  let release!: () => void
+  vi.mocked(updateApplication).mockImplementationOnce(async (_id, patch) => {
+    await new Promise<void>((resolve) => (release = resolve))
+    server[0] = { ...server[0]!, ...patch }
+    return structuredClone(server[0])
+  })
+  const data = new Map<string, string>()
+  column('TODO').querySelector('article')!.dispatchEvent(dragEvent('dragstart', data))
+  const over = dragEvent('dragover', data)
+  column('APPLIED').dispatchEvent(over)
+  expect(over.defaultPrevented).toBe(true)
+  column('APPLIED').dispatchEvent(dragEvent('drop', data))
+  // Optimistic: the card is in the new column before the server answers.
+  await vi.waitFor(() => expect(column('APPLIED').querySelector('article')).not.toBeNull())
+  expect(column('TODO').querySelector('article')).toBeNull()
+  expect(updateApplication).toHaveBeenCalledWith('app_1', { status: 'APPLIED' })
+  release()
+  await vi.waitFor(() => expect(server[0]!.status).toBe('APPLIED'))
+
+  vi.mocked(updateApplication).mockRejectedValueOnce(new Error('离线'))
+  column('APPLIED').querySelector('article')!.dispatchEvent(dragEvent('dragstart', data))
+  column('OFFER').dispatchEvent(dragEvent('drop', data))
+  await vi.waitFor(() => expect(root.textContent).toContain('卡片已退回原来的列'))
+  expect(column('APPLIED').querySelector('article')).not.toBeNull()
+  expect(column('OFFER').querySelector('article')).toBeNull()
+})
+it('a card with an unsaved note cannot be dragged', async () => {
+  await mount()
+  await vi.waitFor(() => expect(root.querySelector('textarea')).not.toBeNull())
+  expect(root.querySelector('article')!.getAttribute('draggable')).toBe('true')
+  const input = root.querySelector('textarea')!
+  input.value = '未保存'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  await nextTick()
+  expect(root.querySelector('article')!.getAttribute('draggable')).toBe('false')
+})
+it('an agent write left pending by a closed chat is applied only after approval on the board', async () => {
+  let pending = [
+    {
+      id: 'ap_1',
+      runId: 'run_1',
+      action: 'updateApplicationStatus' as const,
+      args: { applicationId: 'app_1', status: 'INTERVIEW' },
+      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      createdAt: new Date().toISOString(),
+      company: '企业',
+      title: '工程师',
+      currentStatus: 'TODO',
+      summary: null,
+    },
+    {
+      id: 'ap_2',
+      runId: 'run_2',
+      action: 'adoptTargetCareer',
+      args: { occupationId: 'occ_1', name: '数据分析师' },
+      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      createdAt: new Date().toISOString(),
+      company: null,
+      title: null,
+      currentStatus: null,
+      summary: '把职业目标设为「数据分析师」',
+    },
+  ]
+  vi.mocked(listPendingAgentApprovals).mockImplementation(async () => structuredClone(pending))
+  vi.mocked(decidePendingAgentApproval).mockImplementation(async () => {
+    server[0] = { ...server[0]!, status: 'INTERVIEW' }
+    pending = []
+    return { decision: 'APPROVE', applied: true, summary: null }
+  })
+  await mount()
+  await vi.waitFor(() =>
+    expect(root.textContent).toContain('「企业 · 工程师」：阶段从「收藏」改为「面试中」'),
+  )
+  expect(root.textContent).not.toContain('数据分析师')
+  expect(column('TODO').querySelector('article')).not.toBeNull()
+  const approve = [...root.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === '批准',
+  )!
+  approve.click()
+  await vi.waitFor(() => expect(column('INTERVIEW').querySelector('article')).not.toBeNull())
+  expect(decidePendingAgentApproval).toHaveBeenCalledWith('ap_1', 'APPROVE')
+  await vi.waitFor(() => expect(root.textContent).not.toContain('待你确认的 Agent 看板操作'))
 })

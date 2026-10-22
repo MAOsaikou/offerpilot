@@ -79,17 +79,29 @@ public class OccupationRecommender {
             if (retrieval.hits().isEmpty()) return rules.stream().limit(limit).toList();
             var hits = new LinkedHashMap<String, OccupationHybridRetriever.Hit>();
             retrieval.hits().forEach(item -> hits.put(item.id(), item));
-            var scores = OccupationRrf.scores(rules.stream().map(Ranked::id).toList(),
-                    retrieval.hits().stream().map(OccupationHybridRetriever.Hit::id).toList());
-            return rules.stream()
+            var byId = new LinkedHashMap<String, Ranked>();
+            rules.forEach(item -> byId.put(item.id(), item));
+            // Re-rank only the retrieved candidates. The interest prior is ranked within that short list:
+            // a full-catalog RRF list let distant prior gaps outweigh the user's own words (live eval).
+            var retrieved = retrieval.hits().stream().map(OccupationHybridRetriever.Hit::id)
+                    .filter(byId::containsKey).toList();
+            var byProfile = retrieved.stream().sorted(Comparator.comparingInt(
+                    id -> rules.indexOf(byId.get(id)))).toList();
+            var scores = OccupationRrf.weighted(
+                    new double[]{1.0, retrieval.vectorAvailable() ? OccupationRrf.PROFILE_WITH_VECTOR : 1.0},
+                    retrieved, byProfile);
+            var ordered = new java.util.ArrayList<Ranked>(retrieved.stream().map(byId::get)
                     .sorted(Comparator.<Ranked>comparingDouble(item -> scores.get(item.id())).reversed()
-                            .thenComparing(Ranked::name).thenComparing(Ranked::id))
-                    .limit(limit).map(item -> {
+                            .thenComparing(Ranked::name).thenComparing(Ranked::id)).toList());
+            rules.stream().filter(item -> !hits.containsKey(item.id())).forEach(ordered::add);
+            return ordered.stream().limit(limit)
+                    .sorted(Comparator.comparingDouble(Ranked::similarity).reversed()
+                            .thenComparing(Ranked::name).thenComparing(Ranked::id)).map(item -> {
                         var hit = hits.get(item.id());
                         if (hit == null) return item;
-                        String reason = hit.lexicalMatch()
-                                ? "与你的描述/目标及已保存兴趣、技能在职业库文本中匹配；参与全文检索 RRF 排序"
-                                : "与你的描述/目标及已保存兴趣、技能在职业库向量检索中匹配；参与 RRF 排序";
+                        String reason = hit.vectorMatch()
+                                ? "与你的描述/目标及已保存兴趣、技能在职业库语义检索中召回候选；展示结果按兴趣相似度降序排列"
+                                : "与你的描述/目标及已保存兴趣、技能在职业库文本中召回候选；展示结果按兴趣相似度降序排列";
                         return new Ranked(item.id(), item.name(), item.family(), item.hollandCode(), item.similarity(),
                                 List.of(new Citation(hit.id(), hit.name(), hit.excerpt())), reason);
                     }).toList();

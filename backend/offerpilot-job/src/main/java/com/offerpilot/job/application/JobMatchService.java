@@ -29,7 +29,7 @@ public class JobMatchService {
     }
     public JsonNode create(String owner,String jobId,String resumeId,String versionId,String requestId,com.offerpilot.llm.ModelTier tier) {
         var resume=resumes.snapshot(owner,resumeId,versionId);
-        var job=jobs.get(jobId);
+        var job=jobs.get(owner,jobId);
         String id=IdGenerator.next("match");
         String existing=tx.execute(status->{
             jdbc.queryForObject("SELECT id FROM users WHERE id=? FOR UPDATE",String.class,owner);
@@ -54,7 +54,7 @@ public class JobMatchService {
         cancellations.put(id, cancellation);
         try {
             rejectCancelled(owner, id);
-            job=jobs.detail(jobId,false);
+            job=jobs.detail(owner,jobId,false);
             JsonNode selectedJob = job;
             JsonNode generated=com.offerpilot.llm.quota.LlmUserContext.asUser(owner,
                     () -> matcher.match(selectedJob,resume.structured(),tier,cancellation.asMono()));
@@ -63,6 +63,7 @@ public class JobMatchService {
             report.put("id",id).put("jobId",jobId).put("resumeId",resumeId).put("resumeTitle",resume.title())
                 .put("resumeVersionId",versionId).put("resumeVersionNo",resume.versionNo()).put("createdAt",Instant.now().toString());
             report.set("jobSnapshot",job); report.set("resumeSnapshot",resume.structured());
+            com.offerpilot.common.artifact.BackgroundWork.check();
             int saved=tx.execute(transaction -> {
                 if (jdbc.queryForList("SELECT id FROM users WHERE id=? FOR UPDATE",String.class,owner).isEmpty()) return 0;
                 int count=jdbc.update("UPDATE job_matches SET status='COMPLETED',report=?::jsonb,updated_at=now() WHERE id=? AND status='RUNNING'",report.toString(),id);

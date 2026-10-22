@@ -40,7 +40,7 @@ public class ExpertRegistry {
     public Mono<Map<String,Object>> withJobContext(String owner,Map<String,Object> context) {
         // A selected job is a tool input. Optional artifact visibility must not rewrite it.
         if (artifacts==null || text(context.get("jobId"))!=null) return Mono.just(context);
-        return Mono.fromCallable(() -> resolveJobContext(owner,context)).subscribeOn(Schedulers.boundedElastic());
+        return com.offerpilot.llm.UsageJournal.callable(() -> resolveJobContext(owner,context)).subscribeOn(Schedulers.boundedElastic());
     }
     private Map<String,Object> resolveJobContext(String owner,Map<String,Object> context) {
         var selected=new java.util.LinkedHashMap<String,Object>(context);
@@ -59,6 +59,21 @@ public class ExpertRegistry {
             // Missing optional provenance does not authorize or invalidate the tool input.
             return null;
         }
+    }
+    private ApprovalService analysisApprovals;
+    @Autowired
+    public void setAnalysisApprovals(ApprovalService approvals) { this.analysisApprovals=approvals; }
+    public boolean persistingAnalysis(PlanStep step,Map<String,Object> context) {
+        return matching(step,context) && matches!=null
+                || diagnosing(step,context) && !context.containsKey("diagnosisReportId")
+                || optimizing(step,context) && !"read_optimization".equals(step.inputs().get("action"));
+    }
+    public ApprovalService.Ticket requestAnalysis(String owner,String runId,PlanStep step,Map<String,Object> context) {
+        if(analysisApprovals==null) throw new BusinessException(ErrorCode.TOOL_FAILED,"分析保存审批暂不可用，未执行");
+        var resources=new java.util.LinkedHashMap<String,Object>();
+        for(String key:java.util.List.of("jobId","resumeId","resumeVersionId"))
+            if(context.get(key) instanceof String value) resources.put(key,value);
+        return analysisApprovals.request(owner,runId,"generateAnalysis",Map.of("expert",step.agent().name(),"inputs",step.inputs(),"resources",resources));
     }
     private final JobMatchForChat matches;
     private com.offerpilot.resume.application.ResumeDiagnosisForChat diagnoses;
@@ -92,11 +107,12 @@ public class ExpertRegistry {
 
     private Mono<ExpertResult> withNotes(String owner, PlanStep step, Mono<ExpertResult> work) {
         if (noteContext == null) return work;
-        return work.flatMap(result -> noteContext.attach(owner, text(step.inputs().get("noteQuery")), result));
+        return noteContext.attach(owner, text(step.inputs().get("noteQuery")), work);
     }
 
     private Mono<ExpertResult> withStories(String owner, PlanStep step, Mono<ExpertResult> work) {
-        if (starContext == null) return work;
+        if (starContext == null || java.util.Set.of("noteGuidance", "interviewGuidance")
+                .contains(String.valueOf(step.inputs().get("action")))) return work;
         if (step.agent() != ExpertType.INTERVIEWER && step.agent() != ExpertType.COACH) return work;
         String query = storyQuery(step);
         return work.flatMap(result -> {
@@ -108,7 +124,9 @@ public class ExpertRegistry {
                 if (card.payload() instanceof InterviewCoachForChat.Turn turn) id = turn.sessionId();
             }
             if (id == null) return Mono.just(result);
-            return starContext.attachInterview(owner, id, query, result);
+            return starContext.attachInterview(owner, id, query, result)
+                    .onErrorResume(BusinessException.class, ex -> ex.errorCode() == ErrorCode.INTERVIEW_NOT_FOUND
+                            ? Mono.just(result) : Mono.error(ex));
         });
     }
 
@@ -207,6 +225,17 @@ public class ExpertRegistry {
         this(matches, diagnoses, searches, optimizations, descriptions, boards, careers, careerWrites, interviews, interviewWrites, coach, coachWrites);
         this.patchWrites = patchWrites.getIfAvailable();
     }
+    /** Audited local reads only; never infer this from ToolAccess.READ or an absent write adapter. */
+    public boolean earlyReadOnly(PlanStep step, Map<String, Object> context) {
+        // Selected job provenance is resolved behind the gate; keep those paths conservative.
+        if (context != null && java.util.List.of("jobId", "applicationId", "matchId", "jobMatchId")
+                .stream().anyMatch(context::containsKey)) return false;
+        Object action = step.inputs().get("action");
+        return step.agent() == ExpertType.RESUME && "advice".equals(action)
+                || step.agent() == ExpertType.COACH && "planLearning".equals(action)
+                || step.agent() == ExpertType.CAREER_DISCOVERY && "recommend".equals(action);
+    }
+
     public boolean writingPatches(PlanStep step) { return ResumePatchWriteTools.recognizes(step); }
     public ApprovalService.Ticket requestPatch(String owner, String runId, PlanStep step) {
         if (patchWrites == null) throw new IllegalStateException("简历补丁工具暂不可用");
@@ -289,6 +318,23 @@ public class ExpertRegistry {
                 : "optimize".equals(step.inputs().get("action")) && descriptions != null && text(context.get("jobId")) != null;
     }
 
+    public record PreparedSearch(ExpertResult preview, java.util.function.Supplier<ExpertResult> persist) {}
+    public Mono<PreparedSearch> prepareRuleSearch(String runId, PlanStep step) {
+        return com.offerpilot.llm.UsageJournal.callable(() -> {
+            var inputs=step.inputs();
+            var prepared=searches.prepareRuleSearch((String)inputs.get("query"),(String)inputs.get("site"),
+                    (String)inputs.get("nature"),(String)inputs.get("location"));
+            return new PreparedSearch(searchResult(runId,step,prepared.preview()),
+                    () -> searchResult(runId,step,prepared.persist().get()));
+        }).subscribeOn(Schedulers.boundedElastic());
+    }
+    private ExpertResult searchResult(String runId,PlanStep step,com.fasterxml.jackson.databind.node.ObjectNode card) {
+        String sourceLabel="LOCAL_SNAPSHOT".equals(card.path("meta").path("source").asText())
+                ? "离线示例岗位快照（人工整理，非实时数据，不代表当前开放岗位）"
+                : "企业官网岗位搜索结果（仅含本次返回结果，不是全站总数）";
+        return ExpertResult.card(sourceLabel+"："+jsonSummary(card),requestId(runId,step.id()),"job_card",card);
+    }
+
     public boolean searching(PlanStep step) {
         return searches != null && step.agent() == ExpertType.JOB && "search".equals(step.inputs().get("action"));
     }
@@ -303,6 +349,9 @@ public class ExpertRegistry {
         return LABELS.get(type);
     }
 
+    public java.util.Collection<com.offerpilot.agent.tools.ToolContracts.Contract> registeredTools() {
+        return com.offerpilot.agent.tools.ToolContracts.all();
+    }
     public String capabilities() {
         return java.util.Arrays.stream(ExpertType.values())
                 .map(type -> type.name() + ": " + label(type)).collect(java.util.stream.Collectors.joining("\n"));
@@ -322,7 +371,7 @@ public class ExpertRegistry {
     public Mono<PlanStep> prepareInterview(String owner, PlanStep step) {
         if (interviews == null || step.agent() != ExpertType.INTERVIEWER
                 || !"continueInterview".equals(step.inputs().get("action"))) return Mono.just(step);
-        return Mono.fromCallable(() -> {
+        return com.offerpilot.llm.UsageJournal.callable(() -> {
             String id = interviews.resolveSession(owner, text(step.inputs().get("sessionId")), false);
             var session = interviews.session(owner, id);
             var inputs = new java.util.LinkedHashMap<>(step.inputs());
@@ -333,13 +382,21 @@ public class ExpertRegistry {
                 inputs.put("action", "completedInterview");
             }
             return new PlanStep(step.id(), step.title(), step.agent(), inputs, step.dependsOn());
-        }).subscribeOn(Schedulers.boundedElastic());
+        }).subscribeOn(Schedulers.boundedElastic()).onErrorResume(BusinessException.class, ex -> {
+            if (ex.errorCode() != ErrorCode.INTERVIEW_NOT_FOUND) return Mono.error(ex);
+            var inputs = new java.util.LinkedHashMap<String, Object>();
+            inputs.put("action", "interviewGuidance");
+            if (step.inputs().containsKey("noteQuery")) inputs.put("noteQuery", step.inputs().get("noteQuery"));
+            return Mono.just(new PlanStep(step.id(), "面试练习指引", step.agent(), inputs, step.dependsOn()));
+        });
     }
 
     public Mono<ExpertResult> execute(String owner, Map<String, Object> context, String runId, PlanStep step,
                                       Map<String, String> upstreamOutputs, com.offerpilot.llm.ModelTier tier) {
         if (writingBoard(step) || writingCareer(step) || writingInterview(step) || writingCoach(step) || writingPatches(step) || writingStarStory(step)) return Mono.error(new IllegalStateException("写入必须先审批"));
-        var work = executeRead(owner, context, runId, step, upstreamOutputs, tier);
+        var work = executeRead(owner, context, runId, step, upstreamOutputs, tier)
+                .onErrorResume(BusinessException.class, ex -> step.agent() == ExpertType.INTERVIEWER && ex.errorCode() == ErrorCode.INTERVIEW_NOT_FOUND
+                        ? Mono.just(ExpertResult.text("没有可用的面试会话，本轮未执行面试操作。请开始一场模拟面试，或直接提问获取文字建议。")) : Mono.error(ex));
         Mono<ExpertResult> enriched = step.agent() == ExpertType.COACH || step.agent() == ExpertType.INTERVIEWER
                 || (step.agent() == ExpertType.RESUME && "advice".equals(step.inputs().get("action")))
                 ? withNotes(owner, step, work) : work;
@@ -350,7 +407,7 @@ public class ExpertRegistry {
                                          Map<String, String> upstreamOutputs, com.offerpilot.llm.ModelTier tier) {
         if (step.agent() == ExpertType.COACH) {
             if (coach == null) return Mono.just(ExpertResult.text("成长教练服务暂不可用，请稍后重试。"));
-            return Mono.fromCallable(() -> {
+            return com.offerpilot.llm.UsageJournal.callable(() -> {
                 String resumeId = context == null ? null : text(context.get("resumeId"));
                 String versionId = context == null ? null : text(context.get("resumeVersionId"));
                 String jobId = context == null ? null : text(context.get("jobId"));
@@ -364,11 +421,15 @@ public class ExpertRegistry {
             }).subscribeOn(Schedulers.boundedElastic());
         }
         if (step.agent() == ExpertType.INTERVIEWER) {
+            if ("noteGuidance".equals(step.inputs().get("action")))
+                return Mono.just(ExpertResult.text("请根据检索到的笔记回顾原回答并给出改进建议。"));
+            if ("interviewGuidance".equals(step.inputs().get("action")))
+                return Mono.just(ExpertResult.text("没有可用的面试会话，本轮没有保存或推进答案。可以说「开始一场模拟面试」来开始练习，或直接提问获取文字建议。"));
             if (interviews == null) return Mono.just(ExpertResult.text("文字面试服务暂不可用，请稍后重试。"));
             if ("completedInterview".equals(step.inputs().get("action")))
                 return Mono.just(ExpertResult.text("这场面试已完成，本轮没有保存或推进答案。你可以请求评分、复盘，或开始一场新面试。"));
             if ("recallStarStories".equals(step.inputs().get("action"))) {
-                return Mono.fromCallable(() -> {
+                return com.offerpilot.llm.UsageJournal.callable(() -> {
                     String id = interviews.resolveSession(owner, text(step.inputs().get("sessionId")), false);
                     var session = interviews.session(owner, id);
                     var answer = session.answers().get(session.questionIndex());
@@ -379,7 +440,7 @@ public class ExpertRegistry {
             }
             if (!java.util.Set.of("scoreInterview", "generateReport").contains(String.valueOf(step.inputs().get("action"))))
                 return Mono.just(ExpertResult.text("请开始文字模拟面试，或请求面试评分卡。"));
-            return Mono.fromCallable(() -> {
+            return com.offerpilot.llm.UsageJournal.callable(() -> {
                 String id = interviews.resolveSession(owner, (String) step.inputs().get("sessionId"), false);
                 var report = interviews.scoreSession(owner, id);
                 if (starStories == null) {
@@ -398,7 +459,7 @@ public class ExpertRegistry {
         }
         if (step.agent() == ExpertType.CAREER_DISCOVERY) {
             if (careers == null) return Mono.just(ExpertResult.text("职业推荐服务暂不可用，请稍后重试。未修改职业档案。"));
-            return Mono.fromCallable(() -> {
+            return com.offerpilot.llm.UsageJournal.callable(() -> {
                 var result = careers.recommend(owner, text(step.inputs().get("request")));
                 return result.payload() == null ? ExpertResult.text(result.guidance())
                         : ExpertResult.card("根据已保存兴趣生成的规则推荐，本轮未修改职业档案。"
@@ -411,22 +472,18 @@ public class ExpertRegistry {
             return boards.detail(owner, text(step.inputs().get("applicationId")));
         }
         if (searching(step)) {
-            return Mono.fromCallable(() -> {
+            return com.offerpilot.llm.UsageJournal.callable(() -> {
                 var inputs = step.inputs();
                 var card = searches.search((String) inputs.get("query"), (String) inputs.get("site"),
                         (String) inputs.get("nature"), (String) inputs.get("location"));
-                String sourceLabel = "LOCAL_SNAPSHOT".equals(card.path("meta").path("source").asText())
-                        ? "离线示例岗位快照（人工整理，非实时数据，不代表当前开放岗位）："
-                        : "企业官网岗位搜索结果（仅含本次返回结果，不是全站总数）：";
-                return ExpertResult.card(sourceLabel + jsonSummary(card),
-                        requestId(runId, step.id()), "job_card", card);
+                return searchResult(runId,step,card);
             }).subscribeOn(Schedulers.boundedElastic());
         }
         if (optimizing(step, context)) {
             String resumeId = text(context.get("resumeId")), versionId = text(context.get("resumeVersionId"));
             Mono<com.fasterxml.jackson.databind.JsonNode> result = "read_optimization".equals(step.inputs().get("action"))
                     ? optimizations.report(owner, resumeId, versionId, text(context.get("optimizationReportId")))
-                    : Mono.fromCallable(() -> descriptions.description(text(context.get("jobId"))))
+                    : com.offerpilot.llm.UsageJournal.callable(() -> descriptions.description(owner, text(context.get("jobId"))))
                         .subscribeOn(Schedulers.boundedElastic()).flatMap(jd -> optimizations.generate(owner, resumeId, versionId, jd,
                             requestId(runId, step.id()), optionalJob(owner,text(context.get("jobId")),null,null)));
             return result.map(report -> ExpertResult.card("已保存的改写建议（本轮未执行采纳，采纳状态请在简历页查看）：" + jsonSummary(report),
@@ -451,7 +508,7 @@ public class ExpertRegistry {
         Target target = matching(step, context) ? read(context) : null;
         if (target != null && matches != null) {
             String requestId = requestId(runId, step.id());
-            return Mono.fromCallable(() -> {
+            return com.offerpilot.llm.UsageJournal.callable(() -> {
                 JobMatchCards.Card card = tier == null
                         ? matches.match(owner, target.jobId(), target.resumeId(), target.resumeVersionId(), requestId)
                         : matches.match(owner, target.jobId(), target.resumeId(), target.resumeVersionId(), requestId, tier);

@@ -66,6 +66,24 @@ class UserMemoryChatIntegrationTest {
     HttpResponse<String> request(String method,String path,String token,String body) throws Exception {
         return HttpClient.newHttpClient().send(req(method,path,token,body),HttpResponse.BodyHandlers.ofString());
     }
+    /** SC-02: approve the analysis-save ticket mid-stream; memory approvals must never appear. */
+    String approvedAnalysisChat(String token,String body) throws Exception {
+        var response=HttpClient.newHttpClient().send(req("POST","/agent/chat",token,body),HttpResponse.BodyHandlers.ofInputStream());
+        var out=new StringBuilder();
+        try(var reader=new BufferedReader(new InputStreamReader(response.body(),StandardCharsets.UTF_8))) {
+            for(String line;(line=reader.readLine())!=null;) {
+                out.append(line).append('\n');
+                if(!line.startsWith("data:")) continue;
+                var event=json.readTree(line.substring(5).strip());
+                if(event.path("type").asText().equals("approval.required")) {
+                    assertThat(event.path("name").asText()).isNotEqualTo("saveUserFact");
+                    assertThat(request("POST","/agent/runs/"+event.path("runId").asText()+"/approvals/"+event.path("approvalId").asText(),token,
+                            "{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(200);
+                }
+            }
+        }
+        return out.toString();
+    }
     List<JsonNode> approveChat(String token,String content,String decision,boolean disableDuringWait) throws Exception {
         List<JsonNode> events=new ArrayList<>();
         var response=HttpClient.newHttpClient().send(req("POST","/agent/chat",token,json.writeValueAsString(Map.of("content",content))),HttpResponse.BodyHandlers.ofInputStream());
@@ -78,7 +96,7 @@ class UserMemoryChatIntegrationTest {
                     assertThat(memories.list(owner(token)).items()).isEmpty();
                     String path="/agent/runs/"+event.path("runId").asText()+"/approvals/"+event.path("approvalId").asText();
                     assertThat(event.path("name").asText()).isEqualTo("saveUserFact");
-                    assertThat(event.path("editableFields")).isEmpty();
+                    assertThat(event.path("editableFields")).isEqualTo(json.valueToTree(List.of("fact")));
                     String foreign=identities.create().accessToken();
                     assertThat(request("POST",path,foreign,"{\"decision\":\"APPROVE\"}").statusCode()).isEqualTo(404);
                     assertThat(request("POST",path,token,"{\"decision\":\"APPROVE\",\"args\":{\"fact\":\"tampered\"}}").statusCode()).isEqualTo(400);
@@ -128,15 +146,55 @@ class UserMemoryChatIntegrationTest {
             assertThat(events.stream().filter(e -> e.path("type").asText().equals("tool.result")).findFirst().orElseThrow().path("ok").asBoolean()).isFalse();
         }
     }
-    @Test void suggestionIsOneUserSentenceAfterSuccessfulReplyAndRequiresApproval() throws Exception {
+    @Test void automaticCandidatesRequireConfirmationThenNewSessionRecallsOldPreference() throws Exception {
         String token=identities.create().accessToken();
-        var events=approveChat(token,"我的技术栈是Java。我的目标城市是杭州。给我一些建议","APPROVE",false);
-        assertThat(events.stream().filter(e -> e.path("type").asText().equals("approval.required"))).hasSize(1);
-        int approvalIndex=java.util.stream.IntStream.range(0,events.size()).filter(i -> events.get(i).path("type").asText().equals("approval.required")).findFirst().orElseThrow();
-        assertThat(events.subList(0,approvalIndex).stream().map(e -> e.path("type").asText())).contains("text.delta");
+        var events=approveChat(token,"我的偏好是远程办公。我的目标城市是杭州。给我一些建议","APPROVE",false);
+        assertThat(events).noneMatch(e -> e.path("type").asText().equals("approval.required"));
+        assertThat(memories.list(owner(token)).items()).isEmpty();
+        var pending=JSONCandidates(token);
+        assertThat(pending).hasSize(2);
+        var city=pending.stream().filter(c -> c.path("kind").asText().equals("LOCATION")).findFirst().orElseThrow();
+        assertThat(city.path("confidence").asDouble()).isBetween(0.0,1.0);
+        assertThat(city.path("sourceMessageId").asText()).isNotBlank();
+        assertThat(request("POST","/memories/candidates/"+city.path("id").asText()+"/confirm",token,null).statusCode()).isEqualTo(200);
         var saved=memories.list(owner(token)).items().get(0);
-        assertThat(saved.fact()).isEqualTo("我的技术栈是Java"); assertThat(saved.source()).isEqualTo(Source.SUGGESTED_ACCEPTED);
-        assertThat(memories.list(owner(token)).items()).hasSize(1);
+        assertThat(saved.fact()).isEqualTo("我的目标城市是杭州");
+        assertThat(saved.source()).isEqualTo(Source.SUGGESTED_ACCEPTED);
+        var preference=pending.stream().filter(c -> c.path("kind").asText().equals("PREFERENCE")).findFirst().orElseThrow();
+        assertThat(request("POST","/memories/candidates/"+preference.path("id").asText()+"/confirm",token,null).statusCode()).isEqualTo(200);
+        var next=approveChat(token,"推荐适合我的职位","APPROVE",false);
+        assertThat(next).anySatisfy(e -> {
+            assertThat(e.path("type").asText()).isEqualTo("memory.used");
+            assertThat(e.path("facts").toString()).contains("我的目标城市是杭州","我的偏好是远程办公");
+        });
+        assertThat(jdbc.queryForObject("SELECT count(DISTINCT conversation_id) FROM agent_runs WHERE user_id=?",Integer.class,owner(token))).isEqualTo(2);
+        var other=identities.create().accessToken();
+        assertThat(request("POST","/memories/candidates/"+city.path("id").asText()+"/confirm",other,null).statusCode()).isEqualTo(404);
+    }
+    @Test void automaticCandidatesDeduplicateHonorSwitchAndDeletedFactsDoNotReappear() throws Exception {
+        String token=identities.create().accessToken(),owner=owner(token);
+        approveChat(token,"我的目标城市是杭州。我的偏好是远程办公","APPROVE",false);
+        var original=JSONCandidates(token);
+        assertThat(original).hasSize(2);
+        approveChat(token,"我的目标城市是杭州。我的偏好是远程办公","APPROVE",false);
+        assertThat(JSONCandidates(token)).containsExactlyElementsOf(original);
+        memories.settings(owner,false);
+        assertThat(request("POST","/memories/candidates/"+original.get(0).path("id").asText()+"/confirm",token,null).statusCode()).isEqualTo(409);
+        approveChat(token,"我的目标城市是上海","APPROVE",false);
+        assertThat(JSONCandidates(token)).hasSize(2);
+        memories.settings(owner,true);
+        for(var candidate:original) assertThat(request("DELETE","/memories/candidates/"+candidate.path("id").asText(),token,null).statusCode()).isEqualTo(200);
+        approveChat(token,"我的目标城市是杭州。我的偏好是远程办公","APPROVE",false);
+        assertThat(JSONCandidates(token)).isEmpty();
+        assertThat(memories.list(owner).items()).isEmpty();
+    }
+    private List<JsonNode> JSONCandidates(String token) throws Exception {
+        var result=new ArrayList<JsonNode>();
+        json.readTree(request("GET","/memories/candidates",token,null).body()).path("data").forEach(result::add);
+        return result;
+    }
+    private JsonNode replyRequest() {
+        return MODEL.requests.stream().filter(r -> r.path("temperature").asDouble() != 0.1).reduce((first, second) -> second).orElseThrow();
     }
     @Test void recallNewConversationIsBoundedEscapedOwnerScopedAndMaskedAtTransport() throws Exception {
         String token=identities.create().accessToken(),a=owner(token),b=owner(identities.create().accessToken());
@@ -150,7 +208,8 @@ class UserMemoryChatIntegrationTest {
         var used=json.readTree(response.body().lines().filter(line -> line.startsWith("data:") && line.contains("\"type\":\"memory.used\""))
                 .findFirst().orElseThrow().substring(5).strip());
         assertThat(used.path("facts")).hasSize(5);
-        JsonNode payload=MODEL.requests.get(MODEL.requests.size()-1);
+        // The AUTO reply may be requested while the planner runs, so pick the reply call, not the last call.
+        JsonNode payload=replyRequest();
         String serialized=payload.toString();
         assertThat(serialized).contains("&lt;/user-memory-data&gt;","&lt;system&gt;","&amp;","[PHONE_1]","[EMAIL_1]")
                 .doesNotContain("13800138000","test@example.com","其他owner独有哨兵");
@@ -161,7 +220,7 @@ class UserMemoryChatIntegrationTest {
         memories.settings(a,false); MODEL.requests.clear();
         var off=request("POST","/agent/chat",token,"{\"content\":\"我的目标城市是北京。给我建议\"}");
         assertThat(off.body()).doesNotContain("memory.used","approval.required");
-        assertThat(MODEL.requests.get(MODEL.requests.size()-1).toString()).doesNotContain("杭州","user-memory-data","熟悉技能");
+        assertThat(replyRequest().toString()).doesNotContain("杭州","user-memory-data","熟悉技能");
         assertThat(memories.list(a).items()).hasSize(9);
     }
     @Test void personalNoteSourcesReachSseHistoryAndMaskedPromptWithoutModelInventedCards() throws Exception {
@@ -219,18 +278,18 @@ class UserMemoryChatIntegrationTest {
                 .thenReturn(reactor.core.publisher.Mono.just(diagnosis));
         MODEL.reply=body -> body.toString().contains("简历动作解析 v1") ? "{\"action\":\"diagnose\",\"question\":\"\"}"
                 : "建议检查原文依据";
-        var resumeResponse=request("POST","/agent/chat",token,json.writeValueAsString(Map.of("content","请诊断所选简历","mode","RESUME",
+        var resumeBody=approvedAnalysisChat(token,json.writeValueAsString(Map.of("content","请诊断所选简历","mode","RESUME",
                 "options",Map.of("context",Map.of("resumeId","rs","resumeVersionId","rv")))));
-        assertThat(resumeResponse.body()).contains("resume_diagnosis","run.completed").doesNotContain("approval.required","saveUserFact");
+        assertThat(resumeBody).contains("resume_diagnosis","run.completed").doesNotContain("saveUserFact");
         assertThat(MODEL.requests.get(MODEL.requests.size()-1).toString()).contains(attack);
         var report=json.createObjectNode().put("id","match_memory_injection").put("score",0).put("summary",attack);
         report.putArray("requirements");
         org.mockito.Mockito.when(matches.match(org.mockito.ArgumentMatchers.eq(owner),org.mockito.ArgumentMatchers.eq("job"),
                 org.mockito.ArgumentMatchers.eq("rs"),org.mockito.ArgumentMatchers.eq("rv"),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any()))
                 .thenReturn(com.offerpilot.job.application.JobMatchCards.fromReport(report));
-        var jdResponse=request("POST","/agent/chat",token,json.writeValueAsString(Map.of("content","匹配所选岗位和简历","mode","JOB",
+        var jdBody=approvedAnalysisChat(token,json.writeValueAsString(Map.of("content","匹配所选岗位和简历","mode","JOB",
                 "options",Map.of("context",Map.of("jobId","job","resumeId","rs","resumeVersionId","rv","jobAction","match")))));
-        assertThat(jdResponse.body()).contains("job_match","run.completed").doesNotContain("approval.required","saveUserFact");
+        assertThat(jdBody).contains("job_match","run.completed").doesNotContain("saveUserFact");
         assertThat(MODEL.requests.get(MODEL.requests.size()-1).toString()).contains(attack);
         assertThat(memories.list(owner).items()).isEmpty();
     }

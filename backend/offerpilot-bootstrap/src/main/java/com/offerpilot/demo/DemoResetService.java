@@ -101,10 +101,15 @@ public class DemoResetService {
                 return null;
             obsolete.addAll(jdbc.query("SELECT bucket,object_key FROM files WHERE user_id=?",
                     (rs, n) -> new StoredFile(rs.getString(1), rs.getString(2)), userId));
+            for (StoredFile file : obsolete) jdbc.update(
+                    "INSERT INTO account_data_cleanup(id,kind,bucket,object_key) VALUES (?,'OBJECT',?,?)",
+                    com.offerpilot.common.id.IdGenerator.next("cleanup"), file.bucket(), file.key());
             clear(userId);
             insertResumes(userId);
             insertJobs();
             insertJourney(userId);
+            // Fixture targets must not enqueue real searches. User edits after reset still do.
+            jdbc.update("DELETE FROM career_target_plans WHERE user_id=?", userId);
             return new Summary(Instant.now(), journey.path("resumes").size(), journey.path("jobs").size(),
                     journey.path("applications").size(), journey.path("interviews").size(), 1, journey.path("growthTasks").size(), journey.path("notes").size(), 3);
         });
@@ -118,7 +123,10 @@ public class DemoResetService {
         for (StoredFile file : obsolete) {
             if (jdbc.queryForObject("SELECT count(*) FROM files WHERE bucket=? AND object_key=?",
                     Integer.class, file.bucket(), file.key()) > 0) continue;
-            try { storage.remove(file.bucket(), file.key()); }
+            try {
+                storage.remove(file.bucket(), file.key());
+                jdbc.update("DELETE FROM account_data_cleanup WHERE kind='OBJECT' AND bucket=? AND object_key=?", file.bucket(), file.key());
+            }
             catch (RuntimeException ex) { log.warn("Demo reset could not remove obsolete file object: {}", file.key()); }
         }
         return result;
@@ -127,13 +135,15 @@ public class DemoResetService {
     private void clear(String userId) {
         // FK cascades remove answers, versions, messages, agent steps/calls/approvals/events.
         jdbc.update("DELETE FROM application_events WHERE application_id IN (SELECT id FROM applications WHERE user_id=?)", userId);
-        for (String table : List.of("user_memories", "star_stories", "knowledge_note_imports", "knowledge_notes", "interview_sessions", "applications", "job_matches", "growth_task_completions",
-                "career_profiles", "resume_optimizations", "resume_patch_batches", "resume_diagnoses", "conversations")) {
+        for (String table : List.of("memory_candidates", "career_questionnaires", "notifications", "career_target_plans", "career_profile_suggestions", "github_evidence", "job_daily_recommendations", "user_memories", "star_stories", "knowledge_note_imports", "knowledge_notes", "interview_sessions", "applications", "job_matches", "growth_task_completions", "career_assessments",
+                "generation_tasks", "career_recommendation_revisions", "career_profiles", "resume_optimizations", "resume_patch_batches", "resume_diagnoses", "conversations")) {
             jdbc.update("DELETE FROM " + table + " WHERE user_id=?", userId);
         }
         jdbc.update("UPDATE resumes SET current_version_id=NULL WHERE user_id=?", userId);
         jdbc.update("DELETE FROM resumes WHERE user_id=?", userId);
         jdbc.update("DELETE FROM files WHERE user_id=?", userId);
+        // Jobs the previous visitor imported (JB-06); their applications/matches were removed above.
+        jdbc.update("DELETE FROM jobs WHERE user_id=?", userId);
         // Demo jobs are public snapshots. Preserve them and any other user's references; never wipe MCP cache.
     }
 

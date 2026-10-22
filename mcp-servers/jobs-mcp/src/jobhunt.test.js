@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { ApiError, EmptyResultError } from 'jobhunt-cli';
 
 import {
+  toJobCard,
   DEFAULT_NATURE,
   isEmptyResult,
   normalizeNature,
@@ -46,4 +47,24 @@ test('searchAcrossSites 把失败站点记入 skipped 而不中断整批', async
   assert.equal(result.skipped.length, 1);
   assert.equal(result.skipped[0].site, 'not-a-real-site');
   assert.ok(result.skipped[0].reason.length > 0, 'skip 原因不应为空');
+});
+
+test('default per-site timeout is six seconds even when the upstream never settles', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let settled = false;
+  const pending = searchAcrossSites(['tencent'], {}, { search: () => new Promise(() => {}) })
+    .then(value => { settled = true; return value; });
+  t.mock.timers.tick(5999);
+  await Promise.resolve();
+  assert.equal(settled, false);
+  t.mock.timers.tick(1);
+  const result = await pending;
+  assert.deepEqual(result.jobs, []);
+  assert.equal(result.skipped[0].site, 'tencent');
+  assert.match(result.skipped[0].reason, /6000ms/);
+});
+
+test('toJobCard preserves provided deadline and leaves unknown deadline empty', () => {
+  assert.equal(toJobCard('fixture', { id: '1', deadline: '2026-12-31' }).deadline, '2026-12-31');
+  assert.equal(toJobCard('fixture', { id: '1' }).deadline, '');
 });

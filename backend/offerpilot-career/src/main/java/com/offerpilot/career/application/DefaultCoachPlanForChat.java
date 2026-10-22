@@ -168,6 +168,23 @@ public class DefaultCoachPlanForChat implements CoachPlanForChat {
                     default -> "本周投递记录与学习笔记";
                 }), null, profile.completedTasks().contains(title));
     }
+    @Override public RoadmapPayload fromInterview(InterviewLearningSource.Report report) {
+        var weeks = new ArrayList<Week>();
+        for (int week=1; week<=4; week++) {
+            var items = new ArrayList<Item>();
+            for (int index=0; index<report.topics().size(); index++) {
+                if (index % 4 + 1 != week) continue;
+                var topic = report.topics().get(index);
+                items.add(new Item(report.id() + "-learning-" + index, topic.title(), topic.hours(),
+                        List.of("所关联面试报告的逐题反馈：" + topic.reason(),
+                                "STAR 复盘方法：用真实经历补充背景、任务、行动与结果，再录音自查"), null, false));
+            }
+            weeks.add(new Week(week, week == 4 ? "复盘与再次练习" : "补齐面试表达证据", items, List.of(),
+                    List.of(new Evidence("INTERVIEW", report.id(), "面试复盘 · " + report.role(), "根据报告观察到的文本短板安排练习"))));
+        }
+        return new RoadmapPayload(List.copyOf(weeks), List.of(new Milestone("核对短板并整理真实案例", "第2周末"),
+                new Milestone("重答面试问题并比较表达变化", "第4周末")));
+    }
     @Override public CareerProfileService.Profile adoptGrowthPlan(String owner, List<String> taskTitles) {
         return profiles.mergeTasks(owner, taskTitles);
     }

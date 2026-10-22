@@ -1,4 +1,4 @@
-param([string]$OutputDirectory, [switch]$SkipBuild, [string]$RuntimeRoot)
+﻿param([string]$OutputDirectory, [switch]$SkipBuild, [string]$RuntimeRoot)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'runtime-root.ps1')
 $runtimeRoot = Resolve-OfferPilotRuntimeRoot $RuntimeRoot

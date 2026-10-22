@@ -10,5 +10,11 @@ export interface ChatMessageView {
   cards?: CardView[]
   streaming?: boolean
   status?: import('@/shared/types/conversation').MessageStatus
+  model?: string
+  usage?: import('@/shared/stores/agentRun').UsageView | null
+  citations?: import('@/shared/types/agent-events').CitationSource[]
+  durationMs?: number | null
   runId?: string
+  /** 用户随消息发送的图片 */
+  images?: Array<{ fileId: string; name: string }>
 }

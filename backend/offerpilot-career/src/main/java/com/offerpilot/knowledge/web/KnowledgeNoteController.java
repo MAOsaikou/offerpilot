@@ -27,10 +27,13 @@ public class KnowledgeNoteController {
     private final CurrentUser users;
     private final KnowledgeNoteService notes;
     private final KnowledgeNoteSearch search;
-    public KnowledgeNoteController(CurrentUser users, KnowledgeNoteService notes, KnowledgeNoteSearch search) {
+    private final com.offerpilot.knowledge.application.KnowledgeDocuments documents;
+    public KnowledgeNoteController(CurrentUser users, KnowledgeNoteService notes, KnowledgeNoteSearch search,
+            com.offerpilot.knowledge.application.KnowledgeDocuments documents) {
         this.users = users;
         this.notes = notes;
         this.search = search;
+        this.documents = documents;
     }
     public record NoteRequest(
             @JsonDeserialize(using = StringOnly.class) @NotBlank @Pattern(regexp = "(?s).{1,120}") String title,
@@ -87,6 +90,26 @@ public class KnowledgeNoteController {
         String owner = users.require(request.getHeader("Authorization"));
         notes.delete(owner, id);
         return ApiResponse.ok(null, TraceIdFilter.current(request));
+    }
+    @PostMapping(value = "/upload", consumes = "multipart/form-data")
+    public ApiResponse<KnowledgeNoteService.Note> upload(@RequestPart("file") org.springframework.web.multipart.MultipartFile file,
+            @RequestParam(required = false) String category, HttpServletRequest request) throws IOException {
+        String owner = users.require(request.getHeader("Authorization"));
+        if (file.getSize() > com.offerpilot.common.document.DocumentTextReader.MAX_BYTES)
+            throw new com.offerpilot.common.error.BusinessException(com.offerpilot.common.error.ErrorCode.FILE_TOO_LARGE, "资料文件不能超过 10MB");
+        return ApiResponse.ok(documents.upload(owner, file.getOriginalFilename(), file.getContentType(), file.getBytes(), category),
+                TraceIdFilter.current(request));
+    }
+    @GetMapping("/{id}/file")
+    public org.springframework.http.ResponseEntity<byte[]> original(@PathVariable String id, HttpServletRequest request) {
+        String owner = users.require(request.getHeader("Authorization"));
+        var file = documents.read(owner, id);
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType(file.mime()))
+                .header("Content-Disposition", org.springframework.http.ContentDisposition.attachment()
+                        .filename(file.filename(), java.nio.charset.StandardCharsets.UTF_8).build().toString())
+                .header("Cache-Control", "private, no-store")
+                .body(file.bytes());
     }
     @PostMapping("/import")
     public ApiResponse<KnowledgeNoteService.ImportResult> importNotes(@Valid @RequestBody ImportRequest body,
