@@ -2549,7 +2549,7 @@ export default {
   'Candidates combine occupation text and interest recall, ordered by interest match (descending). Interest match = (Pearson r + 1) / 2.':
     'Candidates combine occupation text and interest recall, ordered by interest match (descending). Interest match = (Pearson r + 1) / 2.',
   'Combined ranking score: {0} (initial rank score + approved research/salary constraint adjustments; not a probability)':
-    'Combined ranking score: {0} (initial rank score + approved research/salary constraint adjustments; not a probability)',
+    'Actual combined ranking score: {0} (base fit score + approved research/salary adjustments; see reasons for components; not a probability)',
   'Title / job objective': 'Title / job objective',
   'First, tell me a little about yourself: what is your major, and what year are you in?':
     'First, tell me a little about yourself: what is your major, and what year are you in?',

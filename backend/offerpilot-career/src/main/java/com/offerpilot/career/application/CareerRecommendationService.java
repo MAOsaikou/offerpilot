@@ -35,7 +35,11 @@ public class CareerRecommendationService implements CareerRerankForChat {
                              JsonNode coreSkills, JsonNode salaryRange, String growthPath, String source,
                              Double match) {}
     public record Item(Occupation occupation, double baseScore, double score, int rank, int rankDelta,
-                       String changeReason, CareerCardDetails.Details details) {
+                       String changeReason, CareerCardDetails.Details details, String baseReason) {
+        public Item(Occupation occupation,double baseScore,double score,int rank,int rankDelta,String changeReason,
+                    CareerCardDetails.Details details) {
+            this(occupation,baseScore,score,rank,rankDelta,changeReason,details,null);
+        }
         public Item(Occupation occupation,double baseScore,double score,int rank,int rankDelta,String changeReason) {
             this(occupation,baseScore,score,rank,rankDelta,changeReason,null);
         }
@@ -109,11 +113,11 @@ public class CareerRecommendationService implements CareerRerankForChat {
             throw invalid(result.guidance() == null ? "暂无推荐，请先补充职业画像" : result.guidance());
         var items = new ArrayList<Item>();
         for (var item : result.payload().recommendations()) {
-            // Preserve the existing hybrid (RRF) order. Pearson alone would reorder city-only
-            // follow-ups even though the catalog supplies no evidence for that constraint.
-            double prior = 1.0 - items.size() / (double) result.payload().recommendations().size();
+            // New cards persist the actual fit score; old providers retain their historical rank prior.
+            double prior = item.rankingScore() != null ? item.rankingScore()
+                    : 1.0 - items.size() / (double) result.payload().recommendations().size();
             items.add(new Item(occupation(item.occupationId(), item.similarity()), prior, prior,
-                    items.size() + 1, 0, String.join("；", item.reasons()), item.details()));
+                    items.size() + 1, 0, String.join("；", item.reasons()), item.details(), String.join("；", item.reasons())));
         }
         com.offerpilot.common.artifact.BackgroundWork.check();
         return save(owner, new Revision(UUID.randomUUID().toString(), null, Constraints.empty(), items,
@@ -138,9 +142,7 @@ public class CareerRecommendationService implements CareerRerankForChat {
         for (Item item : parent.items()) {
             double score = item.baseScore();
             if (constraints.research()) score += .25 * item.occupation().riasec().get("I");
-            double[] salary = salary(item.occupation());
-            if (constraints.minSalaryK() != null && salary != null)
-                score += salary[0] >= constraints.minSalaryK() ? .2 : salary[1] >= constraints.minSalaryK() ? .1 : -.2;
+            score += salaryAdjustment(item.occupation(), constraints);
             scores.put(item.occupation().occupationId(), score);
         }
         var sorted = parent.items().stream().sorted(Comparator.<Item>comparingDouble(i -> scores.get(i.occupation().occupationId()))
@@ -151,7 +153,7 @@ public class CareerRecommendationService implements CareerRerankForChat {
             int rank = items.size() + 1;
             String reason = reason(item, constraints, parent.constraints(), fallback);
             items.add(new Item(item.occupation(), item.baseScore(), scores.get(item.occupation().occupationId()), rank,
-                    item.rank() - rank, reason,item.details()));
+                    item.rank() - rank, reason,item.details(), item.baseReason()));
         }
         return new Revision(UUID.randomUUID().toString(), parent.id(), constraints, items,
                 Math.max(0, (clock.getAsLong() - start) / 1_000_000), fallback, java.time.Instant.now().toString());
@@ -164,19 +166,29 @@ public class CareerRecommendationService implements CareerRerankForChat {
     }
     private static String reason(Item item, Constraints c, Constraints previous, boolean fallback) {
         var parts = new ArrayList<String>();
-        if (c.research()) parts.add("偏研究：按目录 I 研究型强度 " + item.occupation().riasec().get("I") + " 加权");
+        // Dedicated snapshot field avoids reparsing user-controlled verbatim quotes as delimiters.
+        if (item.baseReason() != null && !item.baseReason().isBlank()) parts.add(item.baseReason());
+        else if (item.details() != null) item.details().evidence().forEach(e -> parts.add(e.field() + "：「" + e.value() + "」"));
+        parts.add("本轮约束：基础综合分 " + item.baseScore());
+        if (c.research()) parts.add("偏研究：按目录 I 研究型强度 " + item.occupation().riasec().get("I") + " × 0.25 加权");
         if (c.minSalaryK() != null) {
             double[] salary = salary(item.occupation());
             parts.add("月薪下限 " + c.minSalaryK() + "k：" + (salary == null ? "目录无可比薪资，保留基础分"
                     : "目录校招估算 " + item.occupation().salaryRange().path("campus").asText()
                     + (fallback ? "，按区间重评" : salary[0] >= c.minSalaryK() ? "，区间下界满足"
-                    : salary[1] >= c.minSalaryK() ? "，区间部分满足" : "，区间上界未满足")));
+                    : salary[1] >= c.minSalaryK() ? "，区间部分满足" : "，区间上界未满足")) + "；薪资调整 " + salaryAdjustment(item.occupation(), c));
         }
         if (!c.city().isEmpty()) parts.add("城市「" + c.city() + "」：目录无城市覆盖数据，待核实，不调分");
         if (c.avoidOvertime()) parts.add("不想加班：目录无工时数据，待核实，不调分");
         if (!c.equals(previous)) parts.add("已替换上一轮约束；未启用项不再加权");
-        if (parts.isEmpty()) parts.add("沿用原推荐排序基础分；同分按职业名称和标识排序");
+        parts.add("实际综合排序分 " + (item.baseScore() + (c.research() ? .25 * item.occupation().riasec().get("I") : 0)
+                + salaryAdjustment(item.occupation(), c)) + "；同分按职业名称和标识排序");
         return String.join("；", parts);
+    }
+    private static double salaryAdjustment(Occupation occupation, Constraints c) {
+        double[] salary = salary(occupation);
+        return c.minSalaryK() == null || salary == null ? 0
+                : salary[0] >= c.minSalaryK() ? .2 : salary[1] >= c.minSalaryK() ? .1 : -.2;
     }
     private Revision save(String owner, Revision revision) {
         try {

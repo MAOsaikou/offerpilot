@@ -27,20 +27,24 @@ class CareerRecommendForChatTest {
 
     @Test void recommendationUsesOwnerProfileExistingRankingAndDeterministicReasons() {
         when(profiles.get("alice")).thenReturn(profile(List.of("技术研发", "数据分析", "未知")));
-        when(occupations.rankHybrid(eq(new RiasecProfile(1, 2, 0, 0, 0, 1)), anyString(), eq(8))).thenReturn(List.of(
+        when(occupations.rankForUser(eq(new RiasecProfile(1, 2, 0, 0, 0, 1)), any(CareerProfileService.Profile.class), isNull(), anyString(), eq(8))).thenReturn(List.of(
                 new OccupationRecommender.Ranked("occ1", "工程师", "技术", "IRC", 1, List.of(new OccupationRecommender.Citation("occ1", "工程师", "开发 Java 服务")), "文本匹配"),
-                new OccupationRecommender.Ranked("occ2", "分析师", "数据", "ICR", .75)));
+                new OccupationRecommender.Ranked("occ2", "分析师", "数据", "ICR", .75),
+                new OccupationRecommender.Ranked("occ3", "分析师3", "数据", "ICR", .74),
+                new OccupationRecommender.Ranked("occ4", "分析师4", "数据", "ICR", .73),
+                new OccupationRecommender.Ranked("occ5", "分析师5", "数据", "ICR", .72)));
         var result = careers.recommend("alice");
         assertThat(result.guidance()).isNull();
         assertThat(result.currentProfile()).isEqualTo(new CareerRecommendForChat.CurrentProfile("旧目标", "上海"));
         assertThat(result.payload().hollandCode()).isEqualTo("IRC");
         assertThat(result.payload().interestsUsed()).containsExactlyInAnyOrder("技术研发", "数据分析");
         assertThat(result.payload().recommendations()).extracting(CareerRecommendForChat.Recommendation::name)
-                .containsExactly("工程师", "分析师");
+                .containsExactly("工程师", "分析师", "分析师3", "分析师4", "分析师5");
         assertThat(result.payload().recommendations().get(0).similarity()).isEqualTo(1);
         assertThat(result.payload().recommendations().get(0).citations()).singleElement()
                 .satisfies(citation -> assertThat(citation.excerpt()).isEqualTo("开发 Java 服务"));
-        verify(occupations).rankHybrid(new RiasecProfile(1, 2, 0, 0, 0, 1), "技术研发 数据分析 Java 旧目标", 8);
+        verify(occupations).rankForUser(eq(new RiasecProfile(1, 2, 0, 0, 0, 1)),
+                argThat(profile -> profile.target().contains("旧目标") && profile.skills().contains("Java")), isNull(), eq(""), eq(8));
         assertThat(result.payload().recommendations().get(1).similarity()).isEqualTo(.75);
         assertThat(result.payload().recommendations()).allSatisfy(item -> {
             assertThat(item.reasons()).hasSize(3);

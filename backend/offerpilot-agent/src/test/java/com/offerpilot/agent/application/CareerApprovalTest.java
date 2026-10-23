@@ -92,7 +92,9 @@ class CareerApprovalTest {
 
     @Test void recommendationCarriesCurrentProfileWithoutChangingExistingTarget() {
         when(profiles.get("alice")).thenReturn(new CareerProfileService.Profile("工程师", "上海", "Java", List.of("技术研发"), List.of(), null));
-        when(occupations.rankHybrid(any(RiasecProfile.class), anyString(), eq(8))).thenReturn(List.of());
+        when(occupations.rankForUser(any(RiasecProfile.class), any(CareerProfileService.Profile.class), isNull(), anyString(), eq(8)))
+                .thenReturn(java.util.stream.IntStream.range(0, 5).mapToObj(i ->
+                        new OccupationRecommender.Ranked("occ" + i, "工程师" + i, "技术", "IRC", .9)).toList());
         var result = registry().execute("alice", Map.of(), "run", new PlanStep("s1", "探索", ExpertType.CAREER_DISCOVERY,
                 Map.of("request", "推荐职业"), List.of()), Map.of()).block(Duration.ofSeconds(3));
         assertThat(result.summary()).contains("本轮未修改职业档案", "当前职业档案", "上海", "工程师").doesNotContain("未设置目标");

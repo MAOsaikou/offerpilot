@@ -21,7 +21,7 @@ class CareerRecommendationQualityTest {
         ReflectionTestUtils.setField(service,"details",new CareerCardDetails(jdbc,new ObjectMapper()));
         var profile=new CareerProfileService.Profile("后端工程师","杭州","Java",List.of("技术研发"),List.of(),null);
         when(profiles.get("alice")).thenReturn(profile);
-        when(occupations.rankHybrid(any(RiasecProfile.class),anyString(),eq(8))).thenReturn(IntStream.range(0,8)
+        when(occupations.rankForUser(any(RiasecProfile.class),any(CareerProfileService.Profile.class),isNull(),anyString(),eq(8))).thenReturn(IntStream.range(0,8)
                 .mapToObj(i -> new OccupationRecommender.Ranked("occ"+i,"职业"+i,"技术","IRC",.9-i*.01)).toList());
         when(jdbc.query(eq("SELECT * FROM occupations WHERE id=?"),org.mockito.ArgumentMatchers.<RowMapper<CareerCardDetails.Details>>any(),any()))
                 .thenAnswer(call -> {
