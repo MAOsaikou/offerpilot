@@ -19,7 +19,11 @@ export interface RetrievalDebugResult {
   reranker: string
   notice: string
 }
-export const debugRetrieval = (query: string, limit: number) =>
+export const debugRetrieval = (
+  query: string,
+  limit: number,
+  collection: 'occupations' | 'staff_docs' = 'occupations',
+) =>
   apiRequest<RetrievalDebugResult>(
-    `/staff/knowledge/retrieval-debug?${new URLSearchParams({ query, limit: String(limit) })}`,
+    `/staff/knowledge/retrieval-debug?${new URLSearchParams({ query, limit: String(limit), collection })}`,
   )

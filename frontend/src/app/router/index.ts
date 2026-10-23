@@ -127,6 +127,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { title: uiText('Staff sign-in'), public: true },
   },
   {
+    path: '/staff/knowledge',
+    name: 'staff-knowledge',
+    component: () => import('@/features/kb/views/StaffKnowledgeView.vue'),
+    meta: { title: uiText('Staff knowledge documents'), staff: true },
+  },
+  {
     path: '/staff/retrieval-debug',
     name: 'retrieval-debug',
     component: () => import('@/features/kb/views/RetrievalDebugView.vue'),

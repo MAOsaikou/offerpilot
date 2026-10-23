@@ -65,13 +65,19 @@ it('displays recall and rerank scores independently, explicit vector degradation
     await flush()
   }
   await submit()
-  expect(debugRetrieval).toHaveBeenCalledWith('Java', 10)
+  expect(debugRetrieval).toHaveBeenCalledWith('Java', 10, 'occupations')
   expect(host.textContent).toContain('0.016393')
   expect(host.textContent).toContain('0.500000')
   expect(host.textContent).toContain('未命中')
   expect(host.textContent).toContain('向量不可用')
   expect(host.textContent).toContain('不是模型置信度')
+  const collection = host.querySelector('select')!
+  collection.value = 'staff_docs'
+  collection.dispatchEvent(new Event('change'))
+  await nextTick()
+  expect(host.textContent).not.toContain('Java项目')
   await submit()
+  expect(debugRetrieval).toHaveBeenLastCalledWith('Java', 10, 'staff_docs')
   expect(host.textContent).toContain('没有召回结果')
   await submit()
   expect(host.textContent).toContain('确认管理员权限')

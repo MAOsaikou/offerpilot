@@ -49,7 +49,7 @@ onBeforeUnmount(() => {
     <button class="btn" :disabled="loading" @click="load">
       {{ loading ? uiText('Loading…') : uiText('Refresh service status') }}
     </button>
-    <p v-if="error" role="alert">{{ error }}</p>
+    <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
     <template v-if="status">
       <p role="status">
         {{ uiText('{0} · Uptime: {1} seconds', [status.state, status.uptimeSeconds]) }}
@@ -127,10 +127,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .ops {
-  margin-block: 24px;
+  min-width: 0;
+  background: var(--card);
   padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius);
   overflow-wrap: anywhere;
 }
 .ops p {

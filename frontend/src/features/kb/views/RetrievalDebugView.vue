@@ -6,16 +6,26 @@ import {
   translate as uiText,
 } from '@/shared/utils/language'
 
-import { ref } from 'vue'
+import { onScopeDispose, ref, watch } from 'vue'
+import PageHeading from '@/shared/components/PageHeading.vue'
 import { RouterLink } from 'vue-router'
 import { debugRetrieval, type RetrievalDebugResult } from '@/shared/api/retrieval-debug'
 import { identitySignal } from '@/shared/utils/authSession'
 const session = identitySignal()
 const query = ref('')
+const collection = ref<'occupations' | 'staff_docs'>('occupations')
+let mounted = true
+onScopeDispose(() => {
+  mounted = false
+})
 const limit = ref(10)
 const busy = ref(false)
 const error = localizedText()
 const result = ref<RetrievalDebugResult | null>(null)
+watch(collection, () => {
+  result.value = null
+  error.value = ''
+})
 const score = (value: number | null) =>
   value === null
     ? uiText('No match')
@@ -26,11 +36,11 @@ async function search() {
   error.value = ''
   result.value = null
   try {
-    const value = await debugRetrieval(query.value, limit.value)
+    const value = await debugRetrieval(query.value, limit.value, collection.value)
     session.throwIfAborted()
-    result.value = value
+    if (mounted) result.value = value
   } catch {
-    if (!session.aborted)
+    if (mounted && !session.aborted)
       error.value = () =>
         uiText(
           'Search failed. Check administrator access, backend connection and query scope, then retry.',
@@ -41,17 +51,28 @@ async function search() {
 }
 </script>
 <template>
-  <main class="page-stack mx-auto max-w-5xl p-4 sm:p-8">
-    <RouterLink to="/staff" class="text-primary">{{ uiText('Back to staff console') }}</RouterLink>
-    <h1>{{ uiText('Administrator retrieval diagnostics') }}</h1>
+  <main class="retrieval-debug page-stack mx-auto max-w-5xl p-4 sm:p-8">
+    <PageHeading :title="uiText('Administrator retrieval diagnostics')">
+      <RouterLink to="/staff" class="btn">{{ uiText('Back to staff console') }}</RouterLink>
+      <RouterLink to="/staff/knowledge" class="btn">{{
+        uiText('Staff knowledge documents')
+      }}</RouterLink>
+    </PageHeading>
     <p class="subtle">
       {{
         uiText(
-          'Searches only the public career catalog. Vectors use local bge-m3. Retrieval scores use RRF; reranking measures keyword coverage, not model confidence.',
+          'Choose the public career catalog or staff documents. Vectors use local bge-m3. Retrieval scores use RRF; reranking measures keyword coverage, not model confidence.',
         )
       }}
     </p>
-    <form class="panel form-stack" @submit.prevent="search">
+    <form class="panel form-stack" :aria-busy="busy" @submit.prevent="search">
+      <label class="field"
+        >{{ uiText('Collection') }}
+        <select v-model="collection" :disabled="busy">
+          <option value="occupations">{{ uiText('Public career catalog') }}</option>
+          <option value="staff_docs">{{ uiText('Staff knowledge documents') }}</option>
+        </select>
+      </label>
       <label class="field"
         >{{ uiText('Query text')
         }}<input v-model="query" required maxlength="2000" :disabled="busy"
@@ -104,3 +125,11 @@ async function search() {
     </template>
   </main>
 </template>
+
+<style scoped>
+.retrieval-debug {
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+</style>
