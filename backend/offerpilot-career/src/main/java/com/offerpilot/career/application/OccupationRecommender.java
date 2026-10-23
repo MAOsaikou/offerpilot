@@ -35,13 +35,63 @@ public class OccupationRecommender {
     }
 
     public record Ranked(String id, String name, String family, String hollandCode, double similarity,
-                         List<Citation> citations, String retrievalReason) {
+                         List<Citation> citations, String retrievalReason, Double rankingScore) {
+        public Ranked(String id, String name, String family, String hollandCode, double similarity,
+                      List<Citation> citations, String retrievalReason) {
+            this(id, name, family, hollandCode, similarity, citations, retrievalReason, null);
+        }
         public Ranked(String id, String name, String family, String hollandCode, double similarity) {
             this(id, name, family, hollandCode, similarity, List.of(), "");
         }
     }
 
     public record Citation(String occupationId, String title, String excerpt) {}
+
+    /** Full catalog lexical recall prevents an interest top-K from hiding an explicit career goal.
+     * Optional hybrid hits enrich provenance; model availability never changes career-fit-v1 scores. */
+    public List<Ranked> rankForUser(RiasecProfile profile, CareerProfileService.Profile user,
+                                  CareerAssessmentService.Assessment assessment, String request, int limit) {
+        var context = CareerFitScoring.Context.from(user, assessment, request);
+        OccupationHybridRetriever.validateLimit(limit);
+        var json = new ObjectMapper();
+        var catalog = jdbc.query("SELECT * FROM occupations WHERE holland_scores IS NOT NULL", (rs, row) -> {
+            try {
+                return new CareerFitScoring.Catalog(rs.getString("id"), rs.getString("name"), rs.getString("family"),
+                        rs.getString("holland_code"), RiasecProfile.fromJson(json.readTree(rs.getString("holland_scores"))),
+                        rs.getString("description"), com.offerpilot.knowledge.application.OccupationDocument.skills(rs.getString("core_skills")),
+                        arrayText(rs.getArray("typical_titles")), arrayText(rs.getArray("aliases")), arrayText(rs.getArray("related_majors")));
+            } catch (java.io.IOException ex) { throw new IllegalStateException("Invalid catalog profile", ex); }
+        });
+        var hits = new LinkedHashMap<String, OccupationHybridRetriever.Hit>();
+        if (retriever != null && !context.query().isBlank()) {
+            try {
+                String expanded = context.query();
+                if (expanded.matches("(?is).*(后端|服务端|backend|写代码|计算机).*")) expanded = "软件开发 编程 " + expanded;
+                retriever.search(expanded, MAX_LIMIT).hits().forEach(hit -> hits.put(hit.id(), hit));
+            } catch (Exception ex) {
+                log.warn("职业混合检索失败 ({})；保留完整目录词法与画像综合评分", ex.getClass().getSimpleName());
+            }
+        }
+        var scores = CareerFitScoring.score(profile, context, catalog);
+        return java.util.stream.IntStream.range(0, catalog.size()).mapToObj(index -> {
+                    var item = catalog.get(index);
+                    var score = scores.get(index);
+                    var hit = hits.get(item.id());
+                    boolean lexical = score.target() > 0 || score.major() > 0 || score.skills() > 0;
+                    var citations = hit != null ? List.of(new Citation(hit.id(), hit.name(), hit.excerpt()))
+                            : lexical ? List.of(new Citation(item.id(), item.name(),
+                            com.offerpilot.knowledge.application.OccupationDocument.excerpt(item.description(), null))) : List.<Citation>of();
+                    return new Ranked(item.id(), item.name(), item.family(), item.code(), score.interest(), citations,
+                            score.explanation() + (hit == null ? "；完整目录字段词法匹配"
+                                    : hit.vectorMatch() ? "；职业库语义检索召回，来源摘录见引用" : "；职业库文本检索召回，来源摘录见引用"), score.total());
+                }).filter(item -> item.rankingScore() >= CareerFitScoring.MIN_FIT)
+                .sorted(Comparator.comparingDouble((Ranked item) -> item.rankingScore()).reversed()
+                        .thenComparing(Ranked::name).thenComparing(Ranked::id)).limit(limit).toList();
+    }
+
+    private static String arrayText(java.sql.Array array) throws java.sql.SQLException {
+        return array == null ? "" : String.join(" ", (String[]) array.getArray());
+    }
 
     public List<OccupationHybridRetriever.Hit> retrieve(String query, int limit) {
         OccupationHybridRetriever.validateLimit(limit);

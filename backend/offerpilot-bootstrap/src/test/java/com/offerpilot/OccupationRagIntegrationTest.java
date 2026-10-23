@@ -80,8 +80,8 @@ class OccupationRagIntegrationTest extends OccupationRecommendationTest {
         when(profiles.get("alice")).thenReturn(new CareerProfileService.Profile("后端开发工程师", "", "Java",
                 List.of("技术研发", "数据分析"), List.of(), null));
         CareerRecommendForChat.Result result = new DefaultCareerRecommendForChat(profiles, recommender).recommend("alice");
-        assertThat(result.payload().recommendations()).hasSize(8)
-                .isSortedAccordingTo(java.util.Comparator.comparingDouble(CareerRecommendForChat.Recommendation::similarity).reversed()).allSatisfy(item -> {
+        assertThat(result.payload().recommendations()).hasSizeBetween(5, 8)
+                .isSortedAccordingTo(java.util.Comparator.comparingDouble((CareerRecommendForChat.Recommendation item) -> item.rankingScore()).reversed()).allSatisfy(item -> {
             assertThat(item.citations()).allSatisfy(citation -> {
                 assertThat(citation.occupationId()).isEqualTo(item.occupationId());
                 assertThat(citation.title()).isEqualTo(item.name());

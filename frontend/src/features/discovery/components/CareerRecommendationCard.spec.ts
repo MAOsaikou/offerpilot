@@ -133,7 +133,7 @@ it('shows the actual constraint ranking score separately from interest similarit
     },
   })
   expect(view.root.textContent).toContain('综合排序分：1.2345')
-  expect(view.root.textContent).toContain('初始名次分')
+  expect(view.root.textContent).toContain('基础综合分')
   expect(view.root.textContent).toContain('80%')
   expect(view.root.textContent).not.toContain('展示顺序按兴趣匹配度降序')
 })

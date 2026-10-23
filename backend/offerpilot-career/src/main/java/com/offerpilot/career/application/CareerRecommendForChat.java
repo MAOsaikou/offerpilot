@@ -5,7 +5,12 @@ import java.util.List;
 /** Application boundary for deterministic chat recommendations and approved target adoption. */
 public interface CareerRecommendForChat {
     record Recommendation(String occupationId, String name, String family, String hollandCode,
-                          double similarity, List<String> reasons, List<OccupationRecommender.Citation> citations, CareerCardDetails.Details details) {
+                          double similarity, List<String> reasons, List<OccupationRecommender.Citation> citations, CareerCardDetails.Details details,
+                          Double rankingScore) {
+        public Recommendation(String occupationId, String name, String family, String hollandCode, double similarity,
+                              List<String> reasons, List<OccupationRecommender.Citation> citations, CareerCardDetails.Details details) {
+            this(occupationId,name,family,hollandCode,similarity,reasons,citations,details,null);
+        }
         public Recommendation(String occupationId, String name, String family, String hollandCode, double similarity, List<String> reasons, List<OccupationRecommender.Citation> citations) {
             this(occupationId,name,family,hollandCode,similarity,reasons,citations,null);
         }
