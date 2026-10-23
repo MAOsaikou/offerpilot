@@ -28,7 +28,14 @@ class IntentBenchmarkTest {
                     boolean directCoach = "single".equals(sample.path("expected").path("kind").asText())
                             && "COACH".equals(sample.path("expected").path("expert").asText())
                             && CoachIntentParser.matches(sample.path("message").asText());
-                    if (!directCoach) responses.add(sample.path("expectedModelJson"));
+                    // Bound diagnosis/optimization (and applyPatches) skip the routing model the same
+                    // way direct COACH does — only the action replay remains in the queue.
+                    var ctx = sample.path("context");
+                    boolean boundResumeForceRoute = ctx.has("diagnosisReportId")
+                            || (ctx.has("optimizationReportId") && !ctx.has("jobId"))
+                            || "applyPatches".equals(ctx.path("resumeAction").asText(null));
+                    boolean skipPlannerReplay = directCoach || boundResumeForceRoute;
+                    if (!skipPlannerReplay) responses.add(sample.path("expectedModelJson"));
                     sample.path("actionModelJson").forEach(responses::add);
                     var gateway = new ReplayGateway(responses);
                     var planner = IntentBenchmark.planner(gateway);
@@ -66,7 +73,7 @@ class IntentBenchmarkTest {
                         }
                     } else assertThat(actual.kind()).isIn("chitchat", "unsafe");
                     assertThat(responses).as("Every pre-authored response was consumed").isEmpty();
-                    assertThat(gateway.calls).isEqualTo((directCoach ? 0 : 1) + sample.path("actionModelJson").size());
+                    assertThat(gateway.calls).isEqualTo((skipPlannerReplay ? 0 : 1) + sample.path("actionModelJson").size());
                 }));
     }
 
