@@ -1,4 +1,31 @@
 export default {
+  'Staff knowledge documents': 'Staff knowledge documents',
+  'Manage shared reference documents independently of private user notes.':
+    'Manage shared reference documents independently of private user notes.',
+  'Upload document': 'Upload document',
+  'PDF / MD / TXT, up to 10 MB. PDF text layer: 1–10 pages; no OCR. Indexes the first 30,000 characters and keeps the original.':
+    'PDF / MD / TXT, up to 10 MB. PDF text layer: 1–10 pages; no OCR. Indexes the first 30,000 characters and keeps the original.',
+  'Document uploaded. Indexing will run in the background.':
+    'Document uploaded. Indexing will run in the background.',
+  'Reindex queued.': 'Reindex queued.',
+  'Document deleted.': 'Document deleted.',
+  'Loading documents…': 'Loading documents…',
+  'Could not load documents. Check staff access and retry.':
+    'Could not load documents. Check staff access and retry.',
+  'No staff documents yet. Upload a reference document to begin.':
+    'No staff documents yet. Upload a reference document to begin.',
+  '{0} chunks': '{0} chunks',
+  'Updated: {0}': 'Updated: {0}',
+  'Index text was truncated to 30,000 characters. The original file is preserved.':
+    'Index text was truncated to 30,000 characters. The original file is preserved.',
+  Reindex: 'Reindex',
+  'Delete this document and its index?': 'Delete this document and its index?',
+  'Document pagination': 'Document pagination',
+  'Page {0} of {1} · {2} documents': 'Page {0} of {1} · {2} documents',
+  'Choose the public career catalog or staff documents. Vectors use local bge-m3. Retrieval scores use RRF; reranking measures keyword coverage, not model confidence.':
+    'Choose the public career catalog or staff documents. Vectors use local bge-m3. Retrieval scores use RRF; reranking measures keyword coverage, not model confidence.',
+  Collection: 'Collection',
+  'Public career catalog': 'Public career catalog',
   'On-device analysis': 'On-device analysis',
   'Video is never uploaded': 'Video is never uploaded',
   'Starting camera analysis…': 'Starting camera analysis…',

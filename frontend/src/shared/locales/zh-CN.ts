@@ -1,4 +1,29 @@
 export default {
+  'Staff knowledge documents': '管理知识文档',
+  'Manage shared reference documents independently of private user notes.':
+    '管理共享参考文档，与用户私有笔记独立存储。',
+  'Upload document': '上传文档',
+  'PDF / MD / TXT, up to 10 MB. PDF text layer: 1–10 pages; no OCR. Indexes the first 30,000 characters and keeps the original.':
+    '支持 PDF / MD / TXT，最大 10MB；PDF 须含文本层且为 1–10 页，无 OCR。索引前 30,000 字，保留原件。',
+  'Document uploaded. Indexing will run in the background.': '文档已上传，将在后台建立索引。',
+  'Reindex queued.': '已排队，等待重新索引。',
+  'Document deleted.': '文档已删除。',
+  'Loading documents…': '正在加载文档…',
+  'Could not load documents. Check staff access and retry.': '文档加载失败，请确认管理权限并重试。',
+  'No staff documents yet. Upload a reference document to begin.':
+    '暂无管理文档，上传参考资料即可开始。',
+  '{0} chunks': '{0} 个分块',
+  'Updated: {0}': '更新时间：{0}',
+  'Index text was truncated to 30,000 characters. The original file is preserved.':
+    '索引正文已截取前 30,000 字，原文件完整保留。',
+  Reindex: '重新索引',
+  'Delete this document and its index?': '确认删除此文档及其索引？',
+  'Document pagination': '文档分页',
+  'Page {0} of {1} · {2} documents': '第 {0} / {1} 页 · 共 {2} 份文档',
+  'Choose the public career catalog or staff documents. Vectors use local bge-m3. Retrieval scores use RRF; reranking measures keyword coverage, not model confidence.':
+    '选择公开职业库或管理文档；向量使用本地 bge-m3。召回采用 RRF，重排按查询词覆盖率，不是模型置信度。',
+  Collection: '检索集合',
+  'Public career catalog': '公开职业库',
   'On-device analysis': '端侧表现分析',
   'Video is never uploaded': '视频不会上传',
   'Starting camera analysis…': '正在启动端侧分析…',

@@ -5,7 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import java.util.*;
 
-/** Public occupations only. Debug reranking is deterministic term coverage, never a model score. */
+/** Explicit collection allowlist. Debug reranking is deterministic term coverage, never a model score. */
 @Service
 public class RetrievalDebug {
     private final JdbcTemplate jdbc;
@@ -42,6 +42,40 @@ public class RetrievalDebug {
             }
         }
         return rank(query, limit, lexical, vector, available);
+    }
+    public Result search(String query, int limit, String collection) {
+        if ("occupations".equals(collection)) return search(query, limit);
+        if (!"staff_docs".equals(collection))
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "collection 仅支持 occupations / staff_docs");
+        if (query == null || query.isBlank() || query.length() > 2000 || limit < 1 || limit > 50)
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "搜索文字 1-2000 字，limit 1-50");
+        int count = Math.min(200, Math.max(20, limit * 4));
+        String q = OccupationDocument.lexicalQuery(query);
+        var lexical = q.isBlank() ? List.<Candidate>of() : jdbc.query("""
+                SELECT c.id,d.title,c.content,ts_rank_cd(c.tsv,q) AS score
+                FROM staff_knowledge_chunks c JOIN staff_knowledge_documents d ON d.id=c.document_id,
+                    to_tsquery('simple',?) q
+                WHERE d.index_status='READY' AND c.tsv @@ q ORDER BY score DESC,c.id LIMIT ?
+                """, (r,n) -> new Candidate(r.getString(1),r.getString(2),r.getString(3),r.getDouble(4),null),q,count);
+        List<Candidate> vector = List.of();
+        String fingerprint = embeddings.fingerprint();
+        if (BuiltinKnowledgeIndex.local(fingerprint) && embeddings.configured()) {
+            var values = embeddings.embed(List.of(query.strip()));
+            if (!values.isEmpty() && fingerprint.equals(embeddings.fingerprint())) {
+                String literal = OccupationEmbeddings.literal(values.get(0));
+                vector = jdbc.query("""
+                        SELECT c.id,d.title,c.content,1-(c.embedding <=> ?::vector) AS score
+                        FROM staff_knowledge_chunks c JOIN staff_knowledge_documents d ON d.id=c.document_id
+                        WHERE d.index_status='READY' AND c.embedding IS NOT NULL AND c.embedding_fingerprint=?
+                        ORDER BY c.embedding <=> ?::vector,c.id LIMIT ?
+                        """, (r,n) -> new Candidate(r.getString(1),r.getString(2),r.getString(3),null,r.getDouble(4)),
+                        literal,fingerprint,literal,count);
+            }
+        }
+        var result = rank(query,limit,lexical,vector,!vector.isEmpty());
+        return new Result(result.items(),result.vectorAvailable(),result.embedding(),result.reranker(),
+                result.vectorAvailable() ? "管理文档分块；RRF 召回后按查询词覆盖率重排，非模型置信度。"
+                        : "管理文档分块；同空间本地向量不可用，当前仅全文检索；重排为查询词覆盖率，非模型置信度。");
     }
     static Result rank(String query, int limit, List<Candidate> lexical, List<Candidate> vector, boolean available) {
         var scores = OccupationRrf.weighted(new double[]{1.0, available ? OccupationRrf.LEXICAL_WITH_VECTOR : 1.0},

@@ -29,5 +29,9 @@ class RetrievalDebugControllerTest {
         when(debug.search("Java",10)).thenReturn(new RetrievalDebug.Result(List.of(),false,"local","coverage","FTS only"));
         mvc.perform(get("/api/v1/staff/knowledge/retrieval-debug").header("Authorization","Bearer staff").param("query","Java"))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store")).andExpect(jsonPath("$.data.vectorAvailable").value(false));
+        when(debug.search("Java",10,"staff_docs")).thenReturn(new RetrievalDebug.Result(List.of(),false,"local","coverage","staff FTS"));
+        mvc.perform(get("/api/v1/staff/knowledge/retrieval-debug").header("Authorization","Bearer staff")
+                .param("query","Java").param("collection","staff_docs"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.notice").value("staff FTS"));
     }
 }

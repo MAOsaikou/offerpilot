@@ -48,11 +48,12 @@ async function submit() {
           <p class="panel-sub">{{ uiText('Staff only. Manage user account access.') }}</p>
         </header>
 
-        <form class="auth-form" :aria-busy="loading" novalidate @submit.prevent="submit">
+        <form class="auth-form" :aria-busy="loading" @submit.prevent="submit">
           <label class="field">
             <span class="field-label">{{ uiText('Staff email') }}</span>
             <input
               v-model="email"
+              :disabled="loading"
               type="email"
               name="email"
               autocomplete="email"
@@ -66,6 +67,7 @@ async function submit() {
             <span class="field-control">
               <input
                 v-model="password"
+                :disabled="loading"
                 :type="showPassword ? 'text' : 'password'"
                 name="password"
                 autocomplete="current-password"
@@ -75,6 +77,7 @@ async function submit() {
               <button
                 type="button"
                 class="eye-toggle"
+                :disabled="loading"
                 :aria-label="showPassword ? uiText('Hide password') : uiText('Show password')"
                 @click="showPassword = !showPassword"
               >

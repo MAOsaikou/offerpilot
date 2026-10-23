@@ -133,6 +133,9 @@ onMounted(async () => {
         <p class="subtle">{{ uiText('View, enable and disable user accounts.') }}</p>
       </div>
       <div class="head-right">
+        <RouterLink to="/staff/knowledge" class="btn">{{
+          uiText('Staff knowledge documents')
+        }}</RouterLink>
         <RouterLink to="/staff/retrieval-debug" class="btn">{{
           uiText('Retrieval diagnostics')
         }}</RouterLink>
@@ -269,7 +272,8 @@ onMounted(async () => {
   flex-direction: column;
   gap: 18px;
   padding: 32px 24px 48px;
-  min-height: 100vh;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .console-head {
   display: flex;
@@ -286,13 +290,16 @@ onMounted(async () => {
   margin: 0;
 }
 .head-right {
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   display: flex;
   align-items: center;
   gap: 10px;
 }
 .staff-chip {
   white-space: nowrap;
-  max-width: 100%;
+  max-width: 16rem;
   overflow: hidden;
   text-overflow: ellipsis;
   padding: 4px 12px;
@@ -447,7 +454,7 @@ onMounted(async () => {
   .head-right {
     width: 100%;
     min-width: 0;
-    justify-content: space-between;
+    justify-content: flex-start;
   }
 }
 </style>

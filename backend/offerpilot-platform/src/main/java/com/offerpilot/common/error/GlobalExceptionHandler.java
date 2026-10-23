@@ -29,7 +29,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleUploadSize(HttpServletRequest request) {
         return ResponseEntity.status(413).contentType(MediaType.APPLICATION_JSON).body(ApiResponse.fail(ErrorCode.FILE_TOO_LARGE.code(),
-                request.getRequestURI().equals("/api/v1/knowledge/notes/upload") ? "资料文件不能超过 10MB" : "简历文件不能超过 10MB", TraceIdFilter.current(request)));
+                (request.getRequestURI().equals("/api/v1/knowledge/notes/upload")
+                        || request.getRequestURI().equals("/api/v1/staff/knowledge/documents/upload")) ? "资料文件不能超过 10MB" : "简历文件不能超过 10MB", TraceIdFilter.current(request)));
     }
 
     @ExceptionHandler(org.springframework.web.multipart.support.MissingServletRequestPartException.class)

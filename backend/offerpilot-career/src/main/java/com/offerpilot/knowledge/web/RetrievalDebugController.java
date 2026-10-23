@@ -23,9 +23,10 @@ public class RetrievalDebugController {
     }
     @GetMapping
     public ApiResponse<RetrievalDebug.Result> search(@RequestHeader(value="Authorization",required=false) String auth,
-            @RequestParam String query, @RequestParam(defaultValue="10") int limit, HttpServletRequest request, HttpServletResponse response) {
+            @RequestParam String query, @RequestParam(defaultValue="10") int limit,
+            @RequestParam(defaultValue="occupations") String collection, HttpServletRequest request, HttpServletResponse response) {
         staff.requireStaffId(auth);
         response.setHeader("Cache-Control","no-store");
-        return ApiResponse.ok(debug.search(query,limit), TraceIdFilter.current(request));
+        return ApiResponse.ok("occupations".equals(collection) ? debug.search(query,limit) : debug.search(query,limit,collection), TraceIdFilter.current(request));
     }
 }

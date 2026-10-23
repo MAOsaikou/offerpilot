@@ -26,6 +26,8 @@ class RetrievalDebugTest {
         when(embeddings.fingerprint()).thenReturn("text-embedding-v4@external.example");
         var debug=new RetrievalDebug(jdbc,embeddings);
         assertThat(debug.search("Java",10).vectorAvailable()).isFalse();
+        assertThat(debug.search("Java",10,"staff_docs").vectorAvailable()).isFalse();
+        assertThatThrownBy(()->debug.search("Java",10,"knowledge_notes")).isInstanceOf(com.offerpilot.common.error.BusinessException.class);
         verify(embeddings,never()).embed(anyList());
         assertThatThrownBy(()->debug.search(" ",10)).isInstanceOf(com.offerpilot.common.error.BusinessException.class);
         assertThatThrownBy(()->debug.search("Java",51)).isInstanceOf(com.offerpilot.common.error.BusinessException.class);
