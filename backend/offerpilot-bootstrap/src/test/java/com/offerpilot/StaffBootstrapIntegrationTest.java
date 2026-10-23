@@ -99,6 +99,15 @@ class StaffBootstrapIntegrationTest extends SharedHttpIntegrationTest {
     }
 
     @Test
+    void untouchedDisabledPublicSeedStaffDoesNotPreventCreation() {
+        jdbc.update("INSERT INTO users (id, email, password_hash, nickname, roles, is_demo, status) VALUES "
+                + "('usr_test_staff001', 'staff@offerpilot.local', ?, 'seed', '{STAFF}', false, 'DISABLED')",
+                com.offerpilot.auth.application.StaffAccountBootstrap.PUBLIC_SEED_STAFF_HASH);
+        run(EMAIL, PASSWORD);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM users WHERE 'STAFF' = ANY(roles) AND status = 'ACTIVE'", Long.class)).isEqualTo(1L);
+    }
+
+    @Test
     void existingDisabledStaffAlsoPreventsCreation() {
         run("existing@example.com", PASSWORD);
         jdbc.update("UPDATE users SET status = 'DISABLED'");
