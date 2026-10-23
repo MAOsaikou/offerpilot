@@ -8,6 +8,9 @@ import com.offerpilot.job.application.*;
 import com.offerpilot.resume.application.*;
 import com.offerpilot.llm.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.NullSource;
 import org.springframework.ai.chat.messages.*;
 import org.springframework.ai.chat.model.*;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
@@ -89,15 +92,24 @@ class ResumeOptimizationExecutionTest {
         assertThat(events.toString()).doesNotContain("guessed");
         verify(optimizations).generate(eq("owner"), eq("res_1"), eq("ver_1"), eq("岗位JD"), anyString(), eq("job_1"));
     }
-    @Test void discussionReadsExistingReportWithoutJobReadOrRegenerationAndAdviceNeverAdopts() throws Exception {
+    @ParameterizedTest @NullSource @EnumSource(value = AgentMode.class, names = {"AUTO", "RESUME"})
+    void discussionReadsExistingReportWithoutJobReadOrRegenerationAndAdviceNeverAdopts(AgentMode mode) throws Exception {
         var orchestrator = orchestrator(); action.set("discuss");
         var context = Map.<String,Object>of("resumeId", "res_1", "resumeVersionId", "ver_1", "optimizationReportId", "opt_1");
-        assertThat(run(orchestrator, AgentMode.RESUME, context).collectList().block()).anyMatch(AgentEvent.UiCard.class::isInstance);
+        var events = run(orchestrator, mode, context).collectList().block();
+        assertThat(events).noneMatch(AgentEvent.ApprovalRequired.class::isInstance);
+        assertThat(events).filteredOn(AgentEvent.UiCard.class::isInstance).singleElement().satisfies(event ->
+                assertThat(((AgentEvent.UiCard) event).cardId()).isEqualTo("opt_1"));
+        assertThat(events).filteredOn(AgentEvent.ToolCall.class::isInstance).singleElement().satisfies(event -> {
+            assertThat(((AgentEvent.ToolCall) event).name()).isEqualTo("optimizeResumeForJob");
+            assertThat(((AgentEvent.ToolCall) event).access()).isEqualTo(AgentEvent.ToolAccess.READ);
+        });
         verify(optimizations).report("owner", "res_1", "ver_1", "opt_1");
-        verify(optimizations, never()).generate(any(), any(), any(), any(), any(), any());
         action.set("advice");
-        assertThat(run(orchestrator, AgentMode.RESUME, context).collectList().block()).anyMatch(AgentEvent.UiCard.class::isInstance);
+        assertThat(run(orchestrator, mode, context).collectList().block()).anyMatch(AgentEvent.UiCard.class::isInstance);
         verify(optimizations, times(2)).report("owner", "res_1", "ver_1", "opt_1");
+        verify(optimizations, never()).generate(any(), any(), any(), any(), any(), any());
+        verify(gateway, times(2)).stream(any(), anyList(), eq(0.1)); // One action classification per discussion.
         assertThat(reply.get(reply.size()-2)).isInstanceOfSatisfying(SystemMessage.class,
                 message -> assertThat(message.getText()).contains("只读动作未执行采纳"));
         verifyNoInteractions(descriptions, diagnoses, matches, searches);

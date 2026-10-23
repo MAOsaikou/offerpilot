@@ -50,9 +50,13 @@ class ResumeReportDiscussionTest {
                 """);
     }
 
-    @ParameterizedTest @CsvSource({
-            "advice, 第一条问题具体该怎么改？", "discuss, 这条怎么改？", "clarify, 高优先级那条怎么改？", "diagnose, 第一条问题具体该怎么改？"})
-    void boundReportOverridesActionClassificationAndFeedsOrderedFindingsToReply(String action, String text) throws Exception {
+    @ParameterizedTest @CsvSource(value = {
+            "DEFAULT, advice, 第一条问题具体该怎么改？", "AUTO, advice, 第一条问题具体该怎么改？", "RESUME, advice, 第一条问题具体该怎么改？",
+            "DEFAULT, discuss, 这条怎么改？", "AUTO, discuss, 这条怎么改？", "RESUME, discuss, 这条怎么改？",
+            "DEFAULT, clarify, 高优先级那条怎么改？", "AUTO, clarify, 高优先级那条怎么改？", "RESUME, clarify, 高优先级那条怎么改？",
+            "DEFAULT, diagnose, 第一条问题具体该怎么改？", "AUTO, diagnose, 第一条问题具体该怎么改？", "RESUME, diagnose, 第一条问题具体该怎么改？"
+    }, nullValues = "DEFAULT")
+    void boundReportOverridesActionClassificationAndFeedsOrderedFindingsToReply(AgentMode mode, String action, String text) throws Exception {
         var report = report();
         when(diagnoses.report("owner", "res_1", "ver_historical", "diag_1")).thenReturn(report);
         when(gateway.stream(any(), anyList(), eq(0.1))).thenReturn(Flux.just(new ChatResponse(List.of(
@@ -61,11 +65,14 @@ class ResumeReportDiscussionTest {
         var parser = new ResumeIntentParser(gateway, json, new ByteArrayResource("resume".getBytes(StandardCharsets.UTF_8)));
         var planner = new IntentPlanner(gateway, json, registry, new ByteArrayResource(new byte[0]), null, parser);
         var reply = new ArrayList<Message>();
-        var events = new Orchestrator(planner, registry).run(AgentMode.RESUME, text, List.of(), ModelTier.FLASH,
+        var events = new Orchestrator(planner, registry).run(mode, text, List.of(), ModelTier.FLASH,
                 "run", new AtomicInteger(), reply, usage -> {}, "owner", context)
                 .collectList().block(Duration.ofSeconds(3));
 
         assertThat(events).noneMatch(AgentEvent.ApprovalRequired.class::isInstance);
+        assertThat(events).filteredOn(AgentEvent.PlanCreated.class::isInstance).singleElement().satisfies(event ->
+                assertThat(((AgentEvent.PlanCreated) event).steps()).singleElement().satisfies(step ->
+                        assertThat(step.agent()).isEqualTo(ExpertType.RESUME)));
         assertThat(events).filteredOn(AgentEvent.ToolCall.class::isInstance).singleElement().satisfies(event -> {
             var tool = (AgentEvent.ToolCall) event;
             assertThat(tool.name()).isEqualTo("diagnoseResume");
@@ -82,6 +89,7 @@ class ResumeReportDiscussionTest {
         assertThat(digest.get(0).path("findings").get(0).path("findingId").asText()).isEqualTo("f1");
         verify(diagnoses).report("owner", "res_1", "ver_historical", "diag_1");
         verify(diagnoses, never()).analyze(any(), any(), any(), any());
+        verify(gateway).stream(any(), anyList(), eq(0.1)); // Action classification only; no routing model.
     }
 
     @Test void registryAlsoReadsBoundReportForAdviceAndPropagatesOwnershipOrVersionRejection() throws Exception {

@@ -158,7 +158,8 @@ public class IntentPlanner {
                     single(content, ExpertType.JOB, safeContext)), content, history, tier, onUsage, safeContext);
         }
         if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.RESUME)
-                && "applyPatches".equals(safeContext.get("resumeAction"))) {
+                && ("applyPatches".equals(safeContext.get("resumeAction"))
+                    || safeContext.containsKey("diagnosisReportId") || safeContext.containsKey("optimizationReportId"))) {
             return resolveActions(new Decision("single", ExpertType.RESUME, 1.0, false, null,
                     single(content, ExpertType.RESUME, safeContext)), content, history, tier, onUsage, safeContext);
         }
