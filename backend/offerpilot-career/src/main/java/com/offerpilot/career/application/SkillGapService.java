@@ -12,6 +12,14 @@ import java.util.regex.Pattern;
 
 @Service
 public class SkillGapService {
+    private static final Pattern SKILL_ATOMS = Pattern.compile("spring boot|[^/、,，与及等\\s]+", Pattern.UNICODE_CHARACTER_CLASS);
+    private static final Set<String> GENERIC_ATOMS = Set.of("相关", "能力", "基础", "进阶", "治理", "后端语言", "语言", "中间件", "调优", "技术", "开发", "的", "和", "或");
+    private static final Set<String> RELATIONAL_DATABASES = Set.of("mysql", "postgresql", "mariadb");
+    private static final Set<String> MESSAGE_QUEUES = Set.of("kafka", "rabbitmq", "rocketmq", "pulsar");
+    private static final Set<String> DOCUMENT_DATABASES = Set.of("非关系型数据库", "非关系数据库", "文档库", "文档数据库");
+    private static final Map<String, String> ALIASES = Map.of("js", "javascript", "ts", "typescript", "springboot", "spring boot",
+            "vue3", "vue", "vue.js", "vue", "react.js", "react", "postgres", "postgresql");
+    private static final Pattern ALIAS_PATTERN = Pattern.compile("(?<![a-z0-9+#])(?:springboot|vue\\.js|react\\.js|vue3|postgres|js|ts)(?![a-z0-9+#])");
     public record Evidence(String type, String id, String label, String excerpt, String fetchedAt) {}
     public record Skill(String name, String level, List<Evidence> sources) {}
     public record Report(String targetType, String targetId, String targetTitle, String resumeVersionId,
@@ -86,9 +94,9 @@ public class SkillGapService {
                 project = true; sources.add(new Evidence("RESUME", version, "简历项目 · " + item.path("name").asText(), tech.asText(), null));
             }
             if (gh.snapshot() != null) for (var repo : gh.snapshot().repositories())
-                if (repo.languages().keySet().stream().anyMatch(s -> normalize(s).equals(normalize(name)))) {
+                if (repo.languages().keySet().stream().anyMatch(s -> languageMatches(s, name))) {
                     sources.add(new Evidence("GITHUB", repo.url(), "GitHub · " + repo.name() + (gh.stale() ? "（历史）" : ""),
-                            name + "：" + repo.languages().entrySet().stream().filter(e -> normalize(e.getKey()).equals(normalize(name))).mapToLong(Map.Entry::getValue).sum()
+                            name + "：" + repo.languages().entrySet().stream().filter(e -> languageMatches(e.getKey(), name)).mapToLong(Map.Entry::getValue).sum()
                                     + "字节；本人近90天提交" + (repo.commitsTruncated() ? "≥" : "") + repo.commits90d()
                                     + (repo.fork() ? "；fork仓库" : "；语言不证明提交使用该语言"), gh.fetchedAt().toString()));
                     if (!gh.stale() && !repo.fork() && repo.commits90d() > 0) active = true;
@@ -102,17 +110,46 @@ public class SkillGapService {
     }
     static boolean mentions(String text, String skill) {
         if (text == null || text.isBlank()) return false;
-        String normalized = normalize(text), key = normalize(skill);
-        if (key.isBlank()) return false;
-        return Pattern.compile("(?<![a-z0-9+#])" + Pattern.quote(key) + "(?![a-z0-9+#])").matcher(normalized).find();
+        String normalized = normalize(text);
+        return matchKeys(skill).stream().anyMatch(key -> tokenPattern(key).matcher(normalized).find());
+    }
+    private static boolean languageMatches(String language, String skill) {
+        return matchKeys(skill).contains(normalize(language));
+    }
+    private static Pattern tokenPattern(String key) {
+        // Latin boundaries allow Java后端, but reject JavaScript/GoLand/C++. Do not
+        // mistake 非关系型数据库 for the relational category in Chinese evidence.
+        String prefix = key.equals("关系型数据库") ? "(?<!非)" : "";
+        return Pattern.compile(prefix + "(?<![a-z0-9+#])" + Pattern.quote(key) + "(?![a-z0-9+#])");
+    }
+    private static Set<String> matchKeys(String skill) {
+        var keys = new LinkedHashSet<String>();
+        if (skill == null) return keys;
+        var atoms = SKILL_ATOMS.matcher(normalize(skill));
+        while (atoms.find()) {
+            String key = normalize(atoms.group());
+            if (key.isBlank() || GENERIC_ATOMS.contains(key)) continue;
+            keys.add(key);
+            // Expand only explicit category/product links, not product-to-product
+            // equivalence: MySQL evidence need not satisfy a PostgreSQL requirement.
+            if (key.equals("sql") || key.equals("关系型数据库")) {
+                keys.addAll(RELATIONAL_DATABASES); keys.add("sql"); keys.add("关系型数据库");
+            } else if (RELATIONAL_DATABASES.contains(key)) {
+                keys.add("sql"); keys.add("关系型数据库");
+            }
+            if (key.equals("缓存")) keys.add("redis");
+            if (key.equals("redis")) keys.add("缓存");
+            if (key.equals("消息队列")) keys.addAll(MESSAGE_QUEUES);
+            if (MESSAGE_QUEUES.contains(key)) keys.add("消息队列");
+            if (DOCUMENT_DATABASES.contains(key)) keys.add("mongodb");
+            if (key.equals("mongodb")) keys.addAll(DOCUMENT_DATABASES);
+        }
+        return keys;
     }
     static String normalize(String text) {
-        return Normalizer.normalize(text, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT).strip().replaceAll("\\s+", " ")
-                .replaceAll("\\bjavascript\\b|\\bjs\\b", "javascript")
-                .replaceAll("\\btypescript\\b|\\bts\\b", "typescript")
-                .replaceAll("\\bspringboot\\b|\\bspring boot\\b", "spring boot")
-                .replaceAll("\\bvue3\\b|\\bvue\\.js\\b", "vue")
-                .replaceAll("\\breact\\.js\\b", "react");
+        String normalized = Normalizer.normalize(text, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT).strip().replaceAll("(?U)\\s+", " ");
+        // Replace once so the js alias cannot rewrite the suffix of Vue.js/React.js.
+        return ALIAS_PATTERN.matcher(normalized).replaceAll(match -> ALIASES.get(match.group()));
     }
     private static String excerpt(String text, String skill) {
         // Keep original evidence bounded; normalized aliases never replace the displayed source.
