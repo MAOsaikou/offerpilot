@@ -8,6 +8,8 @@ import {
 
 import BackgroundTaskStatus from '@/shared/components/BackgroundTaskStatus.vue'
 
+import PresenceGauges from '../components/PresenceGauges.vue'
+import { useMediaPipe } from '@/shared/composables/useMediaPipe'
 import InterviewFeedback from '../components/InterviewFeedback.vue'
 import { questionTypeLabels, difficultyLabels } from '@/shared/types/interview'
 import InterviewReportPanel from '../components/InterviewReportPanel.vue'
@@ -19,6 +21,7 @@ import PageHeading from '@/shared/components/PageHeading.vue'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import {
   getInterview,
+  postInterviewMetrics,
   generateInterviewQuestions,
   scoreInterviewAnswer,
   requestInterviewFollowUp,
@@ -36,6 +39,13 @@ import type { InterviewSession } from '@/shared/types/interview'
 import { exportInterview } from '@/shared/utils/interviewExport'
 import { useSpeech } from '@/shared/composables/useSpeech'
 
+const camera = useMediaPipe({ upload: postInterviewMetrics })
+const {
+  status: presenceStatus,
+  starting: presenceStarting,
+  latest: presenceValues,
+  uploadFailed: presenceUploadFailed,
+} = camera
 const route = useRoute()
 const cache = useQueryClient()
 const session = ref<InterviewSession>()
@@ -222,6 +232,7 @@ let controller = new AbortController()
 let revision = 0
 
 async function load() {
+  camera.stop()
   speech.cancelAll()
   controller.abort()
   controller = new AbortController()
@@ -249,6 +260,7 @@ async function load() {
     if (loaded.options?.mode === 'VOICE') voiceAutoPlay.value = true
     syncDrafts()
     if (loaded.completed) void loadCandidates()
+    else void camera.start(loaded.id)
   } catch (e) {
     if (requestRevision !== revision) return
     notFound.value = e instanceof ApiError && e.status === 404
@@ -339,6 +351,11 @@ async function persist(questionIndex?: number, completed?: boolean): Promise<boo
       session.value = saved
     }
     followUpDraft.value = current.value?.followUpAnswer || ''
+    if (completed) {
+      camera.stop()
+      await camera.flush()
+      if (requestRevision !== revision) return false
+    }
     if (questionIndex !== undefined || completed !== undefined) {
       const progress: { questionIndex?: number; completed?: boolean } = {}
       if (questionIndex !== undefined) progress.questionIndex = questionIndex
@@ -449,6 +466,10 @@ async function saveBeforeLeave() {
     return true
   }
   const saved = session.value.completed || (await persist())
+  if (saved) {
+    camera.stop()
+    await camera.flush()
+  }
   speech.cancelAll()
   return saved
 }
@@ -529,6 +550,13 @@ async function restoreTask() {
     <p v-if="error" role="alert">
       {{ uiText('{0} · Answers are retained. Please retry saving.', [error]) }}
     </p>
+    <PresenceGauges
+      v-if="!session.completed"
+      :status="presenceStatus"
+      :values="presenceValues"
+      :starting="presenceStarting"
+      :upload-failed="presenceUploadFailed"
+    />
     <section v-if="session.generationSource === 'pending'" class="panel form-stack">
       <h2>{{ uiText('Prepare your interview questions') }}</h2>
       <p>

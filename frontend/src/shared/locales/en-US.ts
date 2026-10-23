@@ -1,4 +1,17 @@
 export default {
+  'On-device analysis': 'On-device analysis',
+  'Video is never uploaded': 'Video is never uploaded',
+  'Starting camera analysis…': 'Starting camera analysis…',
+  'On-device analysis skipped': 'On-device analysis skipped',
+  'Waiting for face and shoulders in view': 'Waiting for face and shoulders in view',
+  'Eye contact estimate': 'Eye contact estimate',
+  'Smile estimate': 'Smile estimate',
+  'Head stability': 'Head stability',
+  'Posture stability': 'Posture stability',
+  'Browser estimates are for reference only': 'Browser estimates are for reference only',
+  'Analysis upload failed; retrying with the next window':
+    'Analysis upload failed; retrying with the next window',
+
   Dashboard: 'Dashboard',
   'AI chat': 'AI chat',
   'Career discovery': 'Career discovery',

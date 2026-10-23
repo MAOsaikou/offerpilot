@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.3.0",
+    "@mediapipe/tasks-vision": "0.10.32",
     "@tanstack/vue-query": "^5.102.8",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",

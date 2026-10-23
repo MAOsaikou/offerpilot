@@ -36,6 +36,7 @@ class InterviewGenerationServiceTest {
     List<InterviewService.Answer> answers;
 
     @BeforeEach void setup() {
+        when(interviews.withPresence(anyString(), anyString(), any())).thenAnswer(call -> call.getArgument(2));
         var manager=mock(PlatformTransactionManager.class);
         when(manager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
         tx=new TransactionTemplate(manager);

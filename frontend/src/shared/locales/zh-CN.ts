@@ -1,4 +1,16 @@
 export default {
+  'On-device analysis': '端侧表现分析',
+  'Video is never uploaded': '视频不会上传',
+  'Starting camera analysis…': '正在启动端侧分析…',
+  'On-device analysis skipped': '已跳过端侧分析',
+  'Waiting for face and shoulders in view': '等待检测到面部和肩部',
+  'Eye contact estimate': '眼神接触估计',
+  'Smile estimate': '微笑估计',
+  'Head stability': '头部稳定度',
+  'Posture stability': '身体稳定度',
+  'Browser estimates are for reference only': '来自浏览器端分析，仅供参考',
+  'Analysis upload failed; retrying with the next window': '指标上报失败，将在下个窗口重试',
+
   Dashboard: '工作台',
   'AI chat': 'AI 对话',
   'Career discovery': '职业探索',

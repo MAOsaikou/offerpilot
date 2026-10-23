@@ -94,7 +94,7 @@ public class InterviewGenerationService {
             try { jdbc.update("UPDATE interview_sessions SET report=?::jsonb,updated_at=now() WHERE id=? AND user_id=?",json.writeValueAsString(saved),id,owner); }
             catch (com.fasterxml.jackson.core.JsonProcessingException ex) { throw new IllegalStateException(ex); }
         });
-        return saved;
+        return interviews.withPresence(owner,id,saved);
     }
     private ObjectNode evaluate(String owner,Snapshot snapshot,InterviewService.Answer answer) {
         BackgroundWork.check();

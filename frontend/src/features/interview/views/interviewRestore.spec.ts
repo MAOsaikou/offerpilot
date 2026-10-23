@@ -14,6 +14,7 @@ import {
 import { useGenerationTasks } from '@/shared/stores/generationTasks'
 import type { InterviewSession } from '@/shared/types/interview'
 vi.mock('@/shared/api/interviews', () => ({
+  postInterviewMetrics: vi.fn(),
   getInterview: vi.fn(),
   getInterviewReport: vi.fn(),
   generateInterviewQuestions: vi.fn(),

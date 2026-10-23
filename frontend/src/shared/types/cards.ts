@@ -236,6 +236,7 @@ export interface InterviewReportPayload {
   advice: string[]
   presence?: {
     eyeContactRatio: number
+    postureStability?: number
     smileRate: number
     headStability: number
     note: string
