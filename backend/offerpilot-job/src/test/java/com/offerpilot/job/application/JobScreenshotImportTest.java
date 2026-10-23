@@ -9,6 +9,8 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import reactor.core.publisher.Flux;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import static org.assertj.core.api.Assertions.*;
@@ -31,6 +33,28 @@ class JobScreenshotImportTest {
         var image=new JobScreenshotService.Image(new byte[]{1},"image/png");
         assertThat(screenshots.transcribe("owner",List.of(image,image,image))).isEqualTo(JobImportParserTest.SOURCE.strip());
         verify(gateway).requireAvailable(ModelTier.VISION_ALT,true);
+    }
+    @Test void visionReceivesPreparedImagesInOrderWhileNormalImageBytesStayIntact() throws IOException {
+        var tallPng = ScreenshotImagePreprocessorTest.encode(new BufferedImage(32, 12000, BufferedImage.TYPE_INT_RGB), "png");
+        var normal = ScreenshotImagePreprocessorTest.encode(new BufferedImage(64, 80, BufferedImage.TYPE_INT_RGB), "jpg");
+        var tallJpeg = ScreenshotImagePreprocessorTest.encode(new BufferedImage(48, 14000, BufferedImage.TYPE_INT_RGB), "jpg");
+        when(gateway.stream(eq(ModelTier.VISION_ALT), anyList(), eq(0.0))).thenAnswer(call -> {
+            List<org.springframework.ai.chat.messages.Message> messages = call.getArgument(1);
+            var media = ((UserMessage) messages.get(1)).getMedia();
+            assertThat(media).hasSize(3);
+            assertThat(media.get(0).getMimeType().toString()).isEqualTo("image/png");
+            assertThat(media.get(1).getMimeType().toString()).isEqualTo("image/jpeg");
+            assertThat(media.get(1).getDataAsByteArray()).containsExactly(normal.bytes());
+            assertThat(media.get(2).getMimeType().toString()).isEqualTo("image/png");
+            for (int index : List.of(0, 2)) {
+                var image = ScreenshotImagePreprocessorTest.decode(new JobScreenshotService.Image(media.get(index).getDataAsByteArray(), "image/png"));
+                assertThat(image.getHeight()).isEqualTo(2400);
+                assertThat(image.getWidth()).isEqualTo(index == 0 ? 32 : 48);
+            }
+            return response(JobImportParserTest.SOURCE);
+        });
+
+        assertThat(screenshots.transcribe("owner", List.of(tallPng, normal, tallJpeg))).isEqualTo(JobImportParserTest.SOURCE.strip());
     }
     @Test void unavailableUnsupportedEmptyAndOversizedTranscriptsNeverFallBack() {
         doThrow(new BusinessException(ErrorCode.MODEL_NOT_CONFIGURED)).when(gateway).requireAvailable(ModelTier.VISION_ALT,true);
