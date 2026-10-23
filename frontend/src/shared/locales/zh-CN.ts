@@ -776,6 +776,17 @@ export default {
   Logic: '逻辑',
   'Job relevance': '岗位关联',
   'Question feedback': '本题反馈',
+  'Interview score radar': '面试评分雷达',
+  'Score radar values': '评分雷达数值表',
+  'Score (0–100)': '分数（0–100）',
+  'Interview score radar with four dimensions. Full values appear in the table below.':
+    '面试四维评分雷达，完整数值见下方表格。',
+  'Some dimension scores are unavailable. Only valid scores are shown.':
+    '部分维度评分不可用，仅展示有效分数。',
+  'No scored dimensions yet. The radar will appear when scores are available.':
+    '暂无已评分维度，有评分后将展示雷达图。',
+  'Scores range from 0 to 100. Unscored dimensions remain gaps in the radar.':
+    '评分范围为 0–100，未评分维度在雷达图中留空。',
   'Not scored': '未评分',
   'Question feedback · {0}': '本题反馈 · {0}',
   'Improved answer (original facts only)': '改进答案（仅使用原文事实）',

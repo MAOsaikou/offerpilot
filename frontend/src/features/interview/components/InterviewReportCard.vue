@@ -4,14 +4,15 @@ import { translate as uiText } from '@/shared/utils/language'
 import { computed } from 'vue'
 import PresenceGauges from './PresenceGauges.vue'
 import InterviewFeedback from './InterviewFeedback.vue'
+import InterviewScoreRadar from './InterviewScoreRadar.vue'
 import { RouterLink } from 'vue-router'
 import { asPayload } from '@/shared/utils/payload'
 import type { InterviewReportPayload } from '@/shared/types/cards'
 
 const props = defineProps<{ payload: unknown; inline?: boolean }>()
 const data = computed(() => asPayload<InterviewReportPayload>(props.payload, 'dimensions'))
-const dimensions = computed(
-  () =>
+const dimensions = computed(() =>
+  (
     [
       {
         key: 'professional',
@@ -33,7 +34,17 @@ const dimensions = computed(
         label: uiText('Job matching'),
         reason: uiText('Responsibility, action, results and relevance to the role'),
       },
-    ] as const,
+    ] as const
+  ).map((dimension) => {
+    const value = data.value?.dimensions?.[dimension.key]
+    return {
+      ...dimension,
+      score:
+        typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
+          ? value
+          : null,
+    }
+  }),
 )
 const starParts = computed(
   () =>
@@ -72,16 +83,17 @@ const sections = computed(
         uiText('Open interview review')
       }}</RouterLink>
     </header>
+    <InterviewScoreRadar :dimensions="data.dimensions" />
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <div v-for="dimension in dimensions" :key="dimension.key">
         <div class="flex justify-between gap-2">
           <span>{{ dimension.label }}</span
-          ><span>{{ data.dimensions[dimension.key] ?? uiText('Not scored') }} / 100</span>
+          ><span>{{ dimension.score ?? uiText('Not scored') }} / 100</span>
         </div>
         <progress
-          v-if="data.dimensions[dimension.key] !== null"
+          v-if="dimension.score !== null"
           class="mt-1 h-2 w-full accent-primary"
-          :value="data.dimensions[dimension.key] ?? undefined"
+          :value="dimension.score ?? undefined"
           max="100"
           :aria-label="dimension.label"
         />
