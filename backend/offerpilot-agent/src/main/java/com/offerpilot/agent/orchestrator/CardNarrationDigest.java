@@ -145,6 +145,18 @@ final class CardNarrationDigest {
                         items.add(fields(item, "title", "role", "starCount", "excerpt"));
                     }
                 }
+                case "resume_diagnosis" -> {
+                    row.set("summary", payload.path("summary"));
+                    row.set("limitations", payload.path("limitations"));
+                    var findings = row.putArray("findings");
+                    for (var finding : payload.path("findings")) {
+                        var view = JSON.createObjectNode().put("ordinal", findings.size() + 1);
+                        // Preserve the report order, stable IDs, full suggestions and verbatim evidence.
+                        for (String field : List.of("findingId", "ruleId", "kind", "priority", "reason", "suggestion", "questions", "evidence"))
+                            if (finding.has(field)) view.set(field, finding.get(field));
+                        findings.add(view);
+                    }
+                }
                 case "star_story" -> row.set("story", fields(payload, "title", "role", "body", "starCount", "situation", "task", "action", "result"));
                 case "career_recommendation" -> {
                     row.set("hollandCode", payload.path("hollandCode"));
@@ -183,7 +195,7 @@ final class CardNarrationDigest {
             case "interview_report" -> "面试卡为文字规则评分，可概括具名维度和STAR反馈，不推测端侧表现，评分不等于标记完成。";
             case "career_recommendation" -> "职业推荐数量与顺序沿摘要的完整列表及rank，新推荐及约束重排按实际rankingScore降序，目标/专业/自述技能与RIASEC按理由中的career-fit-v1公式计算基础分，约束重排再加研究/已知薪资调整；similarity仍仅表示兴趣，均非能力或录用概率；缺rankingScore的旧卡保持其原顺序，不重算；推荐仅供探索，推荐不等于已设为目标；仅设置目标工具成功才能声称修改。";
             case "skill_gap", "roadmap" -> "成长卡为确定性证据参考。本轮target与evidenceAvailability是当前目标及报告可用状态，优先于历史对话和记忆中的旧目标、缺报告提示。matchAvailable=true表示本轮已读取目标/所选岗位的匹配报告，interviewAvailable=true表示已读取完成面试；不得再声称对应报告缺失，不推断其它未查询岗位的报告是否存在。仅对应字段明确为false时保留去匹配/去模拟面试提示；旧卡片无字段时沿本轮summary说明，不从历史补造缺失状态。只引用实际来源的标签和摘录，面试仅按真实关联说明岗位。四周沿卡片主题、差距和任务说明，不新增或重排。卡片未写入任务，无证据不等于没有能力。";
-            case "resume_diagnosis" -> "简历诊断不预测录用，不表示修改了简历。";
+            case "resume_diagnosis" -> "已读取绑定版本的已有诊断报告；按findings原始顺序与ordinal理解「第一条/第二条」，按priority理解「高优先级那条」，结合findingId、ruleId、suggestion及evidence原文引用回答「这条」等追问。不要按优先级重排后再解释序号；指代仍不唯一时再追问。不得声称看不到已提供的报告，不重新诊断或编造经历。简历诊断不预测录用，不表示修改了简历。";
             case "resume_diff" -> "改写卡只表示建议已保存，只读动作未执行采纳；用户需逐条核对、选择并批准，仅采纳工具成功才说明生成新版本。";
             case "job_card" -> "搜索只描述本次返回岗位，保留空结果、部分失败、降级和截断限制。source=LOCAL_SNAPSHOT 时明确是人工整理的离线示例、非实时数据，不能声称是官网当前在招岗位。";
             default -> "";
