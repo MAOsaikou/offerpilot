@@ -159,7 +159,10 @@ public class IntentPlanner {
         }
         if ((mode == null || mode == AgentMode.AUTO || mode == AgentMode.RESUME)
                 && ("applyPatches".equals(safeContext.get("resumeAction"))
-                    || safeContext.containsKey("diagnosisReportId") || safeContext.containsKey("optimizationReportId"))) {
+                    || safeContext.containsKey("diagnosisReportId")
+                    || (safeContext.containsKey("optimizationReportId") && !safeContext.containsKey("jobId")))) {
+            // Bound diagnosis always forces RESUME. Bound optimization does too, unless jobId is
+            // also present (job search AUTO may carry a stale optimizationReportId).
             return resolveActions(new Decision("single", ExpertType.RESUME, 1.0, false, null,
                     single(content, ExpertType.RESUME, safeContext)), content, history, tier, onUsage, safeContext);
         }
