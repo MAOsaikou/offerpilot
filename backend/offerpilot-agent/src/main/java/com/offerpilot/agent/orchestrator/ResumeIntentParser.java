@@ -79,6 +79,13 @@ public class ResumeIntentParser {
                 "请说明要诊断、按岗位生成改写，还是讨论已有建议；从岗位或简历页选择保存版本后继续。")));
     }
     private PlanStep normalize(PlanStep step, Intent intent, Map<String,Object> context) {
+        // Bound reports are authoritative even when the model calls a vague follow-up advice/clarify.
+        // Only an explicit optimization request may generate new suggestions instead of discussing them.
+        if (hasVersion(context) && Set.of("diagnose", "discuss", "advice", "clarify").contains(intent.action())) {
+            if (selected(context, "diagnosisReportId")) return action(step, "读取已有诊断报告", "diagnose");
+            if (selected(context, "optimizationReportId") && !"diagnose".equals(intent.action()))
+                return action(step, "读取已有改写建议", "read_optimization");
+        }
         return switch (intent.action()) {
             case "optimize" -> optimize(step, context);
             case "diagnose" -> hasVersion(context) ? action(step, "诊断已保存简历", "diagnose")

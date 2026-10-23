@@ -66,7 +66,7 @@ public class ExpertRegistry {
     public boolean persistingAnalysis(PlanStep step,Map<String,Object> context) {
         return matching(step,context) && matches!=null
                 || diagnosing(step,context) && !context.containsKey("diagnosisReportId")
-                || optimizing(step,context) && !"read_optimization".equals(step.inputs().get("action"));
+                || optimizing(step,context) && "optimize".equals(step.inputs().get("action"));
     }
     public ApprovalService.Ticket requestAnalysis(String owner,String runId,PlanStep step,Map<String,Object> context) {
         if(analysisApprovals==null) throw new BusinessException(ErrorCode.TOOL_FAILED,"分析保存审批暂不可用，未执行");
@@ -313,8 +313,8 @@ public class ExpertRegistry {
     public boolean optimizing(PlanStep step, Map<String,Object> context) {
         if (optimizations == null || step.agent() != ExpertType.RESUME || context == null
                 || text(context.get("resumeId")) == null || text(context.get("resumeVersionId")) == null) return false;
-        return "read_optimization".equals(step.inputs().get("action"))
-                ? text(context.get("optimizationReportId")) != null
+        return "read_optimization".equals(step.inputs().get("action")) || "advice".equals(step.inputs().get("action"))
+                ? text(context.get("diagnosisReportId")) == null && text(context.get("optimizationReportId")) != null
                 : "optimize".equals(step.inputs().get("action")) && descriptions != null && text(context.get("jobId")) != null;
     }
 
@@ -341,7 +341,9 @@ public class ExpertRegistry {
 
     public boolean diagnosing(PlanStep step, Map<String,Object> context) {
         return diagnoses != null && step.agent() == ExpertType.RESUME && context != null
-            && !writingPatches(step) && !"optimize".equals(step.inputs().get("action")) && !"read_optimization".equals(step.inputs().get("action")) && !"advice".equals(step.inputs().get("action"))
+            && !writingPatches(step) && !"optimize".equals(step.inputs().get("action"))
+            && (text(context.get("diagnosisReportId")) != null
+                || !"read_optimization".equals(step.inputs().get("action")) && !"advice".equals(step.inputs().get("action")))
             && text(context.get("resumeId")) != null && text(context.get("resumeVersionId")) != null;
     }
 
@@ -481,7 +483,7 @@ public class ExpertRegistry {
         }
         if (optimizing(step, context)) {
             String resumeId = text(context.get("resumeId")), versionId = text(context.get("resumeVersionId"));
-            Mono<com.fasterxml.jackson.databind.JsonNode> result = "read_optimization".equals(step.inputs().get("action"))
+            Mono<com.fasterxml.jackson.databind.JsonNode> result = !"optimize".equals(step.inputs().get("action"))
                     ? optimizations.report(owner, resumeId, versionId, text(context.get("optimizationReportId")))
                     : com.offerpilot.llm.UsageJournal.callable(() -> descriptions.description(owner, text(context.get("jobId"))))
                         .subscribeOn(Schedulers.boundedElastic()).flatMap(jd -> optimizations.generate(owner, resumeId, versionId, jd,
@@ -489,7 +491,7 @@ public class ExpertRegistry {
             return result.map(report -> ExpertResult.card("已保存的改写建议（本轮未执行采纳，采纳状态请在简历页查看）：" + jsonSummary(report),
                     report.path("reportId").asText(), "resume_diff", report));
         }
-        if ("advice".equals(step.inputs().get("action")) && step.agent() == ExpertType.RESUME)
+        if ("advice".equals(step.inputs().get("action")) && step.agent() == ExpertType.RESUME && !diagnosing(step, context))
             return Mono.just(ExpertResult.text("本轮仅提供简历文字指导；没有生成报告或修改简历。采纳须进入定向改写页逐条确认并保存。"));
         if (diagnosing(step, context)) {
             return diagnoses.execute(owner,text(context.get("resumeId")),text(context.get("resumeVersionId")),

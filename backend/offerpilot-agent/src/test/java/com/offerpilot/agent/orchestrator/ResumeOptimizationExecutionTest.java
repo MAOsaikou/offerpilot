@@ -96,9 +96,10 @@ class ResumeOptimizationExecutionTest {
         verify(optimizations).report("owner", "res_1", "ver_1", "opt_1");
         verify(optimizations, never()).generate(any(), any(), any(), any(), any(), any());
         action.set("advice");
-        assertThat(run(orchestrator, AgentMode.RESUME, context).collectList().block()).noneMatch(AgentEvent.UiCard.class::isInstance);
+        assertThat(run(orchestrator, AgentMode.RESUME, context).collectList().block()).anyMatch(AgentEvent.UiCard.class::isInstance);
+        verify(optimizations, times(2)).report("owner", "res_1", "ver_1", "opt_1");
         assertThat(reply.get(reply.size()-2)).isInstanceOfSatisfying(SystemMessage.class,
-                message -> assertThat(message.getText()).contains("只提供简历文字指导"));
+                message -> assertThat(message.getText()).contains("只读动作未执行采纳"));
         verifyNoInteractions(descriptions, diagnoses, matches, searches);
     }
     @Test void failuresAreSanitizedAndCancellationPropagatesToRewrite() throws Exception {
