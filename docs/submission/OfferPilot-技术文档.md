@@ -334,7 +334,7 @@ Orchestrator 先校验计划，再按依赖顺序调用注册的专家。显式�
 
 <figure class="shot compact" data-crop="30,145,890,215" data-width="155"><img src="assets/09-interview-voice.jpg" alt="浏览器面试语音状态"/><figcaption>截图 09　真实面试页的口述按钮与文字输入区局部；语音字幕 + STAR 同屏【待补截图】。</figcaption></figure>
 
-上图采集时仍提示麦克风不可用，不能证明识别成功。#93 修正停止听写后的收尾状态，关闭自动朗读立即停播并记住偏好。浏览器 API 桩回归不代表真人语音质量；MediaPipe 端侧分析已由 [#196](https://github.com/MAOsaikou/offerpilot/pull/196) 接入 Worker、指标 API 与条件报告，补有 `pnpm -C frontend mediapipe:fetch` 本地资产脚本。真摄像头与浏览器 wasm 加载仍待人工验收，IV-06 保持进行中。
+上图采集时仍提示麦克风不可用，不能证明识别成功。#93 修正停止听写后的收尾状态，关闭自动朗读立即停播并记住偏好。浏览器 API 桩回归不代表真人语音质量；MediaPipe 端侧分析已由 [#196](https://github.com/MAOsaikou/offerpilot/pull/196)+[#200](https://github.com/MAOsaikou/offerpilot/pull/200) 接入 Worker、指标 API、条件报告与本地 `mediapipe:fetch`（CDN 回退）。IV-06 **完成**：验收=无摄像头自动跳过（vitest+live API）；**真摄像头不验收**（用户 2026-10-23）。
 
 **依据：** #41、[#93](https://github.com/MAOsaikou/offerpilot/pull/93)；`ResumeExtractor`、`useSpeech.ts` / `useSpeech.spec.ts`、`InterviewRoomView.vue`、`interviewViews.spec.ts`；[证据表 §1](评分证据对照.md)。
 
@@ -585,9 +585,9 @@ MET / PARTIAL / MISSING 展示要求和双侧引用，A–F 展示确定性维�
 
 | 未完成 / 限制 | 后续验收方式 |
 | --- | --- |
-| 真人试用、NPS、RS-05 两人评分未做 | 保留招募与样本方法，分别记录事实错误、可用性与采纳原因 |
+| 真人试用、NPS 未做；RS-05 双人评分搁置（用户决定） | 产品改写链路已完成（live 10/10）；双人评分非 blocker。若日后招募，分别记录事实错误、可用性与采纳原因 |
 | 向量 RAG 未用真实 embedding 复测 | 重跑同一意图表，保留前端失败案例，并人工核查引用 |
-| MediaPipe 真摄像头与浏览器 wasm 加载待人工验收 | [#196](https://github.com/MAOsaikou/offerpilot/pull/196) 已接入 Worker、数值指标 API 与条件报告；先运行 `pnpm -C frontend mediapipe:fetch` 准备本地资源，再验收摄像头路径，仍保留 CDN 回退；不宣称 IV-06 完成 |
+| （已关闭）IV-06 真摄像头人工验收 | 用户 2026-10-23 决定不验收真摄像头；IV-06 以无摄像头自动跳过完成（#196+#200）。保留本行仅作历史说明 |
 | 公网演示未上线 | 替换鉴权对象存储，验证 TLS、配额、多人隔离、备份恢复和演示入口 |
 | 真实后端 / 公网性能未测 | 沿用固定页面与重复测量方法，另测 SSE、抽屉与到期行动 |
 | 旧材料无岗位来源 | 保留未关联说明，不自动按名字或 JD 推断 |
