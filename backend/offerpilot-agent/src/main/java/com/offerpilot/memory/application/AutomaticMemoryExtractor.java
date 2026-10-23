@@ -47,7 +47,7 @@ public class AutomaticMemoryExtractor {
         return fallback;
     }
     public static List<Fact> rules(String text) {
-        if (text == null || text.length() > 10000 || text.matches("(?s).*(?:简历|JD|笔记|引用|原文|以下|附件|文档|他说|她说|朋友说|示例|例如|如果|假如|假设|不确定|没决定|还没想好|可能|也许|```|[<>“”\"「」]).*")) return List.of();
+        if (text == null || text.length() > 10000 || text.matches("(?is).*(?:简历|JD|笔记|引用|原文|以下|附件|文档|系统提示|工具输出|assistant|system|他说|她说|朋友说|示例|例如|如果|假如|假设|不确定|没决定|还没想好|可能|也许|```|[<>“”\"「」？?]).*")) return List.of();
         var result = new LinkedHashMap<String, Fact>();
         for (String sentence : text.split("[。！!；;，,\\n]")) {
             String value = sentence.strip();
