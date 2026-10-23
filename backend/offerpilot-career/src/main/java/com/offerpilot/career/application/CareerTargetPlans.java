@@ -47,21 +47,25 @@ public class CareerTargetPlans {
             AND (status='PENDING' OR (status='RUNNING' AND updated_at<now()-interval '10 minutes'))
             """,owner,draft.revision());
         if(claimed==0) return;
-        var result=json.createObjectNode(); var failures=new ArrayList<String>();
+        var result=json.createObjectNode(); var messages=new ArrayList<String>(); boolean failed=false;
         try {
             var found=jobs.search(owner,draft.target(),draft.city());result.set("jobs",found);
-            if(found.path("meta").path("partial").asBoolean()) failures.add("岗位搜索仅返回部分结果，可重试。");
+            if(found.path("meta").path("partial").asBoolean()) {
+                messages.add("岗位搜索仅返回部分结果，可重试。");
+                // 有可用岗位时仅提示降级，空结果且来源失败仍按失败处理。
+                if(found.path("items").isEmpty()) failed=true;
+            }
         }
-        catch(RuntimeException ex) { failures.add("岗位搜索未完成，可重试或到岗位页搜索。"); }
+        catch(RuntimeException ex) { failed=true;messages.add("岗位搜索未完成，可重试或到岗位页搜索。"); }
         try { result.set("skillGap",json.valueToTree(gaps.analyze(owner,null,null,null,null))); }
-        catch(BusinessException ex) { failures.add("技能差距未生成，请在成长页选择目录职业后重试。"); }
+        catch(BusinessException ex) { failed=true;messages.add("技能差距未生成，请在成长页选择目录职业后重试。"); }
         try { result.set("learning",json.valueToTree(coach.plan(owner,null,null,draft.revision()))); }
-        catch(BusinessException ex) { failures.add("学习建议未生成，可到成长教练继续。"); }
-        String notice=String.join(" ",failures);
+        catch(BusinessException ex) { failed=true;messages.add("学习建议未生成，可到成长教练继续。"); }
+        String notice=String.join(" ",messages); String planStatus=failed?"FAILED":"SUGGESTED";
         tx.executeWithoutResult(status->{
             if(jdbc.queryForList("SELECT id FROM users WHERE id=? AND status='ACTIVE' FOR UPDATE",String.class,owner).isEmpty()) return;
             int saved=jdbc.update("UPDATE career_target_plans SET status=?,result=?::jsonb,notice=?,updated_at=now() WHERE user_id=? AND revision=? AND status='RUNNING'",
-                failures.isEmpty()?"SUGGESTED":"FAILED",result.toString(),notice,owner,draft.revision());
+                planStatus,result.toString(),notice,owner,draft.revision());
             if(saved==1) notices.send(owner,"CAREER_TARGET","target:"+draft.revision(),"目标职业的下一步已准备好",
                 "已按「"+draft.target()+"」尝试搜索岗位并分析技能与学习路线，请查看并确认。"+notice,"/career");
         });
