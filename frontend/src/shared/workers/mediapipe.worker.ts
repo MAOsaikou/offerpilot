@@ -1,16 +1,11 @@
-import type * as Vision from '@mediapipe/tasks-vision'
-import type { PresenceValues } from '../types/presence'
-
-// Type-only imports leave a classic script, so the SDK's wasm importScripts loader works.
+// Keep runtime imports dynamic: Vite dev serves this as a classic Worker for importScripts.
 const scope = globalThis as unknown as {
   location: Location
   postMessage(data: unknown): void
   onmessage: (event: MessageEvent) => void
 }
-const sdkVersion = '0.10.32'
-const cdn = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${sdkVersion}`
-let face: Vision.FaceLandmarker | undefined
-let pose: Vision.PoseLandmarker | undefined
+let face: import('@mediapipe/tasks-vision').FaceLandmarker | undefined
+let pose: import('@mediapipe/tasks-vision').PoseLandmarker | undefined
 let previousHead: number[] | undefined
 let previousShoulders: number[] | undefined
 const clamp = (n: number) => Math.min(1, Math.max(0, n))
@@ -21,48 +16,15 @@ function stability(current: number[], previous: number[] | undefined) {
   return clamp(1 - Math.sqrt(displacement) * 12)
 }
 async function initialize(assetsUrl?: string) {
-  const custom = assetsUrl
-    ? new URL(assetsUrl.replace(/\/$/, '') + '/', scope.location.origin).href.replace(/\/$/, '')
-    : undefined
-  for (const base of custom ? [custom, cdn] : [cdn]) {
-    try {
-      const sdk: typeof Vision = await import(/* @vite-ignore */ `${base}/vision_bundle.mjs`)
-      const { FilesetResolver, FaceLandmarker, PoseLandmarker } = sdk
-      const wasm = await FilesetResolver.forVisionTasks(`${base}/wasm`)
-      const models = base === cdn ? 'https://storage.googleapis.com/mediapipe-models' : base
-      face = await FaceLandmarker.createFromOptions(wasm, {
-        baseOptions: {
-          modelAssetPath:
-            base === cdn
-              ? `${models}/face_landmarker/face_landmarker/float16/1/face_landmarker.task`
-              : `${base}/face_landmarker.task`,
-          delegate: 'CPU',
-        },
-        runningMode: 'VIDEO',
-        numFaces: 1,
-        outputFaceBlendshapes: true,
-      })
-      pose = await PoseLandmarker.createFromOptions(wasm, {
-        baseOptions: {
-          modelAssetPath:
-            base === cdn
-              ? `${models}/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`
-              : `${base}/pose_landmarker_lite.task`,
-          delegate: 'CPU',
-        },
-        runningMode: 'VIDEO',
-        numPoses: 1,
-      })
-      return
-    } catch {
-      face?.close()
-      pose?.close()
-      face = pose = undefined
-    }
-  }
-  throw new Error('MediaPipe assets unavailable')
+  const { initializeMediaPipe } = await import('./mediapipeAssets')
+  const initialized = await initializeMediaPipe(assetsUrl, scope.location.origin)
+  face = initialized.face
+  pose = initialized.pose
 }
-function analyze(bitmap: ImageBitmap, timestamp: number): PresenceValues | null {
+function analyze(
+  bitmap: ImageBitmap,
+  timestamp: number,
+): import('../types/presence').PresenceValues | null {
   const detected = face!.detectForVideo(bitmap, timestamp)
   const body = pose!.detectForVideo(bitmap, timestamp)
   const points = detected.faceLandmarks[0]
@@ -121,7 +83,10 @@ scope.onmessage = async ({ data }) => {
         data.bitmap.close()
       }
     }
-  } catch {
-    scope.postMessage({ type: 'error' })
+  } catch (error) {
+    scope.postMessage({
+      type: 'error',
+      message: error instanceof Error ? error.message : 'MediaPipe analysis failed',
+    })
   }
 }

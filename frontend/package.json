@@ -18,6 +18,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,vue,css}\"",
     "test": "vitest",
     "test:full": "vitest --mode full",
+    "mediapipe:fetch": "node scripts/fetch-mediapipe-assets.mjs",
     "gen:api": "openapi-typescript http://localhost:8081/v3/api-docs -o src/shared/api/schema.d.ts"
   },
   "dependencies": {

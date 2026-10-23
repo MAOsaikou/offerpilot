@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated MediaPipe SDK / wasm / models; keep setup instructions only
+/public/mediapipe/**
+!/public/mediapipe/README.md
