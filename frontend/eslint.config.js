@@ -17,6 +17,8 @@ export default [
       '**/node_modules/**',
       // msw init 生成的 Service Worker，属于第三方产物
       'public/mockServiceWorker.js',
+      // mediapipe:fetch 复制/下载的第三方 SDK 与 wasm loader
+      'public/mediapipe/**',
       // openapi-typescript 生成的类型，禁止手改
       'src/shared/api/schema.d.ts',
     ],
@@ -25,6 +27,11 @@ export default [
   ...pluginVue.configs['flat/recommended'],
   ...vueTsEslintConfig(),
   skipFormatting,
+  {
+    name: 'app/node-scripts',
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+  },
   {
     name: 'app/rules',
     languageOptions: {
