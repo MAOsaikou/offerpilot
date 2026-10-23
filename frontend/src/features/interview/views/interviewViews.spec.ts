@@ -42,6 +42,7 @@ vi.mock('@/shared/api/generationTasks', async (original) => ({
 vi.mock('@/shared/api/jobs', () => ({ getJob: vi.fn() }))
 vi.mock('@/shared/api/applications', () => ({ listApplications: vi.fn() }))
 vi.mock('@/shared/api/interviews', () => ({
+  postInterviewMetrics: vi.fn(),
   createInterview: vi.fn(),
   generateInterviewQuestions: vi.fn(),
   scoreInterviewAnswer: vi.fn(),

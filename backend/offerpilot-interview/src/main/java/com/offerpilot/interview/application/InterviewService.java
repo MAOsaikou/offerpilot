@@ -260,14 +260,60 @@ public class InterviewService {
         try { return value==null ? null : json.readTree(value); }
         catch (java.io.IOException ex) { throw new IllegalStateException(ex); }
     }
+    public record MetricSample(
+            @jakarta.validation.constraints.NotNull java.time.Instant ts,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.DecimalMin("0") @jakarta.validation.constraints.DecimalMax("1") Double eyeContact,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.DecimalMin("0") @jakarta.validation.constraints.DecimalMax("1") Double smile,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.DecimalMin("0") @jakarta.validation.constraints.DecimalMax("1") Double headStability,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.DecimalMin("0") @jakarta.validation.constraints.DecimalMax("1") Double postureStability) {}
+    public record MetricWindow(String id, int samples) {}
+
+    @Transactional
+    public MetricWindow postMetrics(String owner, String id, List<MetricSample> samples) {
+        if (samples == null || samples.isEmpty() || samples.size() > 240) invalid();
+        for (var sample : samples) {
+            if (sample == null || sample.ts() == null) invalid();
+            for (Double value : new Double[]{sample.eyeContact(), sample.smile(), sample.headStability(), sample.postureStability()})
+                if (value == null || !Double.isFinite(value) || value < 0 || value > 1) invalid();
+        }
+        lock(owner, id);
+        var start = samples.stream().map(MetricSample::ts).min(java.time.Instant::compareTo).orElseThrow();
+        var end = samples.stream().map(MetricSample::ts).max(java.time.Instant::compareTo).orElseThrow();
+        String windowId = IdGenerator.next("im");
+        jdbc.update("""
+                INSERT INTO interview_metrics(id,session_id,window_start,window_end,eye_contact,smile,head_stability,posture_stability,samples)
+                VALUES (?,?,?,?,?,?,?,?,?)
+                """, windowId, id, java.sql.Timestamp.from(start), java.sql.Timestamp.from(end),
+                samples.stream().mapToDouble(MetricSample::eyeContact).average().orElseThrow(),
+                samples.stream().mapToDouble(MetricSample::smile).average().orElseThrow(),
+                samples.stream().mapToDouble(MetricSample::headStability).average().orElseThrow(),
+                samples.stream().mapToDouble(MetricSample::postureStability).average().orElseThrow(), samples.size());
+        return new MetricWindow(windowId, samples.size());
+    }
+
+    /** Overlay live numeric evidence on both legacy and stored model reports, without invalidating text scores. */
+    public InterviewRubric.Report withPresence(String owner, String id, InterviewRubric.Report report) {
+        var values = jdbc.query("""
+                SELECT sum(m.samples) AS samples,
+                       sum(m.eye_contact*m.samples)/sum(m.samples) AS eye_contact,
+                       sum(m.smile*m.samples)/sum(m.samples) AS smile,
+                       sum(m.head_stability*m.samples)/sum(m.samples) AS head_stability,
+                       sum(m.posture_stability*m.samples)/sum(m.samples) AS posture_stability
+                FROM interview_metrics m JOIN interview_sessions s ON s.id=m.session_id
+                WHERE s.id=? AND s.user_id=?
+                HAVING sum(m.samples)>0
+                """, (rs, row) -> new InterviewRubric.Presence(rs.getDouble("eye_contact"), rs.getDouble("smile"),
+                rs.getDouble("head_stability"), rs.getDouble("posture_stability"), "来自浏览器端分析，仅供参考"), id, owner);
+        return report.withPresence(values.isEmpty() ? null : values.get(0));
+    }
     public InterviewRubric.Report report(String owner,String id) {
         var session=get(owner,id);
         String stored=jdbc.queryForObject("SELECT report::text FROM interview_sessions WHERE id=? AND user_id=?",String.class,id,owner);
-        if (stored!=null) try { return json.readValue(stored,InterviewRubric.Report.class); }
+        if (stored!=null) try { return withPresence(owner,id,json.readValue(stored,InterviewRubric.Report.class)); }
             catch (java.io.IOException ex) { throw new IllegalStateException(ex); }
-        if (session.generationSource()==null) return InterviewRubric.score(session);
-        return new InterviewRubric.Report(id,null,new InterviewRubric.Dimensions(null,null,null,null),List.of(),List.of(),List.of(),List.of(),List.of(),
-                "尚未生成报告；请从后台任务生成。未评分题不产生分数。");
+        if (session.generationSource()==null) return withPresence(owner,id,InterviewRubric.score(session));
+        return withPresence(owner,id,new InterviewRubric.Report(id,null,new InterviewRubric.Dimensions(null,null,null,null),List.of(),List.of(),List.of(),List.of(),List.of(),
+                "尚未生成报告；请从后台任务生成。未评分题不产生分数。"));
     }
     private void invalid() { throw new BusinessException(ErrorCode.VALIDATION_FAILED); }
 }

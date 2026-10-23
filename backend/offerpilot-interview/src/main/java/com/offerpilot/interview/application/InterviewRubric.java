@@ -26,9 +26,22 @@ public final class InterviewRubric {
         }
     }
     public record Learning(String topic, String reason, int estimatedHours) {}
+    public record Presence(double eyeContactRatio, double smileRate, double headStability,
+                           Double postureStability, String note) {}
     public record Report(String id, Integer overall, Dimensions dimensions, List<Turn> turns, List<String> strengths,
                          List<String> weaknesses, List<String> advice, List<Learning> recommendedLearning,
-                         String note) {}
+                         String note,
+                         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                         Presence presence) {
+        public Report(String id, Integer overall, Dimensions dimensions, List<Turn> turns, List<String> strengths,
+                      List<String> weaknesses, List<String> advice, List<Learning> recommendedLearning, String note) {
+            this(id, overall, dimensions, turns, strengths, weaknesses, advice, recommendedLearning, note, null);
+        }
+        public Report withPresence(Presence value) {
+            return new Report(id, overall, dimensions, turns, strengths, weaknesses, advice, recommendedLearning,
+                    note == null ? null : note.replace("端侧表现分析未启用。", value == null ? "端侧表现分析未启用或已跳过。" : ""), value);
+        }
+    }
     /** Deliberate compact tool narration; never concatenate a Java record into a prompt. */
     public static String summary(Report report) {
         var d = report.dimensions();

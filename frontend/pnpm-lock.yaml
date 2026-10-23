@@ -112,6 +112,9 @@ importers:
       '@fontsource-variable/archivo':
         specifier: ^5.3.0
         version: 5.3.0
+      '@mediapipe/tasks-vision':
+        specifier: 0.10.32
+        version: 0.10.32
       '@tanstack/vue-query':
         specifier: ^5.102.8
         version: 5.102.8(vue@3.5.42(typescript@6.0.3))
@@ -205,6 +208,9 @@ importers:
         version: 3.3.11(typescript@6.0.3)
 
 packages:
+
+  '@mediapipe/tasks-vision@0.10.32':
+    resolution: {integrity: sha512-3tiAZnmKloYnRXYoO3dKltTUGnqeCwzC4lV03uY0vCsE+aveJTyEVQyZHOlQGQNsjK+gRHzkf9q08C99Qm2K0Q==, tarball: https://registry.npmjs.org/@mediapipe/tasks-vision/-/tasks-vision-0.10.32.tgz}
 
   '@asamuzakjp/css-color@6.0.7':
     resolution: {integrity: sha512-vC/bk1Lz7Tn/EfU9/apOTBk80/8dyGyWMowPoV1tJ52muDGsDqt2HPT2klrFUiY60MQmQv9q8yIht15JnBgDGw==}
@@ -2292,6 +2298,8 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@mediapipe/tasks-vision@0.10.32': {}
 
   '@asamuzakjp/css-color@6.0.7':
     dependencies:

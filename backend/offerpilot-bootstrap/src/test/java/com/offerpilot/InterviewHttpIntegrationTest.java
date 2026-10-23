@@ -48,6 +48,33 @@ class InterviewHttpIntegrationTest extends SharedHttpIntegrationTest {
         return data(request("POST", "", token, Map.of("role", "  Java 工程师  ", "kind", "项目与经历"))).path("id").asText();
     }
 
+    @Test
+    void numericMetricsWindowsArePrivateWeightedAndCascadeWithSession() throws Exception {
+        String token = guests.create().accessToken();
+        String id = create(token);
+        var before = data(request("GET", "/"+id+"/report", token, null));
+        assertThat(before.has("presence")).isFalse();
+        assertThat(before.path("dimensions").has("presence")).isFalse();
+        var sample = Map.of("ts", "2026-10-23T00:00:00Z", "eyeContact", .8, "smile", .2, "headStability", .9, "postureStability", .7);
+        var body = Map.of("samples", java.util.List.of(sample, sample, sample));
+        assertThat(request("POST", "/"+id+"/metrics", guests.create().accessToken(), body).statusCode()).isEqualTo(404);
+        assertThat(request("POST", "/"+id+"/metrics", null, body).statusCode()).isEqualTo(401);
+        assertThat(request("POST", "/"+id+"/metrics", token, Map.of("samples", java.util.List.of())).statusCode()).isEqualTo(400);
+        assertThat(data(request("POST", "/"+id+"/metrics", token, body)).path("samples").asInt()).isEqualTo(3);
+        data(request("POST", "/"+id+"/metrics", token, Map.of("samples", java.util.List.of(
+                Map.of("ts", "2026-10-23T00:00:01Z", "eyeContact", .4, "smile", .6, "headStability", .5, "postureStability", .3)))));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM interview_metrics WHERE session_id=?", Integer.class, id)).isEqualTo(2);
+        var report = data(request("GET", "/"+id+"/report", token, null));
+        assertThat(report.path("presence").path("eyeContactRatio").asDouble()).isCloseTo(.7, within(.0001));
+        assertThat(report.path("presence").path("smileRate").asDouble()).isCloseTo(.3, within(.0001));
+        assertThat(report.path("presence").path("note").asText()).contains("来自浏览器端分析，仅供参考");
+        // Stored model reports get the same live overlay without regenerating model scores.
+        jdbc.update("UPDATE interview_sessions SET report=?::jsonb WHERE id=?", JSON.writeValueAsString(before), id);
+        assertThat(data(request("GET", "/"+id+"/report", token, null)).path("presence")).isEqualTo(report.path("presence"));
+        jdbc.update("DELETE FROM interview_sessions WHERE id=?", id);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM interview_metrics WHERE session_id=?", Integer.class, id)).isZero();
+    }
+
     @Autowired com.offerpilot.career.application.InterviewLearningPlans learningPlans;
 
     @Test

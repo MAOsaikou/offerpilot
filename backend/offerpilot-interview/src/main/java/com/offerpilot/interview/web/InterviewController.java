@@ -7,6 +7,7 @@ import com.offerpilot.common.error.ErrorCode;
 import com.offerpilot.common.web.TraceIdFilter;
 import com.offerpilot.interview.application.InterviewRecapExporter;
 import com.offerpilot.interview.application.InterviewService;
+import com.offerpilot.interview.application.InterviewService.MetricSample;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -58,6 +59,15 @@ public class InterviewController {
                 body.difficulty() == null ? "STANDARD" : body.difficulty(), body.mode() == null ? "TEXT" : body.mode(),
                 body.durationMinutes() == null ? 30 : body.durationMinutes(), body.questionCount()==null ? 0 : body.questionCount(), body.typeMix(), body.industry(), body.feedbackMode());
         return ok(interviews.create(owner, body.role(), body.kind(), body.jobId(), options, body.questionCount()!=null || body.typeMix()!=null || body.industry()!=null || body.feedbackMode()!=null), request);
+    }
+
+    public record MetricsRequest(@NotEmpty @Size(max = 240)
+            java.util.List<@NotNull @Valid MetricSample> samples) {}
+
+    @PostMapping("/{id}/metrics")
+    public ApiResponse<?> metrics(@PathVariable String id, @Valid @RequestBody MetricsRequest body,
+                                  HttpServletRequest request) {
+        return ok(interviews.postMetrics(owner(request), id, body.samples()), request);
     }
 
     @GetMapping("/{id}/report")

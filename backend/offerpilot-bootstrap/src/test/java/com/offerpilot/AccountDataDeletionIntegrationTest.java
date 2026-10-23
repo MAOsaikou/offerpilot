@@ -57,7 +57,13 @@ class AccountDataDeletionIntegrationTest {
     @LocalServerPort int port;
     static final ObjectMapper JSON = new ObjectMapper();
     static final Set<String> DIRECT = com.offerpilot.privacy.UserDataInventory.CASCADE_TABLES;
-    static final Map<String,String> INDIRECT = Map.of("application_events","application_id IN (SELECT id FROM applications WHERE user_id=?)", "agent_steps","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "tool_calls","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "agent_events","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)", "interview_answers","session_id IN (SELECT id FROM interview_sessions WHERE user_id=?)");
+    static final Map<String,String> INDIRECT = Map.ofEntries(
+        Map.entry("application_events","application_id IN (SELECT id FROM applications WHERE user_id=?)"),
+        Map.entry("agent_steps","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)"),
+        Map.entry("tool_calls","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)"),
+        Map.entry("agent_events","run_id IN (SELECT id FROM agent_runs WHERE user_id=?)"),
+        Map.entry("interview_answers","session_id IN (SELECT id FROM interview_sessions WHERE user_id=?)"),
+        Map.entry("interview_metrics","session_id IN (SELECT id FROM interview_sessions WHERE user_id=?)"));
     HttpResponse<String> request(String path, String token, String body) throws Exception {
         var b = HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+"/api/v1"+path)).timeout(Duration.ofSeconds(30));
         if (token!=null) b.header("Authorization", "Bearer "+token);
@@ -101,6 +107,7 @@ class AccountDataDeletionIntegrationTest {
         jdbc.update("INSERT INTO interview_sessions(id,user_id,role,kind,job_id) VALUES (?,?,'开发','项目与经历',?)",o+"interview",o,o+"job");
         jdbc.update("INSERT INTO interview_learning_plans(id,user_id,report_id,roadmap,start_date) VALUES (?,?,?,'{\"weeks\":[],\"milestones\":[]}',current_date)",o+"plan",o,o+"interview");
         jdbc.update("INSERT INTO interview_answers(session_id,question_index,question_text,answer_text) VALUES (?,0,'fictional','private')",o+"interview");
+        jdbc.update("INSERT INTO interview_metrics(id,session_id,window_start,window_end,eye_contact,smile,head_stability,posture_stability,samples) VALUES (?, ?, now()-interval '30 seconds', now(), 0.8, 0.2, 0.9, 0.7, 3)", o+"metric", o+"interview");
         jdbc.update("INSERT INTO star_stories(id,user_id,title,body,role,source_session_id,source_question_index,star_count,situation,task,action,result,normalized_body,tsv) VALUES (?,?,'fixture','private STAR body','开发',?,0,4,true,true,true,true,'private star body','')",o+"star",o,o+"interview");
         jdbc.update("INSERT INTO career_profiles(user_id,skills,major,courses,values_text) VALUES (?,'private','private major','private courses','private values')",o);
         jdbc.update("INSERT INTO career_recommendation_revisions(id,user_id,snapshot) VALUES (?,?,'{}')",o+"revision",o);
@@ -129,7 +136,7 @@ class AccountDataDeletionIntegrationTest {
         var childIds = new HashMap<String,List<String>>();
         for (String table:tables) { assertThat(rows(table,a)).as(table+" seeded").isNotEmpty(); before.put(table,rows(table,b)); }
         for(String table:INDIRECT.keySet()) {
-            String column=table.equals("interview_answers")?"session_id":table.equals("agent_events")?"run_id":"id";
+            String column=table.equals("interview_answers")||table.equals("interview_metrics")?"session_id":table.equals("agent_events")?"run_id":"id";
             childIds.put(table,jdbc.queryForList("SELECT "+column+" FROM "+table+" WHERE "+INDIRECT.get(table),String.class,a));
         }
         String jwt=tokens.issue(a,List.of("USER"),"fixture");
@@ -138,7 +145,7 @@ class AccountDataDeletionIntegrationTest {
         assertThat(Duration.ofNanos(System.nanoTime()-deletionStarted)).isLessThan(Duration.ofSeconds(30));
         for (String table:tables) { assertThat(rows(table,a)).as(table+" A deleted").isEmpty(); assertThat(rows(table,b)).as(table+" B preserved").isEqualTo(before.get(table)); }
         for (String table:INDIRECT.keySet()) {
-            String column=table.equals("interview_answers")?"session_id":table.equals("agent_events")?"run_id":"id";
+            String column=table.equals("interview_answers")||table.equals("interview_metrics")?"session_id":table.equals("agent_events")?"run_id":"id";
             for(String id:childIds.get(table)) assertThat(jdbc.queryForObject("SELECT count(*) FROM "+table+" WHERE "+column+"=?",Integer.class,id)).isZero();
         }
         cleanup.retryPending();

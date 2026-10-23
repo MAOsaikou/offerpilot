@@ -100,3 +100,14 @@ export const generateInterviewReport = (id: string, signal?: AbortSignal) =>
     undefined,
     signal,
   )
+
+/** Only numeric browser estimates; never accepts video, images or landmarks. */
+export const postInterviewMetrics = (
+  id: string,
+  samples: import('@/shared/types/presence').PresenceSample[],
+) =>
+  apiRequest<{ id: string; samples: number }>(`${sessionPath(id)}/metrics`, {
+    method: 'POST',
+    body: JSON.stringify({ samples }),
+    keepalive: true,
+  })

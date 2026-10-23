@@ -2,6 +2,7 @@
 import { translate as uiText } from '@/shared/utils/language'
 
 import { computed } from 'vue'
+import PresenceGauges from './PresenceGauges.vue'
 import InterviewFeedback from './InterviewFeedback.vue'
 import { RouterLink } from 'vue-router'
 import { asPayload } from '@/shared/utils/payload'
@@ -94,6 +95,17 @@ const sections = computed(
         </p>
       </div>
     </div>
+    <PresenceGauges
+      v-if="data.presence"
+      status="running"
+      :values="{
+        eyeContact: data.presence.eyeContactRatio,
+        smile: data.presence.smileRate,
+        headStability: data.presence.headStability,
+        postureStability: data.presence.postureStability,
+      }"
+      :note="data.presence.note"
+    />
     <p v-if="!data.turns?.length" class="text-muted-foreground">
       {{ uiText('No answers yet. Complete a text interview and request scoring again.') }}
     </p>
