@@ -814,6 +814,17 @@ export default {
   Logic: 'Logic',
   'Job relevance': 'Job relevance',
   'Question feedback': 'Question feedback',
+  'Interview score radar': 'Interview score radar',
+  'Score radar values': 'Score radar values',
+  'Score (0–100)': 'Score (0–100)',
+  'Interview score radar with four dimensions. Full values appear in the table below.':
+    'Interview score radar with four dimensions. Full values appear in the table below.',
+  'Some dimension scores are unavailable. Only valid scores are shown.':
+    'Some dimension scores are unavailable. Only valid scores are shown.',
+  'No scored dimensions yet. The radar will appear when scores are available.':
+    'No scored dimensions yet. The radar will appear when scores are available.',
+  'Scores range from 0 to 100. Unscored dimensions remain gaps in the radar.':
+    'Scores range from 0 to 100. Unscored dimensions remain gaps in the radar.',
   'Not scored': 'Not scored',
   'Question feedback · {0}': 'Question feedback · {0}',
   'Improved answer (original facts only)': 'Improved answer (original facts only)',
