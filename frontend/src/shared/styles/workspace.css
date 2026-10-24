@@ -192,6 +192,15 @@ h3 {
   border-top: 1px solid var(--border);
   font-size: 14px;
 }
+.profile-link > span:not(.avatar) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.nav-link > svg,
+.profile-link > svg,
+.icon-button {
+  flex-shrink: 0;
+}
 .profile-link > svg {
   margin-left: auto;
   color: var(--muted-foreground);
@@ -275,11 +284,22 @@ h3 {
   gap: 24px;
 }
 .page-heading {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
   padding-bottom: 4px;
+}
+.page-heading > div {
+  min-width: 0;
+  max-width: 100%;
+}
+.page-heading .btn {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .page-heading h1 {
   font-size: 28px;
@@ -1125,13 +1145,15 @@ a.job-row:hover {
     display: flex;
     align-items: center;
     gap: 8px;
-    height: 56px;
-    padding: 0 8px;
+    min-height: 56px;
+    padding: 4px 8px;
     background: color-mix(in srgb, var(--background) 92%, transparent);
     backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--border);
   }
   .mobile-bar strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
     flex: 1;
     font-size: 15px;
     font-weight: 600;
@@ -1260,4 +1282,24 @@ a.job-row:hover {
   .overflow-safe .split-content {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Settings toggles keep the native checkbox size and a readable wrapped label. */
+.settings-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  font-size: 14px;
+  cursor: pointer;
+}
+.settings-toggle input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  accent-color: var(--primary);
+}
+.settings-toggle span {
+  min-width: 0;
 }

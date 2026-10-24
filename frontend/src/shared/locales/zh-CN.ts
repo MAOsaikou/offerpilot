@@ -1,4 +1,5 @@
 export default {
+  Dismiss: '关闭',
   'Staff knowledge documents': '管理知识文档',
   'Manage shared reference documents independently of private user notes.':
     '管理共享参考文档，与用户私有笔记独立存储。',

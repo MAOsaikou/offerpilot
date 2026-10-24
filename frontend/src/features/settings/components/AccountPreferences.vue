@@ -62,7 +62,11 @@ async function save() {
 }
 </script>
 <template>
-  <fieldset class="form-grid" :disabled="busy || !loaded" style="border: 0; padding: 0; margin: 0">
+  <fieldset
+    class="form-grid min-w-0"
+    :disabled="busy || !loaded"
+    style="border: 0; padding: 0; margin: 0"
+  >
     <label class="field"
       >{{ uiText('Theme')
       }}<select v-model="theme" @change="save">
@@ -85,9 +89,9 @@ async function save() {
         <option value="en-US">English</option>
       </select></label
     >
-    <label class="field"
-      ><span>{{ uiText('Mask personal data before sending to models') }}</span>
+    <label class="settings-toggle">
       <input v-model="piiMasking" type="checkbox" @change="save" />
+      <span>{{ uiText('Mask personal data before sending to models') }}</span>
     </label>
   </fieldset>
   <p class="subtle">

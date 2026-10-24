@@ -2,6 +2,7 @@ import { createApp, nextTick, h } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import MemorySettings from './MemorySettings.vue'
 import * as api from '@/shared/api/memories'
+import { setLanguage } from '@/shared/utils/language'
 import { sessionRevision } from '@/shared/utils/authSession'
 vi.mock('@/shared/api/memories', async (original) => ({
   ...(await original<typeof api>()),
@@ -54,6 +55,7 @@ beforeEach(() => {
 afterEach(() => {
   app?.unmount()
   host.remove()
+  setLanguage('zh-CN')
 })
 it('adds a manual fact, enforces Unicode length and deduplicates returned ids', async () => {
   mount()
@@ -244,4 +246,54 @@ it('disabled memory prevents candidate acceptance but still allows candidate del
   await flush()
   expect(api.deleteMemoryCandidate).toHaveBeenCalledWith('candidate')
   expect(host.querySelector('[aria-label="待确认记忆"]')).toBeNull()
+})
+
+it('updates memory kind, editor options and existing save feedback when language changes', async () => {
+  vi.mocked(api.editMemory).mockResolvedValue(memory)
+  mount()
+  await flush()
+  button('编辑').click()
+  await flush()
+  setLanguage('en-US')
+  await flush()
+  expect(host.querySelector('li')!.textContent).toContain('Target city')
+  expect(host.querySelector('select option[value="LOCATION"]')!.textContent).toContain(
+    'Target city',
+  )
+  button('Save memory').click()
+  await flush()
+  expect(host.querySelector('[role="status"]')!.textContent).toBe('Memory saved.')
+  expect(api.editMemory).toHaveBeenCalledWith('mem1', { kind: 'LOCATION', fact: memory.fact })
+  expect(host.querySelector('li')!.textContent).toContain(memory.fact)
+  setLanguage('zh-CN')
+  await flush()
+  expect(host.querySelector('[role="status"]')!.textContent).toBe('记忆已保存。')
+  expect(host.querySelector('li')!.textContent).toContain('目标城市')
+})
+
+it('allows clearing pending candidates even when no confirmed memories exist', async () => {
+  vi.mocked(api.listMemories).mockResolvedValue({ items: [], memoryEnabled: false, limit: 50 })
+  vi.mocked(api.listMemoryCandidates).mockResolvedValue([
+    {
+      id: 'candidate',
+      kind: 'GOAL',
+      fact: '目标原文',
+      confidence: 0.8,
+      extractor: 'rule',
+      sourceConversationId: 'c',
+      sourceMessageId: 'm',
+    },
+  ])
+  vi.mocked(api.clearMemories).mockResolvedValue(null)
+  mount()
+  await flush()
+  expect(button('清空全部记忆').disabled).toBe(false)
+  button('清空全部记忆').click()
+  await flush()
+  expect(api.clearMemories).not.toHaveBeenCalled()
+  button('确认删除').click()
+  await flush()
+  expect(api.clearMemories).toHaveBeenCalledTimes(1)
+  expect(host.querySelector('[aria-label="待确认记忆"]')).toBeNull()
+  expect(button('清空全部记忆').disabled).toBe(true)
 })

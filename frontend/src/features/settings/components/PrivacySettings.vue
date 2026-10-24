@@ -39,9 +39,11 @@ onMounted(load)
 </script>
 <template>
   <div class="form-stack">
-    <label
+    <label class="settings-toggle"
       ><input type="checkbox" :checked="enabled" :disabled="busy || !loaded" @change="save" />
-      {{ uiText('Mask personal data before sending to models (on by default)') }}</label
+      <span>{{
+        uiText('Mask personal data before sending to models (on by default)')
+      }}</span></label
     >
     <p class="subtle">
       {{
@@ -58,7 +60,7 @@ onMounted(load)
       }}
     </p>
     <p v-if="busy" role="status">{{ uiText('Syncing privacy settings…') }}</p>
-    <p v-if="status" role="status">{{ status }}</p>
+    <p v-if="status" class="success-banner" role="status">{{ status }}</p>
     <p v-if="error" role="alert" class="error-banner">
       {{ error }} <button v-if="!loaded" class="btn" @click="load">{{ uiText('Retry') }}</button>
     </p>
