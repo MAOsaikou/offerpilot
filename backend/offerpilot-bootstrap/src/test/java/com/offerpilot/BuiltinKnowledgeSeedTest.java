@@ -35,6 +35,32 @@ class BuiltinKnowledgeSeedTest {
         }
         assertThat(ids).hasSize(402);assertThat(codes).hasSize(378);
     }
+    @Test void jobZonePreparationCoversDirectSeedsWithoutReplacingCuratedPathsOrInventingSalary() throws Exception {
+        var direct=seed("occupations-onet").path("occupations");
+        int covered=0;
+        var byCode=new HashMap<String,JsonNode>();
+        for(var e:direct) {
+            byCode.put(e.path("onetCode").asText(),e);
+            assertThat(e.path("salaryRange").isNull()).isTrue();
+            if(!"onet-job-zone".equals(e.path("growthPathSource").asText())) continue;
+            String path=e.path("growthPath").asText();
+            assertThat(path).isNotBlank().hasSizeLessThanOrEqualTo(120)
+                    .startsWith("职业准备（Job Zone ").contains("经验","培训");
+            covered++;
+        }
+        assertThat(covered).isGreaterThanOrEqualTo((int)Math.ceil(direct.size()*0.95));
+        // Independent official examples catch a reversed Zone 4/5 mapping.
+        assertThat(byCode.get("11-1011.00").path("growthPath").asText()).contains("Job Zone 5","研究生","五年以上");
+        assertThat(byCode.get("11-1021.00").path("growthPath").asText()).contains("Job Zone 4","本科","数年");
+        assertThat(byCode.get("15-1252.00").path("growthPath").asText()).contains("Job Zone 4");
+        var curated=seed("occupations").path("occupations");
+        assertThat(curated.size()).isEqualTo(24);
+        for(var e:curated) {
+            assertThat(e.path("growthPathSource").asText()).isEqualTo("curated");
+            assertThat(e.path("growthPath").asText()).isNotBlank();
+            assertThat(e.path("salaryRange").isNull()).isTrue();
+        }
+    }
     @Test void realQuestionSeedExceeds500AndCoversAllTypesDifficultiesAndNonTechnicalRoles() throws Exception {
         var entries=seed("builtin-knowledge").path("entries");
         var ids=new HashSet<String>();var texts=new HashSet<String>();var types=new HashSet<String>();var levels=new HashSet<String>();var roles=new HashSet<String>();var counts=new HashMap<String,Integer>();
@@ -66,6 +92,13 @@ class BuiltinKnowledgeSeedTest {
             String sql=call.getArgument(0);
             Object[] args=java.util.Arrays.copyOfRange(call.getArguments(),1,call.getArguments().length);
             assertThat(sql.chars().filter(c -> c=='?').count()).isEqualTo(args.length);
+            if(sql.contains("INSERT INTO occupations(")) {
+                assertThat(args[9]).as("growth_path binding").isInstanceOf(String.class);
+                assertThat((String)args[9]).isNotBlank();
+                assertThat(args[10]).as("salary_range SQL NULL binding").isNull();
+                assertThat(args[21]).as("growth_path_source binding")
+                        .isEqualTo(args[0].toString().startsWith("occ_onet_") ? "onet-job-zone" : "curated");
+            }
             return 1;
         });
         new OccupationSeeder(jdbc,json,new Resource[]{new ClassPathResource("seed/occupations.json"),new ClassPathResource("seed/occupations-onet.json")}).run(new DefaultApplicationArguments());

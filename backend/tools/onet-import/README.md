@@ -53,6 +53,23 @@ node translate.mjs candidates.json translated.json
 把 `translated.json` 转成 `occupations-onet.json`：字段名对齐 `docs/06` 的表结构，
 补上 `_meta`（数据来源、筛选条件、归一化方式），**每条职业一行**（便于 diff）。
 
+### 4. 补齐 Job Zone 职业准备路径（无需模型或 API Key）
+
+使用同版本 **O*NET 31.0** 的两张官方表，避免混用后续版本：
+
+```bash
+mkdir -p /tmp/onet-csv
+curl -fsSL https://www.onetcenter.org/dl_files/database/db_31_0_csv/job_zones.csv -o /tmp/onet-csv/job_zones.csv
+curl -fsSL https://www.onetcenter.org/dl_files/database/db_31_0_csv/job_zone_reference.csv -o /tmp/onet-csv/job_zone_reference.csv
+node backend/tools/onet-import/fill-growth-path.mjs /tmp/onet-csv
+node backend/tools/onet-import/fill-growth-path.mjs /tmp/onet-csv --check
+node --test backend/tools/onet-import/fill-growth-path.test.mjs
+```
+
+`job_zones.csv` 按 O*NET-SOC 编码关联到种子；`job_zone_reference.csv` 的 Education / Experience / Job Training 三栏按 Zone 4/5 人工翻译压缩为两段固定中文摘要（≤120字）。同分区使用相同准备要求，**不是职业晋升路线、个人必备资格或中国准入标准**；保留原文“多数/通常/可能/部分例外”等限定。当前378条全部匹配：Zone 4 为226条，Zone 5 为152条。来源标记 `growthPathSource=onet-job-zone`；归属 National Center for O*NET Development / USDOL/ETA，使用 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)，中文为本项目翻译/改编，非官方认可。
+
+脚本校验两份原始下载文件的 SHA-256（固定在源码；换版本须复核映射及译文），仅填空路径并保留其他字段。编码缺失/不支持的分区直接报错且不写文件；已有生成路径与分区不符也报错。默认只处理 `occupations-onet.json`，不读取或改写24条中文映射；可用第二个位置参数指定同样逐条一行的种子文件。非空的 curated 路径不会被覆盖。`--check` 校验无需重写，重复运行字节不变。薪资不参与导入，原有 `salaryRange=null` 保留。
+
 ## 重新导入
 
 改完种子文件后需要重新构建，因为种子文件是打进 jar 的：
@@ -74,4 +91,4 @@ mvn -q -B -pl offerpilot-bootstrap -am package -DskipTests
 
 ## KB-01 数据边界
 
-当前直接导入 378 条，另保留24个中文映射 ID（不计作378之外的独立官方职业）。`sourceUrl/onetCode/license/attribution/contentNotice` 随条目保存。全部薪资无可信统计源，置 null，页面显示“暂无数据”；删除原24条估算及未经支持的趋势/企业断言。直接导入的6条缺技能、378条缺路径保持空值；中文映射的技术技能/路径标记 curated 编辑建议。后续导入必须保留同样的字段与许可，不补造薪资。
+当前直接导入 378 条，另保留24个中文映射 ID（不计作378之外的独立官方职业）。`sourceUrl/onetCode/license/attribution/contentNotice` 随条目保存。全部薪资无可信统计源，置 null，页面显示“暂无数据”；删除原24条估算及未经支持的趋势/企业断言。直接导入的6条缺技能保持空值；378条路径由官方 Job Zone 职业准备要求补齐，标记 onet-job-zone；中文映射的技术技能/路径仍标记 curated 编辑建议。后续导入必须保留同样的字段与许可，不补造薪资。
