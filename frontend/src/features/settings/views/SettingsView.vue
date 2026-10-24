@@ -76,14 +76,14 @@ function exportWorkspace() {
 }
 </script>
 <template>
-  <section class="page-stack">
+  <section class="page-stack overflow-safe">
     <PageHeading
       :title="uiText('Make this workspace yours')"
       :description="
         uiText('Manage display preferences, choose parsing models and check connectivity.')
       "
     />
-    <div class="tabs">
+    <div class="tabs" role="group" :aria-label="uiText('Settings')">
       <button
         v-for="t in [
           uiText('Personal preferences'),
@@ -92,6 +92,8 @@ function exportWorkspace() {
           uiText('Data and privacy'),
         ]"
         :key="t"
+        type="button"
+        :aria-pressed="tab === t"
         :class="{ selected: tab === t }"
         @click="selectTab(t)"
       >

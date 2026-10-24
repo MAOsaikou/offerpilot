@@ -103,13 +103,13 @@ onMounted(load)
             </option>
           </select>
         </label>
-        <label class="model-toggle">
+        <label class="settings-toggle">
           <input
             v-model="shared"
             type="checkbox"
             :disabled="!textModel?.configured || !textModel?.supportsVision"
           />
-          {{ uiText('Use this model for text and images') }}
+          <span>{{ uiText('Use this model for text and images') }}</span>
         </label>
         <p v-if="textModel && !textModel.supportsVision" class="subtle">
           {{
@@ -187,13 +187,5 @@ onMounted(load)
   width: 100%;
   min-width: 0;
   text-overflow: ellipsis;
-}
-.model-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.model-toggle input {
-  width: auto;
 }
 </style>

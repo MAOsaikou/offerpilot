@@ -259,7 +259,7 @@ function exportLocal() {
 }
 </script>
 <template>
-  <section class="page-stack">
+  <section class="page-stack overflow-safe">
     <PageHeading
       :title="uiText('Save experience for your next step')"
       :description="
@@ -524,3 +524,21 @@ function exportLocal() {
     </div>
   </section>
 </template>
+
+<style scoped>
+.card-footer,
+.section-heading {
+  flex-wrap: wrap;
+}
+.section-heading > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.answer-card > * + * {
+  margin-top: 12px;
+}
+.section-heading {
+  margin-bottom: 0;
+}
+</style>

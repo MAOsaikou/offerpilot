@@ -45,7 +45,7 @@ function closeDetail() {
 }
 </script>
 <template>
-  <section class="page-stack">
+  <section class="page-stack overflow-safe">
     <PageHeading
       :title="uiText('Track every opportunity')"
       :description="uiText('Manage your job search at your own pace.')"
@@ -121,6 +121,12 @@ function closeDetail() {
   </section>
 </template>
 <style scoped>
+.kanban-column,
+.kanban :deep(.application-card) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .kanban-column.drop-target {
   outline: 2px dashed var(--color-primary, #4f46e5);
   outline-offset: -4px;

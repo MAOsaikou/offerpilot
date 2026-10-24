@@ -1,4 +1,5 @@
 export default {
+  Dismiss: 'Dismiss',
   'Staff knowledge documents': 'Staff knowledge documents',
   'Manage shared reference documents independently of private user notes.':
     'Manage shared reference documents independently of private user notes.',

@@ -24,7 +24,7 @@ const candidates = ref<MemoryCandidate[]>([])
 const loaded = ref(false)
 const busy = ref(false)
 const error = localizedText()
-const status = ref('')
+const status = localizedText()
 const editingId = ref<string | null>(null)
 const formOpen = ref(false)
 const draft = ref<MemoryDraft>({ kind: 'OTHER', fact: '' })
@@ -40,6 +40,7 @@ async function load() {
   if (busy.value) return
   busy.value = true
   error.value = ''
+  status.value = ''
   try {
     const [saved, pending] = await Promise.all([listMemories(), listMemoryCandidates()])
     inventory.value = saved
@@ -54,12 +55,15 @@ async function load() {
 async function changeEnabled(event: Event) {
   const input = event.target as HTMLInputElement
   const next = input.checked
-  await perform(async () => {
-    inventory.value.memoryEnabled = (await setMemoryEnabled(next)).memoryEnabled
-  }, uiText('Memory settings saved.'))
+  await perform(
+    async () => {
+      inventory.value.memoryEnabled = (await setMemoryEnabled(next)).memoryEnabled
+    },
+    () => uiText('Memory settings saved.'),
+  )
   input.checked = inventory.value.memoryEnabled
 }
-async function perform(action: () => Promise<void>, message: string) {
+async function perform(action: () => Promise<void>, message: () => string) {
   if (!loaded.value || busy.value) return
   busy.value = true
   error.value = ''
@@ -84,13 +88,19 @@ function open(memory?: UserMemory) {
 }
 async function save() {
   if (!valid.value) return
-  await perform(async () => {
-    const saved = editingId.value
-      ? await editMemory(editingId.value, draft.value)
-      : await addMemory(draft.value)
-    inventory.value.items = [saved, ...inventory.value.items.filter((item) => item.id !== saved.id)]
-    formOpen.value = false
-  }, uiText('Memory saved.'))
+  await perform(
+    async () => {
+      const saved = editingId.value
+        ? await editMemory(editingId.value, draft.value)
+        : await addMemory(draft.value)
+      inventory.value.items = [
+        saved,
+        ...inventory.value.items.filter((item) => item.id !== saved.id),
+      ]
+      formOpen.value = false
+    },
+    () => uiText('Memory saved.'),
+  )
 }
 function askDelete(id: string) {
   confirming.value = id
@@ -111,7 +121,7 @@ async function remove() {
       }
       confirming.value = null
     },
-    id === 'all' ? uiText('All memories cleared.') : uiText('Memory deleted.'),
+    () => (id === 'all' ? uiText('All memories cleared.') : uiText('Memory deleted.')),
   )
 }
 async function decideCandidate(candidate: MemoryCandidate, accept: boolean) {
@@ -126,9 +136,10 @@ async function decideCandidate(candidate: MemoryCandidate, accept: boolean) {
       } else await deleteMemoryCandidate(candidate.id)
       candidates.value = candidates.value.filter((item) => item.id !== candidate.id)
     },
-    accept
-      ? uiText('Candidate confirmed. Future conversations may use it.')
-      : uiText('Candidate deleted. This fact will not be suggested again.'),
+    () =>
+      accept
+        ? uiText('Candidate confirmed. Future conversations may use it.')
+        : uiText('Candidate deleted. This fact will not be suggested again.'),
   )
 }
 onMounted(load)
@@ -144,14 +155,14 @@ onMounted(load)
         )
       }}
     </p>
-    <label>
+    <label class="settings-toggle">
       <input
         type="checkbox"
         :checked="inventory.memoryEnabled"
         :disabled="busy || !loaded"
         @change="changeEnabled"
       />
-      {{ uiText('Use long-term memory (on by default)') }}
+      <span>{{ uiText('Use long-term memory (on by default)') }}</span>
     </label>
     <p v-if="loaded && !inventory.memoryEnabled" class="helper-note">
       {{
@@ -168,7 +179,7 @@ onMounted(load)
       }}
     </p>
     <p v-if="busy" role="status">{{ uiText('Syncing memories…') }}</p>
-    <p v-if="status" role="status">{{ status }}</p>
+    <p v-if="status" class="success-banner" role="status">{{ status }}</p>
     <p v-if="error" class="error-banner" role="alert">
       {{ error }}
       <button class="btn" :disabled="busy" @click="load">{{ uiText('Reload #2') }}</button>
@@ -176,7 +187,11 @@ onMounted(load)
     <template v-if="loaded">
       <div v-if="candidates.length" class="form-stack" :aria-label="uiText('Memory candidates')">
         <h4>{{ uiText('Extracted from conversations · Please review') }}</h4>
-        <article v-for="candidate in candidates" :key="candidate.id" class="rounded-lg border p-3">
+        <article
+          v-for="candidate in candidates"
+          :key="candidate.id"
+          class="form-stack rounded-lg border p-3"
+        >
           <p class="break-words">{{ candidate.fact }}</p>
           <p class="subtle">
             {{
@@ -194,7 +209,7 @@ onMounted(load)
           >
           <div class="flex flex-wrap gap-2">
             <button
-              class="btn"
+              class="btn primary"
               :disabled="busy || !inventory.memoryEnabled"
               @click="decideCandidate(candidate, true)"
             >
@@ -216,7 +231,7 @@ onMounted(load)
         </button>
         <button
           class="btn"
-          :disabled="busy || inventory.items.length === 0"
+          :disabled="busy || (inventory.items.length === 0 && candidates.length === 0)"
           @click="askDelete('all')"
         >
           {{ uiText('Clear all memories') }}
@@ -233,7 +248,11 @@ onMounted(load)
         }}
       </p>
       <ul v-else class="space-y-3">
-        <li v-for="memory in inventory.items" :key="memory.id" class="rounded-lg border p-3">
+        <li
+          v-for="memory in inventory.items"
+          :key="memory.id"
+          class="form-stack rounded-lg border p-3"
+        >
           <p class="break-words">{{ memory.fact }}</p>
           <p class="subtle">{{ memoryKinds[memory.kind] }} · {{ sourceLabels[memory.source] }}</p>
           <div class="mt-2 flex flex-wrap gap-2">
@@ -258,7 +277,7 @@ onMounted(load)
       </ul>
       <div
         v-if="confirming"
-        class="rounded-lg border p-3"
+        class="form-stack rounded-lg border p-3"
         role="group"
         :aria-label="uiText('Confirm memory deletion')"
       >
@@ -269,12 +288,14 @@ onMounted(load)
               : uiText('Delete this memory? This cannot be undone.')
           }}
         </p>
-        <button class="btn" :disabled="busy" @click="remove">
-          {{ uiText('Confirm deletion') }}
-        </button>
-        <button class="btn" :disabled="busy" @click="confirming = null">
-          {{ uiText('Cancel') }}
-        </button>
+        <div class="filter-bar">
+          <button class="btn danger" :disabled="busy" @click="remove">
+            {{ uiText('Confirm deletion') }}
+          </button>
+          <button class="btn" :disabled="busy" @click="confirming = null">
+            {{ uiText('Cancel') }}
+          </button>
+        </div>
       </div>
       <form v-if="formOpen" class="form-stack" @submit.prevent="save">
         <fieldset :disabled="busy" class="form-stack min-w-0">

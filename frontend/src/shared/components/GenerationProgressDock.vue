@@ -73,7 +73,7 @@ async function cancelTask(id: string, kind: string, entity?: string) {
         :aria-label="uiText('Close task notifications')"
         @click="store.notice = ''"
       >
-        {{ uiText('Off') }}
+        {{ uiText('Dismiss') }}
       </button>
     </p>
     <header class="generation-dock__head">
@@ -120,9 +120,23 @@ async function cancelTask(id: string, kind: string, entity?: string) {
   width: min(320px, calc(100vw - 32px));
   border: 1px solid var(--border, #e5e7eb);
   border-radius: 12px;
-  background: var(--panel, #fff);
+  background: var(--card);
+  color: var(--card-foreground);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
   padding: 12px;
+}
+.generation-dock__head,
+.generation-dock > [role='status'] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.generation-dock .btn {
+  flex-shrink: 0;
 }
 .generation-dock__head {
   display: flex;
@@ -139,6 +153,9 @@ async function cancelTask(id: string, kind: string, entity?: string) {
 }
 .generation-dock__list a {
   font-weight: 600;
+}
+.generation-dock__row a {
+  min-width: 0;
 }
 .generation-dock__row {
   display: flex;
@@ -176,8 +193,6 @@ async function cancelTask(id: string, kind: string, entity?: string) {
   }
 }
 .generation-dock__list {
-  max-height: min(55vh, 480px);
-  overflow-y: auto;
   overflow-wrap: anywhere;
 }
 </style>
