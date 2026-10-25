@@ -6,11 +6,16 @@ import PresenceGauges from './PresenceGauges.vue'
 import InterviewFeedback from './InterviewFeedback.vue'
 import InterviewScoreRadar from './InterviewScoreRadar.vue'
 import { RouterLink } from 'vue-router'
+import CountUp from '@/shared/components/CountUp.vue'
 import { asPayload } from '@/shared/utils/payload'
 import type { InterviewReportPayload } from '@/shared/types/cards'
 
 const props = defineProps<{ payload: unknown; inline?: boolean }>()
 const data = computed(() => asPayload<InterviewReportPayload>(props.payload, 'dimensions'))
+const overall = computed(() => {
+  const value = data.value?.overall
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+})
 const dimensions = computed(() =>
   (
     [
@@ -69,19 +74,39 @@ const sections = computed(
   <article v-if="data" class="surface space-y-5 rounded-[14px] p-4 text-sm">
     <header>
       <h3 class="font-semibold">{{ uiText('Interview scoring and review') }}</h3>
-      <p class="mt-2 text-2xl font-semibold">
-        <span class="text-sm">{{ uiText('Overall score') }} </span
-        >{{ data.overall ?? uiText('Not scored') }}<span class="text-sm"> / 100</span>
-      </p>
-      <p class="mt-1 break-words text-xs text-muted-foreground">
-        {{
-          data.note ||
-          uiText('Rule-based text scoring. On-device performance analysis is disabled.')
-        }}
-      </p>
-      <RouterLink v-if="data.id && !inline" :to="'/interviews/' + data.id" class="btn mt-2">{{
-        uiText('Open interview review')
-      }}</RouterLink>
+      <div class="score-hero">
+        <div class="score-dial">
+          <svg viewBox="0 0 64 64" aria-hidden="true">
+            <circle class="ring-track" cx="32" cy="32" r="28" />
+            <circle
+              v-if="overall !== null"
+              class="ring-value"
+              cx="32"
+              cy="32"
+              r="28"
+              pathLength="100"
+              :style="{ '--score': overall }"
+            />
+          </svg>
+          <p class="score-value">
+            <span class="score-label">{{ uiText('Overall score') }} </span
+            ><CountUp v-if="overall !== null" class="score-number" :value="overall" :delay="150" />
+            <template v-else>{{ uiText('Not scored') }}</template
+            ><span class="score-max"> / 100</span>
+          </p>
+        </div>
+        <div class="min-w-0">
+          <p class="break-words text-xs text-muted-foreground">
+            {{
+              data.note ||
+              uiText('Rule-based text scoring. On-device performance analysis is disabled.')
+            }}
+          </p>
+          <RouterLink v-if="data.id && !inline" :to="'/interviews/' + data.id" class="btn mt-2">{{
+            uiText('Open interview review')
+          }}</RouterLink>
+        </div>
+      </div>
     </header>
     <InterviewScoreRadar :dimensions="data.dimensions" />
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -182,6 +207,65 @@ const sections = computed(
 </template>
 
 <style scoped>
+.score-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+}
+.score-dial {
+  position: relative;
+  flex-shrink: 0;
+  width: 96px;
+  height: 96px;
+}
+.score-dial svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.score-dial circle {
+  fill: none;
+  stroke-width: 5;
+}
+.ring-track {
+  stroke: var(--muted);
+}
+.ring-value {
+  stroke: var(--primary);
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: calc(100 - var(--score));
+  animation: ring-fill 900ms var(--ease-out) 150ms backwards;
+}
+@keyframes ring-fill {
+  from {
+    stroke-dashoffset: 100;
+  }
+}
+.score-value {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
+  text-align: center;
+}
+.score-label,
+.score-max {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.score-number {
+  font-family: var(--app-font-display);
+  font-stretch: 88%;
+  font-size: 30px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
 progress {
   appearance: none;
   border: 0;
@@ -194,6 +278,14 @@ progress::-webkit-progress-bar {
 }
 progress::-webkit-progress-value {
   background: var(--primary);
+  border-radius: 4px;
+  transform-origin: left center;
+  animation: bar-grow 800ms var(--ease-out) 250ms backwards;
+}
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
 }
 progress::-moz-progress-bar {
   background: var(--primary);

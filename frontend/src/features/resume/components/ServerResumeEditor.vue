@@ -371,7 +371,12 @@ const basics = computed(() => [
         {{ uiText('Delete resume') }}
       </button>
     </PageHeading>
-    <p v-if="query.isPending.value" role="status">{{ uiText('Loading resumes… #2') }}</p>
+    <div v-if="query.isPending.value" class="panel form-stack">
+      <p role="status" class="subtle">{{ uiText('Loading resumes… #2') }}</p>
+      <div class="skeleton-stack" aria-hidden="true">
+        <span class="skeleton" /><span class="skeleton" /><span class="skeleton" />
+      </div>
+    </div>
     <p v-if="query.error.value" class="error-banner" role="alert">
       {{ uiText('{0}. Click reload to retry.', [query.error.value.message]) }}
     </p>
@@ -494,12 +499,14 @@ const basics = computed(() => [
             />
             <ResumeCertificateEditor v-model="draft.certificates" :disabled="busy" />
           </fieldset>
-          <div class="card-footer resume-save">
+          <div class="card-footer resume-save" :class="{ 'is-dirty': dirty }">
             <div class="form-stack">
               <span v-if="error" class="error-banner" role="alert">{{ error }}</span>
-              <span role="status">{{
-                dirty ? uiText('Unsaved changes') : message || uiText('Synced with server')
-              }}</span>
+              <span class="save-state" role="status"
+                ><i class="save-dot" aria-hidden="true" />{{
+                  dirty ? uiText('Unsaved changes') : message || uiText('Synced with server')
+                }}</span
+              >
             </div>
             <button class="btn primary" :disabled="busy || !dirty" type="submit">
               {{ busy ? uiText('Saving… #2') : uiText('Save new version') }}
@@ -603,18 +610,47 @@ const basics = computed(() => [
   overflow-wrap: anywhere;
   font: inherit;
 }
+.resume-editor > .tabs ~ * {
+  animation-delay: 0ms;
+  animation-duration: 240ms;
+}
+.pdf-template {
+  width: auto;
+  max-width: 100%;
+}
 .resume-save {
   position: sticky;
   bottom: 12px;
-  background: var(--surface, #fff);
-  padding: 16px;
-  border: 1px solid var(--border, #ddd);
-  border-radius: 12px;
+  background: var(--card);
+  padding: 12px 12px 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-float);
   z-index: 2;
+  transition: border-color var(--dur-mid) var(--ease-out);
+}
+.resume-save.is-dirty {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+.save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.save-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--success);
+  transition: background-color var(--dur-mid);
+}
+.is-dirty .save-dot {
+  background: var(--primary);
+  animation: pop-in 280ms var(--ease-out);
 }
 progress {
   width: 100%;
-  accent-color: #427964;
 }
 @media (max-width: 640px) {
   .resume-basics {

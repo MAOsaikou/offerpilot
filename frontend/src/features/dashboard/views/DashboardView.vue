@@ -149,7 +149,12 @@ function send() {
         <h2>{{ uiText('Coming up') }}</h2>
         <RouterLink to="/board">{{ uiText('View all opportunities') }}</RouterLink>
       </div>
-      <p v-if="board.query.isPending.value" role="status">{{ uiText('Loading actions…') }}</p>
+      <template v-if="board.query.isPending.value">
+        <p class="subtle" role="status">{{ uiText('Loading actions…') }}</p>
+        <div class="skeleton-stack" aria-hidden="true">
+          <span class="skeleton" /><span class="skeleton" />
+        </div>
+      </template>
       <p v-else-if="board.query.isError.value" role="alert">
         {{ uiText('Could not load actions. Please retry above.') }}
       </p>
@@ -295,6 +300,10 @@ function send() {
 .ask > svg {
   flex-shrink: 0;
   color: var(--primary);
+  transition: transform 320ms var(--ease-out);
+}
+.ask:focus-within > svg {
+  transform: rotate(72deg) scale(1.1);
 }
 .ask input {
   flex: 1;
@@ -348,6 +357,7 @@ function send() {
   font-weight: 550;
   transition:
     border-color var(--dur-fast),
+    background-color var(--dur-mid),
     color var(--dur-fast);
 }
 .due-action {
@@ -370,6 +380,16 @@ function send() {
 }
 .next-action:hover {
   border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 4%, var(--card));
+}
+.due-action {
+  animation: rise 240ms var(--ease-out) backwards;
+}
+.due-action:nth-of-type(2) {
+  animation-delay: 40ms;
+}
+.due-action:nth-of-type(n + 3) {
+  animation-delay: 80ms;
 }
 .next-action:hover > svg {
   color: var(--primary);

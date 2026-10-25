@@ -1,10 +1,66 @@
 /* 登录入口沿用「航图」令牌，认证行为由各页面管理。 */
 .auth-page {
+  position: relative;
   min-height: 100vh;
   min-height: 100svh;
   display: grid;
   align-items: center;
+  overflow: hidden;
   background: var(--background);
+}
+/* 航图底纹：极淡的经纬网格，向四周淡出；静止，不参与动画 */
+.auth-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--foreground) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--foreground) 5%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 48px 48px;
+  background-position: center;
+  mask-image: radial-gradient(ellipse 70% 60% at 30% 50%, #000 20%, transparent 75%);
+}
+.auth-layout {
+  position: relative;
+}
+.auth-intro > * {
+  animation: rise-8 420ms var(--ease-out) backwards;
+}
+.auth-intro > :nth-child(2) {
+  animation-delay: 60ms;
+}
+.auth-intro > :nth-child(3) {
+  animation-delay: 120ms;
+}
+.auth-intro > :nth-child(4) {
+  animation-delay: 180ms;
+}
+.auth-panel {
+  animation: rise-8 420ms var(--ease-out) 120ms backwards;
+}
+.panel-head {
+  animation: rise 240ms var(--ease-out) backwards;
+}
+/* 字标航线在进入时画一次，终点随后落位 */
+.brand-row :deep(path) {
+  stroke-dasharray: 32;
+  stroke-dashoffset: 0;
+  animation: brand-draw 700ms var(--ease-out) 200ms backwards;
+}
+.brand-row :deep(circle:last-of-type) {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pop-in 320ms var(--ease-out) 760ms backwards;
+}
+@keyframes brand-draw {
+  from {
+    stroke-dashoffset: 32;
+  }
 }
 .auth-layout {
   width: 100%;
@@ -61,7 +117,23 @@
 .feature-list li {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  animation: rise 320ms var(--ease-out) backwards;
+  animation-delay: calc(260ms + var(--i, 0) * 50ms);
+}
+.feature-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--card);
+  color: var(--foreground);
+}
+.hero-title {
+  letter-spacing: -0.01em;
 }
 .feature-list :deep(svg),
 .brand-row :deep(svg) {
@@ -245,4 +317,36 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.demo-entry .submit-btn {
+  position: relative;
+  overflow: hidden;
+}
+/* 体验入口悬停时扫过一道浅光，提示这是推荐入口 */
+.demo-entry .submit-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%);
+  background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.22), transparent 70%);
+  pointer-events: none;
+}
+.demo-entry .submit-btn:hover:not(:disabled)::after {
+  transform: translateX(120%);
+  transition: transform 700ms var(--ease-out);
+}
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.or-divider::before,
+.or-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
 }

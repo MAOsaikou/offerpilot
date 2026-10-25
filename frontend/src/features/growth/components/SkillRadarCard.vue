@@ -53,8 +53,16 @@ function points(required = false) {
         :aria-label="uiText('Radar of skill evidence and reference requirements')"
       >
         <circle cx="110" cy="110" r="90" fill="none" stroke="currentColor" opacity=".2" />
-        <polygon :points="points(true)" fill="none" stroke="currentColor" stroke-dasharray="4" />
-        <polygon :points="points()" fill="currentColor" fill-opacity=".15" stroke="currentColor" />
+        <circle cx="110" cy="110" r="60" fill="none" stroke="currentColor" opacity=".1" />
+        <circle cx="110" cy="110" r="30" fill="none" stroke="currentColor" opacity=".1" />
+        <polygon
+          class="radar-required"
+          :points="points(true)"
+          fill="none"
+          stroke="currentColor"
+          stroke-dasharray="4"
+        />
+        <polygon class="radar-evidence" :points="points()" />
       </svg>
       <ul>
         <li v-for="axis in payload.axes" :key="axis.name">
