@@ -499,6 +499,9 @@ async function restoreTask() {
 <template>
   <div v-if="loading" class="panel empty-state" role="status">
     {{ uiText('Loading practice…') }}
+    <div class="skeleton-stack loading-skeleton" aria-hidden="true">
+      <span class="skeleton" /><span class="skeleton" /><span class="skeleton" />
+    </div>
   </div>
   <div v-else-if="loadError" class="panel empty-state">
     <h2>
@@ -609,8 +612,13 @@ async function restoreTask() {
         <span class="tag">{{
           uiText('Question {0} of {1} #2', [session.questionIndex + 1, session.answers.length])
         }}</span>
-        <div class="interview-avatar"><AppIcon name="interviews" :size="38" /></div>
-        <h2>{{ current?.questionText }}</h2>
+        <div
+          class="interview-avatar"
+          :class="{ 'is-active': speaking || askingFollowUp || scoring }"
+        >
+          <AppIcon name="interviews" :size="38" />
+        </div>
+        <h2 :key="session.questionIndex" class="question-text">{{ current?.questionText }}</h2>
         <p class="subtle">
           {{
             uiText(
@@ -950,6 +958,31 @@ async function restoreTask() {
 .interview-stage h2 {
   overflow-wrap: anywhere;
 }
+.question-text {
+  animation: rise-8 320ms var(--ease-out) backwards;
+}
+.interview-avatar {
+  position: relative;
+  transition:
+    color var(--dur-mid),
+    background-color var(--dur-mid);
+}
+/* 面试官说话、思考或评分时，头像外圈扩散，表示正在处理 */
+.interview-avatar.is-active {
+  background: var(--primary-tint);
+}
+.interview-avatar.is-active::after {
+  content: '';
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--primary);
+  animation: live-ring 1.6s var(--ease-out) infinite;
+}
+.loading-skeleton {
+  max-width: 360px;
+  margin: 20px auto 0;
+}
 .voice-controls {
   display: flex;
   flex-wrap: wrap;
@@ -969,9 +1002,10 @@ async function restoreTask() {
   margin-top: 12px;
   padding: 12px 16px;
   border-left: 3px solid var(--primary);
-  background: var(--surface-muted, rgba(0, 0, 0, 0.03));
+  background: color-mix(in srgb, var(--primary) 5%, var(--card));
   border-radius: 8px;
   text-align: left;
+  animation: rise-8 260ms var(--ease-out) backwards;
 }
 .follow-up-bubble p {
   margin: 6px 0;

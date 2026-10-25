@@ -181,6 +181,9 @@ function keydown(event: KeyboardEvent) {
 }
 .composer:focus-within {
   border-color: color-mix(in srgb, var(--primary) 60%, var(--border));
+  box-shadow:
+    var(--shadow-float),
+    0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
 }
 .composer.is-streaming {
   border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
@@ -306,9 +309,24 @@ textarea::placeholder {
   padding: 0;
   border-radius: 50%;
 }
+.composer-send :deep(svg) {
+  transition: transform var(--dur-mid) var(--ease-out);
+}
+.composer-send:not(:disabled) :deep(svg) {
+  animation: send-ready 260ms var(--ease-out);
+}
+.composer-send:hover:not(:disabled) :deep(svg) {
+  transform: translateY(-2px);
+}
+@keyframes send-ready {
+  from {
+    transform: scale(0.6);
+  }
+}
 .composer-stop {
   border-color: var(--primary);
   color: var(--primary);
+  animation: rise 200ms var(--ease-out) backwards;
 }
 @media (max-width: 640px) {
   .composer-hint {

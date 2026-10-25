@@ -86,6 +86,9 @@ watch(
 .background-task-status {
   overflow-wrap: anywhere;
 }
+.background-task-status:empty {
+  display: none;
+}
 progress {
   width: 64px;
   max-width: 100%;

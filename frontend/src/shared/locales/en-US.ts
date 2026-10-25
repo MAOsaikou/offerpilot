@@ -128,6 +128,7 @@ export default {
     "Your account and server data have been deleted. Failed file cleanup will retry automatically. This browser's workspace has been cleared.",
   'Opening demo account…': 'Opening demo account…',
   'Try the demo account': 'Try the demo account',
+  'Or sign in with email': 'Or sign in with email',
   'Explore a fictional job search with prepared resumes, applications and interview records. This public demo is temporary. Please do not enter personal information.':
     'Explore a fictional job search with prepared resumes, applications and interview records. This public demo is temporary. Please do not enter personal information.',
   Email: 'Email',

@@ -20,6 +20,27 @@
   opacity: 0;
 }
 
+/* 页面分段入场：顶层区块依次淡入上移，最多错开 6 段。
+ * 只用 backwards 填充，结束后不残留 transform，避免影响区块内的 fixed 浮层。 */
+.page-stack > * {
+  animation: rise-8 320ms var(--ease-out) backwards;
+}
+.page-stack > :nth-child(2) {
+  animation-delay: 40ms;
+}
+.page-stack > :nth-child(3) {
+  animation-delay: 80ms;
+}
+.page-stack > :nth-child(4) {
+  animation-delay: 120ms;
+}
+.page-stack > :nth-child(5) {
+  animation-delay: 160ms;
+}
+.page-stack > :nth-child(n + 6) {
+  animation-delay: 200ms;
+}
+
 /* 列表错位出现：元素上设置 style="--i: n"，最多错开 8 项 */
 .stagger-in {
   animation: rise 200ms var(--ease-out) both;
@@ -86,6 +107,94 @@
   }
 }
 
+/* 加载骨架：静止底色 + 一道浅光扫过 */
+.skeleton {
+  position: relative;
+  display: block;
+  height: 12px;
+  overflow: hidden;
+  border-radius: var(--radius-tag);
+  background: var(--muted);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--card) 65%, transparent),
+    transparent
+  );
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.skeleton-stack > .skeleton:nth-child(2) {
+  width: 82%;
+}
+.skeleton-stack > .skeleton:nth-child(3) {
+  width: 64%;
+}
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* 无确定进度的 progress：一段品红滑块往返，代替浏览器默认样式 */
+progress:indeterminate {
+  background-color: var(--muted);
+  background-image: linear-gradient(var(--primary), var(--primary));
+  background-size: 32% 100%;
+  background-repeat: no-repeat;
+  animation: progress-slide 1.3s var(--ease-out) infinite;
+}
+progress:indeterminate::-webkit-progress-bar {
+  background: transparent;
+}
+progress:indeterminate::-moz-progress-bar {
+  background: transparent;
+}
+@keyframes progress-slide {
+  from {
+    background-position: -50% 0;
+  }
+  to {
+    background-position: 150% 0;
+  }
+}
+
+/* 错误回执：轻微左右摆动一次 */
+.shake-once {
+  animation: shake 360ms var(--ease-out);
+}
+@keyframes shake {
+  20%,
+  60% {
+    transform: translateX(-4px);
+  }
+  40%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+
+/* 状态到达：轻微放大回弹 */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  70% {
+    transform: scale(1.08);
+  }
+}
+
 /* 按下反馈 */
 .press {
   transition:
@@ -109,7 +218,8 @@
     scroll-behavior: auto !important;
   }
 
-  .live-dot::after {
+  .live-dot::after,
+  .skeleton::after {
     display: none;
   }
 }

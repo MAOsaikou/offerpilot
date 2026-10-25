@@ -121,6 +121,7 @@ export default {
     '账号和服务端数据已删除，文件清理失败时会自动重试；当前浏览器工作区已清除。',
   'Opening demo account…': '正在进入体验账号…',
   'Try the demo account': '体验账号一键登录',
+  'Or sign in with email': '或使用邮箱登录',
   'Explore a fictional job search with prepared resumes, applications and interview records. This public demo is temporary. Please do not enter personal information.':
     '虚构求职旅程已备好简历、投递与面试记录。公网体验沙箱限时保留，请勿填写个人信息。',
   Email: '邮箱',

@@ -119,15 +119,15 @@ function switchMode() {
         </p>
 
         <ul class="feature-list">
-          <li v-for="f in features" :key="f.label">
-            <AppIcon :name="f.icon" :size="18" />
+          <li v-for="(f, index) in features" :key="f.label" :style="{ '--i': index }">
+            <span class="feature-icon"><AppIcon :name="f.icon" :size="16" /></span>
             <span>{{ f.label }}</span>
           </li>
         </ul>
       </div>
 
       <div class="auth-panel">
-        <header class="panel-head">
+        <header :key="mode" class="panel-head">
           <h2>
             {{
               mode === 'register' ? uiText('Create your account') : uiText('Sign in to OfferPilot')
@@ -166,6 +166,9 @@ function switchMode() {
                 'Explore a fictional job search with prepared resumes, applications and interview records. This public demo is temporary. Please do not enter personal information.',
               )
             }}
+          </p>
+          <p class="or-divider" aria-hidden="true">
+            <span>{{ uiText('Or sign in with email') }}</span>
           </p>
         </div>
 
@@ -211,9 +214,14 @@ function switchMode() {
             </span>
           </label>
 
-          <p v-if="error" class="error-banner" role="alert">{{ error }}</p>
+          <p v-if="error" class="error-banner shake-once" role="alert">{{ error }}</p>
 
-          <button class="btn primary submit-btn" type="submit" :disabled="loading">
+          <button
+            class="btn submit-btn"
+            :class="mode === 'login' ? 'ink' : 'primary'"
+            type="submit"
+            :disabled="loading"
+          >
             <span v-if="loading" class="spinner" aria-hidden="true" />
             {{
               loading && !demoLoading

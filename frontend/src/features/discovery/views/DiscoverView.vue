@@ -100,7 +100,12 @@ function choose(role: string) {
         >{{ uiText('Explore in conversation') }}</RouterLink
       ></PageHeading
     >
-    <p v-if="loading" role="status" class="subtle">{{ uiText('Loading career profile…') }}</p>
+    <div v-if="loading" class="panel form-stack">
+      <p role="status" class="subtle">{{ uiText('Loading career profile…') }}</p>
+      <div class="skeleton-stack" aria-hidden="true">
+        <span class="skeleton" /><span class="skeleton" /><span class="skeleton" />
+      </div>
+    </div>
     <div v-if="error" role="alert" class="error-banner">
       {{ error }} <button class="btn text" @click="retry">{{ uiText('Retry') }}</button>
     </div>
@@ -282,12 +287,28 @@ function choose(role: string) {
       <span class="subtle">{{ uiText('General career references') }}</span>
     </div>
     <div class="card-grid">
-      <article v-for="direction in directions" :key="direction.title" class="panel job-card">
+      <article
+        v-for="direction in directions"
+        :key="direction.title"
+        class="panel job-card direction-card"
+        :class="{ 'is-current': profile.target === direction.role }"
+      >
         <span class="stat-icon"><AppIcon :name="direction.icon" /></span>
         <h2>{{ direction.title }}</h2>
         <p class="subtle">{{ direction.desc }}</p>
         <p class="tag">{{ direction.skills }}</p>
-        <button class="btn" :disabled="!ready || evidenceBusy" @click="choose(direction.role)">
+        <button
+          class="btn"
+          :class="{ 'is-current': profile.target === direction.role }"
+          :disabled="!ready || evidenceBusy"
+          @click="choose(direction.role)"
+        >
+          <AppIcon
+            v-if="profile.target === direction.role"
+            class="current-check"
+            name="check"
+            :size="16"
+          />
           {{
             profile.target === direction.role
               ? uiText('Current goal')
@@ -317,6 +338,34 @@ function choose(role: string) {
 }
 .personality-panel {
   grid-column: 1 / -1;
+}
+.direction-card {
+  position: relative;
+}
+.direction-card .btn {
+  margin-top: auto;
+}
+.direction-card.is-current {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+}
+.direction-card.is-current > .stat-icon {
+  background: var(--primary-tint);
+  color: var(--primary);
+}
+.direction-card .btn.is-current {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.current-check {
+  animation: pop-in 320ms var(--ease-out) backwards;
+}
+.chips .chip.selected {
+  animation: chip-select 220ms var(--ease-out);
+}
+@keyframes chip-select {
+  50% {
+    transform: scale(1.05);
+  }
 }
 #career-assessment {
   scroll-margin-top: 24px;

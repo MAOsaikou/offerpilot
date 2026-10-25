@@ -39,6 +39,13 @@ watch(
     chart?.destroy()
     chart = undefined
     if (!canvas.value || !hasScores.value) return
+    const styles = getComputedStyle(canvas.value)
+    const accent = styles.getPropertyValue('--primary').trim() || '#b01a6e'
+    const muted = styles.getPropertyValue('--muted-foreground').trim() || '#586377'
+    const grid = styles.getPropertyValue('--border').trim() || '#dce1e5'
+    const reduceMotion =
+      typeof window.matchMedia !== 'function' ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
     chart = new Chart(canvas.value, {
       type: 'radar',
       data: {
@@ -47,8 +54,12 @@ watch(
           {
             label: uiText('Interview score radar'),
             data: axes.value.map((axis) => axis.score),
-            borderColor: '#2563eb',
-            backgroundColor: '#2563eb18',
+            borderColor: accent,
+            backgroundColor: /^#[0-9a-f]{6}$/i.test(accent) ? `${accent}24` : 'transparent',
+            borderWidth: 2,
+            pointBackgroundColor: accent,
+            pointBorderColor: accent,
+            pointRadius: 3,
             spanGaps: false,
           },
         ],
@@ -57,8 +68,17 @@ watch(
         locale: language.value,
         responsive: true,
         maintainAspectRatio: false,
-        animation: false,
-        scales: { r: { min: 0, max: 100, ticks: { stepSize: 20 } } },
+        animation: reduceMotion ? false : { duration: 700, easing: 'easeOutCubic' },
+        scales: {
+          r: {
+            min: 0,
+            max: 100,
+            ticks: { stepSize: 20, color: muted, backdropColor: 'transparent' },
+            grid: { color: grid },
+            angleLines: { color: grid },
+            pointLabels: { color: muted, font: { size: 12 } },
+          },
+        },
       },
     })
   },

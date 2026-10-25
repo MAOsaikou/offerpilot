@@ -269,6 +269,23 @@ function confirmRemove(id: string) {
   background: var(--card);
   box-shadow: 0 0 0 1px var(--border);
 }
+.conversation-list li.selected::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: 0;
+  width: 2px;
+  height: 18px;
+  border-radius: 1px;
+  background: var(--primary);
+  transform-origin: center;
+  animation: selected-bar 240ms var(--ease-out) backwards;
+}
+@keyframes selected-bar {
+  from {
+    transform: scaleY(0);
+  }
+}
 .conversation-link {
   display: flex;
   flex-direction: column;

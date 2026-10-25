@@ -9,6 +9,7 @@ import {
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { Stage } from '@/shared/types/workspace'
+import CountUp from '@/shared/components/CountUp.vue'
 
 const props = defineProps<{ stops: { stage: Stage; count: number }[]; loading?: boolean }>()
 
@@ -35,9 +36,13 @@ const progress = computed(() =>
         :key="stop.stage"
         :class="{ reached: index <= furthest, current: index === furthest }"
         :aria-current="index === furthest ? 'step' : undefined"
+        :style="{ '--k': index }"
       >
         <span class="route-node" aria-hidden="true" />
-        <strong class="route-count">{{ formatDisplay(loading ? '—' : stop.count) }}</strong>
+        <strong class="route-count">
+          <template v-if="loading">{{ formatDisplay('—') }}</template>
+          <CountUp v-else :value="stop.count" :delay="120 + index * 90" />
+        </strong>
         <span class="route-label">{{ translateLabel(stop.stage) }}</span>
       </li>
     </ol>
@@ -110,6 +115,22 @@ li {
 li.reached .route-node {
   border-color: var(--foreground);
   background: var(--foreground);
+  animation: node-reach 280ms var(--ease-out) backwards;
+  animation-delay: calc(120ms + var(--k, 0) * 140ms);
+}
+@keyframes node-reach {
+  from {
+    border-color: var(--input);
+    background: var(--card);
+    transform: scale(0.7);
+  }
+}
+.route-label {
+  transition: color var(--dur-mid);
+}
+li {
+  animation: rise 320ms var(--ease-out) backwards;
+  animation-delay: calc(var(--k, 0) * 60ms);
 }
 li.current .route-node {
   border-color: var(--primary);
