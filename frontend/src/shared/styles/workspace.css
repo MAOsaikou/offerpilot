@@ -398,7 +398,8 @@ h3 {
     transform 90ms ease-out,
     background-color var(--dur-fast),
     border-color var(--dur-fast),
-    color var(--dur-fast);
+    color var(--dur-fast),
+    box-shadow var(--dur-mid) var(--ease-out);
 }
 .btn:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--foreground) 35%, var(--input));
@@ -414,6 +415,23 @@ h3 {
 .btn.primary:hover:not(:disabled) {
   background: var(--primary-hover);
   border-color: var(--primary-hover);
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--primary) 80%, transparent);
+}
+/* 墨蓝实心：同屏已有品红主操作时的第二个主按钮 */
+.btn.ink {
+  background: var(--foreground);
+  border-color: var(--foreground);
+  color: var(--background);
+}
+.btn.ink:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 88%, var(--primary));
+  border-color: color-mix(in srgb, var(--foreground) 88%, var(--primary));
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--foreground) 70%, transparent);
+}
+.btn.ink:disabled {
+  background: var(--muted);
+  border-color: var(--muted);
+  color: var(--muted-foreground);
 }
 .btn.primary:disabled {
   opacity: 1;
@@ -589,9 +607,18 @@ progress::-moz-progress-bar {
   gap: 10px;
   transition: border-color var(--dur-fast);
 }
+.job-card:hover {
+  border-color: color-mix(in srgb, var(--foreground) 18%, var(--border));
+}
 a.job-card:hover,
 .job-card:has(h2 a:hover) {
   border-color: color-mix(in srgb, var(--foreground) 30%, var(--border));
+}
+.job-card:hover > .stat-icon,
+a.list-row:hover .stat-icon,
+a.job-row:hover .company-logo {
+  background: var(--primary-tint);
+  color: var(--primary);
 }
 .job-card h2 {
   font-size: 17px;
@@ -645,6 +672,9 @@ a.job-card:hover,
   border-radius: var(--radius-control);
   background: var(--muted);
   color: var(--foreground);
+  transition:
+    background-color var(--dur-mid) var(--ease-out),
+    color var(--dur-mid) var(--ease-out);
 }
 .company-logo {
   display: grid;
@@ -657,6 +687,9 @@ a.job-card:hover,
   color: var(--foreground);
   font-size: 15px;
   font-weight: 650;
+  transition:
+    background-color var(--dur-mid) var(--ease-out),
+    color var(--dur-mid) var(--ease-out);
 }
 .list-row,
 .job-row {
@@ -697,6 +730,15 @@ a.job-row:hover {
 .job-row > svg {
   color: var(--muted-foreground);
   font-size: 13px;
+}
+.job-row > svg {
+  transition:
+    transform var(--dur-mid) var(--ease-out),
+    color var(--dur-fast);
+}
+a.job-row:hover > svg {
+  color: var(--primary);
+  transform: translateX(3px);
 }
 .empty-state {
   padding: 48px 24px;
@@ -748,6 +790,10 @@ a.job-row:hover {
   font-size: 14px;
   line-height: 1.7;
   overflow-wrap: anywhere;
+}
+.error-banner,
+.success-banner {
+  animation: rise 200ms var(--ease-out) backwards;
 }
 .error-banner {
   color: var(--danger);
@@ -950,17 +996,24 @@ a.job-row:hover {
   color: var(--muted-foreground);
   font-size: 14px;
   transition:
-    background-color var(--dur-fast),
+    transform 90ms ease-out,
+    background-color var(--dur-mid) var(--ease-out),
+    box-shadow var(--dur-mid) var(--ease-out),
     color var(--dur-fast);
 }
 .tabs button:hover {
   color: var(--foreground);
 }
+.tabs button:active:not(:disabled) {
+  transform: scale(0.97);
+}
 .tabs button.selected {
   background: var(--card);
   color: var(--foreground);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgb(21 33 59 / 0.1);
+  box-shadow:
+    0 1px 2px rgb(21 33 59 / 0.1),
+    inset 0 -2px 0 var(--primary);
 }
 
 /* ───────── 对话 ───────── */
@@ -1051,6 +1104,26 @@ a.job-row:hover {
 }
 .mobile-panel-toggle {
   display: none;
+}
+
+/* 技能雷达卡：放在全局样式里，异步卡片分块不再额外等待样式文件，
+ * 对话打开时的滚动到底部才能拿到卡片的真实高度 */
+.radar-required {
+  opacity: 0.55;
+}
+.radar-evidence {
+  fill: color-mix(in srgb, var(--primary) 16%, transparent);
+  stroke: var(--primary);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  transform-origin: 110px 110px;
+  animation: radar-grow 520ms var(--ease-out) 120ms backwards;
+}
+@keyframes radar-grow {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
 }
 
 /* ───────── 通知、简历打印、登录 ───────── */
