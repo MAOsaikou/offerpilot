@@ -9,7 +9,6 @@
 | 参赛组别 | B组 |
 | 团队 / 学校 | 三分拙劲破天下 / 岭南师范学院 |
 | 作者与成员 | 冯茂盛、陈子浩、丁泓江 |
-| 指导老师 | 无 |
 | 代码仓库 | https://github.com/MAOsaikou/offerpilot |
 | 在线演示 | 公网未上线 |
 | 文档日期 | 2026-10-25 |
@@ -108,4 +107,4 @@ OfferPilot 是面向准备实习、校招或转换方向的高校求职者的 We
 
 运行时使用的第三方软件包括 Java 17、Spring Boot 3.3.5、Spring AI 1.0.0、Vue 3、TypeScript、Vite、PostgreSQL 与 pgvector、Redis、Flyway，以及浏览器的 Web Speech。jobs-mcp 通过开源 [jobhunt-cli](https://github.com/Enzoding/JobHunt-CLI) 读取企业官网的公开招聘接口；该工具仍是独立项目，本仓库的匹配、改写、审批和界面不是它的改版。职业库中的 378 条来自 O*NET 31.0（CC BY 4.0，National Center for O*NET Development），中文为改编；另外 24 条是仓库内维护的中文职业。项目许可证为 MIT。
 
-作者与成员为冯茂盛、陈子浩、丁泓江，岭南师范学院，B组。指导老师：无。
+作者与成员为冯茂盛、陈子浩、丁泓江，岭南师范学院，B组。
