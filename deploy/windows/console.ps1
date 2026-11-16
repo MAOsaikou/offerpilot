@@ -100,10 +100,30 @@ function Publish-Backend([string]$JarPath) {
     Invoke-Step '启动新版后端（dev / 8081）' { Invoke-ProjectScript 'backend-preview.ps1' @('-Action','start','-JarPath',$JarPath,'-RuntimeRoot',$runtimeRoot) }
 }
 
+function Initialize-LocalEnvFile {
+    if (-not (Test-Path -LiteralPath $keyFile)) {
+        Copy-Item -LiteralPath (Join-Path $projectRoot 'backend/.env.example') -Destination $keyFile
+    }
+    $lines = [System.IO.File]::ReadAllLines($keyFile, [System.Text.UTF8Encoding]::new($false))
+    $updated = $false
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\s*JWT_SECRET\s*=\s*$') {
+            $bytes = New-Object byte[] 64
+            $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+            try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+            $lines[$i] = 'JWT_SECRET=' + [Convert]::ToBase64String($bytes)
+            $updated = $true
+        }
+    }
+    if ($updated) {
+        [System.IO.File]::WriteAllLines($keyFile, $lines, [System.Text.UTF8Encoding]::new($false))
+    }
+}
+
 function Start-Dependencies {
     Invoke-Step '启动 PostgreSQL / Redis / MinIO / jobs-mcp，等待依赖就绪' {
         if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw '未找到 docker，请安装并打开 Docker Desktop，再重试。' }
-        if (-not (Test-Path -LiteralPath $keyFile)) { throw '缺少 backend/.env.local，请先选择「配置 DeepSeek」。' }
+        Initialize-LocalEnvFile
         & docker compose --env-file $keyFile -f (Join-Path $projectRoot 'deploy/docker-compose.yml') up -d --build --wait postgres redis minio jobs-mcp
         if ($LASTEXITCODE -ne 0) { throw '依赖启动失败，请检查 Docker Desktop、端口与数据库配置。' }
     }
@@ -170,9 +190,7 @@ function Invoke-Action([string]$Selected) {
         'package' { Invoke-Step '生成前端分发包' { Invoke-ProjectScript 'package.ps1' @('-RuntimeRoot',$runtimeRoot) } }
         'config' {
             Invoke-Step '打开 backend/.env.local（Key 不会打印到控制台）' {
-                if (-not (Test-Path -LiteralPath $keyFile)) {
-                    Copy-Item -LiteralPath (Join-Path $projectRoot 'backend/.env.example') -Destination $keyFile
-                }
+                Initialize-LocalEnvFile
                 Start-Process -FilePath notepad.exe -ArgumentList ('"' + $keyFile + '"')
             }
             Write-Host '  将 sk-not-configured 替换为 Key，保存后选择「重建并重启后端」。' -ForegroundColor DarkGray

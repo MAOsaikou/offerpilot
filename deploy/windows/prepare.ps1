@@ -9,6 +9,16 @@ $runtimePrefix = $runtimeRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.P
 if (-not $NginxDirectory.StartsWith($runtimePrefix, [StringComparison]::OrdinalIgnoreCase)) {
     throw "NginxDirectory must be inside $runtimeRoot."
 }
+function Invoke-FrontendPnpm([string[]]$Arguments) {
+    $localPnpm = Join-Path $projectRoot '.corepack/v1/pnpm/12.3.4/bin/pnpm.mjs'
+    if (Test-Path -LiteralPath $localPnpm) { & node $localPnpm @Arguments }
+    elseif (Get-Command pnpm -ErrorAction SilentlyContinue) { & pnpm @Arguments }
+    # Fall back to corepack when no global pnpm is installed.
+    elseif (Get-Command corepack -ErrorAction SilentlyContinue) { & corepack pnpm @Arguments }
+    else { throw 'pnpm not found. Install Node.js 22+ then run: npm i -g pnpm (or corepack enable pnpm).' }
+    if ($LASTEXITCODE -ne 0) { throw ('Frontend command failed: pnpm ' + ($Arguments -join ' ')) }
+}
+
 if (-not $SkipBuild) {
     Push-Location (Join-Path $projectRoot 'frontend')
     $previousApi = $env:VITE_API_BASE_URL
@@ -16,13 +26,11 @@ if (-not $SkipBuild) {
     try {
         $env:VITE_API_BASE_URL = '/api/v1'
         $env:VITE_ENABLE_MOCK = 'false'
-        $localPnpm = Join-Path $projectRoot '.corepack/v1/pnpm/12.3.4/bin/pnpm.mjs'
-        if (Test-Path -LiteralPath $localPnpm) { & node $localPnpm build }
-        elseif (Get-Command pnpm -ErrorAction SilentlyContinue) { & pnpm build }
-        # Fall back to corepack when no global pnpm is installed.
-        elseif (Get-Command corepack -ErrorAction SilentlyContinue) { & corepack pnpm build }
-        else { throw 'pnpm not found. Install Node.js 22+ then run: npm i -g pnpm (or corepack enable pnpm).' }
-        if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
+        if (-not (Test-Path -LiteralPath (Join-Path $projectRoot 'frontend/node_modules'))) {
+            Write-Host 'Installing frontend dependencies...'
+            Invoke-FrontendPnpm @('install', '--frozen-lockfile')
+        }
+        Invoke-FrontendPnpm @('build')
     } finally {
         $env:VITE_API_BASE_URL = $previousApi
         $env:VITE_ENABLE_MOCK = $previousMock
