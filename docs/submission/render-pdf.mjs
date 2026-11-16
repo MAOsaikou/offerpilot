@@ -3,9 +3,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
-const here=path.dirname(new URL(import.meta.url).pathname);
+const here=path.dirname(fileURLToPath(import.meta.url));
 const source=path.join(here,'OfferPilot-技术文档.md');
 const out=path.join(here,'OfferPilot-技术文档.pdf');
 const sourceText=fs.readFileSync(source,'utf8');

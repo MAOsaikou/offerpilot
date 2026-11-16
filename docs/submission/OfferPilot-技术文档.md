@@ -9,7 +9,7 @@
 | 参赛组别 | B组 |
 | 团队 / 学校 | 三分拙劲破天下 / 岭南师范学院 |
 | 作者与成员 | 冯茂盛、陈子浩、丁泓江 |
-| 代码仓库 | https://github.com/MAOsaikou/offerpilot |
+| 代码仓库 | [https://github.com/MAOsaikou/offerpilot](https://github.com/MAOsaikou/offerpilot) |
 | 在线演示 | 公网未上线 |
 | 文档日期 | 2026-10-25 |
 
