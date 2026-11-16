@@ -274,7 +274,16 @@ try {
     await expect(page.getByRole('complementary', { name: '后台生成进度' })).toContainText('已完成')
     await expect(panel.getByText('活动效果验证不足', { exact: true })).toBeVisible()
     await expect(panel.getByText('总分', { exact: true })).toBeVisible()
+    await expect(panel.getByText('本题未作答，不评分。', { exact: false }).first()).toBeHidden()
+    const questionNavigation = panel.getByRole('navigation', { name: '题目导航' })
+    await expect(questionNavigation.getByRole('button')).toHaveCount(3)
+    await questionNavigation.getByRole('button').nth(1).click()
     await expect(panel.getByText('本题未作答，不评分。', { exact: false }).first()).toBeVisible()
+    await expect(questionNavigation.getByRole('button').nth(1)).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    await shot('unscored-question')
     // The completion notice auto-collapses into a compact pill that does not cover report content.
     const dock = page.getByRole('complementary', { name: '后台生成进度' })
     await expect(dock).toHaveClass(/generation-dock--compact/, { timeout: 8000 })

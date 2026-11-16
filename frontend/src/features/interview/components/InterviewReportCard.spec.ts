@@ -91,6 +91,63 @@ it('embeds the radar alongside progress scores and preserves per-question review
   expect(view.root.querySelector('details')?.textContent).toContain('[Add real results]')
   expect(view.root.textContent).toContain('Practice with real evidence')
 })
+it('organizes question feedback, evidence and next steps with working question navigation', async () => {
+  const dimension = { score: 68, rationale: '行动清楚', evidence: '我负责活动复盘' }
+  const turn = (index: number) => ({
+    question: `第${index + 1}题：如何复盘？`,
+    answerSummary: '我负责活动复盘',
+    score: index === 0 ? 68 : null,
+    star: { situation: false, task: true, action: true, result: false },
+    feedback: index === 0 ? '请补充验证' : '模型不可用',
+    betterAnswerOutline: [],
+    source: index === 0 ? 'model' : 'unavailable',
+    evaluation:
+      index === 0
+        ? {
+            source: 'model' as const,
+            score: 68,
+            rationale: '请补充验证',
+            improvedAnswer: '结果：【补充真实结果】',
+            dimensions: {
+              professional: dimension,
+              expression: dimension,
+              logic: dimension,
+              jobFit: dimension,
+            },
+          }
+        : null,
+  })
+  view = mountForTest(Card, {
+    payload: {
+      id: 'r',
+      overall: 68,
+      dimensions: { professional: 68, expression: 68, logic: 68, jobFit: 68 },
+      turns: [turn(0), turn(1)],
+      strengths: ['行动明确'],
+      weaknesses: ['效果验证不足'],
+      advice: ['补充真实结果'],
+      recommendedLearning: [{ topic: '效果验证', reason: '缺少结果', estimatedHours: 1 }],
+    },
+  })
+  await nextTick()
+  expect(view.root.querySelector('.review-facts')?.textContent).toContain('1 / 2')
+  expect(view.root.querySelectorAll('.turn-review')).toHaveLength(2)
+  expect(view.root.querySelector('.turn-review[open]')?.textContent).toContain('请补充验证')
+  expect(view.root.textContent).toContain('来自你回答的依据')
+  expect(view.root.textContent).toContain('【补充真实结果】')
+  expect(view.root.textContent).toContain('约 1 小时')
+  const navigation = view.root.querySelectorAll<HTMLButtonElement>('.question-jump button')
+  expect(navigation).toHaveLength(2)
+  expect(navigation[0]?.getAttribute('aria-current')).toBe('true')
+  navigation[1]?.click()
+  await nextTick()
+  const turns = view.root.querySelectorAll<HTMLDetailsElement>('.turn-review')
+  expect(turns[1]?.open).toBe(true)
+  expect(navigation[1]?.getAttribute('aria-current')).toBe('true')
+  expect(turns[1]?.textContent).toContain('暂无法评分')
+  expect(turns[1]?.textContent).toContain('模型不可用')
+})
+
 it('面试报告损坏载荷安全显示错误', () => {
   view = mountForTest(Card, { payload: null })
   expect(view.root.textContent).toMatch(/不可用|无效|无法|缺少|错误/)

@@ -855,6 +855,39 @@ export default {
   'Scores range from 0 to 100. Unscored dimensions remain gaps in the radar.':
     'Scores range from 0 to 100. Unscored dimensions remain gaps in the radar.',
   'Not scored': 'Not scored',
+  'What worked, and what to strengthen': 'What worked, and what to strengthen',
+  'Evidence from your answer': 'Evidence from your answer',
+  'Improved answer': 'Improved answer',
+  'Original facts only': 'Original facts only',
+  '{0} score': '{0} score',
+  'Turn this practice into your next improvement': 'Turn this practice into your next improvement',
+  'Feedback is ready': 'Feedback is ready',
+  'Questions reviewed': 'Questions reviewed',
+  'Questions scored': 'Questions scored',
+  'Next steps': 'Next steps',
+  'Score overview': 'Score overview',
+  'Four dimensions at a glance': 'Four dimensions at a glance',
+  'Use the details below to understand each score.':
+    'Use the details below to understand each score.',
+  'Question-by-question review': 'Question-by-question review',
+  'Review the answer behind every score': 'Review the answer behind every score',
+  'Expand a question for evidence and an improved answer.':
+    'Expand a question for evidence and an improved answer.',
+  'Question navigation': 'Question navigation',
+  'Rule-based feedback': 'Rule-based feedback',
+  'Scoring unavailable': 'Scoring unavailable',
+  'AI-assisted feedback': 'AI-assisted feedback',
+  'Scoring rationale': 'Scoring rationale',
+  'Keep these clear points in your next answer.': 'Keep these clear points in your next answer.',
+  'Add missing facts rather than inventing new experience.':
+    'Add missing facts rather than inventing new experience.',
+  'Turn the feedback into a concrete next practice.':
+    'Turn the feedback into a concrete next practice.',
+  'Actionable feedback': 'Actionable feedback',
+  'Keep the strengths. Practice the gaps.': 'Keep the strengths. Practice the gaps.',
+  'About {0} hours': 'About {0} hours',
+  'Choose one focused action for your next practice session.':
+    'Choose one focused action for your next practice session.',
   'Question feedback · {0}': 'Question feedback · {0}',
   'Improved answer (original facts only)': 'Improved answer (original facts only)',
   'Fill in missing facts using the placeholders. No model evaluation is currently available.':
