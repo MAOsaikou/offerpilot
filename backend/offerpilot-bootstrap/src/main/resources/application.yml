@@ -49,6 +49,13 @@ spring:
     async:
       request-timeout: 600000
   ai:
+    model:
+      chat: deepseek
+      audio:
+        speech: none
+        transcription: none
+      image: none
+      moderation: none
     openai:
       base-url: ${BAILIAN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
       api-key: ${BAILIAN_API_KEY:sk-not-configured}

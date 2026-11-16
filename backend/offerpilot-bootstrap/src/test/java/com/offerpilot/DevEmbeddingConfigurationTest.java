@@ -35,4 +35,15 @@ class DevEmbeddingConfigurationTest {
                 });
     }
 
+    @Test void unusedOpenAiSubModelsRemainDisabledEvenWithEmptyBailianKey() {
+        context.withPropertyValues("BAILIAN_API_KEY=").run(ctx -> {
+            var env = ctx.getEnvironment();
+            assertThat(env.getProperty("spring.ai.model.chat")).isEqualTo("deepseek");
+            assertThat(env.getProperty("spring.ai.model.audio.speech")).isEqualTo("none");
+            assertThat(env.getProperty("spring.ai.model.audio.transcription")).isEqualTo("none");
+            assertThat(env.getProperty("spring.ai.model.image")).isEqualTo("none");
+            assertThat(env.getProperty("spring.ai.model.moderation")).isEqualTo("none");
+        });
+    }
+
 }

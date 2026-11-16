@@ -12,6 +12,11 @@ spring:
     model:
       chat: deepseek
       embedding: ${SPRING_AI_MODEL_EMBEDDING:none}
+      audio:
+        speech: none
+        transcription: none
+      image: none
+      moderation: none
     retry:
       max-attempts: 1
   jpa:

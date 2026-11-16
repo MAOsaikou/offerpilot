@@ -89,7 +89,7 @@ function Invoke-BackendPreview {
         $previousErrorAction = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            $versionLine = (& $candidate -version 2>&1 | Select-Object -First 1 | Out-String)
+            $versionLine = (& $candidate -version 2>&1 | ForEach-Object { "$_" } | Select-Object -First 1)
         } finally {
             $ErrorActionPreference = $previousErrorAction
         }
