@@ -2762,4 +2762,10 @@ export default {
   'Careers with edited skills are listed first. A missing salary source stays missing and is not invented.':
     'Careers with edited skills are listed first. A missing salary source stays missing and is not invented.',
   'Complete your career profile': 'Complete your career profile',
+  'Enter a target role before starting.': 'Enter a target role before starting.',
+  'Submitting this sync. Approve or reject it here when the request is ready.':
+    'Submitting this sync. Approve or reject it here when the request is ready.',
+  'Approve or reject syncing these tasks here. Rejecting does not mark tasks complete.':
+    'Approve or reject syncing these tasks here. Rejecting does not mark tasks complete.',
+  'Sync could not be submitted. Please retry.': 'Sync could not be submitted. Please retry.',
 } as const

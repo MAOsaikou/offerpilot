@@ -109,7 +109,13 @@ it('replaces a filename title with the parsed name and objective', async () => {
   vi.mocked(renameResume).mockResolvedValue(renamed)
   cache.setQueryData(['resume', 'rs1'], uploaded)
   await vi.waitFor(() => expect(renameResume).toHaveBeenCalledWith('rs1', '林晓舟 · Java 后端实习'))
-  await vi.waitFor(() => expect(root.querySelector('h1')?.textContent).toContain('林晓舟 · Java 后端实习'))
+  await vi.waitFor(() =>
+    expect(root.querySelector('h1')?.textContent).toContain('林晓舟 · Java 后端实习'),
+  )
+  const name = [...root.querySelectorAll('label')]
+    .find((label) => label.textContent?.includes('简历名称'))
+    ?.querySelector('input')
+  expect(name?.value).toBe('林晓舟 · Java 后端实习')
 })
 it('旧版本缺少头衔时显示空串且无未保存修改，编辑后原文进入保存并重新显示', async () => {
   const legacy = fixture('v2')
@@ -422,12 +428,11 @@ it('进度展示排队、读取和模型字段阶段，完成后移除进度条'
   expect(root.querySelector('progress')).toBeNull()
 })
 
-it('reserves space under the fields so the sticky save bar can scroll clear', async () => {
+it('keeps the save bar after the fields so it does not cover the first screen', async () => {
   const css = editorSource
-  expect(css).toContain('padding-bottom: 112px')
-  expect(css).toContain('padding-bottom: 168px')
-  expect(css).toContain('scroll-margin-bottom: 128px')
-  expect(css).toContain('scroll-margin-bottom: 184px')
+  expect(css).toContain('position: static')
+  expect(css).toContain('padding: 12px 176px 12px 16px')
+  expect(css).not.toContain('position: sticky')
   await vi.waitFor(() => expect(root.querySelector('.resume-fields')).not.toBeNull())
   const fields = root.querySelector('.resume-fields')!
   const save = root.querySelector('.resume-save')!

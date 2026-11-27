@@ -651,7 +651,7 @@ it('submits saved resume version, type, difficulty, voice mode and duration with
   expect(root.querySelector('#start-practice-reason')?.textContent).toContain('请先选择简历版本')
   await choose('简历版本', 'v1')
   await nextTick()
-  expect(root.querySelector('#start-practice-reason')).toBeNull()
+  expect(root.querySelector('#start-practice-reason')?.textContent).toContain('请先填写目标岗位')
   await choose('面试类型', '技术')
   await choose('难度', 'HARD')
   await choose('模式', 'VOICE')
@@ -660,6 +660,7 @@ it('submits saved resume version, type, difficulty, voice mode and duration with
   input.value = '后端'
   input.dispatchEvent(new Event('input', { bubbles: true }))
   await nextTick()
+  expect(root.querySelector('#start-practice-reason')).toBeNull()
   submit()
   await vi.waitFor(() =>
     expect(createInterview).toHaveBeenCalledWith(

@@ -171,7 +171,10 @@ public class DefaultCoachPlanForChat implements CoachPlanForChat {
         if (key == null || key.isBlank()) return false;
         if (names.contains(key)) return true;
         var pattern = java.util.regex.Pattern.compile("(?<![a-z0-9+#])" + java.util.regex.Pattern.quote(key) + "(?![a-z0-9+#])");
-        for (String name : names) if (name != null && pattern.matcher(name).find()) return true;
+        for (String name : names) {
+            if (name == null) continue;
+            if (pattern.matcher(name).find() || SkillGapService.mentions(name, key)) return true;
+        }
         return false;
     }
     private static String normalize(String name) { return java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFKC).strip().toLowerCase(Locale.ROOT).replaceAll("\\s+", " "); }

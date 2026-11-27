@@ -12,6 +12,7 @@ import {
   type ProfileSuggestion,
 } from '@/shared/api/careerUpdates'
 import type { CareerProfile } from '@/shared/api/career'
+import { hideInternalIds } from '../suggestionFacts'
 const props = defineProps<{ beforeConfirm: () => Promise<void> }>()
 const emit = defineEmits<{ confirmed: [profile: CareerProfile]; busy: [value: boolean] }>()
 const auth = useAuthStore()
@@ -134,7 +135,7 @@ onBeforeUnmount(() => {
         {{ uiText('Suggested on {0}', [new Date(item.createdAt).toLocaleString(language)]) }}
       </p>
       <ul>
-        <li v-for="fact in item.facts" :key="fact">{{ fact }}</li>
+        <li v-for="fact in item.facts" :key="fact">{{ hideInternalIds(fact) }}</li>
       </ul>
       <template v-if="item.status === 'PENDING'">
         <label v-for="skill in item.skills" :key="skill"

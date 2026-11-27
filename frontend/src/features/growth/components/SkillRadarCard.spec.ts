@@ -1,6 +1,13 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mountForTest } from '@/shared/utils/mountForTest'
 import Card from './SkillRadarCard.vue'
+import { resetLiveSkillLevels } from '../skillEvidenceAlign'
+
+vi.mock('@/shared/api/skill-gap', () => ({
+  getSkillGap: vi.fn().mockRejectedValue(new Error('offline')),
+}))
+
+beforeEach(() => resetLiveSkillLevels())
 let view: ReturnType<typeof mountForTest>
 afterEach(() => view?.unmount())
 it('技能雷达按真实载荷展示', () => {

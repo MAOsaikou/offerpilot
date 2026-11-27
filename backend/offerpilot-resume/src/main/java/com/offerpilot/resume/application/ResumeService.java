@@ -77,7 +77,7 @@ public class ResumeService {
         var items = jdbc.query("SELECT r.*,f.name AS file_name FROM resumes r JOIN files f ON f.id=r.source_file_id WHERE r.user_id=? ORDER BY r.created_at DESC,r.id DESC LIMIT ? OFFSET ?",
             (rs, n) -> row(rs, null), owner, size, (page - 1) * size);
         Long total = jdbc.queryForObject("SELECT count(*) FROM resumes WHERE user_id=?", Long.class, owner);
-        return new Page(items, total == null ? 0 : total, page, size);
+        return new Page(items.stream().map(item -> withParsedTitle(owner, item)).toList(), total == null ? 0 : total, page, size);
     }
     /** Latest saved current version of an owner-owned READY resume; no parsing or external calls. */
     public Resume latestReady(String owner) {
@@ -92,7 +92,7 @@ public class ResumeService {
         var result = jdbc.query("SELECT r.*,f.name AS file_name FROM resumes r JOIN files f ON f.id=r.source_file_id WHERE r.id=? AND r.user_id=?",
             (rs, n) -> row(rs, null), id, owner);
         if (result.isEmpty()) throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);
-        var resume = result.get(0);
+        var resume = withParsedTitle(owner, result.get(0));
         return new Resume(resume.id(), resume.title(), resume.parseStatus(), resume.parseProgress(), resume.parseError(),
             resume.currentVersionId(), resume.fileName(), resume.createdAt(), resume.updatedAt(),
             resume.currentVersionId() == null ? null : version(owner, id, resume.currentVersionId()));
@@ -212,11 +212,30 @@ public class ResumeService {
             String meta = metadata.toString();
             jdbc.update("INSERT INTO resume_versions(id,resume_id,user_id,version_no,source,structured,plain_text,parse_meta) VALUES (?,?,?,1,'UPLOAD',?::jsonb,?,?::jsonb)",
                 version, job.id(), job.owner(), structured.toString(), plain(structured), meta);
-            jdbc.update("UPDATE resumes SET current_version_id=?,parse_status='READY',parse_progress=100,parse_error=null,parse_token=null,updated_at=now() WHERE id=?", version, job.id());
+            var naming = jdbc.queryForMap("SELECT r.title,f.name AS file_name FROM resumes r JOIN files f ON f.id=r.source_file_id WHERE r.id=?", job.id());
+            String parsedTitle = ResumeTitles.suggest((String) naming.get("file_name"), (String) naming.get("title"), structured);
+            if (parsedTitle != null)
+                jdbc.update("UPDATE resumes SET title=?,current_version_id=?,parse_status='READY',parse_progress=100,parse_error=null,parse_token=null,updated_at=now() WHERE id=?", parsedTitle, version, job.id());
+            else
+                jdbc.update("UPDATE resumes SET current_version_id=?,parse_status='READY',parse_progress=100,parse_error=null,parse_token=null,updated_at=now() WHERE id=?", version, job.id());
         });
     }
     public void fail(Job job, String message) {
         jdbc.update("UPDATE resumes SET parse_status='FAILED',parse_error=?,parse_token=null,updated_at=now() WHERE id=? AND parse_token=? AND parse_status='PARSING'", message, job.id(), job.token());
+    }
+    private Resume withParsedTitle(String owner, Resume resume) {
+        if (resume.currentVersionId() == null || !ResumeTitles.usesFilename(resume.fileName(), resume.title())) return resume;
+        var raw = jdbc.query("SELECT structured::text FROM resume_versions WHERE id=? AND resume_id=? AND user_id=?",
+            (rs, n) -> rs.getString(1), resume.currentVersionId(), resume.id(), owner);
+        if (raw.isEmpty() || raw.get(0) == null) return resume;
+        com.fasterxml.jackson.databind.JsonNode structured;
+        try { structured = json.readTree(raw.get(0)); }
+        catch (Exception ex) { return resume; }
+        String next = ResumeTitles.suggest(resume.fileName(), resume.title(), structured);
+        if (next == null) return resume;
+        jdbc.update("UPDATE resumes SET title=?,updated_at=now() WHERE id=? AND user_id=? AND title=?", next, resume.id(), owner, resume.title());
+        return new Resume(resume.id(), next, resume.parseStatus(), resume.parseProgress(), resume.parseError(),
+            resume.currentVersionId(), resume.fileName(), resume.createdAt(), resume.updatedAt(), resume.currentVersion());
     }
     private void owned(String owner, String id) {
         if (jdbc.queryForList("SELECT id FROM resumes WHERE id=? AND user_id=?", id, owner).isEmpty()) throw new BusinessException(ErrorCode.RESUME_NOT_FOUND);

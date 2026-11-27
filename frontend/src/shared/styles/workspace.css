@@ -288,6 +288,15 @@ h3 {
   flex-direction: column;
   gap: 24px;
 }
+.dock-safe {
+  padding-inline-end: 176px;
+}
+@media (max-width: 720px) {
+  .dock-safe {
+    padding-inline-end: 12px;
+    margin-bottom: 56px;
+  }
+}
 .page-heading {
   flex-wrap: wrap;
   overflow-wrap: anywhere;

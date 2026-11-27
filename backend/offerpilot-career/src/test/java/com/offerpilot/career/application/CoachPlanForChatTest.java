@@ -45,6 +45,8 @@ class CoachPlanForChatTest {
                 .filter(s -> s.name().equals("Java")).findFirst().orElseThrow().current()).isZero();
         assertThat(DefaultCoachPlanForChat.gaps(required, "", List.of("Java、Spring Boot")).stream()
                 .filter(s -> s.name().equals("Java")).findFirst().orElseThrow().current()).isEqualTo(3);
+        var category = json.readTree("[{\"name\":\"Java / Go / Python 等后端语言\",\"level\":4}]");
+        assertThat(DefaultCoachPlanForChat.gaps(category, "", List.of("Java")).get(0).current()).isEqualTo(3);
         assertThat(DefaultCoachPlanForChat.gaps(required, "  JAVA、Go\nJavaScript", List.of(" sql "))).isEqualTo(result);
     }
     @Test void noTargetGuidesWithoutReadingOrWritingAndUnknownTargetIsHonest() {

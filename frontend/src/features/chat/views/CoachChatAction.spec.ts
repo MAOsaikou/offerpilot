@@ -5,8 +5,14 @@ import ChatPage from '@/app/views/ChatPage.vue'
 import { saveCareerTasks } from '@/shared/api/career'
 
 const busyControl = vi.hoisted(() => ({ set: (_value: boolean) => {} }))
+const runControl = vi.hoisted(() => ({ set: (_value: unknown) => {} }))
 const send = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const submitApproval = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 vi.mock('@/shared/api/career', () => ({ saveCareerTasks: vi.fn() }))
+vi.mock('@/shared/api/agent', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/shared/api/agent')>()
+  return { ...actual, submitApproval }
+})
 vi.mock('../composables/useConversationChat', async () => {
   const { ref } = await import('vue')
   const state = {
@@ -113,12 +119,17 @@ vi.mock('../composables/useConversationChat', async () => {
   busyControl.set = (value) => {
     state.busy.value = value
   }
+  runControl.set = (value) => {
+    state.activeRun.value = value as null
+  }
   return { useConversationChat: () => state }
 })
 let app: App | undefined
 beforeEach(() => {
   send.mockClear()
+  submitApproval.mockClear()
   busyControl.set(false)
+  runControl.set(null)
 })
 afterEach(() => {
   app?.unmount()
@@ -208,12 +219,52 @@ describe('coach roadmap chat confirmation path', () => {
     expect(saveCareerTasks).not.toHaveBeenCalled()
     busyControl.set(true)
     await nextTick()
-    expect(root.textContent).toContain('正在处理，请稍候。')
+    expect(root.textContent).toContain('正在提交同步。请求就绪后，请在这里批准或拒绝。')
+    expect(root.textContent).not.toContain('正在处理，请稍候。')
     expect(root.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true)
     expect(root.querySelector<HTMLSelectElement>('select[aria-label="模型档位"]')!.disabled).toBe(
       true,
     )
     button.click()
     expect(send).toHaveBeenCalledTimes(1)
+  })
+  it('approves a pending growth sync from the chat column', async () => {
+    const root = await mount('/chat')
+    root.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click()
+    await nextTick()
+    ;[...root.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === '同步到成长任务')!
+      .click()
+    await nextTick()
+    runControl.set({
+      runId: 'run-1',
+      status: 'RUNNING',
+      memoryFacts: [],
+      citations: [],
+      steps: [],
+      toolCalls: [],
+      approvals: [
+        {
+          approvalId: 'ap-1',
+          toolCallId: 'tool-1',
+          name: 'adoptGrowthPlan',
+          args: { taskTitles: ['梳理目标岗位的核心技能'] },
+          reason: '确认完成',
+          expiresAt: '2026-12-01T00:00:00Z',
+          status: 'PENDING',
+        },
+      ],
+    })
+    busyControl.set(true)
+    await nextTick()
+    expect(root.textContent).toContain('请在这里批准或拒绝这次同步')
+    expect(root.textContent).not.toContain('正在处理，请稍候。')
+    const approve = [...root.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === '批准',
+    )!
+    approve.click()
+    await vi.waitFor(() =>
+      expect(submitApproval).toHaveBeenCalledWith('run-1', 'ap-1', { decision: 'APPROVE' }),
+    )
   })
 })

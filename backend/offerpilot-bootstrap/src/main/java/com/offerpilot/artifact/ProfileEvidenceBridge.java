@@ -25,7 +25,7 @@ public class ProfileEvidenceBridge implements ProfileEvidenceSource {
             for(var group:data.path("skills")) for(var skill:group.path("items")) add(skills,skill.asText());
             for(var project:data.path("projects")) for(var tech:project.path("tech")) add(skills,tech.asText());
             if(!skills.isEmpty()) result.add(new Observation("RESUME",resume.id(),resume.currentVersionId(),List.copyOf(skills),
-                List.of("简历版本 "+resume.currentVersionId()+" 列出的技能与项目技术；不代表已验证熟练度。")));
+                List.of("这份简历列出的技能与项目技术；不代表已验证熟练度。")));
         }
         var gh=github.get(owner);
         if(gh.snapshot()!=null && !gh.stale()) {
@@ -34,7 +34,7 @@ public class ProfileEvidenceBridge implements ProfileEvidenceSource {
                 repo.languages().keySet().forEach(s->add(skills,s));
                 facts.add("GitHub "+repo.url()+"：仓库语言 "+String.join("、",repo.languages().keySet())+"；本人近90天提交"+(repo.commitsTruncated()?"至少":"")+repo.commits90d()+"次。仓库语言不证明本人使用或掌握该语言。");
             }
-            if(!facts.isEmpty()) result.add(new Observation("GITHUB",gh.username(),gh.snapshot().id(),List.copyOf(skills),java.util.stream.Stream.concat(java.util.stream.Stream.of("GitHub 快照 "+gh.snapshot().id()+"，抓取于 "+gh.fetchedAt()),facts.stream().limit(20)).toList()));
+            if(!facts.isEmpty()) result.add(new Observation("GITHUB",gh.username(),gh.snapshot().id(),List.copyOf(skills),java.util.stream.Stream.concat(java.util.stream.Stream.of("GitHub 快照，抓取于 "+gh.fetchedAt()),facts.stream().limit(20)).toList()));
         }
         var interview=interviews.latestCompleted(owner);
         if(interview!=null) {

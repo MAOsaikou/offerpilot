@@ -2,6 +2,7 @@
 import { formatDisplay, localizedText, translate as uiText } from '@/shared/utils/language'
 
 import { checkPrivacyText } from '@/shared/api/privacy-settings'
+import { submitApproval } from '@/shared/api/agent'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Composer from '../components/Composer.vue'
@@ -132,12 +133,49 @@ const scrollArea = ref<HTMLElement | null>(null)
 const missingConversation = computed(
   () => Boolean(route.params.conversationId) && !current.value && !loading.value,
 )
+const awaitingGrowthApproval = ref(false)
+const decidingGrowth = ref(false)
+const growthError = localizedText()
+const growthApproval = computed(
+  () =>
+    activeRun.value?.approvals.find(
+      (item) => item.status === 'PENDING' && item.name === 'adoptGrowthPlan',
+    ) ?? null,
+)
+watch(growthApproval, (item) => {
+  if (item) awaitingGrowthApproval.value = false
+})
+watch(busy, (value, previous) => {
+  if (previous && !value) awaitingGrowthApproval.value = false
+})
 const cardDisabledReason = computed(() => {
+  if (growthApproval.value)
+    return uiText(
+      'Approve or reject syncing these tasks here. Rejecting does not mark tasks complete.',
+    )
+  if (busy.value && awaitingGrowthApproval.value)
+    return uiText('Submitting this sync. Approve or reject it here when the request is ready.')
   if (busy.value) return uiText('Saving this action. Please wait.')
   if (missingConversation.value || replay.runId.value)
     return uiText('This chat is still loading. Wait until it is ready.')
   return ''
 })
+async function decideGrowth(decision: 'APPROVE' | 'REJECT') {
+  const run = activeRun.value
+  const approval = growthApproval.value
+  if (!run || !approval || decidingGrowth.value) return
+  decidingGrowth.value = true
+  growthError.value = ''
+  try {
+    await submitApproval(run.runId, approval.approvalId, { decision })
+  } catch (cause) {
+    growthError.value = formatDisplay(
+      cause instanceof Error ? cause.message : uiText('Sync could not be submitted. Please retry.'),
+    )
+  } finally {
+    decidingGrowth.value = false
+  }
+}
 const lastQuestion = computed(
   () =>
     lastAttempt.value ||
@@ -312,19 +350,25 @@ async function adoptTarget(selection: CareerTargetSelection) {
 async function adoptGrowth(taskTitles: string[]) {
   if (busy.value || missingConversation.value || !taskTitles.length) return
   panelOpen.value = true
+  awaitingGrowthApproval.value = true
   const content = uiText('Sync growth tasks: I confirm that I have completed “{0}”', [
     taskTitles.join('」、「'),
   ])
   lastAttempt.value = content
-  await chat.send(
-    content,
-    'COACH',
-    tier.value,
-    (id) => {
-      void router.replace({ path: `/chat/${encodeURIComponent(id)}` })
-    },
-    { coachAction: 'adoptGrowthPlan', taskTitles },
-  )
+  try {
+    await chat.send(
+      content,
+      'COACH',
+      tier.value,
+      (id) => {
+        void router.replace({ path: `/chat/${encodeURIComponent(id)}` })
+      },
+      { coachAction: 'adoptGrowthPlan', taskTitles },
+    )
+  } catch (cause) {
+    awaitingGrowthApproval.value = false
+    throw cause
+  }
 }
 async function applyPatches(decision: PatchDecision, payload: unknown) {
   if (busy.value || missingConversation.value) return
@@ -605,6 +649,39 @@ async function remove(id: string) {
             }}<button class="btn text" :disabled="busy" @click="clearMatchAction">
               {{ uiText('Ask a general question instead') }}
             </button>
+          </div>
+          <div
+            v-if="growthApproval"
+            class="growth-decision helper-note"
+            role="region"
+            :aria-label="uiText('Approve')"
+          >
+            <p>
+              {{
+                uiText(
+                  'Approve or reject syncing these tasks here. Rejecting does not mark tasks complete.',
+                )
+              }}
+            </p>
+            <p v-if="growthError" class="error-banner" role="alert">{{ growthError }}</p>
+            <div class="card-footer">
+              <button
+                type="button"
+                class="btn primary"
+                :disabled="decidingGrowth"
+                @click="decideGrowth('APPROVE')"
+              >
+                {{ uiText('Approve') }}
+              </button>
+              <button
+                type="button"
+                class="btn"
+                :disabled="decidingGrowth"
+                @click="decideGrowth('REJECT')"
+              >
+                {{ uiText('Reject') }}
+              </button>
+            </div>
           </div>
           <Composer
             :key="current?.id || 'new'"

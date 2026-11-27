@@ -646,7 +646,7 @@ async function restoreTask() {
         <p v-else-if="askingFollowUp" class="subtle" role="status">
           {{ uiText('The interviewer is preparing a follow-up based on your answer…') }}
         </p>
-        <div v-if="synthesisSupported" class="voice-controls">
+        <div v-if="synthesisSupported" class="voice-controls dock-safe">
           <button
             type="button"
             class="btn"
@@ -752,7 +752,7 @@ async function restoreTask() {
         <p v-if="answer.length >= 12000" class="helper-note">
           {{ uiText('Your answer has reached the length limit. Edit it to continue.') }}
         </p>
-        <div class="card-footer">
+        <div class="card-footer dock-safe">
           <span class="subtle" role="status">{{
             uiText('{0} characters · {1}', [
               [...answer].length,

@@ -1,10 +1,21 @@
 <script setup lang="ts">
 import { translate as uiText } from '@/shared/utils/language'
 
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { coverageLabel } from '../skillCoverage'
+import { alignCurrent, levelFor, loadLiveSkillLevels } from '../skillEvidenceAlign'
+import type { SkillGapReport } from '@/shared/api/skill-gap'
 import type { SkillRadarPayload } from '@/shared/types/cards'
 const props = defineProps<{ payload: SkillRadarPayload }>()
+const live = ref<SkillGapReport | null>(null)
+onMounted(() => {
+  void loadLiveSkillLevels().then((report) => {
+    live.value = report
+  })
+})
+function shown(name: string, current: number) {
+  return alignCurrent(current, levelFor(live.value, name))
+}
 const valid = computed(
   () =>
     Array.isArray(props.payload?.axes) &&
@@ -23,7 +34,7 @@ function points(required = false) {
   return props.payload.axes
     .map((a, i, axes) => {
       const angle = (i * 2 * Math.PI) / axes.length - Math.PI / 2
-      const radius = (required ? a.required : a.current) * 18
+      const radius = (required ? a.required : shown(a.name, a.current)) * 18
       return `${110 + Math.cos(angle) * radius},${110 + Math.sin(angle) * radius}`
     })
     .join(' ')
@@ -77,8 +88,8 @@ function points(required = false) {
           {{
             uiText('{0}: {1} · Evidence {2} / Requirement {3}', [
               axis.name,
-              coverageLabel(axis.current),
-              axis.current,
+              coverageLabel(shown(axis.name, axis.current)),
+              shown(axis.name, axis.current),
               axis.required,
             ])
           }}

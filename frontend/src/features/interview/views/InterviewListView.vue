@@ -108,12 +108,16 @@ const invalidSelection = computed(
   () =>
     !!resumeId.value && (!versionId.value || versions.isPending.value || versions.isError.value),
 )
-const startBlockedReason = computed(() => {
-  if (!invalidSelection.value) return ''
-  if (versions.isPending.value) return uiText('Loading versions…')
-  return uiText('Select a saved resume version before starting.')
-})
 const busy = ref(false)
+const startBlockedReason = computed(() => {
+  if (busy.value) return ''
+  if (resumeId.value && versions.isPending.value) return uiText('Loading versions…')
+  if (invalidSelection.value) return uiText('Select a saved resume version before starting.')
+  if (!role.value.trim()) return uiText('Enter a target role before starting.')
+  if (mixInvalid.value)
+    return uiText('Question counts total {0}; expected {1}.', [mixTotal.value, questionCount.value])
+  return ''
+})
 const error = ref('')
 const controller = new AbortController()
 onBeforeUnmount(() => controller.abort())
@@ -347,7 +351,7 @@ function exportLegacy(session: Interview) {
           }}
         </p>
         <p v-if="error" role="alert">{{ error }}</p>
-        <div class="start-practice">
+        <div class="start-practice dock-safe">
           <button
             class="btn primary"
             type="submit"

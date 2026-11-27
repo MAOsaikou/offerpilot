@@ -23,7 +23,10 @@ const suggestion = (): ProfileSuggestion => ({
   sourceType: 'GITHUB',
   sourceId: 'int_demo_usr_01m8erhr39k0hvdrmb8ksy7x1gc_1',
   skills: ['Python'],
-  facts: ['非fork仓库，语言不证明本人掌握'],
+  facts: [
+    '非fork仓库，语言不证明本人掌握',
+    '简历版本 rv_01m8ersczzzs04g6knmv78wq7c 列出的技能与项目技术；不代表已验证熟练度。',
+  ],
   status: 'PENDING',
   createdAt: '2026-10-20T00:00:00Z',
 })
@@ -77,6 +80,8 @@ it('requires selecting proposed skills and flushing edits before explicit confir
   expect(host.textContent).not.toContain('int_demo')
   expect(decideProfileSuggestion).not.toHaveBeenCalled()
   expect(host.textContent).toContain('语言不证明本人掌握')
+  expect(host.textContent).not.toContain('rv_')
+  expect(host.textContent).toContain('这份简历列出的技能与项目技术')
   input.click()
   await flush()
   vi.mocked(getProfileSuggestions).mockResolvedValue([{ ...suggestion(), status: 'CONFIRMED' }])

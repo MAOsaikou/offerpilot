@@ -1,12 +1,25 @@
 <script setup lang="ts">
 import { formatDisplay, formatDate, translate as uiText } from '@/shared/utils/language'
 
+import { onMounted, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { RouterLink } from 'vue-router'
+import { getCareerProfile } from '@/shared/api/career'
 import { getJobRecommendations } from '@/shared/api/jobs'
 import { useBoard } from '@/shared/composables/useBoard'
 import JobSourceBadge from '@/shared/components/JobSourceBadge.vue'
+import { locationMisses } from '../jobResultNotes'
 const board = useBoard()
+const targetCity = ref('')
+onMounted(() => {
+  void getCareerProfile()
+    .then((profile) => {
+      targetCity.value = profile.city.trim()
+    })
+    .catch(() => {
+      targetCity.value = ''
+    })
+})
 const feed = useQuery({
   queryKey: ['job-recommendations'],
   queryFn: ({ signal }) => getJobRecommendations(signal),
@@ -75,6 +88,9 @@ const feed = useQuery({
         <ul>
           <li v-for="reason in item.reasons" :key="reason">{{ reason }}</li>
         </ul>
+        <p v-if="locationMisses(item.job.locations, targetCity)" class="helper-note">
+          {{ uiText('This listing does not mention {0}.', [targetCity]) }}
+        </p>
         <button
           class="btn"
           :disabled="

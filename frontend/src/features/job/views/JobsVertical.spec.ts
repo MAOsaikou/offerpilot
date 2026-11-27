@@ -5,6 +5,8 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { getJobRecommendations, listJobSites, searchJobs } from '@/shared/api/jobs'
+import { getCareerProfile } from '@/shared/api/career'
+import type { CareerProfile } from '@/shared/api/career'
 import { favoriteJob, listApplications } from '@/shared/api/applications'
 import type { DailyJobRecommendations, JobSearchResult, RealJob } from '@/shared/types/jobs'
 import type { ServerApplication } from '@/shared/types/board'
@@ -16,6 +18,9 @@ vi.mock('@/shared/api/jobs', () => ({
   getJobRecommendations: vi.fn(),
   listJobSites: vi.fn(),
   searchJobs: vi.fn(),
+}))
+vi.mock('@/shared/api/career', () => ({
+  getCareerProfile: vi.fn(),
 }))
 vi.mock('@/shared/api/applications', () => ({
   favoriteJob: vi.fn(),
@@ -71,8 +76,21 @@ const feed: DailyJobRecommendations = {
   rankingVersion: 'lexical-v1',
   items: [{ jobId: job.id, job, score: 80, reasons: ['目标职业匹配：开发', '保存简历匹配：Java'] }],
 }
+const profile = (city = ''): CareerProfile => ({
+  target: '',
+  city,
+  skills: '',
+  interests: [],
+  major: '',
+  courses: '',
+  valuesText: '',
+  assessment: null,
+  completedTasks: [],
+  updatedAt: null,
+})
 const mounted: Array<() => void> = []
 beforeEach(() => {
+  vi.mocked(getCareerProfile).mockReset().mockResolvedValue(profile())
   vi.mocked(listApplications).mockReset().mockResolvedValue([])
   vi.mocked(listJobSites).mockReset().mockResolvedValue({ sites: [] })
   vi.mocked(searchJobs).mockReset().mockResolvedValue(result)
@@ -161,6 +179,41 @@ it('explains failed sources and listings that miss the city filter', async () =>
   await vi.waitFor(() => expect(root.textContent).toContain('字节（超时）'))
   expect(root.textContent).toContain('未写明「上海」')
   expect(root.textContent).toContain('北京开发')
+})
+it('puts a per-source reason on the partial-results banner', async () => {
+  vi.mocked(searchJobs).mockResolvedValue({
+    ...result,
+    meta: {
+      ...result.meta,
+      timedOut: false,
+      skipped: [{ site: 'netease', reason: 'timeout' }],
+    },
+  })
+  vi.mocked(listJobSites).mockResolvedValue({
+    sites: [{ id: 'netease', name: '网易', supportedNatures: [] }],
+  })
+  const root = await mount(JobSearchView, '/jobs?q=Java&nature=all')
+  await vi.waitFor(() => expect(root.textContent).toContain('部分来源暂不可用'))
+  const banner = [...root.querySelectorAll('.helper-note')].find((node) =>
+    node.textContent?.includes('部分来源暂不可用'),
+  )
+  expect(banner?.textContent).toContain('网易（超时）')
+})
+it('marks a daily recommendation whose city misses the saved target city', async () => {
+  vi.mocked(getCareerProfile).mockResolvedValue(profile('上海'))
+  vi.mocked(getJobRecommendations).mockResolvedValue({
+    ...feed,
+    items: [
+      {
+        ...feed.items[0]!,
+        job: { ...job, locations: '杭州市' },
+        reasons: ['目标职业匹配：开发'],
+      },
+    ],
+  })
+  const root = await mount(DailyJobFeed)
+  await vi.waitFor(() => expect(root.textContent).toContain('未写明「上海」'))
+  expect(root.textContent).toContain('杭州市')
 })
 it('keeps job import on the page after the search prompt when there is no query', async () => {
   const root = await mount(JobSearchView, '/jobs')

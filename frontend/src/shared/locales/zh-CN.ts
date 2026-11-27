@@ -2623,4 +2623,10 @@ export default {
   'Careers with edited skills are listed first. A missing salary source stays missing and is not invented.':
     '有编辑技能的职业排在前面。薪资若尚无可信来源，会如实显示，不会编造。',
   'Complete your career profile': '完善职业画像',
+  'Enter a target role before starting.': '请先填写目标岗位。',
+  'Submitting this sync. Approve or reject it here when the request is ready.':
+    '正在提交同步。请求就绪后，请在这里批准或拒绝。',
+  'Approve or reject syncing these tasks here. Rejecting does not mark tasks complete.':
+    '请在这里批准或拒绝这次同步。拒绝不会把任务记为完成。',
+  'Sync could not be submitted. Please retry.': '同步没有提交成功，请重试。',
 } as const

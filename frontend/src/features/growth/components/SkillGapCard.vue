@@ -1,10 +1,25 @@
 <script setup lang="ts">
 import { translate as uiText } from '@/shared/utils/language'
 
+import { computed, onMounted, ref } from 'vue'
 import { coverageLabel } from '../skillCoverage'
+import { alignCurrent, levelFor, loadLiveSkillLevels } from '../skillEvidenceAlign'
 import GrowthEvidenceChips from './GrowthEvidenceChips.vue'
+import type { SkillGapReport } from '@/shared/api/skill-gap'
 import type { SkillGapPayload } from '@/shared/types/cards'
-defineProps<{ payload: SkillGapPayload }>()
+const props = defineProps<{ payload: SkillGapPayload }>()
+const live = ref<SkillGapReport | null>(null)
+onMounted(() => {
+  void loadLiveSkillLevels().then((report) => {
+    live.value = report
+  })
+})
+const skills = computed(() =>
+  props.payload.skills.map((skill) => {
+    const current = alignCurrent(skill.current, levelFor(live.value, skill.name))
+    return { ...skill, current, gap: Math.max(0, skill.required - current) }
+  }),
+)
 </script>
 
 <template>
@@ -16,12 +31,12 @@ defineProps<{ payload: SkillGapPayload }>()
       {{ uiText('Skill gaps · {0}', [payload.target.title]) }}
     </h3>
     <p class="mt-2 break-words text-sm text-muted-foreground">{{ payload.summary }}</p>
-    <p v-if="!payload.skills.length" class="mt-3 text-sm" role="status">
+    <p v-if="!skills.length" class="mt-3 text-sm" role="status">
       {{ uiText('No core skill data yet. Review the target job requirements first.') }}
     </p>
     <ul v-else class="mt-3 space-y-3">
       <li
-        v-for="skill in payload.skills"
+        v-for="skill in skills"
         :key="skill.name"
         class="min-w-0 rounded-lg border border-border p-3"
       >
