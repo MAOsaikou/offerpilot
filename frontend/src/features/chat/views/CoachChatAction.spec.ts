@@ -182,11 +182,16 @@ describe('coach roadmap chat confirmation path', () => {
     expect(root.querySelector<HTMLSelectElement>('select[aria-label="模型档位"]')!.value).toBe(
       'PRO',
     )
-    root.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click()
-    await nextTick()
     const button = [...root.querySelectorAll('button')].find(
       (b) => b.textContent?.trim() === '同步到成长任务',
     )!
+    expect(button.disabled).toBe(true)
+    expect(button.getAttribute('aria-describedby')).toBeTruthy()
+    expect(root.textContent).toContain('请先勾选已完成的任务。')
+    root.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click()
+    await nextTick()
+    expect(button.disabled).toBe(false)
+    expect(root.textContent).not.toContain('请先勾选已完成的任务。')
     button.click()
     await nextTick()
     expect(send).toHaveBeenCalledExactlyOnceWith(
@@ -203,6 +208,7 @@ describe('coach roadmap chat confirmation path', () => {
     expect(saveCareerTasks).not.toHaveBeenCalled()
     busyControl.set(true)
     await nextTick()
+    expect(root.textContent).toContain('正在处理，请稍候。')
     expect(root.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true)
     expect(root.querySelector<HTMLSelectElement>('select[aria-label="模型档位"]')!.disabled).toBe(
       true,

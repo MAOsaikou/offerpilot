@@ -11,6 +11,7 @@ import {
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getCareerCatalog } from '@/shared/api/career'
+import { uniqueOccupations } from '@/shared/utils/occupations'
 import { getSkillGap, type SkillGapReport } from '@/shared/api/skill-gap'
 import { listApplications } from '@/shared/api/applications'
 import { listImportedJobs } from '@/shared/api/jobs'
@@ -40,7 +41,7 @@ async function load() {
   ])
   if (signal.aborted) return
   const [catalog, applications, imported] = results
-  if (catalog.status === 'fulfilled') occupations.value = catalog.value
+  if (catalog.status === 'fulfilled') occupations.value = uniqueOccupations(catalog.value)
   const saved = new Map<string, { id: string; title: string }>()
   if (applications.status === 'fulfilled')
     for (const item of applications.value)

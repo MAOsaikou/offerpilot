@@ -2,6 +2,7 @@
 import { localizedText, translate as uiText } from '@/shared/utils/language'
 
 import { ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import { getKnowledgeNote, type KnowledgeNote } from '@/shared/api/knowledge'
 import { sessionRevision } from '@/shared/utils/authSession'
 import type { KnowledgeNoteCitationsPayload } from '@/shared/types/cards'
@@ -17,6 +18,9 @@ watch([sessionRevision, () => props.payload], () => {
   loading.value = null
   error.value = ''
 })
+function categoryLabel(category: string) {
+  return category === 'CURRENT_RESUME' ? uiText('Current resume') : category
+}
 async function open(id: string) {
   const current = ++request
   original.value = null
@@ -57,9 +61,15 @@ async function open(id: string) {
       tabindex="-1"
     >
       <h4>{{ item.title }}</h4>
-      <p class="subtle">[{{ item.reference }}] · {{ item.category }}</p>
+      <p class="subtle">[{{ item.reference }}] · {{ categoryLabel(item.category) }}</p>
       <p class="whitespace-pre-wrap">{{ item.excerpt }}</p>
-      <button type="button" class="btn" :disabled="!!loading" @click="open(item.noteId)">
+      <RouterLink
+        v-if="item.category === 'CURRENT_RESUME'"
+        class="btn"
+        :to="'/resumes/' + encodeURIComponent(item.noteId)"
+        >{{ uiText('Open this resume') }}</RouterLink
+      >
+      <button v-else type="button" class="btn" :disabled="!!loading" @click="open(item.noteId)">
         {{ loading === item.noteId ? uiText('Loading… #3') : uiText('View current source') }}
       </button>
     </article>

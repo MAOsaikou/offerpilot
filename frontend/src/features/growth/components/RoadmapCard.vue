@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { formatDisplay, formatDate, translate as uiText } from '@/shared/utils/language'
 
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useId, watch } from 'vue'
 import GrowthEvidenceChips from './GrowthEvidenceChips.vue'
 import type { RoadmapPayload } from '@/shared/types/cards'
 const props = defineProps<{
@@ -11,6 +11,7 @@ const props = defineProps<{
   startDate?: string
 }>()
 const emit = defineEmits<{ adoptGrowth: [taskTitles: string[]] }>()
+const reasonId = useId()
 const selected = ref<string[]>([])
 watch(
   () => props.payload,
@@ -122,11 +123,23 @@ const valid = computed(
         {{ milestone.at }} · {{ milestone.title }}
       </li>
     </ul>
+    <p
+      v-if="interactive && hasItems && (disabled || !selected.length)"
+      :id="reasonId"
+      class="mt-4 text-sm text-muted-foreground"
+    >
+      {{
+        disabled
+          ? uiText('Saving this action. Please wait.')
+          : uiText('Select completed tasks before syncing.')
+      }}
+    </p>
     <button
       v-if="interactive && hasItems"
       type="button"
-      class="mt-4 min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary disabled:opacity-50"
+      class="mt-2 min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary disabled:opacity-50"
       :disabled="disabled || !selected.length"
+      :aria-describedby="disabled || !selected.length ? reasonId : undefined"
       @click="emit('adoptGrowth', [...new Set(selected)])"
     >
       {{ uiText('Sync to growth tasks') }}

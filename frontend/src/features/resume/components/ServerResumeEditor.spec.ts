@@ -11,6 +11,7 @@ import {
   getResume,
   listResumeVersions,
   restoreResumeVersion,
+  renameResume,
   saveResume,
 } from '@/shared/api/resumes'
 import type { ResumeVersion, ServerResume } from '@/shared/types/resume'
@@ -96,6 +97,20 @@ function button(text: string) {
   return [...root.querySelectorAll('button')].find((b) => b.textContent?.trim() === text)!
 }
 
+it('replaces a filename title with the parsed name and objective', async () => {
+  const uploaded = fixture('v1', '林晓舟')
+  uploaded.title = 'demo-resume'
+  uploaded.fileName = 'demo-resume.pdf'
+  uploaded.currentVersion!.structured.basics.title = 'Java 后端实习'
+  const renamed = {
+    ...uploaded,
+    title: '林晓舟 · Java 后端实习',
+  }
+  vi.mocked(renameResume).mockResolvedValue(renamed)
+  cache.setQueryData(['resume', 'rs1'], uploaded)
+  await vi.waitFor(() => expect(renameResume).toHaveBeenCalledWith('rs1', '林晓舟 · Java 后端实习'))
+  await vi.waitFor(() => expect(root.querySelector('h1')?.textContent).toContain('林晓舟 · Java 后端实习'))
+})
 it('旧版本缺少头衔时显示空串且无未保存修改，编辑后原文进入保存并重新显示', async () => {
   const legacy = fixture('v2')
   delete legacy.currentVersion!.structured.basics.title

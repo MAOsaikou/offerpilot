@@ -809,8 +809,8 @@ export default {
   'No core skill data yet. Review the target job requirements first.':
     'No core skill data yet. Review the target job requirements first.',
   'Priority gaps': 'Priority gaps',
-  'Evidence level {0} / 5 · Reference requirement {1} · Gap {2}':
-    'Evidence level {0} / 5 · Reference requirement {1} · Gap {2}',
+  '{0} · Evidence level {1} / 5 · Reference requirement {2} · Gap {3}':
+    '{0} · Evidence level {1} / 5 · Reference requirement {2} · Gap {3}',
   '{0} evidence level': '{0} evidence level',
   'No saved skill evidence yet. This does not mean you lack the ability.':
     'No saved skill evidence yet. This does not mean you lack the ability.',
@@ -824,7 +824,7 @@ export default {
     'Material evidence and reference requirements (levels 0–5), not a certification of ability.',
   'Radar of skill evidence and reference requirements':
     'Radar of skill evidence and reference requirements',
-  '{0}: Evidence {1} / Requirement {2}': '{0}: Evidence {1} / Requirement {2}',
+  '{0}: {1} · Evidence {2} / Requirement {3}': '{0}: {1} · Evidence {2} / Requirement {3}',
   'Interview learning plans': 'Interview learning plans',
   'Turn interview insights into weekly action': 'Turn interview insights into weekly action',
   'Loading learning plans…': 'Loading learning plans…',
@@ -2730,4 +2730,10 @@ export default {
   'Enter your public GitHub username. A token is optional.':
     'Enter your public GitHub username. A token is optional.',
   'No data yet: no trusted salary source': 'No data yet: no trusted salary source',
+  'Other detail': 'Other detail',
+  'Untitled resume': 'Untitled resume',
+  'Select completed tasks before syncing.': 'Select completed tasks before syncing.',
+  'Saving this action. Please wait.': 'Saving this action. Please wait.',
+  'Current resume': 'Current resume',
+  'Open this resume': 'Open this resume',
 } as const

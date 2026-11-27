@@ -59,7 +59,7 @@ public class DefaultCoachPlanForChat implements CoachPlanForChat {
         String summary = "面向「" + occupation.name() + "」的技能证据差距与四周学习建议。"
                 + (resume.available() ? "已参考保存的结构化简历。" : "未读取到可用简历，仅参考档案技能；可上传或选择已保存简历补充证据。")
                 + availability
-                + "等级为规则参考：职业技能档案提及=2、简历列出=3；报告弱项按文本分映射为0–5；无证据=0，不代表没有能力。职业库技能可能为通用技能，不代表完整岗位要求。"
+                + "等级为规则参考：职业技能档案提及=2、简历列出=3；报告弱项按文本分映射为0–5；无证据=0，不代表没有能力。同一技能保留较高材料等级，简历列出不会被 0 分报告覆盖。职业库技能可能为通用技能，不代表完整岗位要求。"
                 + (skills.isEmpty() ? "当前职业未录入核心技能，暂不能判断具体差距；先梳理目标岗位要求。" : "优先处理未体现岗位要求、面试弱项，再补部分命中、岗位弱维度与职业技能；未体现不代表没有能力。")
                 + "卡片未写入成长任务；仅勾选已完成的任务并批准同步后记录完成状态。";
         var jobSkills = skills.stream().filter(s -> s.evidenceSources().stream()
@@ -106,8 +106,8 @@ public class DefaultCoachPlanForChat implements CoachPlanForChat {
             unique.merge(normalize(skill.name()), skill, (first, next) -> {
                 var sources = new LinkedHashSet<>(first.evidenceSources()); sources.addAll(next.evidenceSources());
                 var texts = new LinkedHashSet<>(first.evidence()); texts.addAll(next.evidence());
-                return new Skill(first.name(), first.required(), first.current(), first.gap(), List.copyOf(texts),
-                        false, null, List.copyOf(sources));
+                return stronger(new Skill(first.name(), first.required(), first.current(), first.gap(), List.copyOf(texts),
+                        false, null, List.copyOf(sources)), next);
             });
         }
         var result = new ArrayList<Skill>();
@@ -141,11 +141,11 @@ public class DefaultCoachPlanForChat implements CoachPlanForChat {
             String key = normalize(name);
             var evidence = new ArrayList<String>();
             int current = 0;
-            if (profileNames.contains(key)) { current = 2; evidence.add("职业档案技能提及：" + name); }
-            if (resumeNames.contains(key)) { current = 3; evidence.add("已保存简历技能或项目技术列出：" + name); }
+            if (listed(profileNames, key)) { current = 2; evidence.add("职业档案技能提及：" + name); }
+            if (listed(resumeNames, key)) { current = 3; evidence.add("已保存简历技能或项目技术列出：" + name); }
             var skill = new Skill(name, level, current, Math.max(0, level-current), List.copyOf(evidence), false);
             // Keep the strongest requirement when the source repeats a skill.
-            unique.merge(key, skill, (a,b) -> a.required() >= b.required() ? a : b);
+            unique.merge(key, skill, (a, b) -> stronger(a, b));
         }
         var sorted = unique.values().stream().sorted(Comparator.comparingInt(Skill::gap).reversed().thenComparing(Skill::name)).toList();
         var result = new ArrayList<Skill>();
@@ -154,6 +154,25 @@ public class DefaultCoachPlanForChat implements CoachPlanForChat {
             result.add(new Skill(s.name(), s.required(), s.current(), s.gap(), s.evidence(), i<2 && s.gap()>0));
         }
         return List.copyOf(result);
+    }
+    /** Keep the higher material level when a match score of 0 and a resume listing describe the same skill. */
+    static Skill stronger(Skill first, Skill next) {
+        var sources = new LinkedHashSet<>(first.evidenceSources());
+        sources.addAll(next.evidenceSources());
+        var texts = new LinkedHashSet<>(first.evidence());
+        texts.addAll(next.evidence());
+        int required = Math.max(first.required(), next.required());
+        int current = Math.max(first.current(), next.current());
+        return new Skill(first.name(), required, current, Math.max(0, required - current), List.copyOf(texts),
+                first.learnFirst() || next.learnFirst(), first.id() != null ? first.id() : next.id(), List.copyOf(sources));
+    }
+    /** Whole-token match so "Java、Spring Boot" counts and "JavaScript" does not count as Java. */
+    static boolean listed(Collection<String> names, String key) {
+        if (key == null || key.isBlank()) return false;
+        if (names.contains(key)) return true;
+        var pattern = java.util.regex.Pattern.compile("(?<![a-z0-9+#])" + java.util.regex.Pattern.quote(key) + "(?![a-z0-9+#])");
+        for (String name : names) if (name != null && pattern.matcher(name).find()) return true;
+        return false;
     }
     private static String normalize(String name) { return java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFKC).strip().toLowerCase(Locale.ROOT).replaceAll("\\s+", " "); }
     private static Item item(String id, int index, int hours, CareerProfileService.Profile profile) {

@@ -31,6 +31,16 @@ const labels = computed(() => ({
   CAREER_TARGET: uiText('Goal coordination'),
   PROFILE_UPDATE: uiText('Profile suggestion'),
 }))
+const sourceTags = computed(
+  (): Record<string, string> => ({
+    INTERVIEW: uiText('Interview report'),
+    RESUME: uiText('Resume skills'),
+    GITHUB: uiText('GitHub evidence'),
+  }),
+)
+function localizeBody(body: string) {
+  return body.replace(/\b(INTERVIEW|RESUME|GITHUB)\b/g, (token) => sourceTags.value[token] ?? token)
+}
 let generation = 0
 let reader = 0
 async function load() {
@@ -137,7 +147,7 @@ onBeforeUnmount(() => {
         <div class="notice-content">
           <span class="tag">{{ labels[notice.kind] }}</span>
           <h2>{{ notice.title }}</h2>
-          <p>{{ notice.body }}</p>
+          <p>{{ localizeBody(notice.body) }}</p>
           <time class="subtle" :datetime="notice.createdAt">{{
             new Date(notice.createdAt).toLocaleString(language)
           }}</time>

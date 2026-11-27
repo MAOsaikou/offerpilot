@@ -366,3 +366,25 @@ it('an agent write left pending by a closed chat is applied only after approval 
   expect(decidePendingAgentApproval).toHaveBeenCalledWith('ap_1', 'APPROVE')
   await vi.waitFor(() => expect(root.textContent).not.toContain('待你确认的 Agent 看板操作'))
 })
+it('moves a card into the selected column before the save returns', async () => {
+  let release: () => void = () => {}
+  vi.mocked(updateApplication).mockImplementation(
+    (_id, patch) =>
+      new Promise((resolve) => {
+        release = () => {
+          server[0] = { ...server[0]!, ...patch }
+          resolve(structuredClone(server[0]!))
+        }
+      }),
+  )
+  await mount()
+  await vi.waitFor(() => expect(column('TODO').querySelector('article')).not.toBeNull())
+  const select = column('TODO').querySelector('select')!
+  select.value = 'INTERVIEW'
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+  await vi.waitFor(() => expect(column('INTERVIEW').querySelector('[data-application-id="app_1"]')).not.toBeNull())
+  expect(column('TODO').querySelector('[data-application-id="app_1"]')).toBeNull()
+  expect(updateApplication).toHaveBeenCalledWith('app_1', { status: 'INTERVIEW' })
+  release()
+  await vi.waitFor(() => expect(column('INTERVIEW').querySelector('select')!.value).toBe('INTERVIEW'))
+})

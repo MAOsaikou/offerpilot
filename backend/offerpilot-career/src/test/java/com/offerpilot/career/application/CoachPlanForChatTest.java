@@ -39,10 +39,12 @@ class CoachPlanForChatTest {
         assertThat(ranked).extracting(CoachPlanForChat.Skill::name).containsExactly(" sql ", "面试逻辑", "沟通", "Java", "Go");
         assertThat(ranked.get(0).evidenceSources()).extracting(CoachPlanForChat.Evidence::type)
                 .containsExactly("JOB_MATCH", "OCCUPATION", "RESUME");
-        assertThat(ranked.get(0).current()).isZero();
+        assertThat(ranked.get(0).current()).isEqualTo(3);
         assertThat(ranked).extracting(CoachPlanForChat.Skill::id).doesNotHaveDuplicates().doesNotContainNull();
         assertThat(DefaultCoachPlanForChat.gaps(required, "JavaScript", List.of()).stream()
                 .filter(s -> s.name().equals("Java")).findFirst().orElseThrow().current()).isZero();
+        assertThat(DefaultCoachPlanForChat.gaps(required, "", List.of("Java、Spring Boot")).stream()
+                .filter(s -> s.name().equals("Java")).findFirst().orElseThrow().current()).isEqualTo(3);
         assertThat(DefaultCoachPlanForChat.gaps(required, "  JAVA、Go\nJavaScript", List.of(" sql "))).isEqualTo(result);
     }
     @Test void noTargetGuidesWithoutReadingOrWritingAndUnknownTargetIsHonest() {

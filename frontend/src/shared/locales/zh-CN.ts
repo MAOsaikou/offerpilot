@@ -771,8 +771,8 @@ export default {
   'No core skill data yet. Review the target job requirements first.':
     '暂无核心技能数据，请先梳理目标岗位要求。',
   'Priority gaps': '优先补齐',
-  'Evidence level {0} / 5 · Reference requirement {1} · Gap {2}':
-    '证据等级 {0} / 5 · 参考要求 {1} · 差距 {2}',
+  '{0} · Evidence level {1} / 5 · Reference requirement {2} · Gap {3}':
+    '{0} · 证据等级 {1} / 5 · 参考要求 {2} · 差距 {3}',
   '{0} evidence level': '{0}证据等级',
   'No saved skill evidence yet. This does not mean you lack the ability.':
     '尚无已保存技能证据，不代表没有能力。',
@@ -784,7 +784,7 @@ export default {
   'Material evidence and reference requirements (levels 0–5), not a certification of ability.':
     '当前材料证据与参考要求（0–5级），不代表能力认证。',
   'Radar of skill evidence and reference requirements': '技能证据与参考要求雷达图',
-  '{0}: Evidence {1} / Requirement {2}': '{0}：证据 {1} / 要求 {2}',
+  '{0}: {1} · Evidence {2} / Requirement {3}': '{0}：{1} · 证据 {2} / 要求 {3}',
   'Interview learning plans': '面试学习计划',
   'Turn interview insights into weekly action': '从面试复盘到每周行动',
   'Loading learning plans…': '正在读取学习计划…',
@@ -2592,4 +2592,10 @@ export default {
   'Enter your public GitHub username. A token is optional.':
     '请填写公开 GitHub 用户名，Token 可选。',
   'No data yet: no trusted salary source': '暂无数据：尚无可信薪资来源',
+  'Other detail': '其他内容',
+  'Untitled resume': '未命名简历',
+  'Select completed tasks before syncing.': '请先勾选已完成的任务。',
+  'Saving this action. Please wait.': '正在处理，请稍候。',
+  'Current resume': '当前简历',
+  'Open this resume': '打开这份简历',
 } as const

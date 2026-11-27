@@ -2,6 +2,7 @@
 import { translate as uiText } from '@/shared/utils/language'
 
 import { computed } from 'vue'
+import { coverageLabel } from '../skillCoverage'
 import type { SkillRadarPayload } from '@/shared/types/cards'
 const props = defineProps<{ payload: SkillRadarPayload }>()
 const valid = computed(
@@ -67,7 +68,12 @@ function points(required = false) {
       <ul>
         <li v-for="axis in payload.axes" :key="axis.name">
           {{
-            uiText('{0}: Evidence {1} / Requirement {2}', [axis.name, axis.current, axis.required])
+            uiText('{0}: {1} · Evidence {2} / Requirement {3}', [
+              axis.name,
+              coverageLabel(axis.current),
+              axis.current,
+              axis.required,
+            ])
           }}
         </li>
       </ul>

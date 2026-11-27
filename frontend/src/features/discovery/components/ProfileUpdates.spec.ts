@@ -9,9 +9,13 @@ import {
 } from '@/shared/api/careerUpdates'
 import type { CareerProfile } from '@/shared/api/career'
 import { saveGuest } from '@/shared/utils/authSession'
+import { getUnreadCount } from '@/shared/api/notifications'
 vi.mock('@/shared/api/careerUpdates', () => ({
   getProfileSuggestions: vi.fn(),
   decideProfileSuggestion: vi.fn(),
+}))
+vi.mock('@/shared/api/notifications', () => ({
+  getUnreadCount: vi.fn().mockResolvedValue(0),
 }))
 let app: App, host: HTMLDivElement
 const suggestion = (): ProfileSuggestion => ({
@@ -78,6 +82,7 @@ it('requires selecting proposed skills and flushing edits before explicit confir
   expect(beforeConfirm).toHaveBeenCalledOnce()
   expect(decideProfileSuggestion).toHaveBeenCalledWith('s1', true, ['Python'])
   expect(confirmed).toHaveBeenCalledWith(profile)
+  expect(getUnreadCount).toHaveBeenCalled()
   expect(host.textContent).toContain('已确认')
 })
 it('allows rejecting without adding skills and preserves the profile on failed flush', async () => {

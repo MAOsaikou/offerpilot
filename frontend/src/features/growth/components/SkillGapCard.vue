@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { translate as uiText } from '@/shared/utils/language'
 
+import { coverageLabel } from '../skillCoverage'
 import GrowthEvidenceChips from './GrowthEvidenceChips.vue'
 import type { SkillGapPayload } from '@/shared/types/cards'
 defineProps<{ payload: SkillGapPayload }>()
@@ -30,7 +31,8 @@ defineProps<{ payload: SkillGapPayload }>()
             uiText('Priority gaps')
           }}</span>
           <span class="text-xs text-muted-foreground">{{
-            uiText('Evidence level {0} / 5 · Reference requirement {1} · Gap {2}', [
+            uiText('{0} · Evidence level {1} / 5 · Reference requirement {2} · Gap {3}', [
+              coverageLabel(skill.current),
               skill.current,
               skill.required,
               skill.gap,

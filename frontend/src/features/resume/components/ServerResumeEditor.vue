@@ -30,6 +30,7 @@ import ResumeCertificateEditor from './ResumeCertificateEditor.vue'
 import ResumeDiagnosisPanel from './ResumeDiagnosisPanel.vue'
 import ResumeOptimizationPanel from './ResumeOptimizationPanel.vue'
 import { downloadText } from '@/shared/utils/download'
+import { suggestedResumeTitle } from '../resumeTitle'
 
 const props = defineProps<{ id: string }>()
 const route = useRoute()
@@ -107,6 +108,28 @@ watch(
   { immediate: true },
 )
 const deleted = ref(false)
+const titled = new Set<string>()
+watch(
+  () =>
+    [
+      resume.value?.id,
+      resume.value?.parseStatus,
+      resume.value?.title,
+      resume.value?.currentVersionId,
+    ] as const,
+  () => {
+    const value = resume.value
+    if (!value || titled.has(value.id) || dirty.value || busy.value) return
+    const next = suggestedResumeTitle(value)
+    if (!next) return
+    titled.add(value.id)
+    void run(async () => {
+      const updated = await renameResume(value.id, next)
+      cache.setQueryData(['resume', value.id], updated)
+      void cache.invalidateQueries({ queryKey: ['resumes'] })
+    })
+  },
+)
 function confirmLeave() {
   return (
     deleted.value ||

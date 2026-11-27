@@ -75,6 +75,27 @@ afterEach(() => {
   host.remove()
   localStorage.clear()
 })
+it('translates profile suggestion source tags for the current language', async () => {
+  vi.mocked(getNotifications).mockResolvedValue({
+    ...result(),
+    items: [
+      {
+        id: 'n2',
+        kind: 'PROFILE_UPDATE',
+        title: '职业画像有新的材料建议',
+        body: '来自 INTERVIEW 的材料已整理。来自 RESUME 的材料已整理。',
+        link: '/discover#profile-updates',
+        createdAt: '2026-10-20T00:00:00Z',
+        readAt: null,
+      },
+    ],
+  })
+  await mount()
+  expect(host.textContent).toContain('面试报告')
+  expect(host.textContent).toContain('简历技能')
+  expect(host.textContent).not.toMatch(/\bINTERVIEW\b/)
+  expect(host.textContent).not.toMatch(/\bRESUME\b/)
+})
 it('loads server unread count, marks one and restores persisted read state after refresh', async () => {
   const store = await mount()
   expect(store.unread).toBe(1)

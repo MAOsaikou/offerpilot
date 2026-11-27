@@ -84,6 +84,19 @@ afterEach(() => {
   app?.unmount()
   host.remove()
 })
+it('lists each occupation name once when the catalog repeats it', async () => {
+  vi.mocked(getCareerCatalog).mockResolvedValue([
+    { occupationId: 'occ_onet_29-1161.00', name: '助产士' },
+    { occupationId: 'occ_onet_29-9099.01', name: '助产士' },
+    { occupationId: 'data-scientist', name: '数据科学家' },
+    { occupationId: 'occ_onet_15-2051.00', name: '数据科学家' },
+  ])
+  await mount()
+  const names = [...host.querySelectorAll('optgroup option')].map((option) => option.textContent?.trim())
+  expect(names.filter((name) => name === '助产士')).toHaveLength(1)
+  expect(names.filter((name) => name === '数据科学家')).toHaveLength(1)
+  expect(host.querySelector<HTMLOptionElement>('option[value="data-scientist"]')).not.toBeNull()
+})
 it('analyzes the saved target and displays three grades with evidence and fetch date', async () => {
   await mount()
   button('分析技能差距').click()

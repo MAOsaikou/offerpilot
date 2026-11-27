@@ -5,6 +5,7 @@ import { localizedText, language, translate as uiText } from '@/shared/utils/lan
 
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useAuthStore } from '@/shared/stores/auth'
+import { useNotifications } from '@/shared/stores/notifications'
 import {
   getProfileSuggestions,
   decideProfileSuggestion,
@@ -14,6 +15,7 @@ import type { CareerProfile } from '@/shared/api/career'
 const props = defineProps<{ beforeConfirm: () => Promise<void> }>()
 const emit = defineEmits<{ confirmed: [profile: CareerProfile]; busy: [value: boolean] }>()
 const auth = useAuthStore()
+const notices = useNotifications()
 const items = ref<ProfileSuggestion[]>([]),
   selected = ref<Record<string, string[]>>({})
 const loading = ref(false),
@@ -60,6 +62,7 @@ async function decide(item: ProfileSuggestion, accept: boolean) {
     if (current !== generation) return
     const profile = await decideProfileSuggestion(item.id, accept, selected.value[item.id] ?? [])
     if (current !== generation) return
+    void notices.refresh()
     if (accept) emit('confirmed', profile)
     await load()
   } catch (cause) {
