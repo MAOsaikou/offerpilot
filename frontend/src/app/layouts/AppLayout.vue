@@ -58,6 +58,19 @@ watch(
     mobileOpen.value = false
   },
 )
+const storageNoteSegments = computed(() => {
+  const full = uiText(
+    'Drafts stay in this browser. Applications, interviews, uploaded resumes, conversations and match reports are saved on the server. Jobs come from company websites.',
+  )
+  const phrase = uiText('Interview practice')
+  const index = full.indexOf(phrase)
+  if (index === -1) return [{ text: full, nowrap: false }]
+  return [
+    { text: full.slice(0, index), nowrap: false },
+    { text: phrase, nowrap: true },
+    { text: full.slice(index + phrase.length), nowrap: false },
+  ]
+})
 </script>
 <template>
   <div class="app-shell">
@@ -93,11 +106,10 @@ watch(
       </nav>
       <div class="sidebar-foot">
         <p class="storage-note">
-          {{
-            uiText(
-              'Drafts stay in this browser. Applications, interviews, uploaded resumes, conversations and match reports are saved on the server. Jobs come from company websites.',
-            )
-          }}
+          <template v-for="(part, index) in storageNoteSegments" :key="index"
+            ><span v-if="part.nowrap" class="storage-note-nowrap">{{ part.text }}</span
+            ><template v-else>{{ part.text }}</template></template
+          >
         </p>
         <RouterLink
           to="/notifications"

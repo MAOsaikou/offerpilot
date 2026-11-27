@@ -182,6 +182,10 @@ it('closes the mobile sidebar after navigation and keeps the active link accessi
   root.querySelector<HTMLButtonElement>('[aria-label="打开导航"]')!.click()
   await nextTick()
   expect(root.querySelector('.sidebar.is-open')).not.toBeNull()
+  expect(root.querySelector('.storage-note')?.textContent?.trim()).toBe(
+    '草稿保存在当前浏览器；求职看板、面试练习、上传的简历、对话和匹配报告保存在服务端。岗位来自企业官网。',
+  )
+  expect(root.querySelector('.storage-note .storage-note-nowrap')?.textContent).toBe('面试练习')
   root.querySelector<HTMLAnchorElement>('.nav-list a[href="/chat"]')!.click()
   await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('chat'))
   await expectPage('chat')

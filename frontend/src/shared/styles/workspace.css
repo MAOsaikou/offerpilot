@@ -189,6 +189,9 @@ h3 {
   word-break: normal;
   line-break: auto;
 }
+.storage-note-nowrap {
+  white-space: nowrap;
+}
 .profile-link {
   display: flex;
   align-items: center;
