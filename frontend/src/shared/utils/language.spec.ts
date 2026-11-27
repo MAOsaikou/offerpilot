@@ -68,3 +68,11 @@ it('reacts in existing messages and labels without changing persisted values', a
   setLanguage('zh-CN')
   expect(message.value).toBe('后端原文')
 })
+
+it('describes the interest questionnaire with 常模验证 in zh-CN and the same key in en-US', () => {
+  const key =
+    'Original activity questions based on the RIASEC framework used by O*NET, with five questions per dimension. This is not an official translation or a validated psychological scale. Rate your interests, not your abilities. Takes about five minutes.'
+  expect(dictionaries['zh-CN'][key]).toContain('常模验证')
+  expect(dictionaries['zh-CN'][key]).not.toContain('经常模验证')
+  expect(dictionaries['en-US'][key]).toContain('validated psychological scale')
+})

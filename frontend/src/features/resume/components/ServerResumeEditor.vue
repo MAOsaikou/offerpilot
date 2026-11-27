@@ -592,8 +592,12 @@ const basics = computed(() => [
 .resume-fields {
   border: 0;
   padding: 0;
+  padding-bottom: 112px;
   margin: 0;
   min-width: 0;
+}
+.resume-fields :is(input, textarea, select, button) {
+  scroll-margin-bottom: 128px;
 }
 .resume-basics {
   display: grid;
@@ -655,6 +659,12 @@ progress {
 @media (max-width: 640px) {
   .resume-basics {
     grid-template-columns: 1fr;
+  }
+  .resume-fields {
+    padding-bottom: 168px;
+  }
+  .resume-fields :is(input, textarea, select, button) {
+    scroll-margin-bottom: 184px;
   }
   .resume-save {
     align-items: stretch;

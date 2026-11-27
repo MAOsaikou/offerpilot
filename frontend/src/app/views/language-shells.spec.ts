@@ -12,6 +12,25 @@ vi.mock('@/shared/api/resumes', () => ({
   listResumes: vi.fn(async () => ({ items: [], total: 0 })),
 }))
 vi.mock('@/shared/api/applications', () => ({ listApplications: vi.fn(async () => []) }))
+vi.mock('@/shared/api/career', () => ({
+  getCareerProfile: vi.fn(async () => ({
+    target: '',
+    city: '',
+    skills: '',
+    interests: [],
+    major: '',
+    courses: '',
+    valuesText: '',
+    assessment: null,
+    completedTasks: [],
+    updatedAt: null,
+  })),
+  saveCareerProfile: vi.fn(),
+  saveCareerTasks: vi.fn(),
+}))
+vi.mock('@/shared/api/interviews', () => ({
+  listInterviews: vi.fn(async () => []),
+}))
 vi.mock('@/shared/components/PendingAgentWrites.vue', () => ({ default: { render: () => null } }))
 vi.mock('@/shared/components/GitHubEvidencePanel.vue', () => ({ default: { render: () => null } }))
 vi.mock('@/features/settings/components/AccountPreferences.vue', () => ({

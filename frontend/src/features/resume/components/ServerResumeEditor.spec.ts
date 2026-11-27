@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ServerResumeEditor from './ServerResumeEditor.vue'
+import editorSource from './ServerResumeEditor.vue?raw'
 import {
   deleteResume,
   exportResumePdf,
@@ -404,6 +405,20 @@ it('进度展示排队、读取和模型字段阶段，完成后移除进度条'
   cache.setQueryData(['resume', 'rs1'], fixture())
   await nextTick()
   expect(root.querySelector('progress')).toBeNull()
+})
+
+it('reserves space under the fields so the sticky save bar can scroll clear', async () => {
+  const css = editorSource
+  expect(css).toContain('padding-bottom: 112px')
+  expect(css).toContain('padding-bottom: 168px')
+  expect(css).toContain('scroll-margin-bottom: 128px')
+  expect(css).toContain('scroll-margin-bottom: 184px')
+  await vi.waitFor(() => expect(root.querySelector('.resume-fields')).not.toBeNull())
+  const fields = root.querySelector('.resume-fields')!
+  const save = root.querySelector('.resume-save')!
+  expect(fields.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  )
 })
 
 afterEach(() => setLanguage('zh-CN'))

@@ -22,7 +22,9 @@ vi.mock('@/shared/api/applications', () => ({
   listApplications: vi.fn(),
   updateApplication: vi.fn(),
 }))
-vi.mock('../components/JobImportPanel.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('../components/JobImportPanel.vue', () => ({
+  default: { template: '<section data-job-import>导入岗位</section>' },
+}))
 const job: RealJob = {
   id: 'job_real',
   externalId: 'external',
@@ -119,6 +121,12 @@ async function mount(component: Component, path = '/jobs', props?: Record<string
 it('search renders parsed filters, timeout partial results and persists the joined-board state after repeated clicks', async () => {
   const root = await mount(JobSearchView, '/jobs?q=Java&nature=all')
   await vi.waitFor(() => expect(root.textContent).toContain('Java开发'))
+  const hit = [...root.querySelectorAll('h2')].find((node) => node.textContent === 'Java开发')!
+  const importer = root.querySelector('[data-job-import]')!
+  expect(importer).not.toBeNull()
+  expect(hit.compareDocumentPosition(importer) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  )
   expect(root.textContent).toContain('查询超时，已返回部分结果')
   expect(root.textContent).toContain('规则解析')
   expect(root.textContent).toContain('本地库')
@@ -133,6 +141,17 @@ it('search renders parsed filters, timeout partial results and persists the join
   expect(searchJobs).toHaveBeenCalledWith(
     { query: 'Java', nature: 'all', site: '', location: '' },
     expect.any(AbortSignal),
+  )
+})
+it('keeps job import on the page after the search prompt when there is no query', async () => {
+  const root = await mount(JobSearchView, '/jobs')
+  await vi.waitFor(() => expect(root.textContent).toContain('描述你想找的岗位'))
+  const prompt = [...root.querySelectorAll('h2')].find((node) =>
+    node.textContent?.includes('描述你想找的岗位'),
+  )!
+  const importer = root.querySelector('[data-job-import]')!
+  expect(prompt.compareDocumentPosition(importer) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
   )
 })
 it('daily feed shows explanations, links, cache date and idempotent board state', async () => {

@@ -2622,6 +2622,9 @@ export default {
   '{0} unread · Server notifications': '{0} unread · Server notifications',
   '{0} of {1} growth actions completed. {2} resumes and {3} interview practice sessions.':
     '{0} of {1} growth actions completed. {2} resumes and {3} interview practice sessions.',
+  'Loading workbench summary…': 'Loading workbench summary…',
+  'Select a saved resume version before starting.':
+    'Select a saved resume version before starting.',
   'Domain knowledge': 'Domain knowledge',
   'My career goal is {0}. My current skills are {1}. Please help me create an actionable learning plan.':
     'My career goal is {0}. My current skills are {1}. Please help me create an actionable learning plan.',

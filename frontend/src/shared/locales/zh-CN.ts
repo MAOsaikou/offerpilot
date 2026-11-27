@@ -582,7 +582,7 @@ export default {
   'Could not submit. Please retry.': '提交失败，请重试',
   'Quick interest questionnaire · 30 questions': '快速兴趣问卷 · 30 题',
   'Original activity questions based on the RIASEC framework used by O*NET, with five questions per dimension. This is not an official translation or a validated psychological scale. Rate your interests, not your abilities. Takes about five minutes.':
-    '按 O*NET 使用的 RIASEC 兴趣框架自写中文活动题，每类 5 题；不是官方译本或经常模验证的心理量表。按喜欢程度作答，不是能力考试，约需 5 分钟。',
+    '按 O*NET 使用的 RIASEC 兴趣框架自写中文活动题，每类 5 题；不是官方译本或常模验证的心理量表。按喜欢程度作答，不是能力考试，约需 5 分钟。',
   'Each answer is saved to your account so you can resume later. Confirmation replaces only the six interest scores and interest code, keeping confirmed traits and constraints. A later conversational assessment can update interests again; the latest explicit confirmation takes precedence.':
     '每题保存到账号，可离开后续答。确认写入时只替换画像的六维兴趣与兴趣码，保留已确认的特质和现实条件；之后确认对话测评会再次更新兴趣，以最近一次明确确认为准。',
   'You are offline. Saved answers are retained. Continue when connected.':
@@ -2503,6 +2503,8 @@ export default {
   '{0} unread · Server notifications': '{0} 条未读 · 服务端通知',
   '{0} of {1} growth actions completed. {2} resumes and {3} interview practice sessions.':
     '已完成 {0} / {1} 项成长行动。你有 {2} 份简历、{3} 场面试练习。',
+  'Loading workbench summary…': '正在读取工作台摘要…',
+  'Select a saved resume version before starting.': '请先选择简历版本。',
   'Domain knowledge': '专业',
   'My career goal is {0}. My current skills are {1}. Please help me create an actionable learning plan.':
     '我的目标是{0}，已有技能：{1}。请帮我制定可执行的学习计划。',

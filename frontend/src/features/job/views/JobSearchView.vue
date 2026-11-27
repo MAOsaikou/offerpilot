@@ -154,7 +154,6 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
         </button>
       </div>
     </form>
-    <JobImportPanel />
     <DailyJobFeed v-if="!criteria.query" />
     <div v-if="!criteria.query" class="panel empty-state">
       <h2>{{ uiText('Describe the job you want') }}</h2>
@@ -326,6 +325,7 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
         </article>
       </div>
     </template>
+    <JobImportPanel />
   </section>
 </template>
 <style scoped>

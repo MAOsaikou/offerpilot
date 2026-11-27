@@ -588,6 +588,22 @@ it('distinguishes 404 and retryable loading failures', async () => {
   await vi.waitFor(() => expect(root.textContent).toContain('未找到这场练习'))
   expect(button('重新加载')).toBeUndefined()
 })
+it('shows the first question before on-device analysis when questions exist', async () => {
+  await mount()
+  await loaded()
+  const question = root.querySelector('.question-text')
+  const gauges = root.querySelector('[aria-label="端侧表现分析"]')
+  const avatar = root.querySelector('.interview-avatar')
+  expect(question?.textContent).toContain('服务端题目快照')
+  expect(gauges).not.toBeNull()
+  expect(question!.compareDocumentPosition(avatar!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  )
+  expect(question!.compareDocumentPosition(gauges!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  )
+})
+
 it('retries list failures and leaves local data untouched after creation failure', async () => {
   vi.mocked(listInterviews).mockRejectedValueOnce(new Error('记录加载失败'))
   await mount('/interviews')
@@ -632,7 +648,10 @@ it('submits saved resume version, type, difficulty, voice mode and duration with
   await choose('简历', 'r1')
   await vi.waitFor(() => expect(root.textContent).toContain('第 1 版'))
   expect(button('开始练习').disabled).toBe(true)
+  expect(root.querySelector('#start-practice-reason')?.textContent).toContain('请先选择简历版本')
   await choose('简历版本', 'v1')
+  await nextTick()
+  expect(root.querySelector('#start-practice-reason')).toBeNull()
   await choose('面试类型', '技术')
   await choose('难度', 'HARD')
   await choose('模式', 'VOICE')

@@ -553,13 +553,6 @@ async function restoreTask() {
     <p v-if="error" role="alert">
       {{ uiText('{0} · Answers are retained. Please retry saving.', [error]) }}
     </p>
-    <PresenceGauges
-      v-if="!session.completed"
-      :status="presenceStatus"
-      :values="presenceValues"
-      :starting="presenceStarting"
-      :upload-failed="presenceUploadFailed"
-    />
     <section v-if="session.generationSource === 'pending'" class="panel form-stack">
       <h2>{{ uiText('Prepare your interview questions') }}</h2>
       <p>
@@ -574,6 +567,13 @@ async function restoreTask() {
         {{ generating ? uiText('Generating questions…') : uiText('Generate interview questions') }}
       </button>
     </section>
+    <PresenceGauges
+      v-if="session.generationSource === 'pending'"
+      :status="presenceStatus"
+      :values="presenceValues"
+      :starting="presenceStarting"
+      :upload-failed="presenceUploadFailed"
+    />
     <template v-else-if="!session.completed">
       <p v-if="timerLabel" role="timer" aria-live="off">{{ timerLabel }}</p>
       <button
@@ -590,6 +590,14 @@ async function restoreTask() {
           :max="session.answers.length"
           :aria-label="uiText('Interview progress')"
         />
+        <h2 :key="session.questionIndex" class="question-text">{{ current?.questionText }}</h2>
+        <p class="subtle">
+          {{
+            uiText(
+              'You do not need a perfect answer. Start by explaining your real experience clearly.',
+            )
+          }}
+        </p>
         <div v-if="redesigned" class="question-meta">
           <span v-if="current?.questionType" class="tag">{{
             questionTypeLabels[current.questionType]
@@ -618,14 +626,6 @@ async function restoreTask() {
         >
           <AppIcon name="interviews" :size="38" />
         </div>
-        <h2 :key="session.questionIndex" class="question-text">{{ current?.questionText }}</h2>
-        <p class="subtle">
-          {{
-            uiText(
-              'You do not need a perfect answer. Start by explaining your real experience clearly.',
-            )
-          }}
-        </p>
         <div v-if="hasFollowUp" class="follow-up-bubble" aria-live="polite">
           <span class="tag">{{
             uiText('Interviewer follow-up {0}', [
@@ -673,6 +673,12 @@ async function restoreTask() {
           }}</span>
         </div>
       </section>
+      <PresenceGauges
+        :status="presenceStatus"
+        :values="presenceValues"
+        :starting="presenceStarting"
+        :upload-failed="presenceUploadFailed"
+      />
       <InterviewFeedback
         v-if="redesigned && session.options?.feedbackMode !== 'END' && current?.evaluation"
         :evaluation="current.evaluation"
