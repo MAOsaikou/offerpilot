@@ -10,6 +10,7 @@ import DailyJobFeed from '../components/DailyJobFeed.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import { listJobSites, searchJobs } from '@/shared/api/jobs'
 import { useBoard } from '@/shared/composables/useBoard'
+import { formatSkippedSource, locationMisses } from '../jobResultNotes'
 const route = useRoute(),
   router = useRouter(),
   board = useBoard()
@@ -72,6 +73,16 @@ function submit() {
 }
 const saved = (id: string) => board.saved(id)
 const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.name || id
+const activeLocation = computed(
+  () => search.data.value?.criteria?.location || criteria.value.location,
+)
+const offLocationCount = computed(
+  () =>
+    search.data.value?.items.filter((job) => locationMisses(job.locations, activeLocation.value))
+      .length ?? 0,
+)
+const skippedText = (items: { site: string; reason: string }[]) =>
+  items.map((item) => formatSkippedSource(name(item.site), item.reason)).join('、')
 </script>
 <template>
   <section class="page-stack">
@@ -232,10 +243,18 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
       <div v-if="search.data.value.meta.skipped.length" class="helper-note" role="status">
         {{
           uiText('Some companies returned no results: {0}. They are excluded here. Retry later.', [
-            search.data.value.meta.skipped.map((s) => name(s.site)).join('、'),
+            skippedText(search.data.value.meta.skipped),
           ])
         }}
       </div>
+      <p v-if="offLocationCount" class="helper-note" role="status">
+        {{
+          uiText(
+            '{0} results do not mention {1}. Company search may not filter by city, so they stay visible with a note.',
+            [offLocationCount, activeLocation],
+          )
+        }}
+      </p>
       <p v-if="search.data.value.meta.degradedSites.length" class="helper-note">
         {{
           uiText(
@@ -290,6 +309,9 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
           <p class="subtle">
             {{ job.locations || uiText('Location not provided') }} ·
             {{ job.category || uiText('Category not provided') }}
+          </p>
+          <p v-if="locationMisses(job.locations, activeLocation)" class="helper-note">
+            {{ uiText('This listing does not mention {0}.', [activeLocation]) }}
           </p>
           <p class="subtle">
             {{

@@ -34,13 +34,18 @@ const feed = useQuery({
       {{ formatDisplay(feed.error.value?.message)
       }}<button class="btn" @click="feed.refetch()">{{ uiText('Retry') }}</button>
     </div>
-    <p v-else-if="!feed.data.value?.items.length" class="helper-note">
-      {{
-        uiText(
-          'No real jobs to recommend yet. Complete your profile, save a resume or search for jobs to build up records.',
-        )
-      }}
-    </p>
+    <div v-else-if="!feed.data.value?.items.length" class="helper-note" role="status">
+      <p>
+        {{
+          uiText(
+            'No real jobs to recommend yet. Complete your profile, save a resume or search for jobs to build up records.',
+          )
+        }}
+      </p>
+      <RouterLink to="/discover" class="btn">{{
+        uiText('Complete your career profile')
+      }}</RouterLink>
+    </div>
     <template v-else>
       <p class="subtle">
         {{ formatDisplay(formatDate(feed.data.value.date)) }} ·

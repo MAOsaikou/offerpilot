@@ -38,6 +38,22 @@ it('面试报告按真实载荷展示', () => {
     },
   })
   expect(view.root.textContent).toContain('继续练习')
+  view.unmount()
+  view = mountForTest(Card, {
+    payload: {
+      id: 'r',
+      overall: 78,
+      note: '已评分 3/3；规则文本评分。；模型总结',
+      dimensions: { professional: 76, expression: 81, logic: 80, jobFit: 76 },
+      turns: [],
+      strengths: [],
+      weaknesses: [],
+      advice: [],
+      recommendedLearning: [],
+    },
+  })
+  expect(view.root.textContent).toContain('已评分 3/3；规则文本评分。')
+  expect(view.root.textContent).not.toContain('模型总结')
   expect(view.root.querySelector('a[href^="javascript:"]')).toBeNull()
 })
 it('面试报告空态可见', () => {

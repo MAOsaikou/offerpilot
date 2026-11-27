@@ -9,7 +9,7 @@ import {
 } from '@/shared/utils/language'
 
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import { getCareerCatalog } from '@/shared/api/career'
 import { uniqueOccupations } from '@/shared/utils/occupations'
 import { getSkillGap, type SkillGapReport } from '@/shared/api/skill-gap'
@@ -140,6 +140,14 @@ async function analyze() {
     <template v-if="report">
       <h3 class="break-words">{{ report.targetTitle }}</h3>
       <p class="helper-note">{{ report.notice }}</p>
+      <p v-if="report.notice.includes('暂无 GitHub 实证')" class="helper-note">
+        {{
+          uiText(
+            'No GitHub evidence is saved, so repository languages are not included. Add a public username in settings if you want that evidence. This is not a failed analysis, and it does not mean GitHub is connected.',
+          )
+        }}
+        <RouterLink to="/settings">{{ uiText('Open GitHub evidence settings') }}</RouterLink>
+      </p>
       <p v-if="!report.skills.length" role="status">
         {{ uiText('No identifiable target skills yet.') }}
       </p>

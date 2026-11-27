@@ -46,6 +46,13 @@ function points(required = false) {
           )
         }}
       </p>
+      <p class="subtle">
+        {{
+          uiText(
+            'GitHub and MCP evidence stays out of this chart until you save a connection in settings. An empty chart means there is no saved evidence, not that an integration is connected.',
+          )
+        }}
+      </p>
       <svg
         v-if="payload.axes.length >= 3"
         viewBox="0 0 220 220"

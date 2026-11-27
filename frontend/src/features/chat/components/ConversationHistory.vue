@@ -156,7 +156,7 @@ function confirmRemove(id: string) {
               :disabled="sending"
               @click="select(conversation.id)"
             >
-              <span class="conversation-title"
+              <span class="conversation-title" :title="conversation.title"
                 ><span v-if="conversation.pinned" class="pin" :aria-label="uiText('Pinned #2')" />{{
                   conversation.title
                 }}</span
@@ -300,12 +300,13 @@ function confirmRemove(id: string) {
   text-align: left;
 }
 .conversation-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: -webkit-box;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
   font-size: 14px;
 }
 .selected .conversation-title {

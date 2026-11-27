@@ -1123,7 +1123,7 @@ export default {
   'Ranks real local job records using your profile, target career and latest saved resume. Cached daily and refreshed when your materials change. Scores reflect rule-based relevance.':
     '基于你的画像、目标职业与最近一份已保存简历，从本地真实岗位记录排序；每天缓存，资料变化后更新。推荐分是规则相关度。',
   'No real jobs to recommend yet. Complete your profile, save a resume or search for jobs to build up records.':
-    '暂无可推荐的真实岗位。请完善画像、保存简历，或先搜索积累岗位记录。',
+    '暂无可推荐的真实岗位。下一步：完善职业画像并保存简历，或先在上方搜索岗位。搜索结果进入本地记录后，这里才会按目标重新排序。',
   "Today's cache": '今日缓存',
   Updated: '已更新',
   'Company not provided': '公司未提供',
@@ -1242,7 +1242,7 @@ export default {
   'Manually curated sample snapshot, not live data. Check the company website for current openings.':
     '人工整理的示例岗位快照，非实时数据；当前是否开放请到企业官网核实。',
   'Some companies are unavailable: {0}. They are excluded from these results.':
-    '部分企业暂不可用：{0}。本次结果不包含这些企业。',
+    '这些来源失败或没有结果：{0}。原因写在名称后面。本次结果不包含这些企业。',
   '{0} used fallback filtering and may not cover all jobs.':
     '{0} 使用降级过滤，可能未覆盖全部岗位。',
   'Upstream results were truncated. Narrow your keywords or choose a company.':
@@ -1407,7 +1407,7 @@ export default {
   '{0} jobs returned': '本次返回 {0} 个岗位',
   'Queried: {0} · Coverage: {1}': '查询时间：{0} · 覆盖 {1}',
   'Some companies returned no results: {0}. They are excluded here. Retry later.':
-    '部分企业未返回结果：{0}。当前结果不包含这些企业，可稍后重试。',
+    '这些来源失败或没有结果：{0}。原因写在名称后面。当前列表不包含它们，可稍后重试。',
   '{0} filtered keywords using the company-provided list, which may not include all jobs.':
     '{0} 使用企业返回列表进行关键词筛选，可能未覆盖所有岗位。',
   'Results exceed the display limit. Narrow your keywords or choose a company.':
@@ -1771,7 +1771,7 @@ export default {
   'The current resume version differs or has unsaved edits. These suggestions are read-only. Save current content and regenerate to avoid overwriting later changes.':
     '当前简历版本不同或有未保存修改，此批建议仅供查看。请保存当前内容并重新生成，避免覆盖后续编辑。',
   'No rewrite suggestions need accepting. No new resume version was created. #2':
-    '没有需要采纳的改写建议。未创建简历新版本。',
+    '这份岗位和当前简历已经比较贴近。可以换一份要求更高的岗位描述，或改写另一个目标岗位。没有需要采纳的改写，也未创建简历新版本。',
   'Rewrite history · {0}': '改写记录 · {0} 次',
   'Refresh rewrite history': '刷新改写记录',
   'Loading rewrite history…': '正在加载改写记录…',
@@ -2598,4 +2598,29 @@ export default {
   'Saving this action. Please wait.': '正在处理，请稍候。',
   'Current resume': '当前简历',
   'Open this resume': '打开这份简历',
+  'The target career is saved in your career profile and matches exploration and growth.':
+    '目标方向保存在职业档案里，与职业探索和成长路线相同。',
+  'Select at least one skill before confirming.': '请先勾选要写入的技能。',
+  'Suggested on {0}': '建议时间：{0}',
+  'These tasks are already recorded as complete.': '这些任务都已记为完成，没有新的完成项可同步。',
+  'After syncing, approve or reject it in the execution panel. Rejecting does not mark tasks complete.':
+    '同步后请在执行面板批准或拒绝。拒绝不会把任务记为完成。',
+  'This chat is still loading. Wait until it is ready.': '对话还在准备，请稍候再同步。',
+  '{0} results do not mention {1}. Company search may not filter by city, so they stay visible with a note.':
+    '有 {0} 条结果的工作地未写明「{1}」。企业搜索不一定按城市过滤，这些结果会保留并单独标明。',
+  'This listing does not mention {0}.': '这条结果的工作地未写明「{0}」。',
+  'Source timed out': '超时',
+  'Source request failed': '请求失败',
+  'Source is temporarily unavailable': '暂不可用',
+  'No GitHub evidence is saved, so repository languages are not included. Add a public username in settings if you want that evidence. This is not a failed analysis, and it does not mean GitHub is connected.':
+    '还没有保存 GitHub 实证，因此结果不含仓库语言。若需要，可在设置里填写公开用户名。这不是分析失败，也不表示 GitHub 已经连接。',
+  'Open GitHub evidence settings': '打开 GitHub 实证设置',
+  'GitHub and MCP evidence stays out of this chart until you save a connection in settings. An empty chart means there is no saved evidence, not that an integration is connected.':
+    '未在设置中保存连接时，GitHub 与 MCP 实证不会出现在这张图里。空白表示没有已保存实证，并不表示集成已连接。',
+  'Edited skills only': '只看有编辑技能',
+  'All careers': '全部职业',
+  'Career background': '背景筛选',
+  'Careers with edited skills are listed first. A missing salary source stays missing and is not invented.':
+    '有编辑技能的职业排在前面。薪资若尚无可信来源，会如实显示，不会编造。',
+  'Complete your career profile': '完善职业画像',
 } as const

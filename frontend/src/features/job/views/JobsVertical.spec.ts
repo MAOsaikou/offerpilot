@@ -143,6 +143,25 @@ it('search renders parsed filters, timeout partial results and persists the join
     expect.any(AbortSignal),
   )
 })
+it('explains failed sources and listings that miss the city filter', async () => {
+  vi.mocked(searchJobs).mockResolvedValue({
+    ...result,
+    items: [job, { ...job, id: 'job_bj', title: '北京开发', locations: '北京' }],
+    meta: {
+      ...result.meta,
+      partial: false,
+      timedOut: false,
+      skipped: [{ site: 'bytedance', reason: 'timeout' }],
+    },
+  })
+  vi.mocked(listJobSites).mockResolvedValue({
+    sites: [{ id: 'bytedance', name: '字节', supportedNatures: [] }],
+  })
+  const root = await mount(JobSearchView, '/jobs?q=Java&location=上海&nature=all')
+  await vi.waitFor(() => expect(root.textContent).toContain('字节（超时）'))
+  expect(root.textContent).toContain('未写明「上海」')
+  expect(root.textContent).toContain('北京开发')
+})
 it('keeps job import on the page after the search prompt when there is no query', async () => {
   const root = await mount(JobSearchView, '/jobs')
   await vi.waitFor(() => expect(root.textContent).toContain('描述你想找的岗位'))
@@ -178,6 +197,7 @@ it('empty recommendations display guidance without sample jobs; failures can ret
     .find((b) => b.textContent?.trim() === '重试')!
     .click()
   await vi.waitFor(() => expect(root.textContent).toContain('暂无可推荐的真实岗位'))
+  expect(root.querySelector('a[href="/discover"]')?.textContent).toContain('完善职业画像')
   expect(root.textContent).not.toContain('Java开发')
   await nextTick()
 })

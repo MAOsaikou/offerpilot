@@ -12,6 +12,7 @@ export const useBuiltinFilters = defineStore('builtin-knowledge-filters', () => 
     role = ref('')
   const questionType = ref(''),
     difficulty = ref(''),
-    page = ref(1)
-  return { tab, q, family, holland, industry, role, questionType, difficulty, page }
+    page = ref(1),
+    background = ref('')
+  return { tab, q, family, holland, industry, role, questionType, difficulty, page, background }
 })

@@ -20,6 +20,16 @@ class BuiltinKnowledgeTest {
         assertThatThrownBy(() -> repo.occupations("","","",1,101)).isInstanceOf(BusinessException.class);
         assertThatThrownBy(() -> repo.occupations("x".repeat(2001),"","",1,20)).isInstanceOf(BusinessException.class);
         verifyNoInteractions(jdbc);
+        assertThatThrownBy(() -> repo.occupations("","","",1,20,"invented")).isInstanceOf(BusinessException.class);
+    }
+    @Test void curatedOccupationsAreFilteredAndListedBeforeDirectCopies() {
+        var jdbc=mock(JdbcTemplate.class);var repo=new BuiltinKnowledgeRepository(jdbc,new ObjectMapper());
+        when(jdbc.queryForObject(anyString(),eq(Long.class),any(Object[].class))).thenReturn(24L);
+        when(jdbc.query(anyString(),any(RowMapper.class),any(Object[].class))).thenReturn(List.of());
+        var page=repo.occupations("","","",1,20,"curated");
+        assertThat(page.total()).isEqualTo(24);
+        verify(jdbc).queryForObject(contains("skills_source='curated'"),eq(Long.class),any(Object[].class));
+        verify(jdbc).query(contains("CASE WHEN skills_source='curated' THEN 0 ELSE 1 END"),any(RowMapper.class),eq(20),eq(0));
     }
     @Test void entryFiltersAreBoundAndHaveDeterministicPagination() {
         var jdbc=mock(JdbcTemplate.class);var repo=new BuiltinKnowledgeRepository(jdbc,new ObjectMapper());

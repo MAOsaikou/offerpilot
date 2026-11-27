@@ -132,6 +132,12 @@ const scrollArea = ref<HTMLElement | null>(null)
 const missingConversation = computed(
   () => Boolean(route.params.conversationId) && !current.value && !loading.value,
 )
+const cardDisabledReason = computed(() => {
+  if (busy.value) return uiText('Saving this action. Please wait.')
+  if (missingConversation.value || replay.runId.value)
+    return uiText('This chat is still loading. Wait until it is ready.')
+  return ''
+})
 const lastQuestion = computed(
   () =>
     lastAttempt.value ||
@@ -556,6 +562,7 @@ async function remove(id: string) {
                     adoptGrowth,
                     applyPatches,
                     disabled: busy || missingConversation || Boolean(replay.runId.value),
+                    disabledReason: cardDisabledReason,
                   }" /></template
             ></MessageList>
             <ChatWelcome v-else-if="!loading && !missingConversation" @pick="seed = $event" />

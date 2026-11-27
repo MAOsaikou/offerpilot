@@ -139,7 +139,8 @@ export function createWorkspace(): Workspace {
   return {
     version: 1,
     name: '求职者',
-    target: '前端开发工程师',
+    // Target career lives on the server career profile. This local field stays blank so it cannot drift from /discover and /career.
+    target: '',
     city: '杭州',
     skills: 'JavaScript、Vue、TypeScript',
     interests: ['技术研发'],

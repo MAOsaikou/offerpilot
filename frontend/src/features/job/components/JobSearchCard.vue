@@ -12,6 +12,7 @@ import { useBoard } from '@/shared/composables/useBoard'
 import JobSourceBadge from '@/shared/components/JobSourceBadge.vue'
 import { RouterLink } from 'vue-router'
 import type { ChatJobSearch } from '@/shared/types/jobs'
+import { formatSkippedSource, locationMisses } from '../jobResultNotes'
 import type { JobCardItem } from '@/shared/types/cards'
 
 const props = defineProps<{ payload: ChatJobSearch | JobCardItem }>()
@@ -103,7 +104,7 @@ const natureLabel = (value: string) =>
     <p v-if="search.meta.skipped.length" class="helper-note" role="status">
       {{
         uiText('Some companies are unavailable: {0}. They are excluded from these results.', [
-          search.meta.skipped.map((s) => s.site).join('、'),
+          search.meta.skipped.map((item) => formatSkippedSource(item.site, item.reason)).join('、'),
         ])
       }}
     </p>
@@ -141,6 +142,9 @@ const natureLabel = (value: string) =>
       <p>
         {{ job.company || job.site }} · {{ job.locations || uiText('Location not provided') }} ·
         {{ natureLabel(job.nature) }}
+      </p>
+      <p v-if="locationMisses(job.locations, search.criteria.location)" class="helper-note">
+        {{ uiText('This listing does not mention {0}.', [search.criteria.location]) }}
       </p>
       <p class="subtle">
         {{

@@ -86,7 +86,7 @@ public class InterviewGenerationService {
             var narrative=model.narrative(owner,session,input);
             var type=new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){};
             List<String> strengths=json.convertValue(narrative.path("strengths"),type), weaknesses=json.convertValue(narrative.path("weaknesses"),type), advice=json.convertValue(narrative.path("advice"),type);
-            result=new InterviewRubric.Report(id,report.overall(),report.dimensions(),report.turns(),strengths,weaknesses,advice,learning(weaknesses),report.note()+"；模型总结");
+            result=new InterviewRubric.Report(id,report.overall(),report.dimensions(),report.turns(),strengths,weaknesses,advice,learning(weaknesses),report.note());
         } catch (RuntimeException ex) { BackgroundWork.check(); }
         var saved=result;
         tx.executeWithoutResult(status -> {

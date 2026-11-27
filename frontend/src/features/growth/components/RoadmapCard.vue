@@ -8,6 +8,7 @@ const props = defineProps<{
   payload: RoadmapPayload
   interactive?: boolean
   disabled?: boolean
+  disabledReason?: string
   startDate?: string
 }>()
 const emit = defineEmits<{ adoptGrowth: [taskTitles: string[]] }>()
@@ -23,6 +24,16 @@ watch(
 const hasItems = computed(
   () => valid.value && props.payload.weeks.some((week) => week.items.length > 0),
 )
+const openItems = computed(() =>
+  valid.value ? props.payload.weeks.flatMap((week) => week.items).filter((item) => !item.done) : [],
+)
+const syncReason = computed(() => {
+  if (!props.interactive || !hasItems.value) return ''
+  if (props.disabled) return props.disabledReason || uiText('Saving this action. Please wait.')
+  if (!openItems.value.length) return uiText('These tasks are already recorded as complete.')
+  if (!selected.value.length) return uiText('Select completed tasks before syncing.')
+  return ''
+})
 function weekRange(index: number) {
   if (!props.startDate) return ''
   const start = new Date(props.startDate + 'T00:00:00Z')
@@ -123,23 +134,22 @@ const valid = computed(
         {{ milestone.at }} · {{ milestone.title }}
       </li>
     </ul>
-    <p
-      v-if="interactive && hasItems && (disabled || !selected.length)"
-      :id="reasonId"
-      class="mt-4 text-sm text-muted-foreground"
-    >
+    <p v-if="syncReason" :id="reasonId" class="mt-4 text-sm text-muted-foreground">
+      {{ syncReason }}
+    </p>
+    <p v-else-if="interactive && hasItems" class="mt-4 text-sm text-muted-foreground">
       {{
-        disabled
-          ? uiText('Saving this action. Please wait.')
-          : uiText('Select completed tasks before syncing.')
+        uiText(
+          'After syncing, approve or reject it in the execution panel. Rejecting does not mark tasks complete.',
+        )
       }}
     </p>
     <button
       v-if="interactive && hasItems"
       type="button"
       class="mt-2 min-h-11 rounded border border-primary px-3 py-2 text-sm text-primary disabled:opacity-50"
-      :disabled="disabled || !selected.length"
-      :aria-describedby="disabled || !selected.length ? reasonId : undefined"
+      :disabled="Boolean(syncReason)"
+      :aria-describedby="syncReason ? reasonId : undefined"
       @click="emit('adoptGrowth', [...new Set(selected)])"
     >
       {{ uiText('Sync to growth tasks') }}

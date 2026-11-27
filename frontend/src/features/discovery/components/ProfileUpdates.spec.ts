@@ -21,7 +21,7 @@ let app: App, host: HTMLDivElement
 const suggestion = (): ProfileSuggestion => ({
   id: 's1',
   sourceType: 'GITHUB',
-  sourceId: 'account/snapshot1',
+  sourceId: 'int_demo_usr_01m8erhr39k0hvdrmb8ksy7x1gc_1',
   skills: ['Python'],
   facts: ['非fork仓库，语言不证明本人掌握'],
   status: 'PENDING',
@@ -72,6 +72,9 @@ it('requires selecting proposed skills and flushing edits before explicit confir
   const { beforeConfirm, confirmed } = await mount()
   const input = host.querySelector('input')!
   expect(input.checked).toBe(false)
+  expect(button('确认材料依据与所选技能').disabled).toBe(true)
+  expect(host.textContent).toContain('请先勾选要写入的技能。')
+  expect(host.textContent).not.toContain('int_demo')
   expect(decideProfileSuggestion).not.toHaveBeenCalled()
   expect(host.textContent).toContain('语言不证明本人掌握')
   input.click()
@@ -86,17 +89,23 @@ it('requires selecting proposed skills and flushing edits before explicit confir
   expect(host.textContent).toContain('已确认')
 })
 it('allows rejecting without adding skills and preserves the profile on failed flush', async () => {
-  const flushFailure = vi.fn().mockRejectedValue(new Error('草稿保存失败'))
+  const flushFailure = vi.fn().mockResolvedValue(undefined)
   const { confirmed } = await mount(flushFailure)
-  button('确认材料依据与所选技能').click()
-  await flush()
-  expect(decideProfileSuggestion).not.toHaveBeenCalled()
-  expect(confirmed).not.toHaveBeenCalled()
-  expect(host.textContent).toContain('草稿保存失败')
-  flushFailure.mockResolvedValue(undefined)
+  expect(button('确认材料依据与所选技能').disabled).toBe(true)
   button('忽略这次建议').click()
   await flush()
   expect(decideProfileSuggestion).toHaveBeenCalledWith('s1', false, [])
+  expect(confirmed).not.toHaveBeenCalled()
+  flushFailure.mockRejectedValue(new Error('草稿保存失败'))
+  vi.mocked(getProfileSuggestions).mockResolvedValue([suggestion()])
+  button('刷新材料建议').click()
+  await flush()
+  host.querySelector('input')!.click()
+  await flush()
+  button('确认材料依据与所选技能').click()
+  await flush()
+  expect(decideProfileSuggestion).toHaveBeenCalledTimes(1)
+  expect(host.textContent).toContain('草稿保存失败')
   expect(confirmed).not.toHaveBeenCalled()
 })
 it('handles empty, failure retry, stale history and offline controls', async () => {
@@ -130,5 +139,6 @@ it('discards previous-owner pending responses', async () => {
   await flush()
   finish([suggestion()])
   await flush()
-  expect(host.textContent).not.toContain('account/snapshot1')
+  expect(host.textContent).not.toContain('语言不证明本人掌握')
+  expect(host.textContent).not.toContain('int_demo')
 })

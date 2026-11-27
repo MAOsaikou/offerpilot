@@ -131,12 +131,7 @@ onBeforeUnmount(() => {
     <article v-for="item in items" :key="item.id" class="form-stack profile-suggestion">
       <h3>{{ labels[item.sourceType] }} · {{ statuses[item.status] }}</h3>
       <p class="subtle">
-        {{
-          uiText('Source: {0} · {1} #2', [
-            item.sourceId,
-            new Date(item.createdAt).toLocaleString(language),
-          ])
-        }}
+        {{ uiText('Suggested on {0}', [new Date(item.createdAt).toLocaleString(language)]) }}
       </p>
       <ul>
         <li v-for="fact in item.facts" :key="fact">{{ fact }}</li>
@@ -151,8 +146,16 @@ onBeforeUnmount(() => {
           />
           {{ uiText('Add profile skill: {0}', [skill]) }}</label
         >
+        <p v-if="!selected[item.id]?.length" :id="'confirm-reason-' + item.id" class="subtle">
+          {{ uiText('Select at least one skill before confirming.') }}
+        </p>
         <div class="actions">
-          <button class="btn primary" :disabled="busy || !online" @click="decide(item, true)">
+          <button
+            class="btn primary"
+            :disabled="busy || !online || !selected[item.id]?.length"
+            :aria-describedby="selected[item.id]?.length ? undefined : 'confirm-reason-' + item.id"
+            @click="decide(item, true)"
+          >
             {{ uiText('Confirm evidence and selected skills') }}</button
           ><button class="btn" :disabled="busy || !online" @click="decide(item, false)">
             {{ uiText('Ignore this suggestion') }}

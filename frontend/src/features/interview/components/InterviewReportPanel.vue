@@ -104,6 +104,9 @@ async function createPlan() {
       <h3>{{ uiText('Generating interview report') }}</h3>
       <progress :aria-label="uiText('Interview report progress')" />
       <p>{{ task?.stage || uiText('Submitting report task') }}</p>
+      <div class="skeleton-stack" aria-hidden="true">
+        <span class="skeleton" /><span class="skeleton" /><span class="skeleton" />
+      </div>
       <p class="helper-note">
         {{
           uiText(

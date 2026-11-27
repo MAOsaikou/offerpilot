@@ -5,6 +5,7 @@ import { computed, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import { useWorkspace } from '@/shared/stores/workspace'
+import { useCareerProfile } from '@/shared/composables/useCareerProfile'
 import { downloadText } from '@/shared/utils/download'
 import { API_BASE } from '@/shared/api/client'
 import DeleteMyData from '../components/DeleteMyData.vue'
@@ -15,6 +16,15 @@ import ResumeModelSettings from '../components/ResumeModelSettings.vue'
 import AccountPreferences from '../components/AccountPreferences.vue'
 import GitHubEvidencePanel from '@/shared/components/GitHubEvidencePanel.vue'
 const workspace = useWorkspace()
+const {
+  profile,
+  loading: careerLoading,
+  ready: careerReady,
+  error: careerError,
+  pending: careerPending,
+  saveProfile,
+  retry: retryCareer,
+} = useCareerProfile()
 const route = useRoute()
 const router = useRouter()
 const tab = computed(() =>
@@ -111,9 +121,30 @@ function exportWorkspace() {
           >{{ uiText('What should we call you?')
           }}<input v-model="workspace.displayName" maxlength="40" /></label
         ><label class="field"
-          >{{ uiText('Target career') }}<input v-model="workspace.state.target" maxlength="100"
+          >{{ uiText('Target career')
+          }}<input
+            v-model="profile.target"
+            maxlength="100"
+            :disabled="!careerReady"
+            @input="saveProfile()"
         /></label>
       </div>
+      <p v-if="careerLoading" class="subtle" role="status">
+        {{ uiText('Loading career profile…') }}
+      </p>
+      <p v-else-if="careerError" class="error-banner" role="alert">
+        {{ careerError }}
+        <button class="btn" type="button" @click="retryCareer">{{ uiText('Retry') }}</button>
+      </p>
+      <p v-else class="helper-note">
+        {{
+          careerPending
+            ? uiText('Saving…')
+            : uiText(
+                'The target career is saved in your career profile and matches exploration and growth.',
+              )
+        }}
+      </p>
       <AccountPreferences />
       <GitHubEvidencePanel :key="sessionRevision" />
     </section>

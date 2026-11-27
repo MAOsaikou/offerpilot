@@ -138,6 +138,42 @@ it('browses source counts and paginates through server queries', async () => {
     expect.any(AbortSignal),
   )
 })
+it('lists edited-skill careers before empty background cards and can filter to them', async () => {
+  const empty = {
+    ...occupation,
+    id: 'empty',
+    name: '空背景职业',
+    skillsSource: 'onet',
+    description: '暂无数据：尚无可信背景来源',
+  }
+  const edited = {
+    ...occupation,
+    id: 'edited',
+    name: '后端开发工程师',
+    skillsSource: 'curated',
+    description: '负责服务端接口与数据。',
+  }
+  vi.mocked(api.listBuiltinOccupations).mockResolvedValue({
+    items: [empty, edited],
+    total: 2,
+    page: 1,
+    size: 20,
+  })
+  await mount()
+  const hrefs = [...root.querySelectorAll('a')].map((link) => link.getAttribute('href'))
+  expect(hrefs.indexOf('/kb/builtin/edited')).toBeLessThan(hrefs.indexOf('/kb/builtin/empty'))
+  expect(root.textContent).toContain('不会编造')
+  const select = [...root.querySelectorAll('select')].find((node) =>
+    [...node.options].some((option) => option.textContent?.includes('只看有编辑技能')),
+  )!
+  select.value = 'curated'
+  select.dispatchEvent(new Event('change'))
+  await settle()
+  expect(api.listBuiltinOccupations).toHaveBeenLastCalledWith(
+    expect.objectContaining({ background: 'curated', page: 1 }),
+    expect.any(AbortSignal),
+  )
+})
 it('filters nontechnical questions by all four dimensions, resets page and searches references', async () => {
   const state = await mount()
   await click('通用题库')
