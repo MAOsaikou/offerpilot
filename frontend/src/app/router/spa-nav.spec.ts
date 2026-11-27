@@ -103,6 +103,13 @@ it('renders every main page on repeated client navigation with real transitions'
   await mount()
   expect(useAuthStore().isAuthenticated).toBe(true)
   await expectPage('dashboard')
+  const dock = root.querySelector('.app-body > .generation-dock')
+  const main = root.querySelector('.app-body > #main-content')
+  expect(dock).not.toBeNull()
+  expect(main).not.toBeNull()
+  expect(dock!.compareDocumentPosition(main!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  )
   for (const path of ['/chat', '/resumes', '/jobs', '/board', '/', '/chat', '/']) {
     await router.push(path)
     await expectPage(String(router.currentRoute.value.name))

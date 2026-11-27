@@ -684,6 +684,11 @@ const basics = computed(() => [
 progress {
   width: 100%;
 }
+@media (max-width: 720px) {
+  .resume-save {
+    padding: 12px 16px;
+  }
+}
 @media (max-width: 640px) {
   .resume-basics {
     grid-template-columns: 1fr;

@@ -135,6 +135,7 @@ watch(
           ><AppIcon name="bell" /><i v-if="unread" class="unread-dot"
         /></RouterLink>
       </header>
+      <GenerationProgressDock />
       <main id="main-content" class="workspace-content">
         <DemoBanner />
         <p v-if="workspace.storageError" class="error-banner" role="alert">
@@ -154,6 +155,5 @@ watch(
         </RouterView>
       </main>
     </div>
-    <GenerationProgressDock />
   </div>
 </template>

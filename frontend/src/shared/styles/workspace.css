@@ -186,7 +186,8 @@ h3 {
   color: var(--muted-foreground);
   white-space: normal;
   overflow-wrap: break-word;
-  text-wrap: pretty;
+  word-break: normal;
+  line-break: auto;
 }
 .profile-link {
   display: flex;
@@ -293,8 +294,8 @@ h3 {
 }
 @media (max-width: 720px) {
   .dock-safe {
-    padding-inline-end: 12px;
-    margin-bottom: 56px;
+    padding-inline-end: 0;
+    margin-bottom: 0;
   }
 }
 .page-heading {
@@ -1210,6 +1211,8 @@ a.job-row:hover > svg {
 @media (max-width: 900px) {
   .sidebar {
     width: 272px;
+    max-width: calc(100vw - 48px);
+    overflow-x: hidden;
     transform: translateX(-100%);
     visibility: hidden;
     transition:
@@ -1341,9 +1344,18 @@ a.job-row:hover > svg {
   padding-bottom: max(120px, calc(env(safe-area-inset-bottom) + 120px));
   padding-inline-end: 176px;
 }
+@media (max-width: 720px) {
+  .workspace-content {
+    padding-top: 16px;
+    padding-inline-end: 32px;
+    padding-bottom: max(56px, calc(env(safe-area-inset-bottom) + 56px));
+  }
+}
 @media (max-width: 640px) {
   .workspace-content {
-    padding-inline-end: 148px;
+    padding-top: 16px;
+    padding-inline-end: 16px;
+    padding-bottom: max(40px, calc(env(safe-area-inset-bottom) + 40px));
   }
 }
 
