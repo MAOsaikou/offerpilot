@@ -34,23 +34,28 @@ const emit = defineEmits<{ 'toggle-history': []; 'toggle-panel': [] }>()
 </template>
 <style scoped>
 .chat-title {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
   margin: 0;
+  overflow: hidden;
   font-size: 17px;
   font-weight: 650;
   line-height: 1.35;
 }
 .chat-title span {
   display: -webkit-box;
+  width: 100%;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
+  text-overflow: ellipsis;
   overflow-wrap: break-word;
   word-break: normal;
 }
 .chat-status {
+  flex-shrink: 0;
   font-size: 12px;
   color: var(--muted-foreground);
 }

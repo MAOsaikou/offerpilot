@@ -3,16 +3,18 @@ import { translate as uiText } from '@/shared/utils/language'
 
 import { computed, onMounted, ref } from 'vue'
 import { coverageLabel } from '../skillCoverage'
-import { alignCurrent, levelFor, loadLiveSkillLevels } from '../skillEvidenceAlign'
+import { alignCurrent, levelFor, liveSkillReport, loadLiveSkillLevels } from '../skillEvidenceAlign'
 import GrowthEvidenceChips from './GrowthEvidenceChips.vue'
 import type { SkillGapReport } from '@/shared/api/skill-gap'
 import type { SkillGapPayload } from '@/shared/types/cards'
 const props = defineProps<{ payload: SkillGapPayload }>()
-const live = ref<SkillGapReport | null>(null)
+const live = ref<SkillGapReport | null | undefined>(liveSkillReport())
+const aligning = computed(() => live.value === undefined)
+void loadLiveSkillLevels().then((report) => {
+  live.value = report
+})
 onMounted(() => {
-  void loadLiveSkillLevels().then((report) => {
-    live.value = report
-  })
+  if (live.value === undefined && liveSkillReport() !== undefined) live.value = liveSkillReport()
 })
 const skills = computed(() =>
   props.payload.skills.map((skill) => {
@@ -45,7 +47,10 @@ const skills = computed(() =>
           <span v-if="skill.learnFirst" class="rounded bg-primary/10 px-2 text-xs text-primary">{{
             uiText('Priority gaps')
           }}</span>
-          <span class="text-xs text-muted-foreground">{{
+          <span v-if="aligning" class="text-xs text-muted-foreground">{{
+            uiText('{0}: Checking the current career analysis', [skill.name])
+          }}</span>
+          <span v-else class="text-xs text-muted-foreground">{{
             uiText('{0} · Evidence level {1} / 5 · Reference requirement {2} · Gap {3}', [
               coverageLabel(skill.current),
               skill.current,
@@ -55,6 +60,7 @@ const skills = computed(() =>
           }}</span>
         </div>
         <progress
+          v-if="!aligning"
           class="mt-2 w-full accent-primary"
           :value="skill.current"
           :max="5"

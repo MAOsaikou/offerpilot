@@ -177,6 +177,7 @@ async function cancelTask(id: string, kind: string, entity?: string) {
 <style scoped>
 .generation-dock--compact {
   width: auto;
+  max-width: 156px;
   padding: 4px 6px 4px 12px;
   border-radius: 999px;
   opacity: 0.85;

@@ -8,6 +8,20 @@ const FAILURE_KEYS: Record<string, string> = {
   failed: 'Source request failed',
   unavailable: 'Source is temporarily unavailable',
   暂不可用: 'Source is temporarily unavailable',
+  live_unavailable: 'Company sites did not respond. Saved results are still shown.',
+  live_timeout: 'The company-site query timed out.',
+  live_detail_unavailable: 'The live company page is unavailable. The saved copy is shown.',
+  all_sites_failed: 'Every queried company site failed.',
+  empty_due_to_error: 'Company sites returned an error and no new jobs.',
+  search_timeout: 'The company-site query timed out.',
+  search_unavailable: 'Company sites did not respond. Saved results are still shown.',
+  search_busy: 'The job query is busy. Partial results are shown.',
+  local_unavailable: 'Saved job records are unavailable.',
+  upstream_partial: 'Some company sites returned only part of their results.',
+}
+
+function looksLikeCode(value: string) {
+  return /^[A-Z][A-Z0-9_]*$/.test(value)
 }
 
 const CITY_ALIASES: Record<string, string[]> = {
@@ -47,9 +61,22 @@ export function sourceFailureText(reason: string | undefined): string {
   const raw = (reason ?? '').trim()
   const key = FAILURE_KEYS[raw] ?? FAILURE_KEYS[raw.toLowerCase()]
   if (key) return uiText(key)
-  if (raw && raw.length <= 40 && !/https?:|token|secret|exception|stack|password|bearer/i.test(raw))
-    return raw
-  return uiText('Source is temporarily unavailable')
+  if (
+    !raw ||
+    looksLikeCode(raw) ||
+    raw.length > 40 ||
+    /https?:|token|secret|exception|stack|password|bearer/i.test(raw)
+  )
+    return uiText('Source is temporarily unavailable')
+  return raw
+}
+
+/** A known aggregate code becomes a sentence. Unknown codes stay off the banner. */
+export function bannerFailureDetail(reason: string | undefined): string {
+  const raw = (reason ?? '').trim()
+  if (!raw) return ''
+  const key = FAILURE_KEYS[raw] ?? FAILURE_KEYS[raw.toLowerCase()]
+  return key ? uiText(key) : ''
 }
 
 export function formatSkippedSource(siteName: string, reason: string | undefined): string {

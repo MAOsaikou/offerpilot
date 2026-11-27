@@ -3,15 +3,17 @@ import { translate as uiText } from '@/shared/utils/language'
 
 import { computed, onMounted, ref } from 'vue'
 import { coverageLabel } from '../skillCoverage'
-import { alignCurrent, levelFor, loadLiveSkillLevels } from '../skillEvidenceAlign'
+import { alignCurrent, levelFor, liveSkillReport, loadLiveSkillLevels } from '../skillEvidenceAlign'
 import type { SkillGapReport } from '@/shared/api/skill-gap'
 import type { SkillRadarPayload } from '@/shared/types/cards'
 const props = defineProps<{ payload: SkillRadarPayload }>()
-const live = ref<SkillGapReport | null>(null)
+const live = ref<SkillGapReport | null | undefined>(liveSkillReport())
+const aligning = computed(() => live.value === undefined)
+void loadLiveSkillLevels().then((report) => {
+  live.value = report
+})
 onMounted(() => {
-  void loadLiveSkillLevels().then((report) => {
-    live.value = report
-  })
+  if (live.value === undefined && liveSkillReport() !== undefined) live.value = liveSkillReport()
 })
 function shown(name: string, current: number) {
   return alignCurrent(current, levelFor(live.value, name))
@@ -81,17 +83,19 @@ function points(required = false) {
           stroke="currentColor"
           stroke-dasharray="4"
         />
-        <polygon class="radar-evidence" :points="points()" />
+        <polygon v-if="!aligning" class="radar-evidence" :points="points()" />
       </svg>
       <ul>
         <li v-for="axis in payload.axes" :key="axis.name">
           {{
-            uiText('{0}: {1} · Evidence {2} / Requirement {3}', [
-              axis.name,
-              coverageLabel(shown(axis.name, axis.current)),
-              shown(axis.name, axis.current),
-              axis.required,
-            ])
+            aligning
+              ? uiText('{0}: Checking the current career analysis', [axis.name])
+              : uiText('{0}: {1} · Evidence {2} / Requirement {3}', [
+                  axis.name,
+                  coverageLabel(shown(axis.name, axis.current)),
+                  shown(axis.name, axis.current),
+                  axis.required,
+                ])
           }}
         </li>
       </ul>

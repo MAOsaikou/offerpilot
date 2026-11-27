@@ -180,6 +180,21 @@ it('explains failed sources and listings that miss the city filter', async () =>
   expect(root.textContent).toContain('未写明「上海」')
   expect(root.textContent).toContain('北京开发')
 })
+it('does not print an aggregate failure code on the partial-results banner', async () => {
+  vi.mocked(searchJobs).mockResolvedValue({
+    ...result,
+    meta: {
+      ...result.meta,
+      timedOut: false,
+      skipped: [],
+      fallbackReason: 'LIVE_UNAVAILABLE',
+    },
+  })
+  const root = await mount(JobSearchView, '/jobs?q=Java&nature=all')
+  await vi.waitFor(() => expect(root.textContent).toContain('部分来源暂不可用'))
+  expect(root.textContent).toContain('企业官网这次没有返回，已保留可用结果。')
+  expect(root.textContent).not.toContain('LIVE_UNAVAILABLE')
+})
 it('puts a per-source reason on the partial-results banner', async () => {
   vi.mocked(searchJobs).mockResolvedValue({
     ...result,

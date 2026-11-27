@@ -11,6 +11,7 @@ import MessageList from '../components/MessageList.vue'
 import ConversationHistory from '../components/ConversationHistory.vue'
 import ChatWelcome from '../components/ChatWelcome.vue'
 import ChatToolbar from '../components/ChatToolbar.vue'
+import { chatHeadingTitle } from '../chatHeadingTitle'
 import { useRunReplay } from '@/shared/composables/useRunReplay'
 import { useConversationChat } from '../composables/useConversationChat'
 import { optimizationContext } from '../optimizationContext'
@@ -49,6 +50,10 @@ const modes = computed<{ value: AgentMode; label: string }[]>(() => [
   { value: 'INTERVIEWER', label: uiText('Interview practice') },
   { value: 'COACH', label: uiText('Growth coach') },
 ])
+const headingTitle = computed(() => {
+  const first = viewMessages.value.find((message) => message.role === 'user')?.text ?? ''
+  return chatHeadingTitle(current.value?.title ?? '', first) || uiText('New chat')
+})
 const displayedMessages = computed(() =>
   viewMessages.value.map((message) => {
     if (!replay.runId.value || message.role !== 'assistant' || message.runId !== replay.runId.value)
@@ -447,7 +452,7 @@ async function remove(id: string) {
     <div class="chat-layout persistent-chat">
       <div class="chat-main">
         <ChatToolbar
-          :title="current?.title || uiText('New chat')"
+          :title="headingTitle"
           :status="mock ? uiText('Mock demo') : uiText('Autosave')"
           :history-open="historyOpen"
           :panel-open="panelOpen"

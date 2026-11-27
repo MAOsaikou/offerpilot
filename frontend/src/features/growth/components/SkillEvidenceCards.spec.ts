@@ -27,7 +27,13 @@ afterEach(() => {
   views.splice(0).forEach((cleanup) => cleanup())
 })
 
-it('raises a stored zero to the career partial grade on the radar and the gap card', async () => {
+it('holds the career grade instead of painting a stale missing score', async () => {
+  let resolveGap: (report: Awaited<ReturnType<typeof getSkillGap>>) => void = () => {}
+  vi.mocked(getSkillGap).mockReturnValue(
+    new Promise((resolve) => {
+      resolveGap = resolve
+    }),
+  )
   const radar = mountForTest(Radar, {
     payload: {
       axes: [
@@ -37,12 +43,24 @@ it('raises a stored zero to the career partial grade on the radar and the gap ca
     },
   })
   views.push(radar.unmount)
+  expect(radar.root.textContent).toContain('正在对照当前职业分析')
+  expect(radar.root.textContent).not.toContain('缺失')
+  expect(radar.root.textContent).not.toContain('证据 0')
+  resolveGap({
+    targetType: 'OCCUPATION',
+    targetId: 'occ',
+    targetTitle: '后端开发工程师',
+    resumeVersionId: 'v1',
+    notice: '',
+    skills: [{ name: 'Java / Go / Python 等后端语言', level: 'PARTIAL', sources: [] }],
+  })
   await vi.waitFor(() =>
     expect(radar.root.textContent).toContain(
       'Java / Go / Python 等后端语言：部分 · 证据 1 / 要求 5',
     ),
   )
   expect(radar.root.textContent).toContain('Redis：缺失 · 证据 0 / 要求 4')
+  expect(radar.root.textContent).not.toContain('Java / Go / Python 等后端语言：缺失')
 
   const gap = mountForTest(Gap, {
     payload: {

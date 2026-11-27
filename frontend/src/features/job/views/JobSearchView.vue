@@ -10,7 +10,7 @@ import DailyJobFeed from '../components/DailyJobFeed.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import { listJobSites, searchJobs } from '@/shared/api/jobs'
 import { useBoard } from '@/shared/composables/useBoard'
-import { formatSkippedSource, locationMisses, sourceFailureText } from '../jobResultNotes'
+import { bannerFailureDetail, formatSkippedSource, locationMisses } from '../jobResultNotes'
 const route = useRoute(),
   router = useRouter(),
   board = useBoard()
@@ -199,8 +199,8 @@ const skippedText = (items: { site: string; reason: string }[]) =>
         <template v-if="search.data.value.meta.skipped.length">
           {{ skippedText(search.data.value.meta.skipped) }}
         </template>
-        <template v-else-if="search.data.value.meta.fallbackReason">
-          {{ sourceFailureText(search.data.value.meta.fallbackReason) }}
+        <template v-else-if="bannerFailureDetail(search.data.value.meta.fallbackReason)">
+          {{ bannerFailureDetail(search.data.value.meta.fallbackReason) }}
         </template>
       </p>
       <p v-if="search.data.value.criteria" class="subtle">

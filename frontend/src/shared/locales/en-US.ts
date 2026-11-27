@@ -2768,4 +2768,18 @@ export default {
   'Approve or reject syncing these tasks here. Rejecting does not mark tasks complete.':
     'Approve or reject syncing these tasks here. Rejecting does not mark tasks complete.',
   'Sync could not be submitted. Please retry.': 'Sync could not be submitted. Please retry.',
+  'Company sites did not respond. Saved results are still shown.':
+    'Company sites did not respond. Saved results are still shown.',
+  'The company-site query timed out.': 'The company-site query timed out.',
+  'The live company page is unavailable. The saved copy is shown.':
+    'The live company page is unavailable. The saved copy is shown.',
+  'Every queried company site failed.': 'Every queried company site failed.',
+  'Company sites returned an error and no new jobs.':
+    'Company sites returned an error and no new jobs.',
+  'The job query is busy. Partial results are shown.':
+    'The job query is busy. Partial results are shown.',
+  'Saved job records are unavailable.': 'Saved job records are unavailable.',
+  'Some company sites returned only part of their results.':
+    'Some company sites returned only part of their results.',
+  '{0}: Checking the current career analysis': '{0}: Checking the current career analysis',
 } as const

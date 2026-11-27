@@ -3,15 +3,33 @@ import { getSkillGap, type SkillGapReport } from '@/shared/api/skill-gap'
 export type EvidenceLevel = SkillGapReport['skills'][number]['level']
 
 let pending: Promise<SkillGapReport | null> | null = null
+let settled: SkillGapReport | null | undefined = undefined
 
 /** One shared read of the same analysis the career page runs. Failures keep the card's own numbers. */
 export function loadLiveSkillLevels() {
-  pending ??= getSkillGap({}).catch(() => null)
+  if (!pending) {
+    settled = undefined
+    pending = getSkillGap({})
+      .then((report) => {
+        settled = report
+        return report
+      })
+      .catch(() => {
+        settled = null
+        return null
+      })
+  }
   return pending
+}
+
+/** Undefined until the shared read settles. Null means the read failed. */
+export function liveSkillReport() {
+  return settled
 }
 
 export function resetLiveSkillLevels() {
   pending = null
+  settled = undefined
 }
 
 export function alignCurrent(current: number, level: EvidenceLevel | undefined) {

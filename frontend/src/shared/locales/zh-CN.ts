@@ -2629,4 +2629,15 @@ export default {
   'Approve or reject syncing these tasks here. Rejecting does not mark tasks complete.':
     '请在这里批准或拒绝这次同步。拒绝不会把任务记为完成。',
   'Sync could not be submitted. Please retry.': '同步没有提交成功，请重试。',
+  'Company sites did not respond. Saved results are still shown.':
+    '企业官网这次没有返回，已保留可用结果。',
+  'The company-site query timed out.': '企业官网查询超时。',
+  'The live company page is unavailable. The saved copy is shown.':
+    '企业页面暂时打不开，展示的是已保存的副本。',
+  'Every queried company site failed.': '本次查询的企业官网都没有返回。',
+  'Company sites returned an error and no new jobs.': '企业官网返回错误，没有新的岗位。',
+  'The job query is busy. Partial results are shown.': '岗位查询繁忙，已返回当前结果。',
+  'Saved job records are unavailable.': '已保存的岗位记录暂时读不到。',
+  'Some company sites returned only part of their results.': '部分企业官网只返回了一部分结果。',
+  '{0}: Checking the current career analysis': '{0}：正在对照当前职业分析',
 } as const

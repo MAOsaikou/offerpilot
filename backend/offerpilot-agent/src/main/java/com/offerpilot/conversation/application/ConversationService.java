@@ -281,10 +281,12 @@ public class ConversationService {
         try { return json.writeValueAsString(value); }
         catch (JsonProcessingException ex) { throw new IllegalStateException(ex); }
     }
-    private static String title(String text) {
+    /** Keep enough of the first question for a two-line header to ellipsize, instead of cutting mid-word at 40. */
+    static String title(String text) {
         String compact = text.strip().replaceAll("\\s+", " ");
-        int codePoints = Math.min(40, compact.codePointCount(0, compact.length()));
-        return compact.substring(0, compact.offsetByCodePoints(0, codePoints));
+        int points = compact.codePointCount(0, compact.length());
+        if (points <= 100) return compact;
+        return compact.substring(0, compact.offsetByCodePoints(0, 99)) + "…";
     }
     private static void checkPage(int page, int size) {
         if (page < 1 || size < 1 || size > 100) throw new BusinessException(ErrorCode.VALIDATION_FAILED);
