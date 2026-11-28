@@ -63,12 +63,97 @@ public class JobRecommendationService {
         }
         return ranked.stream().sorted(Comparator.<ObjectNode>comparingInt(n->n.path("score").asInt()).reversed().thenComparing(n->n.path("jobId").asText())).toList();
     }
+    private static final Set<Character> DANGLING_CHARS = Set.of('与', '和', '或', '及', '的', '在', '于', '已', '等');
+
     private static double contribution(String signal,String document,int weight,String label,List<String> reasons) {
         var tokens=JobKeywords.tokens(signal); String lower=document.toLowerCase(Locale.ROOT);
         var hits=tokens.stream().filter(lower::contains).limit(8).toList();
         if(hits.isEmpty()) return 0;
-        reasons.add(label+"匹配："+String.join("、",hits));
+        reasons.add(label+"匹配："+String.join("、",mergeHits(hits,signal,document)));
         return weight*Math.min(1.0,(double)hits.size()/Math.max(1,tokens.size()));
+    }
+    static List<String> mergeHits(List<String> hits,String signal,String document) {
+        if(hits==null || hits.isEmpty()) return List.of();
+        String sigLower=signal.toLowerCase(Locale.ROOT);
+        String docLower=document.toLowerCase(Locale.ROOT);
+        var merged=new ArrayList<String>();
+        for(String hit:hits) {
+            if(merged.isEmpty()) { merged.add(hit); continue; }
+            int lastIdx=merged.size()-1;
+            String prev=merged.get(lastIdx);
+            if(prev.contains(hit)) continue;
+            String combined=tryCombine(prev,hit,sigLower,docLower);
+            if(combined!=null) merged.set(lastIdx,combined);
+            else merged.add(hit);
+        }
+        var clean=new ArrayList<String>();
+        for(String item:merged) {
+            String sanitized=sanitize(item,sigLower,docLower);
+            if(!isMeaningful(sanitized,sigLower)) continue;
+            boolean subsumed=false;
+            for(int i=0;i<clean.size();i++) {
+                String existing=clean.get(i);
+                if(existing.equals(sanitized) || existing.contains(sanitized)) { subsumed=true; break; }
+                if(sanitized.contains(existing)) { clean.set(i,sanitized); subsumed=true; break; }
+            }
+            if(!subsumed) clean.add(sanitized);
+        }
+        return clean.isEmpty()?hits:clean;
+    }
+    private static String tryCombine(String prev,String hit,String sigLower,String docLower) {
+        int maxOverlap=Math.min(prev.length(),hit.length());
+        for(int k=maxOverlap;k>=1;k--) {
+            if(prev.endsWith(hit.substring(0,k))) {
+                String cand=prev+hit.substring(k);
+                if(sigLower.contains(cand) && docLower.contains(cand)) return cand;
+            }
+        }
+        String cand=prev+hit;
+        if(sigLower.contains(cand) && docLower.contains(cand)) return cand;
+        return null;
+    }
+    private static String sanitize(String s,String sigLower,String docLower) {
+        if(s==null || s.isBlank()) return "";
+        while(!s.isEmpty() && DANGLING_CHARS.contains(s.charAt(0))) s=s.substring(1);
+        while(!s.isEmpty() && DANGLING_CHARS.contains(s.charAt(s.length()-1))) s=s.substring(0,s.length()-1);
+        if(s.length()==3 && Character.UnicodeScript.of(s.codePointAt(0))==Character.UnicodeScript.HAN) {
+            String prefix=s.substring(0,2);
+            int idx=sigLower.indexOf(s);
+            if(idx>=0 && idx+3<sigLower.length() && Character.UnicodeScript.of(sigLower.codePointAt(idx+3))==Character.UnicodeScript.HAN) {
+                if(sigLower.contains(prefix) && docLower.contains(prefix)) s=prefix;
+            }
+            if(s.length()==3) {
+                String suffix=s.substring(1);
+                idx=sigLower.indexOf(s);
+                if(idx>0 && Character.UnicodeScript.of(sigLower.codePointAt(idx-1))==Character.UnicodeScript.HAN) {
+                    if(sigLower.contains(suffix) && docLower.contains(suffix)) s=suffix;
+                }
+            }
+        }
+        return s;
+    }
+    private static boolean isMeaningful(String s,String sigLower) {
+        if(s==null || s.isBlank()) return false;
+        if(Character.UnicodeScript.of(s.codePointAt(0))==Character.UnicodeScript.HAN && s.length()<2) return false;
+        if(s.length()<=2) {
+            char first=s.charAt(0); char last=s.charAt(s.length()-1);
+            if(DANGLING_CHARS.contains(first) || DANGLING_CHARS.contains(last)) return false;
+            if(isStrictlyInternal(s,sigLower)) return false;
+        }
+        return true;
+    }
+    private static boolean isStrictlyInternal(String s,String sigLower) {
+        if(s.length()!=2) return false;
+        if(Character.UnicodeScript.of(s.codePointAt(0))!=Character.UnicodeScript.HAN) return false;
+        int idx=0; boolean foundAny=false;
+        while((idx=sigLower.indexOf(s,idx))>=0) {
+            foundAny=true;
+            boolean hasHanBefore=idx>0 && Character.UnicodeScript.of(sigLower.codePointAt(idx-1))==Character.UnicodeScript.HAN;
+            boolean hasHanAfter=idx+2<sigLower.length() && Character.UnicodeScript.of(sigLower.codePointAt(idx+2))==Character.UnicodeScript.HAN;
+            if(!hasHanBefore || !hasHanAfter) return false;
+            idx+=1;
+        }
+        return foundAny;
     }
     static boolean expired(JsonNode job) {
         try { return LocalDate.parse(job.path("deadline").asText()).isBefore(LocalDate.now(ZoneId.of("Asia/Shanghai"))); }
