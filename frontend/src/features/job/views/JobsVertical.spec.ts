@@ -246,6 +246,7 @@ it('daily feed shows explanations, links, cache date and idempotent board state'
   await vi.waitFor(() => expect(root.textContent).toContain('Java开发'))
   expect(root.textContent).toContain('今日缓存')
   expect(root.textContent).toContain('保存简历匹配：Java')
+  expect(root.querySelector('.recommendation-reasons li')?.textContent).toBe('目标职业匹配：开发')
   expect(root.querySelector('a')?.getAttribute('href')).toBe('/jobs/job_real')
   const button = [...root.querySelectorAll<HTMLButtonElement>('button')].find(
     (b) => b.textContent?.trim() === '加入看板',

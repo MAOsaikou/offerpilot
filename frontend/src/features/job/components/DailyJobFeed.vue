@@ -85,7 +85,7 @@ const feed = useQuery({
             ])
           }}
         </p>
-        <ul>
+        <ul class="recommendation-reasons">
           <li v-for="reason in item.reasons" :key="reason">{{ reason }}</li>
         </ul>
         <p v-if="locationMisses(item.job.locations, targetCity)" class="helper-note">
@@ -120,6 +120,15 @@ const feed = useQuery({
   overflow-wrap: anywhere;
   border-top: 1px solid var(--border);
   padding-top: 16px;
+}
+.recommendation-reasons {
+  margin: 8px 0;
+  padding-left: 18px;
+}
+.recommendation-reasons li {
+  overflow-wrap: break-word;
+  word-break: keep-all;
+  line-break: strict;
 }
 .section-heading {
   flex-wrap: wrap;
