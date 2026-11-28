@@ -12,18 +12,32 @@ import { useRouter, RouterLink } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import AppIcon from '@/shared/components/AppIcon.vue'
 import { listResumes } from '@/shared/api/resumes'
+import { listInterviews } from '@/shared/api/interviews'
 import { useWorkspace, learningTasks } from '@/shared/stores/workspace'
 import { useBoard } from '@/shared/composables/useBoard'
+import { useCareerProfile } from '@/shared/composables/useCareerProfile'
 import { applicationStages } from '@/shared/types/board'
 import RouteStrip from '../components/RouteStrip.vue'
 import PendingAgentWrites from '@/shared/components/PendingAgentWrites.vue'
 const workspace = useWorkspace()
+const {
+  profile,
+  loading: careerLoading,
+  ready: careerReady,
+  error: careerError,
+  retry: retryCareer,
+} = useCareerProfile()
 const board = useBoard()
 const router = useRouter()
 const prompt = ref('')
 const resumes = useQuery({
   queryKey: ['resumes', 1],
   queryFn: ({ signal }) => listResumes(1, signal),
+})
+const interviews = useQuery({
+  queryKey: ['interviews'],
+  queryFn: ({ signal }) => listInterviews(signal),
+  retry: false,
 })
 const dueToday = new Intl.DateTimeFormat('sv-SE').format(new Date())
 const dueActions = computed(() =>
@@ -46,12 +60,34 @@ const stops = computed(() =>
   })),
 )
 const resumeCount = computed(() =>
-  resumes.isError.value
+  resumes.isPending.value || resumes.isError.value
     ? undefined
     : workspace.state.resumes.length + (resumes.data.value?.total ?? 0),
 )
-const nextTask = computed(() => learningTasks.find((t) => !workspace.state.tasks.includes(t)))
-const progress = computed(() => (workspace.state.tasks.length / learningTasks.length) * 100)
+const completedCount = computed(() =>
+  careerReady.value ? profile.value.completedTasks.length : undefined,
+)
+const nextTask = computed(() =>
+  careerReady.value
+    ? learningTasks.find((task) => !profile.value.completedTasks.includes(task))
+    : undefined,
+)
+const progress = computed(() =>
+  completedCount.value === undefined ? 0 : (completedCount.value / learningTasks.length) * 100,
+)
+const interviewCount = computed(() =>
+  interviews.isPending.value || interviews.isError.value
+    ? undefined
+    : interviews.data.value?.length,
+)
+const summaryReady = computed(
+  () => careerReady.value && !interviews.isPending.value && !resumes.isPending.value,
+)
+const journeyLoading = computed(
+  () =>
+    board.query.isPending.value ||
+    (board.query.data.value === undefined && !board.query.isError.value),
+)
 const today = computed(() =>
   new Date().toLocaleDateString(language.value, {
     month: 'long',
@@ -141,7 +177,7 @@ function send() {
         {{ formatDisplay(board.query.error.value?.message)
         }}<button class="btn" @click="board.query.refetch()">{{ uiText('Retry loading') }}</button>
       </p>
-      <RouteStrip v-else :stops="stops" :loading="board.query.isPending.value" />
+      <RouteStrip v-else :stops="stops" :loading="journeyLoading" />
     </section>
 
     <section class="panel next-panel">
@@ -189,24 +225,50 @@ function send() {
           <RouterLink to="/career">{{ uiText('Career growth') }}</RouterLink>
         </div>
         <p class="subtle">{{ uiText('Target career') }}</p>
-        <p class="target-title">{{ workspace.state.target || uiText('No goal set yet') }}</p>
-        <div class="focus-progress" role="presentation">
+        <p v-if="careerLoading" class="target-title" role="status">
+          {{ uiText('Loading career profile…') }}
+        </p>
+        <p v-else-if="careerError" class="target-title" role="alert">{{ careerError }}</p>
+        <p v-else class="target-title">
+          {{ profile.target || uiText('No goal set yet') }}
+        </p>
+        <div v-if="careerReady" class="focus-progress" role="presentation">
           <div :style="{ width: progress + '%' }" />
         </div>
-        <p class="subtle">
-          {{
-            uiText(
-              '{0} of {1} growth actions completed. {2} resumes and {3} interview practice sessions.',
-              [
-                workspace.state.tasks.length,
-                learningTasks.length,
-                resumeCount ?? '—',
-                workspace.state.interviews.length,
-              ],
-            )
-          }}
+        <p v-if="!summaryReady && !careerError" class="subtle" role="status">
+          {{ uiText('Loading workbench summary…') }}
         </p>
-        <RouterLink to="/career" class="next-action">
+        <p v-else-if="careerError" class="subtle">
+          <button class="btn" type="button" @click="retryCareer()">{{ uiText('Retry') }}</button>
+        </p>
+        <template v-else>
+          <p v-if="interviews.isError.value" class="subtle" role="alert">
+            {{ formatDisplay(interviews.error.value?.message) }}
+            <button class="btn" type="button" @click="interviews.refetch()">
+              {{ uiText('Retry') }}
+            </button>
+          </p>
+          <p v-if="resumes.isError.value" class="subtle" role="alert">
+            {{ formatDisplay(resumes.error.value?.message) }}
+            <button class="btn" type="button" @click="resumes.refetch()">
+              {{ uiText('Retry') }}
+            </button>
+          </p>
+          <p class="subtle">
+            {{
+              uiText(
+                '{0} of {1} growth actions completed. {2} resumes and {3} interview practice sessions.',
+                [
+                  completedCount ?? 0,
+                  learningTasks.length,
+                  resumeCount ?? '—',
+                  interviewCount ?? '—',
+                ],
+              )
+            }}
+          </p>
+        </template>
+        <RouterLink v-if="careerReady" to="/career" class="next-action">
           <span class="next-dot" aria-hidden="true" />
           <span>{{
             (nextTask && translateLabel(nextTask)) ||

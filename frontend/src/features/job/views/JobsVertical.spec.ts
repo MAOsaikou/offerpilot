@@ -5,6 +5,8 @@ import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { getJobRecommendations, listJobSites, searchJobs } from '@/shared/api/jobs'
+import { getCareerProfile } from '@/shared/api/career'
+import type { CareerProfile } from '@/shared/api/career'
 import { favoriteJob, listApplications } from '@/shared/api/applications'
 import type { DailyJobRecommendations, JobSearchResult, RealJob } from '@/shared/types/jobs'
 import type { ServerApplication } from '@/shared/types/board'
@@ -17,12 +19,17 @@ vi.mock('@/shared/api/jobs', () => ({
   listJobSites: vi.fn(),
   searchJobs: vi.fn(),
 }))
+vi.mock('@/shared/api/career', () => ({
+  getCareerProfile: vi.fn(),
+}))
 vi.mock('@/shared/api/applications', () => ({
   favoriteJob: vi.fn(),
   listApplications: vi.fn(),
   updateApplication: vi.fn(),
 }))
-vi.mock('../components/JobImportPanel.vue', () => ({ default: { template: '<div />' } }))
+vi.mock('../components/JobImportPanel.vue', () => ({
+  default: { template: '<section data-job-import>导入岗位</section>' },
+}))
 const job: RealJob = {
   id: 'job_real',
   externalId: 'external',
@@ -69,8 +76,21 @@ const feed: DailyJobRecommendations = {
   rankingVersion: 'lexical-v1',
   items: [{ jobId: job.id, job, score: 80, reasons: ['目标职业匹配：开发', '保存简历匹配：Java'] }],
 }
+const profile = (city = ''): CareerProfile => ({
+  target: '',
+  city,
+  skills: '',
+  interests: [],
+  major: '',
+  courses: '',
+  valuesText: '',
+  assessment: null,
+  completedTasks: [],
+  updatedAt: null,
+})
 const mounted: Array<() => void> = []
 beforeEach(() => {
+  vi.mocked(getCareerProfile).mockReset().mockResolvedValue(profile())
   vi.mocked(listApplications).mockReset().mockResolvedValue([])
   vi.mocked(listJobSites).mockReset().mockResolvedValue({ sites: [] })
   vi.mocked(searchJobs).mockReset().mockResolvedValue(result)
@@ -119,6 +139,12 @@ async function mount(component: Component, path = '/jobs', props?: Record<string
 it('search renders parsed filters, timeout partial results and persists the joined-board state after repeated clicks', async () => {
   const root = await mount(JobSearchView, '/jobs?q=Java&nature=all')
   await vi.waitFor(() => expect(root.textContent).toContain('Java开发'))
+  const hit = [...root.querySelectorAll('h2')].find((node) => node.textContent === 'Java开发')!
+  const importer = root.querySelector('[data-job-import]')!
+  expect(importer).not.toBeNull()
+  expect(hit.compareDocumentPosition(importer) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  )
   expect(root.textContent).toContain('查询超时，已返回部分结果')
   expect(root.textContent).toContain('规则解析')
   expect(root.textContent).toContain('本地库')
@@ -135,11 +161,92 @@ it('search renders parsed filters, timeout partial results and persists the join
     expect.any(AbortSignal),
   )
 })
+it('explains failed sources and listings that miss the city filter', async () => {
+  vi.mocked(searchJobs).mockResolvedValue({
+    ...result,
+    items: [job, { ...job, id: 'job_bj', title: '北京开发', locations: '北京' }],
+    meta: {
+      ...result.meta,
+      partial: false,
+      timedOut: false,
+      skipped: [{ site: 'bytedance', reason: 'timeout' }],
+    },
+  })
+  vi.mocked(listJobSites).mockResolvedValue({
+    sites: [{ id: 'bytedance', name: '字节', supportedNatures: [] }],
+  })
+  const root = await mount(JobSearchView, '/jobs?q=Java&location=上海&nature=all')
+  await vi.waitFor(() => expect(root.textContent).toContain('字节（超时）'))
+  expect(root.textContent).toContain('未写明「上海」')
+  expect(root.textContent).toContain('北京开发')
+})
+it('does not print an aggregate failure code on the partial-results banner', async () => {
+  vi.mocked(searchJobs).mockResolvedValue({
+    ...result,
+    meta: {
+      ...result.meta,
+      timedOut: false,
+      skipped: [],
+      fallbackReason: 'LIVE_UNAVAILABLE',
+    },
+  })
+  const root = await mount(JobSearchView, '/jobs?q=Java&nature=all')
+  await vi.waitFor(() => expect(root.textContent).toContain('部分来源暂不可用'))
+  expect(root.textContent).toContain('企业官网这次没有返回，已保留可用结果。')
+  expect(root.textContent).not.toContain('LIVE_UNAVAILABLE')
+})
+it('puts a per-source reason on the partial-results banner', async () => {
+  vi.mocked(searchJobs).mockResolvedValue({
+    ...result,
+    meta: {
+      ...result.meta,
+      timedOut: false,
+      skipped: [{ site: 'netease', reason: 'timeout' }],
+    },
+  })
+  vi.mocked(listJobSites).mockResolvedValue({
+    sites: [{ id: 'netease', name: '网易', supportedNatures: [] }],
+  })
+  const root = await mount(JobSearchView, '/jobs?q=Java&nature=all')
+  await vi.waitFor(() => expect(root.textContent).toContain('部分来源暂不可用'))
+  const banner = [...root.querySelectorAll('.helper-note')].find((node) =>
+    node.textContent?.includes('部分来源暂不可用'),
+  )
+  expect(banner?.textContent).toContain('网易（超时）')
+})
+it('marks a daily recommendation whose city misses the saved target city', async () => {
+  vi.mocked(getCareerProfile).mockResolvedValue(profile('上海'))
+  vi.mocked(getJobRecommendations).mockResolvedValue({
+    ...feed,
+    items: [
+      {
+        ...feed.items[0]!,
+        job: { ...job, locations: '杭州市' },
+        reasons: ['目标职业匹配：开发'],
+      },
+    ],
+  })
+  const root = await mount(DailyJobFeed)
+  await vi.waitFor(() => expect(root.textContent).toContain('未写明「上海」'))
+  expect(root.textContent).toContain('杭州市')
+})
+it('keeps job import on the page after the search prompt when there is no query', async () => {
+  const root = await mount(JobSearchView, '/jobs')
+  await vi.waitFor(() => expect(root.textContent).toContain('描述你想找的岗位'))
+  const prompt = [...root.querySelectorAll('h2')].find((node) =>
+    node.textContent?.includes('描述你想找的岗位'),
+  )!
+  const importer = root.querySelector('[data-job-import]')!
+  expect(prompt.compareDocumentPosition(importer) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  )
+})
 it('daily feed shows explanations, links, cache date and idempotent board state', async () => {
   const root = await mount(DailyJobFeed)
   await vi.waitFor(() => expect(root.textContent).toContain('Java开发'))
   expect(root.textContent).toContain('今日缓存')
   expect(root.textContent).toContain('保存简历匹配：Java')
+  expect(root.querySelector('.recommendation-reasons li')?.textContent).toBe('目标职业匹配：开发')
   expect(root.querySelector('a')?.getAttribute('href')).toBe('/jobs/job_real')
   const button = [...root.querySelectorAll<HTMLButtonElement>('button')].find(
     (b) => b.textContent?.trim() === '加入看板',
@@ -159,6 +266,7 @@ it('empty recommendations display guidance without sample jobs; failures can ret
     .find((b) => b.textContent?.trim() === '重试')!
     .click()
   await vi.waitFor(() => expect(root.textContent).toContain('暂无可推荐的真实岗位'))
+  expect(root.querySelector('a[href="/discover"]')?.textContent).toContain('完善职业画像')
   expect(root.textContent).not.toContain('Java开发')
   await nextTick()
 })

@@ -64,7 +64,10 @@ public class ProfileSuggestions {
             var rows=jdbc.queryForList("SELECT source_type,source_id,fingerprint,skills::text,status FROM career_profile_suggestions WHERE user_id=? AND id=? FOR UPDATE",owner,id);
             if(rows.isEmpty()) throw new BusinessException(ErrorCode.ROUTE_NOT_FOUND);
             var row=rows.get(0); String current=(String)row.get("status");
-            if((accept && current.equals("CONFIRMED")) || (!accept && current.equals("REJECTED"))) return profiles.get(owner);
+            if((accept && current.equals("CONFIRMED")) || (!accept && current.equals("REJECTED"))) {
+                markSuggestionRead(owner, id);
+                return profiles.get(owner);
+            }
             if(!current.equals("PENDING")) throw new BusinessException(ErrorCode.RESUME_VERSION_CONFLICT,"建议已处理或来源已变化，请重新读取");
             if(accept) {
                 var available=source.read(owner).stream().anyMatch(o->fingerprint(o).equals(row.get("fingerprint")));
@@ -76,8 +79,12 @@ public class ProfileSuggestions {
                 profiles.save(owner,profile.target(),profile.city(),merged,profile.interests());
             }
             jdbc.update("UPDATE career_profile_suggestions SET status=?,decided_at=now() WHERE id=? AND user_id=?",accept?"CONFIRMED":"REJECTED",id,owner);
+            markSuggestionRead(owner, id);
             return profiles.get(owner);
         });
+    }
+    private void markSuggestionRead(String owner, String id) {
+        jdbc.update("UPDATE notifications SET read_at=coalesce(read_at,now()) WHERE user_id=? AND dedupe_key=?", owner, "profile:"+id);
     }
     static String merge(String existing,List<String> additions) {
         var seen=new HashSet<String>(); Arrays.stream(existing.split("[、,，;；\\n]+" )).map(String::strip).map(s->s.toLowerCase(Locale.ROOT)).forEach(seen::add);

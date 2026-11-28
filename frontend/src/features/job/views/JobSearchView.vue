@@ -10,6 +10,7 @@ import DailyJobFeed from '../components/DailyJobFeed.vue'
 import PageHeading from '@/shared/components/PageHeading.vue'
 import { listJobSites, searchJobs } from '@/shared/api/jobs'
 import { useBoard } from '@/shared/composables/useBoard'
+import { bannerFailureDetail, formatSkippedSource, locationMisses } from '../jobResultNotes'
 const route = useRoute(),
   router = useRouter(),
   board = useBoard()
@@ -72,9 +73,19 @@ function submit() {
 }
 const saved = (id: string) => board.saved(id)
 const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.name || id
+const activeLocation = computed(
+  () => search.data.value?.criteria?.location || criteria.value.location,
+)
+const offLocationCount = computed(
+  () =>
+    search.data.value?.items.filter((job) => locationMisses(job.locations, activeLocation.value))
+      .length ?? 0,
+)
+const skippedText = (items: { site: string; reason: string }[]) =>
+  items.map((item) => formatSkippedSource(name(item.site), item.reason)).join('、')
 </script>
 <template>
-  <section class="page-stack">
+  <section class="page-stack job-search">
     <p v-if="board.query.isPending.value" role="status">
       {{ uiText('Loading application board…') }}
     </p>
@@ -96,7 +107,7 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
         uiText('Application board')
       }}</RouterLink></PageHeading
     >
-    <form class="panel form-stack" @submit.prevent="submit">
+    <form class="panel form-stack job-search-form" @submit.prevent="submit">
       <div class="job-filters">
         <label class="field"
           >{{ uiText('Natural language or job keywords')
@@ -142,7 +153,7 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
           {{ uiText('Retry company list') }}
         </button>
       </p>
-      <div class="card-footer">
+      <div class="card-footer dock-safe">
         <span class="subtle">{{
           uiText('Up to 30 results. Filtering support varies by company API.')
         }}</span
@@ -154,9 +165,8 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
         </button>
       </div>
     </form>
-    <JobImportPanel />
-    <DailyJobFeed v-if="!criteria.query" />
-    <div v-if="!criteria.query" class="panel empty-state">
+    <DailyJobFeed v-if="!criteria.query" class="job-feed" />
+    <div v-if="!criteria.query" class="panel empty-state job-prompt">
       <h2>{{ uiText('Describe the job you want') }}</h2>
       <p>
         {{
@@ -177,7 +187,7 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
       <p>{{ formatDisplay(search.error.value?.message) }}</p>
       <button class="btn" @click="search.refetch()">{{ uiText('Search again') }}</button>
     </div>
-    <template v-else-if="search.data.value">
+    <div v-else-if="search.data.value" class="job-results">
       <p v-if="search.data.value.meta.partial" class="helper-note" role="status">
         {{
           uiText('{0} You can search again later.', [
@@ -186,6 +196,12 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
               : uiText('Some sources are unavailable. Available results have been returned.'),
           ])
         }}
+        <template v-if="search.data.value.meta.skipped.length">
+          {{ skippedText(search.data.value.meta.skipped) }}
+        </template>
+        <template v-else-if="bannerFailureDetail(search.data.value.meta.fallbackReason)">
+          {{ bannerFailureDetail(search.data.value.meta.fallbackReason) }}
+        </template>
       </p>
       <p v-if="search.data.value.criteria" class="subtle">
         {{
@@ -233,10 +249,18 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
       <div v-if="search.data.value.meta.skipped.length" class="helper-note" role="status">
         {{
           uiText('Some companies returned no results: {0}. They are excluded here. Retry later.', [
-            search.data.value.meta.skipped.map((s) => name(s.site)).join('、'),
+            skippedText(search.data.value.meta.skipped),
           ])
         }}
       </div>
+      <p v-if="offLocationCount" class="helper-note" role="status">
+        {{
+          uiText(
+            '{0} results do not mention {1}. Company search may not filter by city, so they stay visible with a note.',
+            [offLocationCount, activeLocation],
+          )
+        }}
+      </p>
       <p v-if="search.data.value.meta.degradedSites.length" class="helper-note">
         {{
           uiText(
@@ -292,6 +316,9 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
             {{ job.locations || uiText('Location not provided') }} ·
             {{ job.category || uiText('Category not provided') }}
           </p>
+          <p v-if="locationMisses(job.locations, activeLocation)" class="helper-note">
+            {{ uiText('This listing does not mention {0}.', [activeLocation]) }}
+          </p>
           <p class="subtle">
             {{
               job.source === 'LOCAL_SNAPSHOT'
@@ -325,7 +352,8 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
           </div>
         </article>
       </div>
-    </template>
+    </div>
+    <JobImportPanel class="job-import" />
   </section>
 </template>
 <style scoped>
@@ -341,6 +369,21 @@ const name = (id: string) => sites.data.value?.sites.find((s) => s.id === id)?.n
 @media (max-width: 760px) {
   .job-filters {
     grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .job-search-form {
+    order: 3;
+  }
+  .job-feed,
+  .job-results {
+    order: 1;
+  }
+  .job-prompt {
+    order: 2;
+  }
+  .job-import {
+    order: 4;
   }
 }
 @media (max-width: 440px) {

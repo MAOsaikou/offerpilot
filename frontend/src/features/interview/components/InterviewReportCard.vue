@@ -10,9 +10,16 @@ import AppIcon from '@/shared/components/AppIcon.vue'
 import CountUp from '@/shared/components/CountUp.vue'
 import { asPayload } from '@/shared/utils/payload'
 import type { InterviewReportPayload } from '@/shared/types/cards'
+import { tidyReportNote } from '../interviewReportNote'
 
 const props = defineProps<{ payload: unknown; inline?: boolean }>()
 const data = computed(() => asPayload<InterviewReportPayload>(props.payload, 'dimensions'))
+const displayNote = computed(() =>
+  tidyReportNote(
+    data.value?.note ||
+      uiText('Rule-based text scoring. On-device performance analysis is disabled.'),
+  ),
+)
 const overall = computed(() => {
   const value = data.value?.overall
   return typeof value === 'number' && Number.isFinite(value) ? value : null
@@ -129,12 +136,22 @@ async function goToTurn(index: number) {
         </span>
         <h3>{{ uiText('Interview scoring and review') }}</h3>
         <p class="review-tagline">{{ uiText('Turn this practice into your next improvement') }}</p>
-        <p class="review-note">
-          {{
-            data.note ||
-            uiText('Rule-based text scoring. On-device performance analysis is disabled.')
-          }}
-        </p>
+        <dl class="review-facts">
+          <div>
+            <dt>{{ uiText('Questions reviewed') }}</dt>
+            <dd>{{ data.turns.length }}</dd>
+          </div>
+          <div>
+            <dt>{{ uiText('Questions scored') }}</dt>
+            <dd>
+              {{ scoredTurns }}<span> / {{ data.turns.length }}</span>
+            </dd>
+          </div>
+          <div>
+            <dt>{{ uiText('Next steps') }}</dt>
+            <dd>{{ nextSteps.length }}</dd>
+          </div>
+        </dl>
       </div>
       <div class="score-dial">
         <svg viewBox="0 0 64 64" aria-hidden="true">
@@ -156,22 +173,7 @@ async function goToTurn(index: number) {
           <span v-if="overall !== null" class="score-max">/ 100</span>
         </p>
       </div>
-      <dl class="review-facts">
-        <div>
-          <dt>{{ uiText('Questions reviewed') }}</dt>
-          <dd>{{ data.turns.length }}</dd>
-        </div>
-        <div>
-          <dt>{{ uiText('Questions scored') }}</dt>
-          <dd>
-            {{ scoredTurns }}<span> / {{ data.turns.length }}</span>
-          </dd>
-        </div>
-        <div>
-          <dt>{{ uiText('Next steps') }}</dt>
-          <dd>{{ nextSteps.length }}</dd>
-        </div>
-      </dl>
+      <p v-if="displayNote" class="review-note">{{ displayNote }}</p>
       <RouterLink v-if="data.id && !inline" :to="'/interviews/' + data.id" class="btn review-link">
         {{ uiText('Open interview review') }}<AppIcon name="arrow" :size="16" />
       </RouterLink>
@@ -404,10 +406,13 @@ async function goToTurn(index: number) {
   font-weight: 550;
 }
 .review-note {
-  max-width: 650px;
+  grid-column: 1 / -1;
+  max-width: 68ch;
   margin: 0;
   color: var(--muted-foreground);
-  line-height: 1.65;
+  line-height: 1.7;
+  text-wrap: pretty;
+  overflow-wrap: break-word;
 }
 .score-dial {
   position: relative;

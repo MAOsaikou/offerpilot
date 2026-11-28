@@ -13,6 +13,7 @@ const props = defineProps<{
   applyLabel?: string
   interactive?: boolean
   disabled?: boolean
+  disabledReason?: string
   appliedVersionId?: string | null
 }>()
 
@@ -61,9 +62,11 @@ const component = computed(() => resolveCardComponent(props.cardType))
       v-bind="
         cardType === 'resume_diff'
           ? { interactive, disabled, appliedVersionId, applyLabel }
-          : cardType === 'career_recommendation' || cardType === 'roadmap'
-            ? { interactive, disabled }
-            : {}
+          : cardType === 'roadmap'
+            ? { interactive, disabled, disabledReason }
+            : cardType === 'career_recommendation'
+              ? { interactive, disabled }
+              : {}
       "
       @apply="emit('apply', $event)"
       @adopt-growth="emit('adoptGrowth', $event)"

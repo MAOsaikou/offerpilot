@@ -1,9 +1,27 @@
 <script setup lang="ts">
 import { translate as uiText } from '@/shared/utils/language'
 
+import { computed, onMounted, ref } from 'vue'
+import { coverageLabel } from '../skillCoverage'
+import { alignCurrent, levelFor, liveSkillReport, loadLiveSkillLevels } from '../skillEvidenceAlign'
 import GrowthEvidenceChips from './GrowthEvidenceChips.vue'
+import type { SkillGapReport } from '@/shared/api/skill-gap'
 import type { SkillGapPayload } from '@/shared/types/cards'
-defineProps<{ payload: SkillGapPayload }>()
+const props = defineProps<{ payload: SkillGapPayload }>()
+const live = ref<SkillGapReport | null | undefined>(liveSkillReport())
+const aligning = computed(() => live.value === undefined)
+void loadLiveSkillLevels().then((report) => {
+  live.value = report
+})
+onMounted(() => {
+  if (live.value === undefined && liveSkillReport() !== undefined) live.value = liveSkillReport()
+})
+const skills = computed(() =>
+  props.payload.skills.map((skill) => {
+    const current = alignCurrent(skill.current, levelFor(live.value, skill.name))
+    return { ...skill, current, gap: Math.max(0, skill.required - current) }
+  }),
+)
 </script>
 
 <template>
@@ -15,12 +33,12 @@ defineProps<{ payload: SkillGapPayload }>()
       {{ uiText('Skill gaps · {0}', [payload.target.title]) }}
     </h3>
     <p class="mt-2 break-words text-sm text-muted-foreground">{{ payload.summary }}</p>
-    <p v-if="!payload.skills.length" class="mt-3 text-sm" role="status">
+    <p v-if="!skills.length" class="mt-3 text-sm" role="status">
       {{ uiText('No core skill data yet. Review the target job requirements first.') }}
     </p>
     <ul v-else class="mt-3 space-y-3">
       <li
-        v-for="skill in payload.skills"
+        v-for="skill in skills"
         :key="skill.name"
         class="min-w-0 rounded-lg border border-border p-3"
       >
@@ -29,8 +47,12 @@ defineProps<{ payload: SkillGapPayload }>()
           <span v-if="skill.learnFirst" class="rounded bg-primary/10 px-2 text-xs text-primary">{{
             uiText('Priority gaps')
           }}</span>
-          <span class="text-xs text-muted-foreground">{{
-            uiText('Evidence level {0} / 5 · Reference requirement {1} · Gap {2}', [
+          <span v-if="aligning" class="text-xs text-muted-foreground">{{
+            uiText('{0}: Checking the current career analysis', [skill.name])
+          }}</span>
+          <span v-else class="text-xs text-muted-foreground">{{
+            uiText('{0} · Evidence level {1} / 5 · Reference requirement {2} · Gap {3}', [
+              coverageLabel(skill.current),
               skill.current,
               skill.required,
               skill.gap,
@@ -38,6 +60,7 @@ defineProps<{ payload: SkillGapPayload }>()
           }}</span>
         </div>
         <progress
+          v-if="!aligning"
           class="mt-2 w-full accent-primary"
           :value="skill.current"
           :max="5"

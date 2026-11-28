@@ -58,6 +58,32 @@ watch(
     mobileOpen.value = false
   },
 )
+const storageNoteSegments = computed(() => {
+  const full = uiText(
+    'Drafts stay in this browser. Applications, interviews, uploaded resumes, conversations and match reports are saved on the server. Jobs come from company websites.',
+  )
+  const jobMatchReport = uiText('Job match report')
+  const jobLabel = uiText('Jobs')
+  const matchReportPhrase = jobMatchReport.startsWith(jobLabel)
+    ? jobMatchReport.slice(jobLabel.length)
+    : jobMatchReport
+  const phrases = [uiText('Interview practice'), matchReportPhrase].filter(Boolean)
+  let segments: Array<{ text: string; nowrap: boolean }> = [{ text: full, nowrap: false }]
+  for (const phrase of phrases) {
+    segments = segments.flatMap((segment) => {
+      if (segment.nowrap) return [segment]
+      const index = segment.text.indexOf(phrase)
+      if (index === -1) return [segment]
+      const next: Array<{ text: string; nowrap: boolean }> = []
+      if (index > 0) next.push({ text: segment.text.slice(0, index), nowrap: false })
+      next.push({ text: phrase, nowrap: true })
+      const tail = segment.text.slice(index + phrase.length)
+      if (tail) next.push({ text: tail, nowrap: false })
+      return next
+    })
+  }
+  return segments
+})
 </script>
 <template>
   <div class="app-shell">
@@ -93,11 +119,10 @@ watch(
       </nav>
       <div class="sidebar-foot">
         <p class="storage-note">
-          {{
-            uiText(
-              'Drafts stay in this browser. Applications, interviews, uploaded resumes, conversations and match reports are saved on the server. Jobs come from company websites.',
-            )
-          }}
+          <template v-for="(part, index) in storageNoteSegments" :key="index"
+            ><span v-if="part.nowrap" class="storage-note-nowrap">{{ part.text }}</span
+            ><template v-else>{{ part.text }}</template></template
+          >
         </p>
         <RouterLink
           to="/notifications"
@@ -135,6 +160,7 @@ watch(
           ><AppIcon name="bell" /><i v-if="unread" class="unread-dot"
         /></RouterLink>
       </header>
+      <GenerationProgressDock />
       <main id="main-content" class="workspace-content">
         <DemoBanner />
         <p v-if="workspace.storageError" class="error-banner" role="alert">
@@ -154,6 +180,5 @@ watch(
         </RouterView>
       </main>
     </div>
-    <GenerationProgressDock />
   </div>
 </template>

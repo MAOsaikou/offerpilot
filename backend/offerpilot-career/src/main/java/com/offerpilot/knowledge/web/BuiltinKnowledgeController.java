@@ -25,8 +25,9 @@ public class BuiltinKnowledgeController {
     }
     @GetMapping("/occupations") public ApiResponse<BuiltinKnowledgeRepository.Page<BuiltinKnowledgeRepository.Occupation>> occupations(
         @RequestParam(defaultValue="") String q,@RequestParam(defaultValue="") String family,@RequestParam(defaultValue="") String holland,
-        @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size,HttpServletRequest r) {
-        require(r);return ApiResponse.ok(repository.occupations(q,family,holland,page,size),TraceIdFilter.current(r));
+        @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size,
+        @RequestParam(defaultValue="") String background,HttpServletRequest r) {
+        require(r);return ApiResponse.ok(repository.occupations(q,family,holland,page,size,background),TraceIdFilter.current(r));
     }
     @GetMapping("/occupations/{id}") public ApiResponse<BuiltinKnowledgeRepository.Occupation> occupation(@PathVariable String id,HttpServletRequest r) {
         require(r);return ApiResponse.ok(repository.occupation(id),TraceIdFilter.current(r));

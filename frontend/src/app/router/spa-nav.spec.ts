@@ -103,6 +103,13 @@ it('renders every main page on repeated client navigation with real transitions'
   await mount()
   expect(useAuthStore().isAuthenticated).toBe(true)
   await expectPage('dashboard')
+  const dock = root.querySelector('.app-body > .generation-dock')
+  const main = root.querySelector('.app-body > #main-content')
+  expect(dock).not.toBeNull()
+  expect(main).not.toBeNull()
+  expect(dock!.compareDocumentPosition(main!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  )
   for (const path of ['/chat', '/resumes', '/jobs', '/board', '/', '/chat', '/']) {
     await router.push(path)
     await expectPage(String(router.currentRoute.value.name))
@@ -175,6 +182,12 @@ it('closes the mobile sidebar after navigation and keeps the active link accessi
   root.querySelector<HTMLButtonElement>('[aria-label="打开导航"]')!.click()
   await nextTick()
   expect(root.querySelector('.sidebar.is-open')).not.toBeNull()
+  expect(root.querySelector('.storage-note')?.textContent?.trim()).toBe(
+    '草稿保存在当前浏览器；求职看板、面试练习、上传的简历、对话和匹配报告保存在服务端。岗位来自企业官网。',
+  )
+  expect(
+    Array.from(root.querySelectorAll('.storage-note .storage-note-nowrap'), (el) => el.textContent),
+  ).toEqual(['面试练习', '匹配报告'])
   root.querySelector<HTMLAnchorElement>('.nav-list a[href="/chat"]')!.click()
   await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('chat'))
   await expectPage('chat')

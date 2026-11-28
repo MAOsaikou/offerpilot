@@ -29,6 +29,7 @@ const criteria = computed(() => ({
   size: 20,
   family: filters.family,
   holland: filters.holland,
+  background: filters.background,
 }))
 const entryCriteria = computed(() => ({
   q: filters.q,
@@ -94,6 +95,7 @@ watch(
     filters.role,
     filters.questionType,
     filters.difficulty,
+    filters.background,
   ],
   () => {
     filters.page = 1
@@ -107,6 +109,21 @@ function submit() {
   if (same) void active.value.refetch()
 }
 const UNSOURCED_SALARY = '暂无数据：尚无可信薪资来源'
+function occupationRank(item: {
+  skillsSource: string | null
+  salaryRange: unknown
+  description: string
+}) {
+  const emptyCopy = !item.description.trim() || item.description.includes('暂无数据')
+  return (
+    (item.skillsSource === 'curated' ? 2 : 0) + (item.salaryRange ? 1 : 0) + (emptyCopy ? -2 : 0)
+  )
+}
+const occupationItems = computed(() =>
+  [...(occupations.data.value?.items ?? [])].sort(
+    (a, b) => occupationRank(b) - occupationRank(a) || a.name.localeCompare(b.name, 'zh'),
+  ),
+)
 function salaryNoticeText(notice: string): string {
   return notice === UNSOURCED_SALARY
     ? uiText('No data yet: no trusted salary source')
@@ -267,6 +284,13 @@ function salaryNoticeText(notice: string): string {
             </select></label
           >
           <label class="field"
+            >{{ uiText('Career background')
+            }}<select v-model="filters.background">
+              <option value="">{{ uiText('All careers') }}</option>
+              <option value="curated">{{ uiText('Edited skills only') }}</option>
+            </select></label
+          >
+          <label class="field"
             >{{ uiText('Interest code prefix')
             }}<input
               v-model="filters.holland"
@@ -338,14 +362,17 @@ function salaryNoticeText(notice: string): string {
         }}<button class="btn" @click="active.refetch()">{{ uiText('Retry catalog') }}</button>
       </div>
       <template v-else>
+        <p v-if="filters.tab === 'OCCUPATION'" class="subtle">
+          {{
+            uiText(
+              'Careers with edited skills are listed first. A missing salary source stays missing and is not invented.',
+            )
+          }}
+        </p>
         <p role="status">{{ uiText('{0} entries · Page {1}', [total, filters.page]) }}</p>
         <p v-if="!total">{{ uiText('No matching entries. Adjust your filters.') }}</p>
         <div v-if="filters.tab === 'OCCUPATION'" class="catalog-cards">
-          <article
-            v-for="item in occupations.data.value?.items"
-            :key="item.id"
-            class="panel form-stack min-w-0"
-          >
+          <article v-for="item in occupationItems" :key="item.id" class="panel form-stack min-w-0">
             <h2>
               <RouterLink :to="`/kb/builtin/${encodeURIComponent(item.id)}`">{{
                 item.name

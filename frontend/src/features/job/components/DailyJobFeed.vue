@@ -1,12 +1,25 @@
 <script setup lang="ts">
 import { formatDisplay, formatDate, translate as uiText } from '@/shared/utils/language'
 
+import { onMounted, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { RouterLink } from 'vue-router'
+import { getCareerProfile } from '@/shared/api/career'
 import { getJobRecommendations } from '@/shared/api/jobs'
 import { useBoard } from '@/shared/composables/useBoard'
 import JobSourceBadge from '@/shared/components/JobSourceBadge.vue'
+import { locationMisses } from '../jobResultNotes'
 const board = useBoard()
+const targetCity = ref('')
+onMounted(() => {
+  void getCareerProfile()
+    .then((profile) => {
+      targetCity.value = profile.city.trim()
+    })
+    .catch(() => {
+      targetCity.value = ''
+    })
+})
 const feed = useQuery({
   queryKey: ['job-recommendations'],
   queryFn: ({ signal }) => getJobRecommendations(signal),
@@ -34,13 +47,18 @@ const feed = useQuery({
       {{ formatDisplay(feed.error.value?.message)
       }}<button class="btn" @click="feed.refetch()">{{ uiText('Retry') }}</button>
     </div>
-    <p v-else-if="!feed.data.value?.items.length" class="helper-note">
-      {{
-        uiText(
-          'No real jobs to recommend yet. Complete your profile, save a resume or search for jobs to build up records.',
-        )
-      }}
-    </p>
+    <div v-else-if="!feed.data.value?.items.length" class="helper-note" role="status">
+      <p>
+        {{
+          uiText(
+            'No real jobs to recommend yet. Complete your profile, save a resume or search for jobs to build up records.',
+          )
+        }}
+      </p>
+      <RouterLink to="/discover" class="btn">{{
+        uiText('Complete your career profile')
+      }}</RouterLink>
+    </div>
     <template v-else>
       <p class="subtle">
         {{ formatDisplay(formatDate(feed.data.value.date)) }} ·
@@ -67,9 +85,12 @@ const feed = useQuery({
             ])
           }}
         </p>
-        <ul>
+        <ul class="recommendation-reasons">
           <li v-for="reason in item.reasons" :key="reason">{{ reason }}</li>
         </ul>
+        <p v-if="locationMisses(item.job.locations, targetCity)" class="helper-note">
+          {{ uiText('This listing does not mention {0}.', [targetCity]) }}
+        </p>
         <button
           class="btn"
           :disabled="
@@ -99,6 +120,15 @@ const feed = useQuery({
   overflow-wrap: anywhere;
   border-top: 1px solid var(--border);
   padding-top: 16px;
+}
+.recommendation-reasons {
+  margin: 8px 0;
+  padding-left: 18px;
+}
+.recommendation-reasons li {
+  overflow-wrap: break-word;
+  word-break: keep-all;
+  line-break: strict;
 }
 .section-heading {
   flex-wrap: wrap;

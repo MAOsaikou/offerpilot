@@ -27,8 +27,10 @@ watch(
 async function changeStage(event: Event) {
   const select = event.target as HTMLSelectElement
   const status = select.value as ApplicationStatus
-  select.value = props.application.status
-  await board.update(props.application.id, { status })
+  const previous = props.application.status
+  if (status === previous) return
+  const moved = await board.move(props.application.id, status)
+  if (!moved) select.value = previous
 }
 const dragging = ref(false)
 function dragStart(event: DragEvent) {
@@ -92,8 +94,8 @@ async function saveNote() {
     <p v-if="note !== application.note" class="subtle">
       {{ uiText('Save your notes before moving to another stage.') }}
     </p>
-    <p v-if="board.error.value" class="error-banner" role="alert">
-      {{ uiText('{0}. Please retry.', [board.error.value]) }}
+    <p v-if="board.stageNotice.value || board.error.value" class="error-banner" role="alert">
+      {{ uiText('{0}. Please retry.', [board.stageNotice.value || board.error.value]) }}
     </p>
   </article>
 </template>

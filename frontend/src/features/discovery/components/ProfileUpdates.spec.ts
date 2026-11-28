@@ -9,17 +9,24 @@ import {
 } from '@/shared/api/careerUpdates'
 import type { CareerProfile } from '@/shared/api/career'
 import { saveGuest } from '@/shared/utils/authSession'
+import { getUnreadCount } from '@/shared/api/notifications'
 vi.mock('@/shared/api/careerUpdates', () => ({
   getProfileSuggestions: vi.fn(),
   decideProfileSuggestion: vi.fn(),
+}))
+vi.mock('@/shared/api/notifications', () => ({
+  getUnreadCount: vi.fn().mockResolvedValue(0),
 }))
 let app: App, host: HTMLDivElement
 const suggestion = (): ProfileSuggestion => ({
   id: 's1',
   sourceType: 'GITHUB',
-  sourceId: 'account/snapshot1',
+  sourceId: 'int_demo_usr_01m8erhr39k0hvdrmb8ksy7x1gc_1',
   skills: ['Python'],
-  facts: ['非fork仓库，语言不证明本人掌握'],
+  facts: [
+    '非fork仓库，语言不证明本人掌握',
+    '简历版本 rv_01m8ersczzzs04g6knmv78wq7c 列出的技能与项目技术；不代表已验证熟练度。',
+  ],
   status: 'PENDING',
   createdAt: '2026-10-20T00:00:00Z',
 })
@@ -68,8 +75,13 @@ it('requires selecting proposed skills and flushing edits before explicit confir
   const { beforeConfirm, confirmed } = await mount()
   const input = host.querySelector('input')!
   expect(input.checked).toBe(false)
+  expect(button('确认材料依据与所选技能').disabled).toBe(true)
+  expect(host.textContent).toContain('请先勾选要写入的技能。')
+  expect(host.textContent).not.toContain('int_demo')
   expect(decideProfileSuggestion).not.toHaveBeenCalled()
   expect(host.textContent).toContain('语言不证明本人掌握')
+  expect(host.textContent).not.toContain('rv_')
+  expect(host.textContent).toContain('这份简历列出的技能与项目技术')
   input.click()
   await flush()
   vi.mocked(getProfileSuggestions).mockResolvedValue([{ ...suggestion(), status: 'CONFIRMED' }])
@@ -78,20 +90,27 @@ it('requires selecting proposed skills and flushing edits before explicit confir
   expect(beforeConfirm).toHaveBeenCalledOnce()
   expect(decideProfileSuggestion).toHaveBeenCalledWith('s1', true, ['Python'])
   expect(confirmed).toHaveBeenCalledWith(profile)
+  expect(getUnreadCount).toHaveBeenCalled()
   expect(host.textContent).toContain('已确认')
 })
 it('allows rejecting without adding skills and preserves the profile on failed flush', async () => {
-  const flushFailure = vi.fn().mockRejectedValue(new Error('草稿保存失败'))
+  const flushFailure = vi.fn().mockResolvedValue(undefined)
   const { confirmed } = await mount(flushFailure)
-  button('确认材料依据与所选技能').click()
-  await flush()
-  expect(decideProfileSuggestion).not.toHaveBeenCalled()
-  expect(confirmed).not.toHaveBeenCalled()
-  expect(host.textContent).toContain('草稿保存失败')
-  flushFailure.mockResolvedValue(undefined)
+  expect(button('确认材料依据与所选技能').disabled).toBe(true)
   button('忽略这次建议').click()
   await flush()
   expect(decideProfileSuggestion).toHaveBeenCalledWith('s1', false, [])
+  expect(confirmed).not.toHaveBeenCalled()
+  flushFailure.mockRejectedValue(new Error('草稿保存失败'))
+  vi.mocked(getProfileSuggestions).mockResolvedValue([suggestion()])
+  button('刷新材料建议').click()
+  await flush()
+  host.querySelector('input')!.click()
+  await flush()
+  button('确认材料依据与所选技能').click()
+  await flush()
+  expect(decideProfileSuggestion).toHaveBeenCalledTimes(1)
+  expect(host.textContent).toContain('草稿保存失败')
   expect(confirmed).not.toHaveBeenCalled()
 })
 it('handles empty, failure retry, stale history and offline controls', async () => {
@@ -125,5 +144,6 @@ it('discards previous-owner pending responses', async () => {
   await flush()
   finish([suggestion()])
   await flush()
-  expect(host.textContent).not.toContain('account/snapshot1')
+  expect(host.textContent).not.toContain('语言不证明本人掌握')
+  expect(host.textContent).not.toContain('int_demo')
 })

@@ -5,15 +5,18 @@ import { localizedText, language, translate as uiText } from '@/shared/utils/lan
 
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useAuthStore } from '@/shared/stores/auth'
+import { useNotifications } from '@/shared/stores/notifications'
 import {
   getProfileSuggestions,
   decideProfileSuggestion,
   type ProfileSuggestion,
 } from '@/shared/api/careerUpdates'
 import type { CareerProfile } from '@/shared/api/career'
+import { hideInternalIds } from '../suggestionFacts'
 const props = defineProps<{ beforeConfirm: () => Promise<void> }>()
 const emit = defineEmits<{ confirmed: [profile: CareerProfile]; busy: [value: boolean] }>()
 const auth = useAuthStore()
+const notices = useNotifications()
 const items = ref<ProfileSuggestion[]>([]),
   selected = ref<Record<string, string[]>>({})
 const loading = ref(false),
@@ -60,6 +63,7 @@ async function decide(item: ProfileSuggestion, accept: boolean) {
     if (current !== generation) return
     const profile = await decideProfileSuggestion(item.id, accept, selected.value[item.id] ?? [])
     if (current !== generation) return
+    void notices.refresh()
     if (accept) emit('confirmed', profile)
     await load()
   } catch (cause) {
@@ -128,15 +132,10 @@ onBeforeUnmount(() => {
     <article v-for="item in items" :key="item.id" class="form-stack profile-suggestion">
       <h3>{{ labels[item.sourceType] }} · {{ statuses[item.status] }}</h3>
       <p class="subtle">
-        {{
-          uiText('Source: {0} · {1} #2', [
-            item.sourceId,
-            new Date(item.createdAt).toLocaleString(language),
-          ])
-        }}
+        {{ uiText('Suggested on {0}', [new Date(item.createdAt).toLocaleString(language)]) }}
       </p>
       <ul>
-        <li v-for="fact in item.facts" :key="fact">{{ fact }}</li>
+        <li v-for="fact in item.facts" :key="fact">{{ hideInternalIds(fact) }}</li>
       </ul>
       <template v-if="item.status === 'PENDING'">
         <label v-for="skill in item.skills" :key="skill"
@@ -148,8 +147,16 @@ onBeforeUnmount(() => {
           />
           {{ uiText('Add profile skill: {0}', [skill]) }}</label
         >
+        <p v-if="!selected[item.id]?.length" :id="'confirm-reason-' + item.id" class="subtle">
+          {{ uiText('Select at least one skill before confirming.') }}
+        </p>
         <div class="actions">
-          <button class="btn primary" :disabled="busy || !online" @click="decide(item, true)">
+          <button
+            class="btn primary"
+            :disabled="busy || !online || !selected[item.id]?.length"
+            :aria-describedby="selected[item.id]?.length ? undefined : 'confirm-reason-' + item.id"
+            @click="decide(item, true)"
+          >
             {{ uiText('Confirm evidence and selected skills') }}</button
           ><button class="btn" :disabled="busy || !online" @click="decide(item, false)">
             {{ uiText('Ignore this suggestion') }}

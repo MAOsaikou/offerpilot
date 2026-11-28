@@ -8,7 +8,7 @@ import CardRenderer from '@/widgets/CardRenderer/CardRenderer.vue'
 <template>
   <ChatView>
     <template #agent="{ run, readonly }"><AgentPanel :run="run" :readonly="readonly" /></template>
-    <template #cards="{ cards, adoptTarget, adoptGrowth, applyPatches, disabled }">
+    <template #cards="{ cards, adoptTarget, adoptGrowth, applyPatches, disabled, disabledReason }">
       <CardRenderer
         v-for="card in cards"
         :key="card.cardId"
@@ -16,6 +16,7 @@ import CardRenderer from '@/widgets/CardRenderer/CardRenderer.vue'
         :payload="card.payload"
         :interactive="['career_recommendation', 'roadmap', 'resume_diff'].includes(card.cardType)"
         :disabled="disabled"
+        :disabled-reason="disabledReason"
         :apply-label="uiText('Approve selected suggestions')"
         @apply="applyPatches($event, card.payload)"
         @adopt-growth="adoptGrowth"

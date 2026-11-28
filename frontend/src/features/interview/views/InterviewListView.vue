@@ -109,6 +109,15 @@ const invalidSelection = computed(
     !!resumeId.value && (!versionId.value || versions.isPending.value || versions.isError.value),
 )
 const busy = ref(false)
+const startBlockedReason = computed(() => {
+  if (busy.value) return ''
+  if (resumeId.value && versions.isPending.value) return uiText('Loading versions…')
+  if (invalidSelection.value) return uiText('Select a saved resume version before starting.')
+  if (!role.value.trim()) return uiText('Enter a target role before starting.')
+  if (mixInvalid.value)
+    return uiText('Question counts total {0}; expected {1}.', [mixTotal.value, questionCount.value])
+  return ''
+})
 const error = ref('')
 const controller = new AbortController()
 onBeforeUnmount(() => controller.abort())
@@ -342,13 +351,19 @@ function exportLegacy(session: Interview) {
           }}
         </p>
         <p v-if="error" role="alert">{{ error }}</p>
-        <button
-          class="btn primary"
-          type="submit"
-          :disabled="busy || !role.trim() || invalidSelection || mixInvalid"
-        >
-          {{ busy ? uiText('Creating…') : uiText('Start practice') }}
-        </button>
+        <div class="start-practice dock-safe">
+          <button
+            class="btn primary"
+            type="submit"
+            :disabled="busy || !role.trim() || invalidSelection || mixInvalid"
+            :aria-describedby="startBlockedReason ? 'start-practice-reason' : undefined"
+          >
+            {{ busy ? uiText('Creating…') : uiText('Start practice') }}
+          </button>
+          <p v-if="startBlockedReason" id="start-practice-reason" class="helper-note" role="status">
+            {{ startBlockedReason }}
+          </p>
+        </div>
       </form>
       <aside class="panel form-stack">
         <span class="stat-icon"><AppIcon name="interviews" /></span>
@@ -488,6 +503,15 @@ function exportLegacy(session: Interview) {
 </template>
 
 <style scoped>
+.start-practice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.start-practice .helper-note {
+  margin: 0;
+}
 .interview-record > .interview-record-actions {
   flex: 0 0 auto;
   display: flex;

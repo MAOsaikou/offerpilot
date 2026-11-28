@@ -4,12 +4,14 @@ import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ServerResumeEditor from './ServerResumeEditor.vue'
+import editorSource from './ServerResumeEditor.vue?raw'
 import {
   deleteResume,
   exportResumePdf,
   getResume,
   listResumeVersions,
   restoreResumeVersion,
+  renameResume,
   saveResume,
 } from '@/shared/api/resumes'
 import type { ResumeVersion, ServerResume } from '@/shared/types/resume'
@@ -95,6 +97,26 @@ function button(text: string) {
   return [...root.querySelectorAll('button')].find((b) => b.textContent?.trim() === text)!
 }
 
+it('replaces a filename title with the parsed name and objective', async () => {
+  const uploaded = fixture('v1', '林晓舟')
+  uploaded.title = 'demo-resume'
+  uploaded.fileName = 'demo-resume.pdf'
+  uploaded.currentVersion!.structured.basics.title = 'Java 后端实习'
+  const renamed = {
+    ...uploaded,
+    title: '林晓舟 · Java 后端实习',
+  }
+  vi.mocked(renameResume).mockResolvedValue(renamed)
+  cache.setQueryData(['resume', 'rs1'], uploaded)
+  await vi.waitFor(() => expect(renameResume).toHaveBeenCalledWith('rs1', '林晓舟 · Java 后端实习'))
+  await vi.waitFor(() =>
+    expect(root.querySelector('h1')?.textContent).toContain('林晓舟 · Java 后端实习'),
+  )
+  const name = [...root.querySelectorAll('label')]
+    .find((label) => label.textContent?.includes('简历名称'))
+    ?.querySelector('input')
+  expect(name?.value).toBe('林晓舟 · Java 后端实习')
+})
 it('旧版本缺少头衔时显示空串且无未保存修改，编辑后原文进入保存并重新显示', async () => {
   const legacy = fixture('v2')
   delete legacy.currentVersion!.structured.basics.title
@@ -404,6 +426,19 @@ it('进度展示排队、读取和模型字段阶段，完成后移除进度条'
   cache.setQueryData(['resume', 'rs1'], fixture())
   await nextTick()
   expect(root.querySelector('progress')).toBeNull()
+})
+
+it('keeps the save bar after the fields so it does not cover the first screen', async () => {
+  const css = editorSource
+  expect(css).toContain('position: static')
+  expect(css).toContain('padding: 12px 176px 12px 16px')
+  expect(css).not.toContain('position: sticky')
+  await vi.waitFor(() => expect(root.querySelector('.resume-fields')).not.toBeNull())
+  const fields = root.querySelector('.resume-fields')!
+  const save = root.querySelector('.resume-save')!
+  expect(fields.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  )
 })
 
 afterEach(() => setLanguage('zh-CN'))

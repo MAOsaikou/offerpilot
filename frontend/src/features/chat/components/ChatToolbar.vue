@@ -16,7 +16,9 @@ const emit = defineEmits<{ 'toggle-history': []; 'toggle-panel': [] }>()
     >
       <AppIcon name="history" :size="18" />
     </button>
-    <h1 class="chat-title">{{ title }}</h1>
+    <h1 class="chat-title">
+      <span :title="title">{{ title }}</span>
+    </h1>
     <span class="chat-status">{{ status }}</span>
     <button
       class="icon-button"
@@ -32,15 +34,28 @@ const emit = defineEmits<{ 'toggle-history': []; 'toggle-panel': [] }>()
 </template>
 <style scoped>
 .chat-title {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
+  margin: 0;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   font-size: 17px;
   font-weight: 650;
+  line-height: 1.35;
+}
+.chat-title span {
+  display: -webkit-box;
+  width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  text-overflow: ellipsis;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 .chat-status {
+  flex-shrink: 0;
   font-size: 12px;
   color: var(--muted-foreground);
 }

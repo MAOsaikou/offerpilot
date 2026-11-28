@@ -1,9 +1,23 @@
 <script setup lang="ts">
 import { translate as uiText } from '@/shared/utils/language'
 
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { coverageLabel } from '../skillCoverage'
+import { alignCurrent, levelFor, liveSkillReport, loadLiveSkillLevels } from '../skillEvidenceAlign'
+import type { SkillGapReport } from '@/shared/api/skill-gap'
 import type { SkillRadarPayload } from '@/shared/types/cards'
 const props = defineProps<{ payload: SkillRadarPayload }>()
+const live = ref<SkillGapReport | null | undefined>(liveSkillReport())
+const aligning = computed(() => live.value === undefined)
+void loadLiveSkillLevels().then((report) => {
+  live.value = report
+})
+onMounted(() => {
+  if (live.value === undefined && liveSkillReport() !== undefined) live.value = liveSkillReport()
+})
+function shown(name: string, current: number) {
+  return alignCurrent(current, levelFor(live.value, name))
+}
 const valid = computed(
   () =>
     Array.isArray(props.payload?.axes) &&
@@ -22,7 +36,7 @@ function points(required = false) {
   return props.payload.axes
     .map((a, i, axes) => {
       const angle = (i * 2 * Math.PI) / axes.length - Math.PI / 2
-      const radius = (required ? a.required : a.current) * 18
+      const radius = (required ? a.required : shown(a.name, a.current)) * 18
       return `${110 + Math.cos(angle) * radius},${110 + Math.sin(angle) * radius}`
     })
     .join(' ')
@@ -45,6 +59,13 @@ function points(required = false) {
           )
         }}
       </p>
+      <p class="subtle">
+        {{
+          uiText(
+            'GitHub and MCP evidence stays out of this chart until you save a connection in settings. An empty chart means there is no saved evidence, not that an integration is connected.',
+          )
+        }}
+      </p>
       <svg
         v-if="payload.axes.length >= 3"
         viewBox="0 0 220 220"
@@ -62,12 +83,19 @@ function points(required = false) {
           stroke="currentColor"
           stroke-dasharray="4"
         />
-        <polygon class="radar-evidence" :points="points()" />
+        <polygon v-if="!aligning" class="radar-evidence" :points="points()" />
       </svg>
       <ul>
         <li v-for="axis in payload.axes" :key="axis.name">
           {{
-            uiText('{0}: Evidence {1} / Requirement {2}', [axis.name, axis.current, axis.required])
+            aligning
+              ? uiText('{0}: Checking the current career analysis', [axis.name])
+              : uiText('{0}: {1} · Evidence {2} / Requirement {3}', [
+                  axis.name,
+                  coverageLabel(shown(axis.name, axis.current)),
+                  shown(axis.name, axis.current),
+                  axis.required,
+                ])
           }}
         </li>
       </ul>

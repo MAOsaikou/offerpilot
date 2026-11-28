@@ -177,6 +177,7 @@ async function cancelTask(id: string, kind: string, entity?: string) {
 <style scoped>
 .generation-dock--compact {
   width: auto;
+  max-width: 156px;
   padding: 4px 6px 4px 12px;
   border-radius: 999px;
   opacity: 0.85;
@@ -184,12 +185,27 @@ async function cancelTask(id: string, kind: string, entity?: string) {
 }
 @media (max-width: 720px) {
   .generation-dock {
-    right: 8px;
-    bottom: 8px;
-    width: min(320px, calc(100vw - 16px));
+    position: static;
+    right: auto;
+    bottom: auto;
+    z-index: auto;
+    width: auto;
+    max-width: none;
+    max-height: 50dvh;
+    margin: 12px 32px 0;
+    box-shadow: none;
   }
   .generation-dock--compact {
     width: auto;
+    max-width: none;
+    padding: 6px 8px 6px 14px;
+    border-radius: var(--radius, 12px);
+    opacity: 1;
+  }
+}
+@media (max-width: 640px) {
+  .generation-dock {
+    margin: 12px 16px 0;
   }
 }
 .generation-dock__list {

@@ -53,15 +53,21 @@ public class BuiltinKnowledgeRepository {
             r.getString("question_type"),r.getString("difficulty"),r.getString("source"),r.getString("source_url"),r.getString("license"),r.getString("notice"),r.getString("status"),node(r.getString("payload")));
     }
     public Page<Occupation> occupations(String query,String family,String holland,int page,int size) {
+        return occupations(query,family,holland,page,size,"");
+    }
+    public Page<Occupation> occupations(String query,String family,String holland,int page,int size,String background) {
         bounds(page,size);String q=clean(query,2000),f=clean(family,100),h=clean(holland,3).toUpperCase(Locale.ROOT);
+        String curated=clean(background,20);
         if(!h.matches("[RIASEC]{0,3}")) throw invalid();
+        if(!curated.isEmpty() && !curated.equals("curated")) throw invalid();
         var args=new ArrayList<Object>();StringBuilder where=new StringBuilder(" WHERE 1=1");
         if(!q.isEmpty()) { where.append(" AND (strpos(lower(name||' '||description||' '||array_to_string(aliases,' ')),lower(?))>0 OR tsv @@ to_tsquery('simple',?))");args.add(q);args.add(OccupationDocument.lexicalQuery(q).isBlank()?"'__no_token__'":OccupationDocument.lexicalQuery(q)); }
         if(!f.isEmpty()) { where.append(" AND family=?");args.add(f); }
         if(!h.isEmpty()) { where.append(" AND holland_code LIKE ?");args.add(h+"%"); }
+        if(curated.equals("curated")) where.append(" AND skills_source='curated'");
         long total=jdbc.queryForObject("SELECT count(*) FROM occupations"+where,Long.class,args.toArray());
         args.add(size);args.add((page-1)*size);
-        return new Page<>(jdbc.query("SELECT * FROM occupations"+where+" ORDER BY name,id LIMIT ? OFFSET ?",this::mapOccupation,args.toArray()),total,page,size);
+        return new Page<>(jdbc.query("SELECT * FROM occupations"+where+" ORDER BY CASE WHEN skills_source='curated' THEN 0 ELSE 1 END, name, id LIMIT ? OFFSET ?",this::mapOccupation,args.toArray()),total,page,size);
     }
     public Occupation occupation(String id) {
         return jdbc.query("SELECT * FROM occupations WHERE id=?",this::mapOccupation,id).stream().findFirst()

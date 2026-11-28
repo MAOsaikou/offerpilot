@@ -62,10 +62,11 @@ h3 {
   padding: 22px 14px 16px;
   background: var(--rail);
   border-right: 1px solid var(--border);
-  overflow-y: auto;
+  overflow: hidden;
 }
 .brand {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 10px;
   padding: 0 8px;
@@ -95,6 +96,7 @@ h3 {
 }
 .sidebar-new {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
   min-height: 40px;
@@ -109,13 +111,21 @@ h3 {
   background: color-mix(in srgb, var(--foreground) 88%, var(--primary));
 }
 .nav-list {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  margin: -1px -14px;
+  padding: 1px 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .nav-link {
   position: relative;
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 12px;
   min-height: 38px;
@@ -167,6 +177,7 @@ h3 {
   text-align: center;
 }
 .nav-divider {
+  flex-shrink: 0;
   height: 1px;
   margin: 6px 10px;
   background: var(--border);
@@ -175,13 +186,23 @@ h3 {
   margin-top: auto;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   gap: 2px;
+  min-width: 0;
 }
 .storage-note {
+  max-width: 100%;
   padding: 0 10px 12px;
   font-size: 12px;
   line-height: 1.7;
   color: var(--muted-foreground);
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  line-break: auto;
+}
+.storage-note-nowrap {
+  white-space: nowrap;
 }
 .profile-link {
   display: flex;
@@ -282,6 +303,15 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+.dock-safe {
+  padding-inline-end: 176px;
+}
+@media (max-width: 720px) {
+  .dock-safe {
+    padding-inline-end: 0;
+    margin-bottom: 0;
+  }
 }
 .page-heading {
   flex-wrap: wrap;
@@ -980,14 +1010,24 @@ a.job-row:hover > svg {
 }
 .tabs {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
   gap: 2px;
-  padding: 3px;
+  padding: 3px 10px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--foreground) 5%, transparent);
   align-self: flex-start;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 .tabs button {
+  flex-shrink: 0;
+  white-space: nowrap;
   min-height: 34px;
   padding: 0 14px;
   border: 0;
@@ -1034,7 +1074,8 @@ a.job-row:hover > svg {
 }
 .chat-toolbar {
   display: flex;
-  flex-wrap: wrap;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
   min-height: 40px;
@@ -1196,6 +1237,7 @@ a.job-row:hover > svg {
 @media (max-width: 900px) {
   .sidebar {
     width: 272px;
+    max-width: calc(100vw - 48px);
     transform: translateX(-100%);
     visibility: hidden;
     transition:
@@ -1216,6 +1258,7 @@ a.job-row:hover > svg {
     top: 0;
     z-index: 20;
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     gap: 8px;
     min-height: 56px;
@@ -1234,8 +1277,14 @@ a.job-row:hover > svg {
   .split-content {
     grid-template-columns: 1fr;
   }
-  .chat-layout {
-    height: calc(100dvh - 56px - 48px);
+}
+@media (max-height: 460px) {
+  .sidebar {
+    overflow-y: auto;
+  }
+  .nav-list {
+    flex: 0 0 auto;
+    overflow: visible;
   }
 }
 @media (max-width: 640px) {
@@ -1273,9 +1322,6 @@ a.job-row:hover > svg {
   .list-row,
   .notice-item {
     flex-wrap: wrap;
-  }
-  .chat-layout {
-    height: calc(100dvh - 56px - 32px);
   }
   .chat-welcome h2 {
     font-size: 24px;
@@ -1325,6 +1371,61 @@ a.job-row:hover > svg {
 /* 给右下角后台任务坞留出滚动余量，结果内容可滚到其上方，不被遮挡。 */
 .workspace-content {
   padding-bottom: max(120px, calc(env(safe-area-inset-bottom) + 120px));
+  padding-inline-end: 176px;
+}
+@media (max-width: 720px) {
+  .workspace-content {
+    padding-top: 16px;
+    padding-inline-end: 32px;
+    padding-bottom: max(56px, calc(env(safe-area-inset-bottom) + 56px));
+  }
+}
+@media (max-width: 640px) {
+  .workspace-content {
+    padding-top: 16px;
+    padding-inline-end: 16px;
+    padding-bottom: max(40px, calc(env(safe-area-inset-bottom) + 40px));
+  }
+}
+@media (max-width: 900px) {
+  .app-body:has(.conversation-workspace):not(:has(.chat-panel.visible)) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
+  .app-body:has(.conversation-workspace):not(:has(.chat-panel.visible)) > .generation-dock {
+    flex-shrink: 0;
+  }
+  .app-body:has(.conversation-workspace):not(:has(.chat-panel.visible)) > .workspace-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .app-body:has(.conversation-workspace):not(:has(.chat-panel.visible))
+    > .workspace-content
+    > :not(.route-page) {
+    flex-shrink: 0;
+  }
+  .app-body:has(.conversation-workspace):not(:has(.chat-panel.visible))
+    > .workspace-content
+    > .route-page {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .chat-layout {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+  }
+  .chat-main {
+    flex: 1 1 auto;
+  }
 }
 
 /* Text-heavy discovery/interview pages must shrink within their grid and flex parents. */

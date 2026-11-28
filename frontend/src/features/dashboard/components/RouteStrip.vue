@@ -9,8 +9,6 @@ import {
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { Stage } from '@/shared/types/workspace'
-import CountUp from '@/shared/components/CountUp.vue'
-
 const props = defineProps<{ stops: { stage: Stage; count: number }[]; loading?: boolean }>()
 
 const route = computed(() => props.stops.filter((s) => s.stage !== sourceText('Closed')))
@@ -39,10 +37,9 @@ const progress = computed(() =>
         :style="{ '--k': index }"
       >
         <span class="route-node" aria-hidden="true" />
-        <strong class="route-count">
-          <template v-if="loading">{{ formatDisplay('—') }}</template>
-          <CountUp v-else :value="stop.count" :delay="120 + index * 90" />
-        </strong>
+        <strong class="route-count">{{
+          loading ? formatDisplay('—') : formatDisplay(stop.count)
+        }}</strong>
         <span class="route-label">{{ translateLabel(stop.stage) }}</span>
       </li>
     </ol>

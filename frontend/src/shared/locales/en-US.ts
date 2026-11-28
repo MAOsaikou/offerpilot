@@ -809,8 +809,8 @@ export default {
   'No core skill data yet. Review the target job requirements first.':
     'No core skill data yet. Review the target job requirements first.',
   'Priority gaps': 'Priority gaps',
-  'Evidence level {0} / 5 · Reference requirement {1} · Gap {2}':
-    'Evidence level {0} / 5 · Reference requirement {1} · Gap {2}',
+  '{0} · Evidence level {1} / 5 · Reference requirement {2} · Gap {3}':
+    '{0} · Evidence level {1} / 5 · Reference requirement {2} · Gap {3}',
   '{0} evidence level': '{0} evidence level',
   'No saved skill evidence yet. This does not mean you lack the ability.':
     'No saved skill evidence yet. This does not mean you lack the ability.',
@@ -824,7 +824,7 @@ export default {
     'Material evidence and reference requirements (levels 0–5), not a certification of ability.',
   'Radar of skill evidence and reference requirements':
     'Radar of skill evidence and reference requirements',
-  '{0}: Evidence {1} / Requirement {2}': '{0}: Evidence {1} / Requirement {2}',
+  '{0}: {1} · Evidence {2} / Requirement {3}': '{0}: {1} · Evidence {2} / Requirement {3}',
   'Interview learning plans': 'Interview learning plans',
   'Turn interview insights into weekly action': 'Turn interview insights into weekly action',
   'Loading learning plans…': 'Loading learning plans…',
@@ -1185,7 +1185,7 @@ export default {
   'Ranks real local job records using your profile, target career and latest saved resume. Cached daily and refreshed when your materials change. Scores reflect rule-based relevance.':
     'Ranks real local job records using your profile, target career and latest saved resume. Cached daily and refreshed when your materials change. Scores reflect rule-based relevance.',
   'No real jobs to recommend yet. Complete your profile, save a resume or search for jobs to build up records.':
-    'No real jobs to recommend yet. Complete your profile, save a resume or search for jobs to build up records.',
+    'No real jobs to recommend yet. Next: complete your career profile and save a resume, or search above first. Recommendations appear after those searches are stored locally.',
   "Today's cache": "Today's cache",
   Updated: 'Updated',
   'Company not provided': 'Company not provided',
@@ -1309,7 +1309,7 @@ export default {
   'Manually curated sample snapshot, not live data. Check the company website for current openings.':
     'Manually curated sample snapshot, not live data. Check the company website for current openings.',
   'Some companies are unavailable: {0}. They are excluded from these results.':
-    'Some companies are unavailable: {0}. They are excluded from these results.',
+    'These sources failed or returned nothing: {0}. The reason follows each name. They are excluded from these results.',
   '{0} used fallback filtering and may not cover all jobs.':
     '{0} used fallback filtering and may not cover all jobs.',
   'Upstream results were truncated. Narrow your keywords or choose a company.':
@@ -1479,7 +1479,7 @@ export default {
   '{0} jobs returned': 'Jobs returned: {0}',
   'Queried: {0} · Coverage: {1}': 'Queried: {0} · Coverage: {1}',
   'Some companies returned no results: {0}. They are excluded here. Retry later.':
-    'Some companies returned no results: {0}. They are excluded here. Retry later.',
+    'These sources failed or returned nothing: {0}. The reason follows each name. They are left out of these results. Retry later.',
   '{0} filtered keywords using the company-provided list, which may not include all jobs.':
     '{0} filtered keywords using the company-provided list, which may not include all jobs.',
   'Results exceed the display limit. Narrow your keywords or choose a company.':
@@ -1859,7 +1859,7 @@ export default {
   'The current resume version differs or has unsaved edits. These suggestions are read-only. Save current content and regenerate to avoid overwriting later changes.':
     'The current resume version differs or has unsaved edits. These suggestions are read-only. Save current content and regenerate to avoid overwriting later changes.',
   'No rewrite suggestions need accepting. No new resume version was created. #2':
-    'No rewrite suggestions need accepting. No new resume version was created.',
+    'This job description already matches the resume closely. Try a more demanding job description or another target job. Nothing needs accepting, and no new resume version was created.',
   'Rewrite history · {0}': 'Rewrite history · {0}',
   'Refresh rewrite history': 'Refresh rewrite history',
   'Loading rewrite history…': 'Loading rewrite history…',
@@ -2622,6 +2622,9 @@ export default {
   '{0} unread · Server notifications': '{0} unread · Server notifications',
   '{0} of {1} growth actions completed. {2} resumes and {3} interview practice sessions.':
     '{0} of {1} growth actions completed. {2} resumes and {3} interview practice sessions.',
+  'Loading workbench summary…': 'Loading workbench summary…',
+  'Select a saved resume version before starting.':
+    'Select a saved resume version before starting.',
   'Domain knowledge': 'Domain knowledge',
   'My career goal is {0}. My current skills are {1}. Please help me create an actionable learning plan.':
     'My career goal is {0}. My current skills are {1}. Please help me create an actionable learning plan.',
@@ -2727,4 +2730,56 @@ export default {
   'Enter your public GitHub username. A token is optional.':
     'Enter your public GitHub username. A token is optional.',
   'No data yet: no trusted salary source': 'No data yet: no trusted salary source',
+  'Other detail': 'Other detail',
+  'Untitled resume': 'Untitled resume',
+  'Select completed tasks before syncing.': 'Select completed tasks before syncing.',
+  'Saving this action. Please wait.': 'Saving this action. Please wait.',
+  'Current resume': 'Current resume',
+  'Open this resume': 'Open this resume',
+  'The target career is saved in your career profile and matches exploration and growth.':
+    'The target career is saved in your career profile and matches exploration and growth.',
+  'Select at least one skill before confirming.': 'Select at least one skill before confirming.',
+  'Suggested on {0}': 'Suggested on {0}',
+  'These tasks are already recorded as complete.': 'These tasks are already recorded as complete.',
+  'After syncing, approve or reject it in the execution panel. Rejecting does not mark tasks complete.':
+    'After syncing, approve or reject it in the execution panel. Rejecting does not mark tasks complete.',
+  'This chat is still loading. Wait until it is ready.':
+    'This chat is still loading. Wait until it is ready.',
+  '{0} results do not mention {1}. Company search may not filter by city, so they stay visible with a note.':
+    '{0} results do not mention {1}. Company search may not filter by city, so they stay visible with a note.',
+  'This listing does not mention {0}.': 'This listing does not mention {0}.',
+  'Source timed out': 'Timed out',
+  'Source request failed': 'Request failed',
+  'Source is temporarily unavailable': 'Temporarily unavailable',
+  'No GitHub evidence is saved, so repository languages are not included. Add a public username in settings if you want that evidence. This is not a failed analysis, and it does not mean GitHub is connected.':
+    'No GitHub evidence is saved, so repository languages are not included. Add a public username in settings if you want that evidence. This is not a failed analysis, and it does not mean GitHub is connected.',
+  'Open GitHub evidence settings': 'Open GitHub evidence settings',
+  'GitHub and MCP evidence stays out of this chart until you save a connection in settings. An empty chart means there is no saved evidence, not that an integration is connected.':
+    'GitHub and MCP evidence stays out of this chart until you save a connection in settings. An empty chart means there is no saved evidence, not that an integration is connected.',
+  'Edited skills only': 'Edited skills only',
+  'All careers': 'All careers',
+  'Career background': 'Background',
+  'Careers with edited skills are listed first. A missing salary source stays missing and is not invented.':
+    'Careers with edited skills are listed first. A missing salary source stays missing and is not invented.',
+  'Complete your career profile': 'Complete your career profile',
+  'Enter a target role before starting.': 'Enter a target role before starting.',
+  'Submitting this sync. Approve or reject it here when the request is ready.':
+    'Submitting this sync. Approve or reject it here when the request is ready.',
+  'Approve or reject syncing these tasks here. Rejecting does not mark tasks complete.':
+    'Approve or reject syncing these tasks here. Rejecting does not mark tasks complete.',
+  'Sync could not be submitted. Please retry.': 'Sync could not be submitted. Please retry.',
+  'Company sites did not respond. Saved results are still shown.':
+    'Company sites did not respond. Saved results are still shown.',
+  'The company-site query timed out.': 'The company-site query timed out.',
+  'The live company page is unavailable. The saved copy is shown.':
+    'The live company page is unavailable. The saved copy is shown.',
+  'Every queried company site failed.': 'Every queried company site failed.',
+  'Company sites returned an error and no new jobs.':
+    'Company sites returned an error and no new jobs.',
+  'The job query is busy. Partial results are shown.':
+    'The job query is busy. Partial results are shown.',
+  'Saved job records are unavailable.': 'Saved job records are unavailable.',
+  'Some company sites returned only part of their results.':
+    'Some company sites returned only part of their results.',
+  '{0}: Checking the current career analysis': '{0}: Checking the current career analysis',
 } as const

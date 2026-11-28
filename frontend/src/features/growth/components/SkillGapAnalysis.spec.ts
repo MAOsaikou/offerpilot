@@ -84,6 +84,21 @@ afterEach(() => {
   app?.unmount()
   host.remove()
 })
+it('lists each occupation name once when the catalog repeats it', async () => {
+  vi.mocked(getCareerCatalog).mockResolvedValue([
+    { occupationId: 'occ_onet_29-1161.00', name: '助产士' },
+    { occupationId: 'occ_onet_29-9099.01', name: '助产士' },
+    { occupationId: 'data-scientist', name: '数据科学家' },
+    { occupationId: 'occ_onet_15-2051.00', name: '数据科学家' },
+  ])
+  await mount()
+  const names = [...host.querySelectorAll('optgroup option')].map((option) =>
+    option.textContent?.trim(),
+  )
+  expect(names.filter((name) => name === '助产士')).toHaveLength(1)
+  expect(names.filter((name) => name === '数据科学家')).toHaveLength(1)
+  expect(host.querySelector<HTMLOptionElement>('option[value="data-scientist"]')).not.toBeNull()
+})
 it('analyzes the saved target and displays three grades with evidence and fetch date', async () => {
   await mount()
   button('分析技能差距').click()
@@ -101,6 +116,7 @@ it('analyzes the saved target and displays three grades with evidence and fetch 
     '未提及不代表没有能力',
   ])
     expect(host.textContent).toContain(text)
+  expect(host.textContent).not.toContain('还没有保存 GitHub 实证')
   const select = host.querySelector('select')!
   select.value = 'occ'
   select.dispatchEvent(new Event('change'))
@@ -109,6 +125,18 @@ it('analyzes the saved target and displays three grades with evidence and fetch 
   button('分析技能差距').click()
   await flush()
   expect(getSkillGap).toHaveBeenLastCalledWith({ occupationId: 'occ' }, expect.any(AbortSignal))
+})
+it('explains missing GitHub evidence without claiming the integration is connected', async () => {
+  vi.mocked(getSkillGap).mockResolvedValue({
+    ...report,
+    notice: '等级表示材料证据覆盖。 暂无 GitHub 实证。',
+  })
+  await mount()
+  button('分析技能差距').click()
+  await flush()
+  expect(host.textContent).toContain('还没有保存 GitHub 实证')
+  expect(host.textContent).toContain('也不表示 GitHub 已经连接')
+  expect(host.querySelector('a[href="/settings"]')?.textContent).toContain('GitHub 实证设置')
 })
 it('supports a saved job, retries failures and reports an honest empty result', async () => {
   vi.mocked(listImportedJobs).mockResolvedValue([{ id: 'job', title: '导入岗位' }] as Awaited<

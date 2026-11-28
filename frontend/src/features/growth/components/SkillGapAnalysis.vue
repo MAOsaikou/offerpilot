@@ -9,8 +9,9 @@ import {
 } from '@/shared/utils/language'
 
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import { getCareerCatalog } from '@/shared/api/career'
+import { uniqueOccupations } from '@/shared/utils/occupations'
 import { getSkillGap, type SkillGapReport } from '@/shared/api/skill-gap'
 import { listApplications } from '@/shared/api/applications'
 import { listImportedJobs } from '@/shared/api/jobs'
@@ -40,7 +41,7 @@ async function load() {
   ])
   if (signal.aborted) return
   const [catalog, applications, imported] = results
-  if (catalog.status === 'fulfilled') occupations.value = catalog.value
+  if (catalog.status === 'fulfilled') occupations.value = uniqueOccupations(catalog.value)
   const saved = new Map<string, { id: string; title: string }>()
   if (applications.status === 'fulfilled')
     for (const item of applications.value)
@@ -139,6 +140,14 @@ async function analyze() {
     <template v-if="report">
       <h3 class="break-words">{{ report.targetTitle }}</h3>
       <p class="helper-note">{{ report.notice }}</p>
+      <p v-if="report.notice.includes('暂无 GitHub 实证')" class="helper-note">
+        {{
+          uiText(
+            'No GitHub evidence is saved, so repository languages are not included. Add a public username in settings if you want that evidence. This is not a failed analysis, and it does not mean GitHub is connected.',
+          )
+        }}
+        <RouterLink to="/settings">{{ uiText('Open GitHub evidence settings') }}</RouterLink>
+      </p>
       <p v-if="!report.skills.length" role="status">
         {{ uiText('No identifiable target skills yet.') }}
       </p>

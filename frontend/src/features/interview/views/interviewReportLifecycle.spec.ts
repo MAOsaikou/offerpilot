@@ -144,6 +144,7 @@ it('ends into progress, retries a failed background task and opens the persisted
   await vi.waitFor(() => expect(button('结束并生成报告')).toBeDefined())
   button('结束并生成报告').click()
   await vi.waitFor(() => expect(root.textContent).toContain('正在生成面试报告'))
+  expect(root.querySelectorAll('.skeleton').length).toBeGreaterThan(0)
   expect(root.textContent).not.toContain('面试评分与复盘')
   expect(root.textContent).not.toContain('未评分 / 100')
   expect(starts).toBe(1)

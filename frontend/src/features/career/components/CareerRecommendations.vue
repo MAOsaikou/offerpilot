@@ -17,6 +17,7 @@ import {
   type CareerConstraints,
   type CareerComparison,
 } from '@/shared/api/career'
+import { uniqueOccupations } from '@/shared/utils/occupations'
 import CareerRadar from './CareerRadar.vue'
 import CareerCardFacts from '@/shared/components/CareerCardFacts.vue'
 const route = useRoute()
@@ -75,7 +76,7 @@ async function load() {
     ])
     if (current !== generation) return
     revision.value = saved
-    catalog.value = entries
+    catalog.value = uniqueOccupations(entries)
     if (saved) constraints.value = { ...saved.constraints }
   } catch (cause) {
     if (current === generation) error.value = message(cause)

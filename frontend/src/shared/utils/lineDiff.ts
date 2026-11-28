@@ -53,6 +53,7 @@ export function resumeLines(structure: {
   const value = (v: unknown) => (Array.isArray(v) ? v.join('、') : String(v ?? ''))
   const labels: Record<string, string> = {
     name: uiText('Name'),
+    title: uiText('Title / job objective'),
     phone: uiText('Phone'),
     email: uiText('Email'),
     city: uiText('City'),
@@ -67,13 +68,42 @@ export function resumeLines(structure: {
     const entries = (structure[section] as Record<string, unknown>[] | undefined) ?? []
     entries.forEach((entry, index) => {
       for (const [field, v] of Object.entries(entry)) {
+        const fieldLabel = resumeFieldLabel(section, field)
         if (Array.isArray(v))
-          v.forEach((item) => item && lines.push(`${label}${index + 1} · ${field}：${item}`))
-        else if (v) lines.push(`${label}${index + 1} · ${field}：${value(v)}`)
+          v.forEach(
+            (item) => item && lines.push(`${label}${index + 1} · ${fieldLabel}：${item}`),
+          )
+        else if (v) lines.push(`${label}${index + 1} · ${fieldLabel}：${value(v)}`)
       }
     })
   }
   for (const cert of structure.certificates ?? [])
     if (cert) lines.push(uiText('Certificate: {0}', [cert]))
   return lines.join('\n')
+}
+
+/** Editor labels, so a version diff never prints raw structured keys such as end or gpa. */
+function resumeFieldLabel(section: string, field: string) {
+  const labels: Record<string, string> = {
+    'education.school': uiText('School'),
+    'education.degree': uiText('Education'),
+    'education.major': uiText('Major'),
+    'education.start': uiText('Start date'),
+    'education.end': uiText('End date'),
+    'education.gpa': uiText('GPA / Grades'),
+    'experience.org': uiText('Company / Organization'),
+    'experience.title': uiText('Position'),
+    'experience.start': uiText('Start date'),
+    'experience.end': uiText('End date'),
+    'experience.bullets': uiText('Responsibilities and achievements'),
+    'projects.name': uiText('Project name'),
+    'projects.role': uiText('Role #2'),
+    'projects.start': uiText('Start date'),
+    'projects.end': uiText('End date'),
+    'projects.tech': uiText('Technology stack'),
+    'projects.bullets': uiText('Actions and results'),
+    'skills.category': uiText('Skill category'),
+    'skills.items': uiText('Skills'),
+  }
+  return labels[`${section}.${field}`] ?? uiText('Other detail')
 }

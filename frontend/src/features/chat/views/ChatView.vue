@@ -2,6 +2,7 @@
 import { formatDisplay, localizedText, translate as uiText } from '@/shared/utils/language'
 
 import { checkPrivacyText } from '@/shared/api/privacy-settings'
+import { submitApproval } from '@/shared/api/agent'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Composer from '../components/Composer.vue'
@@ -10,6 +11,7 @@ import MessageList from '../components/MessageList.vue'
 import ConversationHistory from '../components/ConversationHistory.vue'
 import ChatWelcome from '../components/ChatWelcome.vue'
 import ChatToolbar from '../components/ChatToolbar.vue'
+import { chatHeadingTitle } from '../chatHeadingTitle'
 import { useRunReplay } from '@/shared/composables/useRunReplay'
 import { useConversationChat } from '../composables/useConversationChat'
 import { optimizationContext } from '../optimizationContext'
@@ -48,6 +50,10 @@ const modes = computed<{ value: AgentMode; label: string }[]>(() => [
   { value: 'INTERVIEWER', label: uiText('Interview practice') },
   { value: 'COACH', label: uiText('Growth coach') },
 ])
+const headingTitle = computed(() => {
+  const first = viewMessages.value.find((message) => message.role === 'user')?.text ?? ''
+  return chatHeadingTitle(current.value?.title ?? '', first) || uiText('New chat')
+})
 const displayedMessages = computed(() =>
   viewMessages.value.map((message) => {
     if (!replay.runId.value || message.role !== 'assistant' || message.runId !== replay.runId.value)
@@ -132,6 +138,49 @@ const scrollArea = ref<HTMLElement | null>(null)
 const missingConversation = computed(
   () => Boolean(route.params.conversationId) && !current.value && !loading.value,
 )
+const awaitingGrowthApproval = ref(false)
+const decidingGrowth = ref(false)
+const growthError = localizedText()
+const growthApproval = computed(
+  () =>
+    activeRun.value?.approvals.find(
+      (item) => item.status === 'PENDING' && item.name === 'adoptGrowthPlan',
+    ) ?? null,
+)
+watch(growthApproval, (item) => {
+  if (item) awaitingGrowthApproval.value = false
+})
+watch(busy, (value, previous) => {
+  if (previous && !value) awaitingGrowthApproval.value = false
+})
+const cardDisabledReason = computed(() => {
+  if (growthApproval.value)
+    return uiText(
+      'Approve or reject syncing these tasks here. Rejecting does not mark tasks complete.',
+    )
+  if (busy.value && awaitingGrowthApproval.value)
+    return uiText('Submitting this sync. Approve or reject it here when the request is ready.')
+  if (busy.value) return uiText('Saving this action. Please wait.')
+  if (missingConversation.value || replay.runId.value)
+    return uiText('This chat is still loading. Wait until it is ready.')
+  return ''
+})
+async function decideGrowth(decision: 'APPROVE' | 'REJECT') {
+  const run = activeRun.value
+  const approval = growthApproval.value
+  if (!run || !approval || decidingGrowth.value) return
+  decidingGrowth.value = true
+  growthError.value = ''
+  try {
+    await submitApproval(run.runId, approval.approvalId, { decision })
+  } catch (cause) {
+    growthError.value = formatDisplay(
+      cause instanceof Error ? cause.message : uiText('Sync could not be submitted. Please retry.'),
+    )
+  } finally {
+    decidingGrowth.value = false
+  }
+}
 const lastQuestion = computed(
   () =>
     lastAttempt.value ||
@@ -306,19 +355,25 @@ async function adoptTarget(selection: CareerTargetSelection) {
 async function adoptGrowth(taskTitles: string[]) {
   if (busy.value || missingConversation.value || !taskTitles.length) return
   panelOpen.value = true
+  awaitingGrowthApproval.value = true
   const content = uiText('Sync growth tasks: I confirm that I have completed “{0}”', [
     taskTitles.join('」、「'),
   ])
   lastAttempt.value = content
-  await chat.send(
-    content,
-    'COACH',
-    tier.value,
-    (id) => {
-      void router.replace({ path: `/chat/${encodeURIComponent(id)}` })
-    },
-    { coachAction: 'adoptGrowthPlan', taskTitles },
-  )
+  try {
+    await chat.send(
+      content,
+      'COACH',
+      tier.value,
+      (id) => {
+        void router.replace({ path: `/chat/${encodeURIComponent(id)}` })
+      },
+      { coachAction: 'adoptGrowthPlan', taskTitles },
+    )
+  } catch (cause) {
+    awaitingGrowthApproval.value = false
+    throw cause
+  }
 }
 async function applyPatches(decision: PatchDecision, payload: unknown) {
   if (busy.value || missingConversation.value) return
@@ -397,7 +452,7 @@ async function remove(id: string) {
     <div class="chat-layout persistent-chat">
       <div class="chat-main">
         <ChatToolbar
-          :title="current?.title || uiText('New chat')"
+          :title="headingTitle"
           :status="mock ? uiText('Mock demo') : uiText('Autosave')"
           :history-open="historyOpen"
           :panel-open="panelOpen"
@@ -556,6 +611,7 @@ async function remove(id: string) {
                     adoptGrowth,
                     applyPatches,
                     disabled: busy || missingConversation || Boolean(replay.runId.value),
+                    disabledReason: cardDisabledReason,
                   }" /></template
             ></MessageList>
             <ChatWelcome v-else-if="!loading && !missingConversation" @pick="seed = $event" />
@@ -598,6 +654,39 @@ async function remove(id: string) {
             }}<button class="btn text" :disabled="busy" @click="clearMatchAction">
               {{ uiText('Ask a general question instead') }}
             </button>
+          </div>
+          <div
+            v-if="growthApproval"
+            class="growth-decision helper-note"
+            role="region"
+            :aria-label="uiText('Approve')"
+          >
+            <p>
+              {{
+                uiText(
+                  'Approve or reject syncing these tasks here. Rejecting does not mark tasks complete.',
+                )
+              }}
+            </p>
+            <p v-if="growthError" class="error-banner" role="alert">{{ growthError }}</p>
+            <div class="card-footer">
+              <button
+                type="button"
+                class="btn primary"
+                :disabled="decidingGrowth"
+                @click="decideGrowth('APPROVE')"
+              >
+                {{ uiText('Approve') }}
+              </button>
+              <button
+                type="button"
+                class="btn"
+                :disabled="decidingGrowth"
+                @click="decideGrowth('REJECT')"
+              >
+                {{ uiText('Reject') }}
+              </button>
+            </div>
           </div>
           <Composer
             :key="current?.id || 'new'"
@@ -690,6 +779,7 @@ async function remove(id: string) {
 .chat-dock {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   gap: 8px;
   padding-bottom: 12px;
 }
@@ -704,7 +794,7 @@ async function remove(id: string) {
     height: auto;
   }
   .persistent-chat .chat-panel {
-    max-height: 360px;
+    max-height: 400px;
   }
 }
 @media (max-width: 1000px) {
@@ -712,6 +802,18 @@ async function remove(id: string) {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     margin: -8px 0 -32px;
+  }
+}
+@media (max-width: 900px) {
+  .conversation-workspace {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: -8px 0 0;
+  }
+  .conversation-workspace > :deep(.conversation-history) {
+    flex-shrink: 0;
   }
 }
 @media (max-width: 600px) {

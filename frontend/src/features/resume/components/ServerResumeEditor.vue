@@ -30,6 +30,7 @@ import ResumeCertificateEditor from './ResumeCertificateEditor.vue'
 import ResumeDiagnosisPanel from './ResumeDiagnosisPanel.vue'
 import ResumeOptimizationPanel from './ResumeOptimizationPanel.vue'
 import { downloadText } from '@/shared/utils/download'
+import { suggestedResumeTitle } from '../resumeTitle'
 
 const props = defineProps<{ id: string }>()
 const route = useRoute()
@@ -107,6 +108,35 @@ watch(
   { immediate: true },
 )
 const deleted = ref(false)
+const titled = new Set<string>()
+watch(
+  () =>
+    [
+      resume.value?.id,
+      resume.value?.parseStatus,
+      resume.value?.title,
+      resume.value?.currentVersionId,
+    ] as const,
+  () => {
+    const value = resume.value
+    if (!value || titled.has(value.id) || dirty.value || busy.value) return
+    const next = suggestedResumeTitle(value)
+    if (!next) return
+    titled.add(value.id)
+    title.value = next
+    void run(async () => {
+      try {
+        const updated = await renameResume(value.id, next)
+        cache.setQueryData(['resume', value.id], updated)
+        title.value = savedTitle.value = updated.title
+        void cache.invalidateQueries({ queryKey: ['resumes'] })
+      } catch (cause) {
+        title.value = value.title
+        throw cause
+      }
+    })
+  },
+)
 function confirmLeave() {
   return (
     deleted.value ||
@@ -592,8 +622,12 @@ const basics = computed(() => [
 .resume-fields {
   border: 0;
   padding: 0;
+  padding-bottom: 24px;
   margin: 0;
   min-width: 0;
+}
+.resume-fields :is(input, textarea, select, button) {
+  scroll-margin-bottom: 128px;
 }
 .resume-basics {
   display: grid;
@@ -619,14 +653,12 @@ const basics = computed(() => [
   max-width: 100%;
 }
 .resume-save {
-  position: sticky;
-  bottom: 12px;
+  position: static;
   background: var(--card);
-  padding: 12px 12px 12px 16px;
+  padding: 12px 176px 12px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-float);
-  z-index: 2;
   transition: border-color var(--dur-mid) var(--ease-out);
 }
 .resume-save.is-dirty {
@@ -652,9 +684,20 @@ const basics = computed(() => [
 progress {
   width: 100%;
 }
+@media (max-width: 720px) {
+  .resume-save {
+    padding: 12px 16px;
+  }
+}
 @media (max-width: 640px) {
   .resume-basics {
     grid-template-columns: 1fr;
+  }
+  .resume-fields {
+    padding-bottom: 24px;
+  }
+  .resume-fields :is(input, textarea, select, button) {
+    scroll-margin-bottom: 24px;
   }
   .resume-save {
     align-items: stretch;
