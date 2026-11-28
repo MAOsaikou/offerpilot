@@ -5,6 +5,15 @@ import { afterEach, expect, it, vi } from 'vitest'
 import SettingsView from './SettingsView.vue'
 import { getCareerProfile, saveCareerProfile, type CareerProfile } from '@/shared/api/career'
 import { useWorkspace } from '@/shared/stores/workspace'
+import { setLanguage } from '@/shared/utils/language'
+import fs from 'node:fs'
+import path from 'node:path'
+
+const cssPath = [
+  path.resolve(process.cwd(), 'src/shared/styles/workspace.css'),
+  path.resolve(process.cwd(), 'frontend/src/shared/styles/workspace.css'),
+].find(fs.existsSync)
+const workspaceStyles = cssPath ? fs.readFileSync(cssPath, 'utf-8') : ''
 
 vi.mock('@/shared/api/career', () => ({
   getCareerProfile: vi.fn(),
@@ -41,6 +50,7 @@ afterEach(() => {
   app?.unmount()
   root?.remove()
   localStorage.clear()
+  setLanguage('zh-CN')
 })
 
 it('edits the server career target instead of the browser workspace default', async () => {
@@ -84,4 +94,49 @@ it('edits the server career target instead of the browser workspace default', as
   await vi.waitFor(() => expect(saveCareerProfile).toHaveBeenCalled())
   expect(saveCareerProfile).toHaveBeenCalledWith(expect.objectContaining({ target: '数据工程师' }))
   expect(workspace.state.target).toBe('前端开发工程师')
+})
+
+it('keeps all four settings tabs in a single row without wrapping into three-plus-one', async () => {
+  // Ensure stylesheet contracts lock out flex-wrap and enforce horizontal scroll on narrow screens
+  expect(workspaceStyles).toMatch(/\.tabs\s*\{[^}]*flex-wrap:\s*nowrap/)
+  expect(workspaceStyles).toMatch(/\.tabs\s*\{[^}]*overflow-x:\s*auto/)
+  expect(workspaceStyles).toMatch(/\.tabs\s*\{[^}]*max-width:\s*100%/)
+  expect(workspaceStyles).not.toMatch(/\.tabs\s*\{[^}]*flex-wrap:\s*wrap/)
+  expect(workspaceStyles).toMatch(/\.tabs button\s*\{[^}]*white-space:\s*nowrap/)
+  expect(workspaceStyles).toMatch(/\.tabs button\s*\{[^}]*flex-shrink:\s*0/)
+
+  const pinia = createPinia()
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/settings/:tab?', component: SettingsView },
+      { path: '/:pathMatch(.*)*', component: { render: () => null } },
+    ],
+  })
+  await router.push('/settings')
+  root = document.createElement('div')
+  document.body.append(root)
+  app = createApp({ render: () => h(RouterView) })
+    .use(pinia)
+    .use(router)
+  app.mount(root)
+  await nextTick()
+
+  const tabs = root.querySelector<HTMLDivElement>('.tabs')
+  expect(tabs).not.toBeNull()
+  const buttons = [...tabs!.querySelectorAll<HTMLButtonElement>('button')]
+  expect(buttons).toHaveLength(4)
+  expect(buttons.map((b) => b.textContent?.trim())).toEqual([
+    '个人偏好',
+    '模型选择',
+    '连接与联调',
+    '数据与隐私',
+  ])
+
+  // The 4th tab "数据与隐私" (which previously dropped to the second line) is in the same tabs bar and clickable
+  const privacyButton = buttons.find((b) => b.textContent?.trim() === '数据与隐私')!
+  privacyButton.click()
+  await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/settings/privacy'))
+  expect(privacyButton.classList.contains('selected')).toBe(true)
+  expect(privacyButton.getAttribute('aria-pressed')).toBe('true')
 })

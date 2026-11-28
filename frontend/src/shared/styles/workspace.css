@@ -1010,14 +1010,24 @@ a.job-row:hover > svg {
 }
 .tabs {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
   gap: 2px;
   padding: 3px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--foreground) 5%, transparent);
   align-self: flex-start;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 .tabs button {
+  flex-shrink: 0;
+  white-space: nowrap;
   min-height: 34px;
   padding: 0 14px;
   border: 0;
