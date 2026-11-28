@@ -140,3 +140,51 @@ it('keeps all four settings tabs in a single row without wrapping into three-plu
   expect(privacyButton.classList.contains('selected')).toBe(true)
   expect(privacyButton.getAttribute('aria-pressed')).toBe('true')
 })
+
+it('protects the last tab from border-radius corner clipping at max scroll by ensuring end padding matches or exceeds border-radius', async () => {
+  // Stylesheet contract: the horizontal/end padding of .tabs must be at least equal to its border-radius
+  // so the last character ("私" in "数据与隐私") does not get clipped by the rounded corner when scrolled to the end
+  const tabsRule = workspaceStyles.match(/\.tabs\s*\{([^}]+)\}/)?.[1] ?? ''
+  const borderRadiusMatch = tabsRule.match(/border-radius:\s*(\d+)px/)
+  expect(borderRadiusMatch).not.toBeNull()
+  const borderRadius = parseInt(borderRadiusMatch![1], 10)
+
+  const paddingShorthand = tabsRule.match(/padding:\s*(\d+)px\s+(\d+)px/)
+  const paddingInline = tabsRule.match(/padding-(?:inline|right|inline-end):\s*(\d+)px/)
+  const endPadding = paddingShorthand
+    ? parseInt(paddingShorthand[2], 10)
+    : paddingInline
+      ? parseInt(paddingInline[1], 10)
+      : 0
+
+  expect(endPadding).toBeGreaterThanOrEqual(borderRadius)
+  expect(endPadding).toBeGreaterThanOrEqual(10)
+
+  const pinia = createPinia()
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/settings/:tab?', component: SettingsView },
+      { path: '/:pathMatch(.*)*', component: { render: () => null } },
+    ],
+  })
+  await router.push('/settings')
+  root = document.createElement('div')
+  document.body.append(root)
+  app = createApp({ render: () => h(RouterView) })
+    .use(pinia)
+    .use(router)
+  app.mount(root)
+  await nextTick()
+
+  const tabs = root.querySelector<HTMLDivElement>('.tabs')
+  expect(tabs).not.toBeNull()
+  const buttons = [...tabs!.querySelectorAll<HTMLButtonElement>('button')]
+  const lastButton = buttons[buttons.length - 1]
+  expect(lastButton?.textContent?.trim()).toBe('数据与隐私')
+
+  // When scrolled to the maximum scrollLeft, the remaining distance from the button's right edge
+  // to the tabs container right boundary is determined by endPadding.
+  // Because endPadding >= borderRadius, the last button and its text are completely clear of the corner curve.
+  expect(endPadding).toBeGreaterThanOrEqual(10)
+})

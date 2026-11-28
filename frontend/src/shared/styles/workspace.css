@@ -1015,7 +1015,7 @@ a.job-row:hover > svg {
   overflow-x: auto;
   overflow-y: hidden;
   gap: 2px;
-  padding: 3px;
+  padding: 3px 10px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--foreground) 5%, transparent);
   align-self: flex-start;
