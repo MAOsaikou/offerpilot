@@ -794,7 +794,7 @@ async function remove(id: string) {
     height: auto;
   }
   .persistent-chat .chat-panel {
-    max-height: 360px;
+    max-height: 400px;
   }
 }
 @media (max-width: 1000px) {
