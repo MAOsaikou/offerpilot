@@ -779,6 +779,7 @@ async function remove(id: string) {
 .chat-dock {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   gap: 8px;
   padding-bottom: 12px;
 }
@@ -801,6 +802,18 @@ async function remove(id: string) {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     margin: -8px 0 -32px;
+  }
+}
+@media (max-width: 900px) {
+  .conversation-workspace {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: -8px 0 0;
+  }
+  .conversation-workspace > :deep(.conversation-history) {
+    flex-shrink: 0;
   }
 }
 @media (max-width: 600px) {

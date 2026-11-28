@@ -1064,6 +1064,7 @@ a.job-row:hover > svg {
 }
 .chat-toolbar {
   display: flex;
+  flex-shrink: 0;
   flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
@@ -1247,6 +1248,7 @@ a.job-row:hover > svg {
     top: 0;
     z-index: 20;
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     gap: 8px;
     min-height: 56px;
@@ -1264,9 +1266,6 @@ a.job-row:hover > svg {
   }
   .split-content {
     grid-template-columns: 1fr;
-  }
-  .chat-layout {
-    height: calc(100dvh - 56px - 48px);
   }
 }
 @media (max-height: 460px) {
@@ -1313,9 +1312,6 @@ a.job-row:hover > svg {
   .list-row,
   .notice-item {
     flex-wrap: wrap;
-  }
-  .chat-layout {
-    height: calc(100dvh - 56px - 32px);
   }
   .chat-welcome h2 {
     font-size: 24px;
@@ -1379,6 +1375,46 @@ a.job-row:hover > svg {
     padding-top: 16px;
     padding-inline-end: 16px;
     padding-bottom: max(40px, calc(env(safe-area-inset-bottom) + 40px));
+  }
+}
+@media (max-width: 900px) {
+  .app-body:has(.conversation-workspace):not(:has(.chat-panel.visible)) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
+  .app-body:has(.conversation-workspace):not(:has(.chat-panel.visible)) > .generation-dock {
+    flex-shrink: 0;
+  }
+  .app-body:has(.conversation-workspace):not(:has(.chat-panel.visible)) > .workspace-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .app-body:has(.conversation-workspace):not(:has(.chat-panel.visible))
+    > .workspace-content
+    > :not(.route-page) {
+    flex-shrink: 0;
+  }
+  .app-body:has(.conversation-workspace):not(:has(.chat-panel.visible))
+    > .workspace-content
+    > .route-page {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .chat-layout {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+  }
+  .chat-main {
+    flex: 1 1 auto;
   }
 }
 
