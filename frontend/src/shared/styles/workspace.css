@@ -62,10 +62,11 @@ h3 {
   padding: 22px 14px 16px;
   background: var(--rail);
   border-right: 1px solid var(--border);
-  overflow-y: auto;
+  overflow: hidden;
 }
 .brand {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 10px;
   padding: 0 8px;
@@ -95,6 +96,7 @@ h3 {
 }
 .sidebar-new {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
   min-height: 40px;
@@ -109,13 +111,21 @@ h3 {
   background: color-mix(in srgb, var(--foreground) 88%, var(--primary));
 }
 .nav-list {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  margin: -1px -14px;
+  padding: 1px 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .nav-link {
   position: relative;
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 12px;
   min-height: 38px;
@@ -167,6 +177,7 @@ h3 {
   text-align: center;
 }
 .nav-divider {
+  flex-shrink: 0;
   height: 1px;
   margin: 6px 10px;
   background: var(--border);
@@ -175,6 +186,7 @@ h3 {
   margin-top: auto;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   gap: 2px;
   min-width: 0;
 }
@@ -1215,7 +1227,6 @@ a.job-row:hover > svg {
   .sidebar {
     width: 272px;
     max-width: calc(100vw - 48px);
-    overflow-x: hidden;
     transform: translateX(-100%);
     visibility: hidden;
     transition:
@@ -1256,6 +1267,15 @@ a.job-row:hover > svg {
   }
   .chat-layout {
     height: calc(100dvh - 56px - 48px);
+  }
+}
+@media (max-height: 460px) {
+  .sidebar {
+    overflow-y: auto;
+  }
+  .nav-list {
+    flex: 0 0 auto;
+    overflow: visible;
   }
 }
 @media (max-width: 640px) {
